@@ -1,0 +1,46 @@
+# ---------------------------------------------------------------------------
+# Autonomous Test Engineering Platform — Runtime Dependencies
+# Python 3.11+
+#
+# Pinned to compatible ranges. Generate a fully-locked set with:
+#   pip-compile requirements.txt --output-file requirements.lock
+# ---------------------------------------------------------------------------
+
+# --- Web framework / API layer ---------------------------------------------
+fastapi>=0.111,<1.0
+uvicorn[standard]>=0.30,<1.0
+python-multipart>=0.0.9          # form / file uploads on FastAPI
+
+# --- Configuration & validation --------------------------------------------
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3,<3.0
+python-dotenv>=1.0,<2.0
+
+# --- AI provider: Azure OpenAI ---------------------------------------------
+openai>=1.30,<2.0               # Azure OpenAI is served via the openai SDK
+tiktoken>=0.7,<1.0             # token accounting / prompt budgeting
+
+# --- Source connectors (Requirement Intelligence Layer) --------------------
+jira>=3.8,<4.0                  # Jira connector
+httpx>=0.27,<1.0               # SonarQube / OWASP ZAP REST clients
+
+# --- Persistence (PostgreSQL — wired in a future phase) --------------------
+sqlalchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+psycopg[binary]>=3.1,<4.0
+
+# --- Observability / logging -----------------------------------------------
+structlog>=24.1,<25.0
+rich>=13.7,<14.0
+
+# --- Reporting --------------------------------------------------------------
+jinja2>=3.1,<4.0               # report templating
+
+# --- Resilience -------------------------------------------------------------
+tenacity>=8.3,<9.0            # retries/backoff for connectors & AI calls
+
+# ---------------------------------------------------------------------------
+# Dashboard (Governance Dashboard Layer) — kept here for the single
+# deployable unit. Imported only by the Streamlit process.
+# ---------------------------------------------------------------------------
+streamlit>=1.35,<2.0

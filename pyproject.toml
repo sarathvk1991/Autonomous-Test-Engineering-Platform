@@ -1,0 +1,58 @@
+# ===========================================================================
+# Autonomous Test Engineering Platform — Project & Tooling Configuration
+# ===========================================================================
+[project]
+name = "autonomous-test-engineering-platform"
+version = "0.1.0"
+description = "AI-Powered Autonomous Test Engineering Platform (Modular Monolith)"
+requires-python = ">=3.11"
+readme = "README.md"
+
+# ---------------------------------------------------------------------------
+# Ruff — linting + formatting (single tool, fast)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = [".", "app", "requirement_intelligence", "shared", "infrastructure"]
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I isort, N pep8-naming, UP pyupgrade,
+# B bugbear, ASYNC, S bandit (security), RUF ruff-specific.
+select = ["E", "W", "F", "I", "N", "UP", "B", "ASYNC", "S", "RUF"]
+ignore = ["S101"]                      # allow `assert` in tests
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "B011"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "app", "requirement_intelligence", "shared", "infrastructure",
+]
+
+# ---------------------------------------------------------------------------
+# mypy — static typing
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+asyncio_mode = "auto"
+testpaths = ["tests", "requirement_intelligence/tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers --cov-report=term-missing"
+markers = [
+    "unit: fast, isolated tests with no external I/O",
+    "integration: tests that exercise a connector or external boundary",
+    "e2e: full end-to-end workflow tests",
+]
