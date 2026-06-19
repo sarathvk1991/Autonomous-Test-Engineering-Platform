@@ -16,6 +16,8 @@
       "sourceId": "jira",
       "sourceName": "JIRA",
       "sourceType": "REQUIREMENT_SOURCE",
+      "sourceCategory": "FUNCTIONAL",
+      "schemaVersion": "1.0",
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.jira.connector.JiraConnector",
       "parserClass": "requirement_intelligence.parsers.jira.parser.JiraParser",
@@ -24,12 +26,19 @@
       "outputCategory": "FUNCTIONAL_REQUIREMENT",
       "priority": 1,
       "requiredForPhase": true,
+      "connection": {
+        "mode": "FILE",
+        "baseUrl": "",
+        "authType": ""
+      },
       "description": "Functional requirements, epics, stories, and defects sourced from JIRA. Phase 1 ingests an exported issue dump in FILE mode."
     },
     {
       "sourceId": "owasp_zap",
       "sourceName": "OWASP ZAP",
       "sourceType": "DAST_SOURCE",
+      "sourceCategory": "SECURITY",
+      "schemaVersion": "1.0",
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.zap.connector.ZapConnector",
       "parserClass": "requirement_intelligence.parsers.zap.parser.ZapParser",
@@ -38,12 +47,19 @@
       "outputCategory": "SECURITY_FINDING",
       "priority": 2,
       "requiredForPhase": true,
+      "connection": {
+        "mode": "FILE",
+        "baseUrl": "",
+        "authType": ""
+      },
       "description": "Dynamic application security testing (DAST) alerts from OWASP ZAP. Phase 1 ingests an exported alert report in FILE mode."
     },
     {
       "sourceId": "sonarqube",
       "sourceName": "SonarQube",
       "sourceType": "SAST_SOURCE",
+      "sourceCategory": "QUALITY",
+      "schemaVersion": "1.0",
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.sonarqube.connector.SonarQubeConnector",
       "parserClass": "requirement_intelligence.parsers.sonarqube.parser.SonarQubeParser",
@@ -52,6 +68,11 @@
       "outputCategory": "QUALITY_FINDING",
       "priority": 3,
       "requiredForPhase": true,
+      "connection": {
+        "mode": "FILE",
+        "baseUrl": "",
+        "authType": ""
+      },
       "description": "Static analysis (SAST) and code quality issues from SonarQube. Phase 1 ingests an exported issues report in FILE mode."
     }
   ]

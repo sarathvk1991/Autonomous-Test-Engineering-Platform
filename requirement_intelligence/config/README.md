@@ -38,6 +38,23 @@ Each object in the `sources` array describes one ingestion source:
 `defaults` and `supportedInputModes` at the top of the file let new entries omit
 common values and document which modes the architecture understands.
 
+## Source Categories
+
+Source categories are used for reporting, analytics, governance dashboards,
+and future rule engines.
+
+Supported categories:
+
+- FUNCTIONAL
+- SECURITY
+- QUALITY
+
+A source type identifies the technical nature of the source
+(REQUIREMENT_SOURCE, DAST_SOURCE, SAST_SOURCE).
+
+A source category identifies the business classification of the data
+(FUNCTIONAL, SECURITY, QUALITY).
+
 ### Enabling and disabling a source
 
 Toggling a source is a configuration change only — **no code change is
