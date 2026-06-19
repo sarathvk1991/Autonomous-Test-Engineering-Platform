@@ -28,13 +28,13 @@ class SourceConnector(ABC):
     - Do not perform requirement consolidation.
     """
 
-    def __init__(self, source_config: dict[str, Any]) -> None:
+    def __init__(self, source_config: dict[str, Any] | None = None) -> None:
         """Initializes the connector with source registry configuration.
 
         Args:
             source_config: Configuration entry from source-registry.json.
         """
-        self.source_config = source_config
+        self.source_config = source_config or {}
 
     @abstractmethod
     def get_source_id(self) -> str:

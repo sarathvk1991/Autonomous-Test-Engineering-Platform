@@ -39,7 +39,7 @@ class ZapConnector(SourceConnector):
         return {
             "sourceId": self.get_source_id(),
             "sourceName": self.get_source_name(),
-            "version": "1.0",
+            "schemaVersion": "1.0",
             "supportedInputModes": ["FILE", "API"],
             "supportedEntities": ["alerts", "findings"]
         }
