@@ -1,7 +1,7 @@
 """OWASP ZAP source connector.
 
-Fetches security alerts/findings from an OWASP ZAP instance and returns raw
-payloads for the ZAP parser to canonicalise. Logic deferred.
+Fetches raw OWASP ZAP alerts from the configured source and returns them without
+canonical transformation. Parsing is handled by the ZAP parser layer.
 """
 
 from __future__ import annotations
@@ -15,29 +15,31 @@ class ZapConnector(SourceConnector):
     """Connector for OWASP ZAP."""
 
     def get_source_id(self) -> str:
-        """Returns a unique identifier for the source."""
-        return "zap"
+        """Returns the source identifier."""
+        return "owasp_zap"
 
     def get_source_name(self) -> str:
-        """Returns a human-readable name for the source."""
+        """Returns the source display name."""
         return "OWASP ZAP"
 
-    def connect(self) -> bool:
-        """Establishes or validates connectivity with OWASP ZAP."""
-        raise NotImplementedError
-
     def validate_connection(self) -> bool:
-        """Performs health validation checks against OWASP ZAP."""
+        """Validates OWASP ZAP source availability.
+
+        For Phase 1 FILE mode, this should validate the configured alert file.
+        For future API mode, this should validate ZAP API connectivity.
+        """
         raise NotImplementedError
 
     def fetch_raw_records(self) -> list[dict[str, Any]]:
-        """Fetches raw records from OWASP ZAP."""
-        raise NotImplementedError
-
-    def parse_records(self, raw_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Transforms OWASP ZAP records into common representation."""
+        """Fetches raw OWASP ZAP alert records."""
         raise NotImplementedError
 
     def get_metadata(self) -> dict[str, Any]:
-        """Returns metadata about the OWASP ZAP connector."""
-        raise NotImplementedError
+        """Returns OWASP ZAP connector metadata."""
+        return {
+            "sourceId": self.get_source_id(),
+            "sourceName": self.get_source_name(),
+            "version": "1.0",
+            "supportedInputModes": ["FILE", "API"],
+            "supportedEntities": ["alerts", "findings"]
+        }

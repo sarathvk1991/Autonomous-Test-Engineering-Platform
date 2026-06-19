@@ -1,55 +1,50 @@
 """Custom exceptions for the Connector Framework.
 
-This module defines the hierarchy of exceptions raised by source connectors
-during connectivity validation, record fetching, and data parsing.
+This module defines typed exceptions raised by source connectors during
+configuration validation, source availability checks, and raw data fetching.
 """
 
 
 class ConnectorError(Exception):
-    """Base exception for all errors that occur within the connector layer.
-
-    All other custom connector exceptions inherit from this class. It can also
-    be used directly for generic connector failures that do not fit into
-    specific subclasses.
-    """
+    """Base exception for all connector-layer errors."""
 
 
 class ConnectorConfigurationError(ConnectorError):
-    """Exception raised when a connector is misconfigured.
+    """Raised when a connector is misconfigured.
 
     Examples:
-        - Missing or invalid authentication credentials (API key, token, user/pass).
-        - Missing, malformed, or unreachable source URL.
-        - Invalid query parameters or settings in configuration.
+        - Missing inputPath in FILE mode.
+        - Missing baseUrl in API mode.
+        - Unsupported inputMode.
+        - Missing authentication configuration.
     """
 
 
 class ConnectorConnectionError(ConnectorError):
-    """Exception raised when connection to the source system cannot be established or validated.
+    """Raised when a source cannot be reached or validated.
 
     Examples:
-        - Network connection timeouts.
-        - Host name resolution failures (DNS).
-        - HTTP status codes representing service unavailability (e.g. 503).
+        - File does not exist.
+        - File is not readable.
+        - API endpoint is unavailable.
+        - Authentication fails.
     """
 
 
 class ConnectorFetchError(ConnectorError):
-    """Exception raised when a connector fails to retrieve raw data from the source system.
+    """Raised when raw records cannot be fetched.
 
     Examples:
-        - API rate limits exceeded (e.g. HTTP 429).
-        - Permission denied/Unauthorized when fetching specific data (e.g. HTTP 403).
-        - Server errors on specific requests (e.g. HTTP 500).
+        - Invalid file read.
+        - API request failure.
+        - Permission denied.
+        - Rate limit exceeded.
     """
 
 
 class ConnectorParseError(ConnectorError):
-    """Exception raised when a connector fails to transform raw data into the canonical format.
+    """Deprecated for connector layer.
 
-    Examples:
-        - Malformed or unexpected response payloads (e.g. invalid JSON, XML,
-          or missing required fields).
-        - Data type mismatch during casting.
-        - Schema validation errors on parsed records.
+    Parsing should be handled by parser classes. This exception is kept only for
+    backward compatibility until parser-specific exceptions are introduced.
     """
