@@ -8,17 +8,36 @@ from __future__ import annotations
 
 from typing import Any
 
-from requirement_intelligence.connectors.base import BaseConnector
-from shared.enums.base import SourceSystem
+from requirement_intelligence.connectors.base import SourceConnector
 
 
-class JiraConnector(BaseConnector):
+class JiraConnector(SourceConnector):
     """Connector for Atlassian Jira."""
 
-    source = SourceSystem.JIRA
+    def get_source_id(self) -> str:
+        """Returns a unique identifier for the source."""
+        return "jira"
 
-    def health_check(self) -> bool:  # noqa: D102 - see base class
+    def get_source_name(self) -> str:
+        """Returns a human-readable name for the source."""
+        return "JIRA"
+
+    def connect(self) -> bool:
+        """Establishes or validates connectivity with JIRA."""
         raise NotImplementedError
 
-    def fetch(self, **query: Any) -> list[dict[str, Any]]:  # noqa: D102
+    def validate_connection(self) -> bool:
+        """Performs health validation checks against JIRA."""
+        raise NotImplementedError
+
+    def fetch_raw_records(self) -> list[dict[str, Any]]:
+        """Fetches raw records from JIRA."""
+        raise NotImplementedError
+
+    def parse_records(self, raw_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Transforms JIRA records into common representation."""
+        raise NotImplementedError
+
+    def get_metadata(self) -> dict[str, Any]:
+        """Returns metadata about the JIRA connector."""
         raise NotImplementedError

@@ -8,17 +8,36 @@ from __future__ import annotations
 
 from typing import Any
 
-from requirement_intelligence.connectors.base import BaseConnector
-from shared.enums.base import SourceSystem
+from requirement_intelligence.connectors.base import SourceConnector
 
 
-class ZapConnector(BaseConnector):
+class ZapConnector(SourceConnector):
     """Connector for OWASP ZAP."""
 
-    source = SourceSystem.OWASP_ZAP
+    def get_source_id(self) -> str:
+        """Returns a unique identifier for the source."""
+        return "zap"
 
-    def health_check(self) -> bool:  # noqa: D102 - see base class
+    def get_source_name(self) -> str:
+        """Returns a human-readable name for the source."""
+        return "OWASP ZAP"
+
+    def connect(self) -> bool:
+        """Establishes or validates connectivity with OWASP ZAP."""
         raise NotImplementedError
 
-    def fetch(self, **query: Any) -> list[dict[str, Any]]:  # noqa: D102
+    def validate_connection(self) -> bool:
+        """Performs health validation checks against OWASP ZAP."""
+        raise NotImplementedError
+
+    def fetch_raw_records(self) -> list[dict[str, Any]]:
+        """Fetches raw records from OWASP ZAP."""
+        raise NotImplementedError
+
+    def parse_records(self, raw_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Transforms OWASP ZAP records into common representation."""
+        raise NotImplementedError
+
+    def get_metadata(self) -> dict[str, Any]:
+        """Returns metadata about the OWASP ZAP connector."""
         raise NotImplementedError
