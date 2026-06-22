@@ -86,6 +86,15 @@ def test_fetch_api_mode_not_implemented(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(("cls", "source_id", "source_name"), CONNECTOR_CASES)
+def test_fetch_file_mode_missing_input_path_raises(
+    cls: type[SourceConnector], source_id: str, source_name: str
+) -> None:
+    with pytest.raises(ConnectorConfigurationError):
+        cls({"inputMode": "FILE"}).fetch_raw_records()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(("cls", "source_id", "source_name"), CONNECTOR_CASES)
 def test_fetch_invalid_mode_raises(
     cls: type[SourceConnector], source_id: str, source_name: str
 ) -> None:
