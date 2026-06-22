@@ -1,0 +1,798 @@
+{
+  "epic_id": "SCRUM-10",
+  "total_issues": 4,
+  "issues": [
+    {
+      "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+      "id": "10055",
+      "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10055",
+      "key": "SCRUM-24",
+      "fields": {
+        "statuscategorychangedate": "2026-06-18T15:10:01.318+0530",
+        "issuetype": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issuetype/10007",
+          "id": "10007",
+          "description": "Bugs track problems or errors.",
+          "iconUrl": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10303?size=medium",
+          "name": "Bug",
+          "subtask": false,
+          "avatarId": 10303,
+          "entityId": "a4e86471-3077-41bb-8791-ce1603123b53",
+          "hierarchyLevel": 0
+        },
+        "parent": {
+          "id": "10041",
+          "key": "SCRUM-10",
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10041",
+          "fields": {
+            "summary": "Product Inventory",
+            "status": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/status/10000",
+              "description": "",
+              "iconUrl": "https://sarathvk619.atlassian.net/images/icons/statuses/generic.png",
+              "name": "To Do",
+              "id": "10000",
+              "statusCategory": {
+                "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+                "id": 2,
+                "key": "new",
+                "colorName": "blue-gray",
+                "name": "To Do"
+              }
+            },
+            "priority": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/priority/3",
+              "iconUrl": "https://sarathvk619.atlassian.net/images/icons/priorities/medium_new.svg",
+              "name": "Medium",
+              "id": "3"
+            },
+            "issuetype": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/issuetype/10001",
+              "id": "10001",
+              "description": "Epics track collections of related bugs, stories, and tasks.",
+              "iconUrl": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10307?size=medium",
+              "name": "Epic",
+              "subtask": false,
+              "avatarId": 10307,
+              "entityId": "b8b18f30-fbb2-4256-862a-2ba47937d3b7",
+              "hierarchyLevel": 1
+            }
+          }
+        },
+        "timespent": null,
+        "project": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/project/10000",
+          "id": "10000",
+          "key": "SCRUM",
+          "name": "My Automation Product",
+          "projectTypeKey": "software",
+          "simplified": true,
+          "avatarUrls": {
+            "48x48": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414",
+            "24x24": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=small",
+            "16x16": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=xsmall",
+            "32x32": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=medium"
+          }
+        },
+        "fixVersions": [],
+        "aggregatetimespent": null,
+        "statusCategory": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "blue-gray",
+          "name": "To Do"
+        },
+        "customfield_10035": null,
+        "resolution": null,
+        "resolutiondate": null,
+        "workratio": -1,
+        "issuerestriction": {
+          "issuerestrictions": {},
+          "shouldDisplay": true
+        },
+        "watches": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/SCRUM-24/watchers",
+          "watchCount": 1,
+          "isWatching": true
+        },
+        "lastViewed": null,
+        "created": "2026-06-18T15:10:00.936+0530",
+        "customfield_10020": null,
+        "customfield_10021": null,
+        "priority": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/priority/3",
+          "iconUrl": "https://sarathvk619.atlassian.net/images/icons/priorities/medium_new.svg",
+          "name": "Medium",
+          "id": "3"
+        },
+        "labels": [],
+        "customfield_10016": null,
+        "customfield_10019": "0|i00053:",
+        "timeestimate": null,
+        "aggregatetimeoriginalestimate": null,
+        "versions": [],
+        "issuelinks": [],
+        "assignee": null,
+        "updated": "2026-06-18T15:10:01.537+0530",
+        "status": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/status/10000",
+          "description": "",
+          "iconUrl": "https://sarathvk619.atlassian.net/images/icons/statuses/generic.png",
+          "name": "To Do",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          }
+        },
+        "components": [],
+        "timeoriginalestimate": null,
+        "description": null,
+        "timetracking": {},
+        "customfield_10015": null,
+        "security": null,
+        "attachment": [],
+        "aggregatetimeestimate": null,
+        "summary": "Inventory sorting produces inconsistent order",
+        "creator": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/user?accountId=712020%3A2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "accountId": "712020:2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "emailAddress": "siyansunny1999@gmail.com",
+          "avatarUrls": {
+            "48x48": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "24x24": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "16x16": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "32x32": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png"
+          },
+          "displayName": "Siyan Sunny",
+          "active": true,
+          "timeZone": "Asia/Calcutta",
+          "accountType": "atlassian"
+        },
+        "subtasks": [],
+        "reporter": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/user?accountId=712020%3A2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "accountId": "712020:2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "emailAddress": "siyansunny1999@gmail.com",
+          "avatarUrls": {
+            "48x48": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "24x24": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "16x16": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "32x32": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png"
+          },
+          "displayName": "Siyan Sunny",
+          "active": true,
+          "timeZone": "Asia/Calcutta",
+          "accountType": "atlassian"
+        },
+        "aggregateprogress": {
+          "progress": 0,
+          "total": 0
+        },
+        "customfield_10001": null,
+        "environment": null,
+        "duedate": null,
+        "progress": {
+          "progress": 0,
+          "total": 0
+        },
+        "votes": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/SCRUM-24/votes",
+          "votes": 0,
+          "hasVoted": false
+        },
+        "comment": {
+          "comments": [],
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10055/comment",
+          "maxResults": 0,
+          "total": 0,
+          "startAt": 0
+        },
+        "worklog": {
+          "startAt": 0,
+          "maxResults": 20,
+          "total": 0,
+          "worklogs": []
+        }
+      }
+    },
+    {
+      "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+      "id": "10044",
+      "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10044",
+      "key": "SCRUM-13",
+      "fields": {
+        "statuscategorychangedate": "2026-06-18T14:58:44.129+0530",
+        "issuetype": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issuetype/10004",
+          "id": "10004",
+          "description": "Stories track functionality or features expressed as user goals.",
+          "iconUrl": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10315?size=medium",
+          "name": "Story",
+          "subtask": false,
+          "avatarId": 10315,
+          "entityId": "4a95d521-ce74-4ac3-9866-72c7c76925c1",
+          "hierarchyLevel": 0
+        },
+        "parent": {
+          "id": "10041",
+          "key": "SCRUM-10",
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10041",
+          "fields": {
+            "summary": "Product Inventory",
+            "status": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/status/10000",
+              "description": "",
+              "iconUrl": "https://sarathvk619.atlassian.net/images/icons/statuses/generic.png",
+              "name": "To Do",
+              "id": "10000",
+              "statusCategory": {
+                "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+                "id": 2,
+                "key": "new",
+                "colorName": "blue-gray",
+                "name": "To Do"
+              }
+            },
+            "priority": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/priority/3",
+              "iconUrl": "https://sarathvk619.atlassian.net/images/icons/priorities/medium_new.svg",
+              "name": "Medium",
+              "id": "3"
+            },
+            "issuetype": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/issuetype/10001",
+              "id": "10001",
+              "description": "Epics track collections of related bugs, stories, and tasks.",
+              "iconUrl": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10307?size=medium",
+              "name": "Epic",
+              "subtask": false,
+              "avatarId": 10307,
+              "entityId": "b8b18f30-fbb2-4256-862a-2ba47937d3b7",
+              "hierarchyLevel": 1
+            }
+          }
+        },
+        "timespent": null,
+        "project": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/project/10000",
+          "id": "10000",
+          "key": "SCRUM",
+          "name": "My Automation Product",
+          "projectTypeKey": "software",
+          "simplified": true,
+          "avatarUrls": {
+            "48x48": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414",
+            "24x24": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=small",
+            "16x16": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=xsmall",
+            "32x32": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=medium"
+          }
+        },
+        "fixVersions": [],
+        "aggregatetimespent": null,
+        "statusCategory": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "blue-gray",
+          "name": "To Do"
+        },
+        "customfield_10035": null,
+        "resolution": null,
+        "resolutiondate": null,
+        "workratio": -1,
+        "issuerestriction": {
+          "issuerestrictions": {},
+          "shouldDisplay": true
+        },
+        "watches": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/SCRUM-13/watchers",
+          "watchCount": 1,
+          "isWatching": true
+        },
+        "lastViewed": null,
+        "created": "2026-06-18T14:58:43.679+0530",
+        "customfield_10020": null,
+        "customfield_10021": null,
+        "priority": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/priority/3",
+          "iconUrl": "https://sarathvk619.atlassian.net/images/icons/priorities/medium_new.svg",
+          "name": "Medium",
+          "id": "3"
+        },
+        "labels": [],
+        "customfield_10016": null,
+        "customfield_10019": "0|i0002n:",
+        "timeestimate": null,
+        "aggregatetimeoriginalestimate": null,
+        "versions": [],
+        "issuelinks": [],
+        "assignee": null,
+        "updated": "2026-06-18T14:58:44.308+0530",
+        "status": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/status/10000",
+          "description": "",
+          "iconUrl": "https://sarathvk619.atlassian.net/images/icons/statuses/generic.png",
+          "name": "To Do",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          }
+        },
+        "components": [],
+        "timeoriginalestimate": null,
+        "description": "Given a product\n\nWhen product details are opened\n\nThen product information should be displayed",
+        "timetracking": {},
+        "customfield_10015": null,
+        "security": null,
+        "attachment": [],
+        "aggregatetimeestimate": null,
+        "summary": "As a user, I want to view product details, So that I can review product information.",
+        "creator": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/user?accountId=712020%3A2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "accountId": "712020:2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "emailAddress": "siyansunny1999@gmail.com",
+          "avatarUrls": {
+            "48x48": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "24x24": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "16x16": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "32x32": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png"
+          },
+          "displayName": "Siyan Sunny",
+          "active": true,
+          "timeZone": "Asia/Calcutta",
+          "accountType": "atlassian"
+        },
+        "subtasks": [],
+        "reporter": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/user?accountId=712020%3A2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "accountId": "712020:2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "emailAddress": "siyansunny1999@gmail.com",
+          "avatarUrls": {
+            "48x48": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "24x24": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "16x16": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "32x32": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png"
+          },
+          "displayName": "Siyan Sunny",
+          "active": true,
+          "timeZone": "Asia/Calcutta",
+          "accountType": "atlassian"
+        },
+        "aggregateprogress": {
+          "progress": 0,
+          "total": 0
+        },
+        "customfield_10001": null,
+        "environment": null,
+        "duedate": null,
+        "progress": {
+          "progress": 0,
+          "total": 0
+        },
+        "votes": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/SCRUM-13/votes",
+          "votes": 0,
+          "hasVoted": false
+        },
+        "comment": {
+          "comments": [],
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10044/comment",
+          "maxResults": 0,
+          "total": 0,
+          "startAt": 0
+        },
+        "worklog": {
+          "startAt": 0,
+          "maxResults": 20,
+          "total": 0,
+          "worklogs": []
+        }
+      }
+    },
+    {
+      "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+      "id": "10043",
+      "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10043",
+      "key": "SCRUM-12",
+      "fields": {
+        "statuscategorychangedate": "2026-06-18T14:58:15.257+0530",
+        "issuetype": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issuetype/10004",
+          "id": "10004",
+          "description": "Stories track functionality or features expressed as user goals.",
+          "iconUrl": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10315?size=medium",
+          "name": "Story",
+          "subtask": false,
+          "avatarId": 10315,
+          "entityId": "4a95d521-ce74-4ac3-9866-72c7c76925c1",
+          "hierarchyLevel": 0
+        },
+        "parent": {
+          "id": "10041",
+          "key": "SCRUM-10",
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10041",
+          "fields": {
+            "summary": "Product Inventory",
+            "status": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/status/10000",
+              "description": "",
+              "iconUrl": "https://sarathvk619.atlassian.net/images/icons/statuses/generic.png",
+              "name": "To Do",
+              "id": "10000",
+              "statusCategory": {
+                "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+                "id": 2,
+                "key": "new",
+                "colorName": "blue-gray",
+                "name": "To Do"
+              }
+            },
+            "priority": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/priority/3",
+              "iconUrl": "https://sarathvk619.atlassian.net/images/icons/priorities/medium_new.svg",
+              "name": "Medium",
+              "id": "3"
+            },
+            "issuetype": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/issuetype/10001",
+              "id": "10001",
+              "description": "Epics track collections of related bugs, stories, and tasks.",
+              "iconUrl": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10307?size=medium",
+              "name": "Epic",
+              "subtask": false,
+              "avatarId": 10307,
+              "entityId": "b8b18f30-fbb2-4256-862a-2ba47937d3b7",
+              "hierarchyLevel": 1
+            }
+          }
+        },
+        "timespent": null,
+        "project": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/project/10000",
+          "id": "10000",
+          "key": "SCRUM",
+          "name": "My Automation Product",
+          "projectTypeKey": "software",
+          "simplified": true,
+          "avatarUrls": {
+            "48x48": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414",
+            "24x24": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=small",
+            "16x16": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=xsmall",
+            "32x32": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=medium"
+          }
+        },
+        "fixVersions": [],
+        "aggregatetimespent": null,
+        "statusCategory": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "blue-gray",
+          "name": "To Do"
+        },
+        "customfield_10035": null,
+        "resolution": null,
+        "resolutiondate": null,
+        "workratio": -1,
+        "issuerestriction": {
+          "issuerestrictions": {},
+          "shouldDisplay": true
+        },
+        "watches": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/SCRUM-12/watchers",
+          "watchCount": 1,
+          "isWatching": true
+        },
+        "lastViewed": null,
+        "created": "2026-06-18T14:58:14.681+0530",
+        "customfield_10020": null,
+        "customfield_10021": null,
+        "priority": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/priority/4",
+          "iconUrl": "https://sarathvk619.atlassian.net/images/icons/priorities/low_new.svg",
+          "name": "Low",
+          "id": "4"
+        },
+        "labels": [],
+        "customfield_10016": null,
+        "customfield_10019": "0|i0002f:",
+        "timeestimate": null,
+        "aggregatetimeoriginalestimate": null,
+        "versions": [],
+        "issuelinks": [],
+        "assignee": null,
+        "updated": "2026-06-18T14:58:15.485+0530",
+        "status": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/status/10000",
+          "description": "",
+          "iconUrl": "https://sarathvk619.atlassian.net/images/icons/statuses/generic.png",
+          "name": "To Do",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          }
+        },
+        "components": [],
+        "timeoriginalestimate": null,
+        "description": "Given the inventory page\n\nWhen a sort option is selected\n\nThen products should be sorted correctly",
+        "timetracking": {},
+        "customfield_10015": null,
+        "security": null,
+        "attachment": [],
+        "aggregatetimeestimate": null,
+        "summary": "As a user, I want to sort products, So that I can find products easily.",
+        "creator": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/user?accountId=712020%3A2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "accountId": "712020:2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "emailAddress": "siyansunny1999@gmail.com",
+          "avatarUrls": {
+            "48x48": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "24x24": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "16x16": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "32x32": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png"
+          },
+          "displayName": "Siyan Sunny",
+          "active": true,
+          "timeZone": "Asia/Calcutta",
+          "accountType": "atlassian"
+        },
+        "subtasks": [],
+        "reporter": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/user?accountId=712020%3A2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "accountId": "712020:2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "emailAddress": "siyansunny1999@gmail.com",
+          "avatarUrls": {
+            "48x48": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "24x24": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "16x16": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "32x32": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png"
+          },
+          "displayName": "Siyan Sunny",
+          "active": true,
+          "timeZone": "Asia/Calcutta",
+          "accountType": "atlassian"
+        },
+        "aggregateprogress": {
+          "progress": 0,
+          "total": 0
+        },
+        "customfield_10001": null,
+        "environment": null,
+        "duedate": null,
+        "progress": {
+          "progress": 0,
+          "total": 0
+        },
+        "votes": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/SCRUM-12/votes",
+          "votes": 0,
+          "hasVoted": false
+        },
+        "comment": {
+          "comments": [],
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10043/comment",
+          "maxResults": 0,
+          "total": 0,
+          "startAt": 0
+        },
+        "worklog": {
+          "startAt": 0,
+          "maxResults": 20,
+          "total": 0,
+          "worklogs": []
+        }
+      }
+    },
+    {
+      "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+      "id": "10042",
+      "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10042",
+      "key": "SCRUM-11",
+      "fields": {
+        "statuscategorychangedate": "2026-06-18T14:57:35.382+0530",
+        "issuetype": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issuetype/10004",
+          "id": "10004",
+          "description": "Stories track functionality or features expressed as user goals.",
+          "iconUrl": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10315?size=medium",
+          "name": "Story",
+          "subtask": false,
+          "avatarId": 10315,
+          "entityId": "4a95d521-ce74-4ac3-9866-72c7c76925c1",
+          "hierarchyLevel": 0
+        },
+        "parent": {
+          "id": "10041",
+          "key": "SCRUM-10",
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10041",
+          "fields": {
+            "summary": "Product Inventory",
+            "status": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/status/10000",
+              "description": "",
+              "iconUrl": "https://sarathvk619.atlassian.net/images/icons/statuses/generic.png",
+              "name": "To Do",
+              "id": "10000",
+              "statusCategory": {
+                "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+                "id": 2,
+                "key": "new",
+                "colorName": "blue-gray",
+                "name": "To Do"
+              }
+            },
+            "priority": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/priority/3",
+              "iconUrl": "https://sarathvk619.atlassian.net/images/icons/priorities/medium_new.svg",
+              "name": "Medium",
+              "id": "3"
+            },
+            "issuetype": {
+              "self": "https://sarathvk619.atlassian.net/rest/api/2/issuetype/10001",
+              "id": "10001",
+              "description": "Epics track collections of related bugs, stories, and tasks.",
+              "iconUrl": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10307?size=medium",
+              "name": "Epic",
+              "subtask": false,
+              "avatarId": 10307,
+              "entityId": "b8b18f30-fbb2-4256-862a-2ba47937d3b7",
+              "hierarchyLevel": 1
+            }
+          }
+        },
+        "timespent": null,
+        "project": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/project/10000",
+          "id": "10000",
+          "key": "SCRUM",
+          "name": "My Automation Product",
+          "projectTypeKey": "software",
+          "simplified": true,
+          "avatarUrls": {
+            "48x48": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414",
+            "24x24": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=small",
+            "16x16": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=xsmall",
+            "32x32": "https://sarathvk619.atlassian.net/rest/api/2/universal_avatar/view/type/project/avatar/10414?size=medium"
+          }
+        },
+        "fixVersions": [],
+        "aggregatetimespent": null,
+        "statusCategory": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "blue-gray",
+          "name": "To Do"
+        },
+        "customfield_10035": null,
+        "resolution": null,
+        "resolutiondate": null,
+        "workratio": -1,
+        "issuerestriction": {
+          "issuerestrictions": {},
+          "shouldDisplay": true
+        },
+        "watches": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/SCRUM-11/watchers",
+          "watchCount": 1,
+          "isWatching": true
+        },
+        "lastViewed": null,
+        "created": "2026-06-18T14:57:34.849+0530",
+        "customfield_10020": null,
+        "customfield_10021": null,
+        "priority": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/priority/2",
+          "iconUrl": "https://sarathvk619.atlassian.net/images/icons/priorities/high_new.svg",
+          "name": "High",
+          "id": "2"
+        },
+        "labels": [],
+        "customfield_10016": null,
+        "customfield_10019": "0|i00027:",
+        "timeestimate": null,
+        "aggregatetimeoriginalestimate": null,
+        "versions": [],
+        "issuelinks": [],
+        "assignee": null,
+        "updated": "2026-06-18T14:57:35.620+0530",
+        "status": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/status/10000",
+          "description": "",
+          "iconUrl": "https://sarathvk619.atlassian.net/images/icons/statuses/generic.png",
+          "name": "To Do",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://sarathvk619.atlassian.net/rest/api/2/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          }
+        },
+        "components": [],
+        "timeoriginalestimate": null,
+        "description": "Given a logged in user\n\nWhen inventory page loads\n\nThen products should be displayed",
+        "timetracking": {},
+        "customfield_10015": null,
+        "security": null,
+        "attachment": [],
+        "aggregatetimeestimate": null,
+        "summary": "As a user, I want to view available products, So that I can purchase them.",
+        "creator": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/user?accountId=712020%3A2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "accountId": "712020:2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "emailAddress": "siyansunny1999@gmail.com",
+          "avatarUrls": {
+            "48x48": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "24x24": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "16x16": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "32x32": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png"
+          },
+          "displayName": "Siyan Sunny",
+          "active": true,
+          "timeZone": "Asia/Calcutta",
+          "accountType": "atlassian"
+        },
+        "subtasks": [],
+        "reporter": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/user?accountId=712020%3A2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "accountId": "712020:2fa8d74b-32fd-45bf-8183-5fc9d680f095",
+          "emailAddress": "siyansunny1999@gmail.com",
+          "avatarUrls": {
+            "48x48": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "24x24": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "16x16": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png",
+            "32x32": "https://secure.gravatar.com/avatar/79f0f608d91d5872c1aaa9ea1e3f75aa?d=https%3A%2F%2Favatar-management--avatars.us-west-2.prod.public.atl-paas.net%2Finitials%2FSS-0.png"
+          },
+          "displayName": "Siyan Sunny",
+          "active": true,
+          "timeZone": "Asia/Calcutta",
+          "accountType": "atlassian"
+        },
+        "aggregateprogress": {
+          "progress": 0,
+          "total": 0
+        },
+        "customfield_10001": null,
+        "environment": null,
+        "duedate": null,
+        "progress": {
+          "progress": 0,
+          "total": 0
+        },
+        "votes": {
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/SCRUM-11/votes",
+          "votes": 0,
+          "hasVoted": false
+        },
+        "comment": {
+          "comments": [],
+          "self": "https://sarathvk619.atlassian.net/rest/api/2/issue/10042/comment",
+          "maxResults": 0,
+          "total": 0,
+          "startAt": 0
+        },
+        "worklog": {
+          "startAt": 0,
+          "maxResults": 20,
+          "total": 0,
+          "worklogs": []
+        }
+      }
+    }
+  ]
+}
