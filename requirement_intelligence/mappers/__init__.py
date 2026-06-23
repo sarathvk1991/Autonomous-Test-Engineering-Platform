@@ -13,10 +13,13 @@ from requirement_intelligence.mappers.base_mapper import (
     UnsupportedRecordError,
 )
 from requirement_intelligence.mappers.jira_mapper import JiraMapper
+from requirement_intelligence.mappers.zap_mapper import ZapMapper
 
 __all__ = [
     "BaseMapper",
     "JiraMapper",
+    "ZapMapper",
     "MapperError",
     "UnsupportedRecordError",
 ]
+
