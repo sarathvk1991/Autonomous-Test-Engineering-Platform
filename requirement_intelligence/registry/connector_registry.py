@@ -81,6 +81,10 @@ class ConnectorRegistry:
                     f"for class '{connector_class_path}'."
                 )
 
+            # TODO(phase-1): Once mappers expose metadata, validate that the mapper's
+            # source system matches the sourceSystem/sourceId declared in the registry.
+            # Do not implement mapper metadata methods or change the BaseMapper contract here.
+
     def execute_source(self, source_config: dict[str, Any]) -> list[SourceArtifact]:
         """Executes a single source configuration.
 

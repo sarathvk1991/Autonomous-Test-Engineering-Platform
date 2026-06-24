@@ -57,6 +57,41 @@ def test_registry_loader_loads_valid() -> None:
 
 
 @pytest.mark.unit
+def test_registry_loader_caches_registry(tmp_path: Path) -> None:
+    # First load reads, parses, validates, and caches the registry.
+    connector_path = "requirement_intelligence.connectors.sonarqube.connector.SonarQubeConnector"
+    mapper_path = "requirement_intelligence.mappers.sonar_mapper.SonarMapper"
+    original = {
+        "registryVersion": "1.0.0",
+        "sources": [
+            {
+                "sourceId": "source_1",
+                "connectorClass": connector_path,
+                "mapperClass": mapper_path,
+            }
+        ],
+    }
+    path = _write_temp_registry(tmp_path, original)
+    loader = RegistryLoader(path)
+    first = loader.load_registry()
+    assert first["sources"][0]["sourceId"] == "source_1"
+
+    # Mutate the file on disk after the first load.
+    modified = json.loads(json.dumps(original))
+    modified["sources"][0]["sourceId"] = "source_changed"
+    path.write_text(json.dumps(modified), encoding="utf-8")
+
+    # Subsequent calls return the cached registry, not the modified file.
+    second = loader.load_registry()
+    assert second is first
+    assert second["sources"][0]["sourceId"] == "source_1"
+
+    # force_reload bypasses the cache and re-reads the file.
+    reloaded = loader.load_registry(force_reload=True)
+    assert reloaded["sources"][0]["sourceId"] == "source_changed"
+
+
+@pytest.mark.unit
 def test_registry_loader_missing_file() -> None:
     loader = RegistryLoader(Path("non_existent_file.json"))
     with pytest.raises(RegistryValidationError, match="Registry file not found"):

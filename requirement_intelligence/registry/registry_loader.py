@@ -24,8 +24,18 @@ class RegistryLoader:
         else:
             self.registry_path = Path(registry_path)
 
-    def load_registry(self) -> dict[str, Any]:
+        # Caches the validated registry so the JSON file is read and parsed only once.
+        self._registry_cache: dict[str, Any] | None = None
+
+    def load_registry(self, force_reload: bool = False) -> dict[str, Any]:
         """Loads and parses the source registry JSON file.
+
+        The registry is read, parsed, and validated on the first call and then
+        cached. Subsequent calls return the cached registry without touching the
+        filesystem, unless ``force_reload`` is set.
+
+        Args:
+            force_reload: If True, ignore the cache and re-read the file from disk.
 
         Returns:
             dict[str, Any]: The loaded registry configuration.
@@ -34,6 +44,9 @@ class RegistryLoader:
             RegistryValidationError: If the registry file cannot be found, read,
                 or parsed as valid JSON.
         """
+        if self._registry_cache is not None and not force_reload:
+            return self._registry_cache
+
         if not self.registry_path.exists():
             raise RegistryValidationError(f"Registry file not found at: {self.registry_path}")
         
@@ -46,6 +59,7 @@ class RegistryLoader:
             ) from exc
 
         self._validate_structure(registry)
+        self._registry_cache = registry
         return registry
 
     def get_enabled_sources(self) -> list[dict[str, Any]]:
