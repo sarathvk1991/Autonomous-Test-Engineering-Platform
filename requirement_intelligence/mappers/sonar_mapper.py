@@ -29,8 +29,9 @@ class SonarMapper(BaseMapper):
     """Maps raw SonarQube issues into canonical :class:`SourceArtifact` records.
 
     Each issue maps to a ``SourceArtifact`` with ``SourceCategory.QUALITY``
-    and ``SourceType.SAST``. If the issue lacks a ``key``, it raises
-    :class:`UnsupportedRecordError`.
+    and ``SourceType.SAST``. An issue that lacks a ``key``, ``rule`` (title), or
+    ``message`` (description) is rejected with :class:`UnsupportedRecordError`
+    rather than mapped to a degenerate, untitled or unexplained artifact.
     """
 
     def map(self, raw_records: list[dict[str, Any]]) -> list[SourceArtifact]:
@@ -55,6 +56,19 @@ class SonarMapper(BaseMapper):
         if not key:
             raise UnsupportedRecordError(
                 "SonarQube issue is missing a 'key'; cannot map to a SourceArtifact."
+            )
+
+        rule = issue.get("rule")
+        if not rule:
+            raise UnsupportedRecordError(
+                "SonarQube issue is missing a 'rule'; cannot map to a SourceArtifact."
+            )
+
+        message = issue.get("message")
+        if not message:
+            raise UnsupportedRecordError(
+                "SonarQube issue is missing a 'message'; "
+                "cannot map to a SourceArtifact."
             )
 
         # Map tags if present
@@ -90,8 +104,8 @@ class SonarMapper(BaseMapper):
             source_record_id=str(key),
             source_category=SourceCategory.QUALITY,
             source_type=SourceType.SAST,
-            title=issue.get("rule") or "",
-            description=issue.get("message"),
+            title=rule,
+            description=message,
             severity=issue.get("severity"),
             component=issue.get("component"),
             location=location,

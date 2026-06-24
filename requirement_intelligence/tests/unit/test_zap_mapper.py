@@ -8,6 +8,7 @@ tags normalisation, error handling, and serialization correctness.
 from __future__ import annotations
 
 from typing import Any
+
 import pytest
 
 from requirement_intelligence.mappers.base_mapper import (
@@ -162,6 +163,17 @@ def test_missing_plugin_id_raises() -> None:
     with pytest.raises(UnsupportedRecordError) as exc:
         ZapMapper().map([raw_alert])
     assert "pluginId" in str(exc.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("alert_value", [None, ""])
+def test_missing_alert_raises(alert_value: str | None) -> None:
+    raw_alert = _alert(alert=alert_value)
+    if alert_value is not None:
+        raw_alert["alert"] = alert_value  # _alert() skips None; force empty string
+    with pytest.raises(UnsupportedRecordError) as exc:
+        ZapMapper().map([raw_alert])
+    assert "alert" in str(exc.value)
 
 
 @pytest.mark.unit

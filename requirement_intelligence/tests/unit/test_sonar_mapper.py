@@ -8,6 +8,7 @@ error handling, and serialization correctness.
 from __future__ import annotations
 
 from typing import Any
+
 import pytest
 
 from requirement_intelligence.mappers.base_mapper import (
@@ -178,6 +179,45 @@ def test_missing_key_raises() -> None:
     with pytest.raises(UnsupportedRecordError) as exc:
         SonarMapper().map([raw_issue])
     assert "key" in str(exc.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("rule_value", [None, ""])
+def test_missing_rule_raises(rule_value: str | None) -> None:
+    raw_issue = _issue(rule=rule_value)
+    if rule_value is not None:
+        raw_issue["rule"] = rule_value  # _issue() skips None; force empty string
+    with pytest.raises(UnsupportedRecordError) as exc:
+        SonarMapper().map([raw_issue])
+    assert "rule" in str(exc.value)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("message_value", [None, ""])
+def test_missing_message_raises(message_value: str | None) -> None:
+    raw_issue = _issue(message=message_value)
+    if message_value is not None:
+        raw_issue["message"] = message_value  # _issue() skips None; force empty
+    with pytest.raises(UnsupportedRecordError) as exc:
+        SonarMapper().map([raw_issue])
+    assert "message" in str(exc.value)
+
+
+@pytest.mark.unit
+def test_optional_fields_can_be_missing() -> None:
+    raw_issue = _issue(
+        severity=None, component=None, line=None, status=None, tags=None
+    )
+    del raw_issue["tags"]
+    [artifact] = SonarMapper().map([raw_issue])
+    assert artifact.severity is None
+    assert artifact.component is None
+    assert artifact.location is None
+    assert artifact.status is None
+    assert artifact.tags == []
+    # Mandatory fields still populated.
+    assert artifact.title == "java:S4144"
+    assert artifact.description
 
 
 @pytest.mark.unit

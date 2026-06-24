@@ -30,8 +30,9 @@ class ZapMapper(BaseMapper):
     """Maps raw OWASP ZAP alerts into canonical :class:`SourceArtifact` records.
 
     Each alert maps to a ``SourceArtifact`` with ``SourceCategory.SECURITY``
-    and ``SourceType.DAST``. If the alert lacks a ``pluginId``, it raises
-    :class:`UnsupportedRecordError`.
+    and ``SourceType.DAST``. An alert that lacks a ``pluginId`` or an ``alert``
+    (title) is rejected with :class:`UnsupportedRecordError` rather than mapped
+    to a degenerate, untitled artifact.
     """
 
     def map(self, raw_records: list[dict[str, Any]]) -> list[SourceArtifact]:
@@ -47,6 +48,13 @@ class ZapMapper(BaseMapper):
         if not plugin_id:
             raise UnsupportedRecordError(
                 "ZAP alert is missing a 'pluginId'; cannot map to a SourceArtifact."
+            )
+
+        alert_name = alert.get("alert")
+        if not alert_name:
+            raise UnsupportedRecordError(
+                "ZAP alert is missing an 'alert' (title); "
+                "cannot map to a SourceArtifact."
             )
 
         # Map tags if present
@@ -85,7 +93,7 @@ class ZapMapper(BaseMapper):
             source_record_id=str(plugin_id),
             source_category=SourceCategory.SECURITY,
             source_type=SourceType.DAST,
-            title=alert.get("alert") or "",
+            title=alert_name,
             description=alert.get("description"),
             severity=alert.get("risk"),
             location=alert.get("url"),
