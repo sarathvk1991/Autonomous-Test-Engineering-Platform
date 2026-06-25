@@ -1,0 +1,107 @@
+[
+  {
+    "consolidatedId": "cons-component-authentication",
+    "module": "Authentication",
+    "businessArea": null,
+    "riskLevel": "critical",
+    "functionalArtifacts": [
+      {
+        "artifactId": "jira-101",
+        "sourceSystem": "jira",
+        "sourceRecordId": "PROJ-101",
+        "sourceCategory": "functional",
+        "sourceType": "story",
+        "title": "Authentication Story",
+        "description": "As a user I can log in securely.",
+        "status": null,
+        "priority": "High",
+        "severity": null,
+        "component": "Authentication",
+        "location": null,
+        "url": null,
+        "tags": [
+          "login",
+          "auth"
+        ],
+        "createdAt": null,
+        "updatedAt": null,
+        "metadata": {}
+      }
+    ],
+    "securityArtifacts": [
+      {
+        "artifactId": "zap-9",
+        "sourceSystem": "owasp_zap",
+        "sourceRecordId": "10035",
+        "sourceCategory": "security",
+        "sourceType": "dast",
+        "title": "Missing HSTS Header",
+        "description": null,
+        "status": null,
+        "priority": null,
+        "severity": "Medium",
+        "component": "Authentication",
+        "location": "https://app.example.com/login",
+        "url": null,
+        "tags": [],
+        "createdAt": null,
+        "updatedAt": null,
+        "metadata": {}
+      }
+    ],
+    "qualityArtifacts": [
+      {
+        "artifactId": "sonar-42",
+        "sourceSystem": "sonarqube",
+        "sourceRecordId": "AY-42",
+        "sourceCategory": "quality",
+        "sourceType": "sast",
+        "title": "Hardcoded Credentials",
+        "description": null,
+        "status": null,
+        "priority": null,
+        "severity": "CRITICAL",
+        "component": "Authentication",
+        "location": "auth/login.py:21",
+        "url": null,
+        "tags": [],
+        "createdAt": null,
+        "updatedAt": null,
+        "metadata": {}
+      }
+    ],
+    "relatedArtifactIds": [],
+    "consolidationReason": "Grouped by component Authentication"
+  },
+  {
+    "consolidatedId": "cons-endpoint-api-orders",
+    "module": "/api/orders",
+    "businessArea": null,
+    "riskLevel": "high",
+    "functionalArtifacts": [],
+    "securityArtifacts": [
+      {
+        "artifactId": "zap-12",
+        "sourceSystem": "owasp_zap",
+        "sourceRecordId": "40012",
+        "sourceCategory": "security",
+        "sourceType": "dast",
+        "title": "SQL Injection",
+        "description": null,
+        "status": null,
+        "priority": null,
+        "severity": "High",
+        "component": null,
+        "location": "https://app.example.com/api/orders",
+        "url": null,
+        "tags": [],
+        "createdAt": null,
+        "updatedAt": null,
+        "metadata": {}
+      }
+    ],
+    "qualityArtifacts": [],
+    "relatedArtifactIds": [],
+    "consolidationReason": "Grouped by endpoint /api/orders"
+  }
+]
