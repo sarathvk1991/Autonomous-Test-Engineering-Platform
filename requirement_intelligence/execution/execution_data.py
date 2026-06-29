@@ -39,6 +39,12 @@ class ExecutionData:
         Serialisable view of the parsed CLI arguments.
     subcommand:
         The originating subcommand (always ``"analyze"`` today).
+    source_artifact_count:
+        Number of source artifacts the pipeline produced (engineering metric).
+        ``None`` when not supplied.
+    consolidated_artifacts:
+        The full list of consolidated artifacts the pipeline produced, used for
+        engineering metrics (rank, group sizes). Empty when not supplied.
     """
 
     selected: Any
@@ -52,6 +58,8 @@ class ExecutionData:
     execution_name: str | None
     command_line_arguments: dict[str, Any] = field(default_factory=dict)
     subcommand: str = "analyze"
+    source_artifact_count: int | None = None
+    consolidated_artifacts: list[Any] = field(default_factory=list)
 
     @property
     def full_prompt(self) -> str:

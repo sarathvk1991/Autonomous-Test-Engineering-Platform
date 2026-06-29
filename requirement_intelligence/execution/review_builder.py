@@ -7,7 +7,10 @@ are authored by a human reviewer after reading the captured artifacts.
 from __future__ import annotations
 
 from requirement_intelligence.execution.execution_data import ExecutionData
-from requirement_intelligence.execution.execution_metrics import observe_response_counts
+from requirement_intelligence.execution.execution_metrics import (
+    execution_package_identifier,
+    observe_response_counts,
+)
 from requirement_intelligence.platform import platform_metadata as meta
 
 
@@ -17,8 +20,10 @@ class ReviewBuilder:
     def build(self, data: ExecutionData) -> str:
         """Return the markdown content of ``review.md``."""
         selected = data.selected
+        result = data.result
         counts = observe_response_counts(data.generated_text)
         json_valid = "valid" if counts["json_valid"] else "INVALID"
+        package_id = execution_package_identifier(result)
 
         return f"""# AI Review — Version {meta.BASELINE_VERSION}
 
@@ -27,6 +32,19 @@ class ReviewBuilder:
 > (functional={len(selected.functional_artifacts)}, \
 security={len(selected.security_artifacts)}, quality={len(selected.quality_artifacts)}).
 > Strict JSON validity of response: {json_valid}.
+
+## Execution Package Identity
+
+| Field                      | Value |
+| -------------------------- | ----- |
+| Execution Package Id       | {package_id} |
+| Platform Version           | {meta.PLATFORM_VERSION} |
+| Execution Package Version  | {meta.EXECUTION_PACKAGE_VERSION} |
+| Manifest Schema Version    | {meta.MANIFEST_SCHEMA_VERSION} |
+| Prompt Version             | {result.prompt_version} |
+| Reasoning Contract Version | {result.reasoning_contract_version} |
+| Provider                   | {result.provider} |
+| Model                      | {result.model} |
 
 ## Executive Summary
 

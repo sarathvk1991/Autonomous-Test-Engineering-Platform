@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import platform as system_platform
 import sys
 from pathlib import Path
 from typing import Any
@@ -46,7 +45,10 @@ from requirement_intelligence.execution import (  # noqa: E402
     ExecutionHistory,
     ExecutionWriter,
 )
-from requirement_intelligence.platform import PlatformContext  # noqa: E402
+from requirement_intelligence.platform import (  # noqa: E402
+    PlatformCapabilities,
+    PlatformContext,
+)
 from requirement_intelligence.platform import platform_metadata as meta  # noqa: E402
 
 DEFAULT_PROVIDER = "gemini"
@@ -134,12 +136,15 @@ def _enabled_source_names(registry: Any) -> list[str]:
         return []
 
 
-def run_engineering_pipeline(context: PlatformContext, console: Console) -> list[Any]:
-    """Run Connectors -> Mappers -> Consolidation and return the artifacts.
+def run_engineering_pipeline(
+    context: PlatformContext, console: Console
+) -> tuple[int, list[Any]]:
+    """Run Connectors -> Mappers -> Consolidation.
 
-    Connectors resolve their ``inputPath`` relative to the current working
-    directory, so the pipeline runs from the layer directory and restores the
-    previous working directory afterwards.
+    Returns ``(source_artifact_count, consolidated_artifacts)``. Connectors
+    resolve their ``inputPath`` relative to the current working directory, so the
+    pipeline runs from the layer directory and restores the previous working
+    directory afterwards.
     """
     console.action("Loading Registry")
     registry = context.create_connector_registry()
@@ -155,12 +160,13 @@ def run_engineering_pipeline(context: PlatformContext, console: Console) -> list
         os.chdir(previous_cwd)
     for name in source_names:
         console.ok(name)
-    console.detail(f"SourceArtifacts: {len(source_artifacts)}")
+    source_count = len(source_artifacts)
+    console.detail(f"SourceArtifacts: {source_count}")
 
     console.action("Running Consolidation")
     consolidated = context.create_consolidation_engine().consolidate(source_artifacts)
     console.ok(f"{len(consolidated)} Consolidated Artifacts")
-    return consolidated
+    return source_count, consolidated
 
 
 def _select_consolidated(consolidated: list[Any]) -> Any:
@@ -232,7 +238,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
     context = PlatformContext()
 
     try:
-        consolidated = run_engineering_pipeline(context, console)
+        source_count, consolidated = run_engineering_pipeline(context, console)
         selected = _resolve_selected(consolidated, args.artifact_id)
     except CliError as exc:
         console.error(str(exc))
@@ -278,6 +284,8 @@ def handle_analyze(args: argparse.Namespace) -> int:
         reasoning_contract_version=REASONING_CONTRACT_VERSION,
         execution_name=args.execution_name,
         command_line_arguments=_serialise_args(args),
+        source_artifact_count=source_count,
+        consolidated_artifacts=consolidated,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)
@@ -309,7 +317,7 @@ def handle_list_artifacts(args: argparse.Namespace) -> int:
 
     context = PlatformContext()
     try:
-        consolidated = run_engineering_pipeline(context, console)
+        _, consolidated = run_engineering_pipeline(context, console)
     except CliError as exc:
         console.error(str(exc))
         return 1
@@ -338,51 +346,63 @@ def handle_benchmark(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_capability_section(title: str, capabilities: Any) -> None:
+    """Render one ✓/○ capability section."""
+    print("-" * 52)
+    print(f"  {title}")
+    print("-" * 52)
+    for capability in capabilities:
+        mark = "✓" if capability.available else "○"
+        label = getattr(capability, "display", None) or capability.name
+        suffix = f" ({capability.note})" if capability.note else ""
+        print(f"  {mark} {label}{suffix}")
+    print()
+
+
 def handle_version(args: argparse.Namespace) -> int:
-    """Print full platform introspection (metadata, capabilities, system info)."""
+    """Print full platform introspection sourced from PlatformCapabilities."""
+    caps = PlatformCapabilities()
+    identity = caps.platform_identity()
+    versions = caps.platform_versions()
+
     line = "=" * 52
     print(line)
-    print("  Autonomous Test Engineering Platform")
+    print("  Platform Metadata")
     print(line)
     print()
 
-    print("Platform Metadata")
-    print("-" * 52)
-    print(f"  Platform Version           : {meta.PLATFORM_VERSION}")
-    print(f"  CLI Version                : {meta.CLI_VERSION}")
-    print(f"  Prompt Version             : {meta.PROMPT_VERSION}")
-    print(f"  Reasoning Contract Version : {meta.REASONING_CONTRACT_VERSION}")
-    print(f"  Execution Package Version  : {meta.EXECUTION_PACKAGE_VERSION}")
+    print("Platform Identity")
+    print(f"  Architecture   : {identity['architecture']}")
+    print(f"  Execution Mode : {identity['executionMode']}")
+    print()
+    print(f"  Platform Version           : {versions['platformVersion']}")
+    print(f"  CLI Version                : {versions['cliVersion']}")
+    print(f"  Prompt Version             : {versions['promptVersion']}")
+    print(f"  Reasoning Contract Version : {versions['reasoningContractVersion']}")
+    print(f"  Execution Package Version  : {versions['executionPackageVersion']}")
+    print(f"  Manifest Schema Version    : {versions['manifestSchemaVersion']}")
     print()
 
-    print("Architecture Components")
+    for title, components in caps.component_groups():
+        _print_capability_section(title, components)
+
+    _print_capability_section("Available Providers", caps.providers())
+
     print("-" * 52)
-    for component in meta.ARCHITECTURE_COMPONENTS:
-        mark = "✓" if component.available else "○"
-        suffix = f" ({component.note})" if component.note else ""
-        print(f"  {mark} {component.name}{suffix}")
+    print("  Supported Commands")
+    print("-" * 52)
+    for command in caps.supported_commands():
+        print(f"  {command}")
     print()
 
-    print("Available Providers")
+    system = caps.system_identity()
     print("-" * 52)
-    for provider in meta.PROVIDERS:
-        mark = "✓" if provider.available else "○"
-        suffix = f" ({provider.note})" if provider.note else ""
-        print(f"  {mark} {provider.display}{suffix}")
-    print()
-
-    print("Supported CLI Commands")
+    print("  System Information")
     print("-" * 52)
-    for command in meta.CLI_COMMANDS:
-        print(f"  ✓ {command}")
-    print()
-
-    print("System Information")
-    print("-" * 52)
-    print(f"  Python Version        : {system_platform.python_version()}")
-    print(f"  Operating System      : {system_platform.system()} {system_platform.release()}")
-    print(f"  Platform Architecture : {system_platform.machine()}")
-    print(f"  Current Directory     : {Path.cwd()}")
+    print(f"  Python Version        : {system['pythonVersion']}")
+    print(f"  Operating System      : {system['operatingSystem']}")
+    print(f"  Platform Architecture : {system['platformArchitecture']}")
+    print(f"  Current Directory     : {system['currentWorkingDirectory']}")
     return 0
 
 

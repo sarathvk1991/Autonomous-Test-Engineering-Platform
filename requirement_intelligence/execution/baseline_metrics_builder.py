@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from requirement_intelligence.execution.execution_data import ExecutionData
 from requirement_intelligence.execution.execution_metrics import (
+    engineering_metrics,
     observe_response_counts,
     usage_tokens,
 )
@@ -20,12 +21,32 @@ class BaselineMetricsBuilder:
         generated_text = data.generated_text
         counts = observe_response_counts(generated_text)
         prompt_tokens, response_tokens = usage_tokens(result)
+        eng = engineering_metrics(data)
         notes = (
             "Live execution; selected consolidated artifact "
             f"`{data.selected.consolidated_id}`."
         )
 
         return f"""# AI Metrics
+
+## Engineering Metrics
+
+Derived only from the platform pipeline; these do not inspect AI output.
+
+| Metric                            | Value |
+| --------------------------------- | ----- |
+| Source Artifacts Processed        | {eng["source_artifacts_processed"]} |
+| Consolidated Artifacts Produced   | {eng["consolidated_artifacts_produced"]} |
+| Functional Artifact Count         | {eng["functional_artifact_count"]} |
+| Security Artifact Count           | {eng["security_artifact_count"]} |
+| Quality Artifact Count            | {eng["quality_artifact_count"]} |
+| Selected Consolidated Artifact    | {eng["selected_consolidated_artifact"]} |
+| Selected Artifact Rank            | {eng["selected_artifact_rank"]} |
+| Largest Consolidation Group       | {eng["largest_consolidation_group"]} |
+| Smallest Consolidation Group      | {eng["smallest_consolidation_group"]} |
+| Average Artifacts Per Group       | {eng["average_artifacts_per_group"]} |
+
+## AI Metrics
 
 | Metric                            | Value |
 | --------------------------------- | ----- |

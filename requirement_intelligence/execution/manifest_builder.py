@@ -26,9 +26,18 @@ class ManifestBuilder:
         generated_text = data.generated_text
 
         return {
+            "manifestSchemaVersion": meta.MANIFEST_SCHEMA_VERSION,
             "platformVersion": meta.PLATFORM_VERSION,
             "baselineVersion": meta.BASELINE_VERSION,
             "executionPackageVersion": meta.EXECUTION_PACKAGE_VERSION,
+            "connectorRegistryVersion": meta.CONNECTOR_REGISTRY_VERSION,
+            "mapperVersion": meta.MAPPER_VERSION,
+            "consolidationEngineVersion": meta.CONSOLIDATION_ENGINE_VERSION,
+            "promptFrameworkVersion": meta.PROMPT_FRAMEWORK_VERSION,
+            "llmFrameworkVersion": meta.LLM_FRAMEWORK_VERSION,
+            "analysisServiceVersion": meta.ANALYSIS_SERVICE_VERSION,
+            "executionWriterVersion": meta.EXECUTION_WRITER_VERSION,
+            "platformCapabilitiesVersion": meta.PLATFORM_CAPABILITIES_VERSION,
             "subcommand": data.subcommand,
             "executionMode": "dry-run" if data.dry_run else "live",
             "dryRun": bool(data.dry_run),

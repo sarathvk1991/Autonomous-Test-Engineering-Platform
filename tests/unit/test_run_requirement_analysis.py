@@ -24,12 +24,19 @@ from requirement_intelligence.consolidation.consolidation_engine import (
     ConsolidationEngine,
 )
 from requirement_intelligence.execution import (
+    BaselineMetricsBuilder,
     ExecutionData,
     ExecutionHistory,
+    ExecutionSummaryBuilder,
     ExecutionWriter,
     ManifestBuilder,
+    ReviewBuilder,
 )
-from requirement_intelligence.platform import PlatformContext
+from requirement_intelligence.execution.execution_metrics import (
+    engineering_metrics,
+    execution_package_identifier,
+)
+from requirement_intelligence.platform import PlatformCapabilities, PlatformContext
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
@@ -318,6 +325,7 @@ def test_writer_live_writes_full_package(tmp_path: Path) -> None:
     assert result.json_valid is True
     assert result.manifest["executionMode"] == "live"
     assert result.manifest["analysisId"] == "analysis-123"
+    assert result.manifest["manifestSchemaVersion"] == "1.0.0"
 
 
 @pytest.mark.unit
@@ -332,6 +340,141 @@ def test_manifest_builder_includes_execution_name() -> None:
     assert manifest["subcommand"] == "analyze"
     assert manifest["dryRun"] is True
     assert manifest["platformVersion"] == "1.0.0"
+
+
+@pytest.mark.unit
+def test_manifest_includes_schema_and_component_versions() -> None:
+    manifest = ManifestBuilder().build(
+        _dry_run_data(),
+        started_timestamp="t1",
+        completed_timestamp="t2",
+        generated_artifacts=[],
+    )
+    for key in (
+        "manifestSchemaVersion",
+        "connectorRegistryVersion",
+        "mapperVersion",
+        "consolidationEngineVersion",
+        "promptFrameworkVersion",
+        "llmFrameworkVersion",
+        "analysisServiceVersion",
+        "executionWriterVersion",
+        "platformCapabilitiesVersion",
+    ):
+        assert manifest[key] == "1.0.0"
+    # Existing fields are retained.
+    assert manifest["platformVersion"] == "1.0.0"
+    assert manifest["executionPackageVersion"] == "1.0.0"
+
+
+# ===========================================================================
+# PlatformCapabilities
+# ===========================================================================
+
+@pytest.mark.unit
+def test_platform_capabilities_versions_and_groups() -> None:
+    caps = PlatformCapabilities()
+    versions = caps.platform_versions()
+    assert versions["manifestSchemaVersion"] == "1.0.0"
+    assert {
+        "platformVersion",
+        "cliVersion",
+        "promptVersion",
+        "reasoningContractVersion",
+        "executionPackageVersion",
+        "manifestSchemaVersion",
+    } <= set(versions)
+
+    components = caps.architecture_components()
+    assert len(components) == len(caps.implemented_components()) + len(
+        caps.planned_components()
+    )
+    assert [title for title, _ in caps.component_groups()] == [
+        "Core Platform",
+        "AI Platform",
+        "Execution Platform",
+        "Future Platform",
+    ]
+
+
+@pytest.mark.unit
+def test_platform_capabilities_providers_commands_identity() -> None:
+    caps = PlatformCapabilities()
+    assert any(p.id == "gemini" and p.available for p in caps.providers())
+    assert "analyze" in caps.supported_commands()
+    assert caps.platform_identity()["architecture"] == "Modular Monolith"
+    system = caps.system_identity()
+    assert "pythonVersion" in system
+    assert "currentWorkingDirectory" in system
+
+
+# ===========================================================================
+# Engineering metrics + execution package identity
+# ===========================================================================
+
+@pytest.mark.unit
+def test_engineering_metrics_from_pipeline_only() -> None:
+    consolidated = [
+        FakeArtifact("a", quality=1),
+        FakeArtifact("b", quality=9),
+        FakeArtifact("c", quality=4),
+    ]
+    data = ExecutionData(
+        selected=consolidated[1],
+        prompt_request=FakePromptRequest(),
+        llm_request=FakeLLMRequest("r"),
+        result=None,
+        dry_run=True,
+        provider_name="gemini",
+        requested_model=None,
+        reasoning_contract_version="1.0.0",
+        execution_name=None,
+        command_line_arguments={},
+        source_artifact_count=42,
+        consolidated_artifacts=consolidated,
+    )
+    metrics = engineering_metrics(data)
+    assert metrics["source_artifacts_processed"] == 42
+    assert metrics["consolidated_artifacts_produced"] == 3
+    assert metrics["selected_consolidated_artifact"] == "b"
+    assert metrics["selected_artifact_rank"] == 1
+    assert metrics["largest_consolidation_group"] == 9
+    assert metrics["smallest_consolidation_group"] == 1
+    assert metrics["average_artifacts_per_group"] == round((1 + 9 + 4) / 3, 2)
+    assert metrics["quality_artifact_count"] == 9
+
+
+@pytest.mark.unit
+def test_engineering_metrics_na_without_pipeline_data() -> None:
+    metrics = engineering_metrics(_dry_run_data())  # no consolidated list
+    assert metrics["source_artifacts_processed"] == "N/A"
+    assert metrics["consolidated_artifacts_produced"] == "N/A"
+    assert metrics["selected_artifact_rank"] == "N/A"
+
+
+@pytest.mark.unit
+def test_baseline_metrics_has_engineering_and_ai_sections() -> None:
+    md = BaselineMetricsBuilder().build(_live_data())
+    assert "## Engineering Metrics" in md
+    assert "Source Artifacts Processed" in md
+    assert "Selected Artifact Rank" in md
+    assert "## AI Metrics" in md  # existing metrics preserved
+    assert "Baseline Version" in md
+
+
+@pytest.mark.unit
+def test_execution_package_identifier_format() -> None:
+    assert execution_package_identifier(FakeResult()) == "EP-20260101-000000-executio"
+
+
+@pytest.mark.unit
+def test_summary_and_review_include_package_identity() -> None:
+    summary = ExecutionSummaryBuilder().build(_live_data())
+    review = ReviewBuilder().build(_live_data())
+    for text in (summary, review):
+        assert "Execution Package Id" in text
+        assert "EP-20260101-000000-executio" in text
+        assert "Manifest Schema Version" in text
 
 
 # ===========================================================================
@@ -417,19 +560,25 @@ def test_version_outputs_all_sections(capsys: pytest.CaptureFixture[str]) -> Non
     out = capsys.readouterr().out
     for section in (
         "Platform Metadata",
-        "Architecture Components",
+        "Platform Identity",
         "Available Providers",
-        "Supported CLI Commands",
+        "Supported Commands",
         "System Information",
     ):
         assert section in out
+    # Platform identity + new manifest schema version line.
+    assert "Architecture   : Modular Monolith" in out
+    assert "Manifest Schema Version" in out
 
 
 @pytest.mark.unit
-def test_version_shows_architecture_components(capsys: pytest.CaptureFixture[str]) -> None:
+def test_version_groups_components(capsys: pytest.CaptureFixture[str]) -> None:
     cli.main(["version"])
     out = capsys.readouterr().out
+    for group in ("Core Platform", "AI Platform", "Execution Platform", "Future Platform"):
+        assert group in out
     assert "✓ Connector Registry" in out
+    assert "✓ Requirement Analysis CLI" in out
     assert "○ Response Validator (Planned)" in out
 
 
@@ -447,7 +596,7 @@ def test_version_shows_commands_and_system_info(
 ) -> None:
     cli.main(["version"])
     out = capsys.readouterr().out
-    for command in ("✓ analyze", "✓ list-artifacts", "✓ version", "✓ help"):
+    for command in ("analyze", "list-artifacts", "version", "help"):
         assert command in out
     assert "Python Version" in out
     assert "Operating System" in out

@@ -51,11 +51,21 @@ The CLI itself is a **thin orchestration layer**: parse arguments → create a
 `PlatformContext` → execute the requested subcommand → display progress. It holds
 no file-format knowledge and constructs no platform component directly.
 
+```text
+         Requirement Analysis CLI  (thin orchestration)
+           │ construct        │ introspect       │ package
+           ▼                  ▼                  ▼
+   PlatformContext     PlatformCapabilities   Execution package
+   (dependency          (version cmd:          (ExecutionWriter,
+    factory)             metadata + host)       History, builders)
+```
+
 ---
 
 ## Internal Architecture
 
-The CLI delegates to two platform packages so it can stay thin and stable.
+The CLI delegates to the platform and execution packages so it can stay thin and
+stable.
 
 ### PlatformContext (`requirement_intelligence.platform`)
 
@@ -73,8 +83,23 @@ instantiating them itself. It contains no business logic.
 
 Platform metadata (versions, the architecture capability catalogue, the provider
 catalogue, and the CLI command list) lives in
-`requirement_intelligence.platform.platform_metadata` — a single source of truth
-used by the `version` command.
+`requirement_intelligence.platform.platform_metadata` — a single source of truth.
+
+### PlatformCapabilities (`requirement_intelligence.platform`)
+
+`PlatformCapabilities` is the **platform introspection model**. The `version`
+command reads everything from it instead of touching metadata constants directly.
+It contains no business logic.
+
+| Method | Returns |
+| ------ | ------- |
+| `platform_identity()` | Name, architecture, execution mode |
+| `platform_versions()` | Platform/CLI/Prompt/Reasoning/Execution-Package/Manifest-Schema versions |
+| `architecture_components()` / `implemented_components()` / `planned_components()` | The capability catalogue (all / available / planned) |
+| `component_groups()` | Ordered `(group title, components)` — Core / AI / Execution / Future |
+| `providers()` | The provider catalogue |
+| `supported_commands()` | Registered CLI command names |
+| `system_identity()` | Python version, OS, architecture, working directory |
 
 ### Execution package (`requirement_intelligence.execution`)
 
@@ -131,14 +156,20 @@ Executes one complete AI analysis.
 
 ### `version`
 
-Acts as a platform introspection command, organised into sections:
+A platform introspection command. All data comes from `PlatformCapabilities`;
+nothing is hardcoded in the CLI. Organised into grouped sections:
 
-- **Platform Metadata** — Platform, CLI, Prompt, Reasoning Contract, and
-  Execution Package versions.
-- **Architecture Components** — capability catalogue with `✓` (available) or `○`
-  (planned), centrally defined in `platform_metadata` (never hardcoded in the CLI).
+- **Platform Metadata** — Platform Identity (architecture, execution mode) and
+  the version block: Platform, CLI, Prompt, Reasoning Contract, Execution Package,
+  and **Manifest Schema** versions.
+- **Core Platform** — Connector Registry, Connectors, Mappers, Consolidation Engine.
+- **AI Platform** — Prompt Framework, LLM Framework, Gemini Provider, Requirement
+  Analysis Service.
+- **Execution Platform** — Execution Package, Requirement Analysis CLI.
+- **Future Platform** — Response Validator, CP1 Validator, Feature Generator, Test
+  Generator (`○`, planned).
 - **Available Providers** — `✓ Gemini`, plus reserved providers (`○`).
-- **Supported CLI Commands** — the registered subcommands.
+- **Supported Commands** — the registered subcommands.
 - **System Information** — Python version, OS, architecture, working directory
   (no sensitive information).
 
@@ -282,13 +313,44 @@ Every execution package contains a canonical `manifest.json` plus its artifacts.
 | `baseline_metrics.md`       | live only  | Metrics table. |
 | `review.md`                 | live only  | Qualitative review scaffold. |
 
-`manifest.json` fields include: `platformVersion`, `baselineVersion`,
-`executionPackageVersion`, `subcommand`, `executionMode`, `dryRun`,
-`executionName`, `executionTimestamp`, `executionCompletedTimestamp`,
-`analysisId`, `executionId`, `provider`, `model`, `promptVersion`,
-`reasoningContractVersion`, `selectedArtifactId`, `promptSha256`,
-`responseSha256`, `executionDurationMs`, `executionSucceeded`,
-`commandLineArguments`, and `generatedArtifacts` (name + bytes + sha256 per file).
+`manifest.json` is independently versioned and self-describing. Fields include:
+
+- **Versioning:** `manifestSchemaVersion`, `platformVersion`, `baselineVersion`,
+  `executionPackageVersion`, and per-component versions
+  (`connectorRegistryVersion`, `mapperVersion`, `consolidationEngineVersion`,
+  `promptFrameworkVersion`, `llmFrameworkVersion`, `analysisServiceVersion`,
+  `executionWriterVersion`, `platformCapabilitiesVersion`).
+- **Execution:** `subcommand`, `executionMode`, `dryRun`, `executionName`,
+  `executionTimestamp`, `executionCompletedTimestamp`, `analysisId`,
+  `executionId`, `provider`, `model`, `promptVersion`,
+  `reasoningContractVersion`, `selectedArtifactId`, `executionDurationMs`,
+  `executionSucceeded`.
+- **Integrity:** `promptSha256`, `responseSha256`, `commandLineArguments`, and
+  `generatedArtifacts` (name + bytes + sha256 per file).
+
+> **Version semantics**
+> - **Platform Version** — the platform release as a whole.
+> - **Execution Package Version** — the execution-artifact generation contract.
+> - **Manifest Schema Version** — the JSON contract of `manifest.json`. Future
+>   manifest changes only require incrementing `MANIFEST_SCHEMA_VERSION`.
+
+### Engineering Metrics (live `baseline_metrics.md`)
+
+A dedicated **Engineering Metrics** section is computed *only* from the platform
+pipeline (it never inspects AI output): Source Artifacts Processed, Consolidated
+Artifacts Produced, Functional/Security/Quality Artifact Counts of the selected
+artifact, Selected Consolidated Artifact, Selected Artifact Rank, Largest /
+Smallest Consolidation Group, and Average Artifacts Per Group. The existing **AI
+Metrics** section is unchanged.
+
+### Execution Package Identity (live `execution_summary.md` and `review.md`)
+
+Each live package carries a human-readable identity block: an **Execution Package
+Id** of the form `EP-YYYYMMDD-HHMMSS-XXXXXXXX` (where `XXXXXXXX` is the first
+eight characters of the execution id), alongside Platform / Execution Package /
+Manifest Schema / Prompt / Reasoning Contract versions and the Provider and
+Model. The identifier is for human traceability only and does **not** replace
+`executionId`.
 
 The `promptSha256` / `responseSha256` hashes enable reproducibility checks and
 baseline comparison across prompt and reasoning versions.
