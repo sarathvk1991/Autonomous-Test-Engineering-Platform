@@ -4,17 +4,16 @@ Covers:
 - Provider creation via factory (valid and invalid names)
 - Azure OpenAI stub behaviour
 - LLM model serialisation
-- Gemini provider configuration validation
-- Gemini generate() with mocked SDK calls
 - ProviderRegistry configuration loading
 - list_providers() completeness
+- End-to-end factory + registry wiring (provider execution mocked)
 
-No real API calls are made.  All Gemini SDK interactions are mocked.
+No real API calls are made.  Gemini provider internals are covered separately in
+``test_gemini_provider.py``.
 """
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -47,26 +46,19 @@ def _make_request(
     return LLMRequest(request_id=request_id, prompt=prompt, temperature=temperature)
 
 
-def _make_fake_gemini_response(
-    text: str = "Test response",
-    finish_reason_name: str = "STOP",
-    prompt_tokens: int = 10,
-    completion_tokens: int = 20,
-) -> MagicMock:
-    """Build a minimal MagicMock that mimics the Gemini SDK response shape."""
-    candidate = MagicMock()
-    candidate.finish_reason.name = finish_reason_name
+def _fake_genai_client(text: str) -> MagicMock:
+    """Build a mock ``google-genai`` client whose call returns *text*.
 
-    usage = MagicMock()
-    usage.prompt_token_count = prompt_tokens
-    usage.candidates_token_count = completion_tokens
-    usage.total_token_count = prompt_tokens + completion_tokens
-
+    Mirrors the new SDK shape: ``client.models.generate_content(...)``.
+    """
     response = MagicMock()
     response.text = text
-    response.candidates = [candidate]
-    response.usage_metadata = usage
-    return response
+    response.candidates = []
+    response.usage_metadata = None
+
+    client = MagicMock()
+    client.models.generate_content.return_value = response
+    return client
 
 
 # ---------------------------------------------------------------------------
@@ -301,154 +293,7 @@ def test_azure_stub_satisfies_interface() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. Gemini provider — configuration validation
-# ---------------------------------------------------------------------------
-
-@pytest.mark.unit
-def test_gemini_missing_api_key_raises_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    provider = GeminiProvider(api_key="")
-    with pytest.raises(ProviderConfigurationError, match="GEMINI_API_KEY"):
-        provider.validate_connection()
-
-
-@pytest.mark.unit
-def test_gemini_reads_api_key_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GEMINI_API_KEY", "env-key-123")
-    provider = GeminiProvider()
-    assert provider._api_key == "env-key-123"
-
-
-@pytest.mark.unit
-def test_gemini_reads_model_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GEMINI_MODEL_NAME", "gemini-1.5-pro")
-    provider = GeminiProvider(api_key="key")
-    assert provider._model_name == "gemini-1.5-pro"
-
-
-@pytest.mark.unit
-def test_gemini_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GEMINI_MODEL_NAME", raising=False)
-    provider = GeminiProvider(api_key="key")
-    assert provider._model_name == "gemini-1.5-flash"
-
-
-# ---------------------------------------------------------------------------
-# 6. Gemini provider — generate() with mocked SDK
-# ---------------------------------------------------------------------------
-
-@pytest.mark.unit
-def test_gemini_generate_returns_llm_response() -> None:
-    fake_response = _make_fake_gemini_response("Generated output")
-
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = fake_response
-
-    provider = GeminiProvider(api_key="fake-key", model_name="gemini-1.5-flash")
-
-    with patch(
-        "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
-        return_value=mock_model,
-    ):
-        result = provider.generate(_make_request("Hello Gemini"))
-
-    assert isinstance(result, LLMResponse)
-    assert result.provider == ProviderType.GEMINI
-    assert result.provider == "gemini"
-    assert result.model == "gemini-1.5-flash"
-    assert result.generated_text == "Generated output"
-    assert result.finish_reason == "STOP"
-    assert result.latency_ms is not None
-    assert result.latency_ms >= 0.0
-
-
-@pytest.mark.unit
-def test_gemini_generate_populates_usage() -> None:
-    fake_response = _make_fake_gemini_response(
-        text="result",
-        prompt_tokens=8,
-        completion_tokens=12,
-    )
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = fake_response
-
-    provider = GeminiProvider(api_key="fake-key")
-    with patch(
-        "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
-        return_value=mock_model,
-    ):
-        result = provider.generate(_make_request("prompt"))
-
-    assert result.usage is not None
-    assert result.usage.prompt_tokens == 8
-    assert result.usage.completion_tokens == 12
-    assert result.usage.total_tokens == 20
-
-
-@pytest.mark.unit
-def test_gemini_generate_sdk_error_raises_generation_error() -> None:
-    mock_model = MagicMock()
-    mock_model.generate_content.side_effect = RuntimeError("API quota exceeded")
-
-    provider = GeminiProvider(api_key="fake-key")
-    with patch(
-        "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
-        return_value=mock_model,
-    ):
-        with pytest.raises(ProviderGenerationError, match="API quota exceeded"):
-            provider.generate(_make_request("prompt"))
-
-
-@pytest.mark.unit
-def test_gemini_validate_connection_success() -> None:
-    mock_model = MagicMock()
-
-    provider = GeminiProvider(api_key="fake-key")
-    with patch(
-        "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
-        return_value=mock_model,
-    ):
-        assert provider.validate_connection() is True
-
-
-@pytest.mark.unit
-def test_gemini_validate_connection_client_error_raises_connection_error() -> None:
-    provider = GeminiProvider(api_key="fake-key")
-    with patch(
-        "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
-        side_effect=RuntimeError("network unreachable"),
-    ):
-        with pytest.raises(ProviderConnectionError, match="network unreachable"):
-            provider.validate_connection()
-
-
-@pytest.mark.unit
-def test_gemini_missing_api_key_generate_raises() -> None:
-    provider = GeminiProvider(api_key="")
-    with pytest.raises(ProviderConfigurationError):
-        provider.generate(_make_request("prompt"))
-
-
-@pytest.mark.unit
-def test_gemini_sdk_import_error_raises_config_error() -> None:
-    """When google-generativeai is not installed, a clear error should surface."""
-    provider = GeminiProvider(api_key="fake-key")
-
-    import builtins
-    real_import = builtins.__import__
-
-    def mock_import(name: str, *args: Any, **kwargs: Any) -> Any:
-        if name == "google.generativeai":
-            raise ImportError("No module named 'google.generativeai'")
-        return real_import(name, *args, **kwargs)
-
-    with patch("builtins.__import__", side_effect=mock_import):
-        with pytest.raises(ProviderConfigurationError, match="google-generativeai"):
-            provider._get_client()
-
-
-# ---------------------------------------------------------------------------
-# 7. ProviderRegistry
+# 5. ProviderRegistry
 # ---------------------------------------------------------------------------
 
 @pytest.mark.unit
@@ -512,19 +357,17 @@ def test_registry_list_configured_providers_empty_when_no_config() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 8. End-to-end: factory + registry + provider (all mocked)
+# 6. End-to-end: factory + registry + provider (provider execution mocked)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.unit
 def test_full_flow_gemini_via_registry_and_factory() -> None:
     """Simulate the typical call path: registry → factory → provider.generate()."""
-    fake_response = _make_fake_gemini_response("Full flow response")
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = fake_response
+    client = _fake_genai_client("Full flow response")
 
     cfg = {
         "active_provider": "gemini",
-        "providers": {"gemini": {"api_key": "test-key", "model_name": "gemini-1.5-flash"}},
+        "providers": {"gemini": {"api_key": "test-key", "model_name": "gemini-2.5-pro"}},
     }
     registry = ProviderRegistry(config=cfg)
     name = registry.active_provider()
@@ -534,7 +377,7 @@ def test_full_flow_gemini_via_registry_and_factory() -> None:
 
     with patch(
         "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
-        return_value=mock_model,
+        return_value=client,
     ):
         result = provider.generate(_make_request("Analyse this requirement"))
 

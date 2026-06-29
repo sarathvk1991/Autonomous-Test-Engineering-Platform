@@ -16,6 +16,9 @@ pydantic>=2.7,<3.0
 pydantic-settings>=2.3,<3.0
 python-dotenv>=1.0,<2.0
 
+# --- AI provider: Google Gemini --------------------------------------------
+google-genai>=1.0,<2.0          # Google's current official Gen AI SDK
+
 # --- AI provider: Azure OpenAI ---------------------------------------------
 openai>=1.30,<2.0               # Azure OpenAI is served via the openai SDK
 tiktoken>=0.7,<1.0             # token accounting / prompt budgeting
