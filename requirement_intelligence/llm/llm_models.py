@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import Field
 
 from shared.contracts.base import Schema
+from shared.enums.base import ProviderType
 
 
 class LLMRequest(Schema):
@@ -19,6 +20,11 @@ class LLMRequest(Schema):
 
     Fields
     ------
+    request_id:
+        Caller-supplied identifier that follows the request end-to-end —
+        Prompt Builder → LLM Provider → Response Validator → CP1 Validation →
+        Output Writer → Governance Dashboard.  Must be non-empty; no UUID is
+        generated automatically.
     prompt:
         The fully-rendered prompt string produced by the Prompt Builder.
     temperature:
@@ -28,6 +34,7 @@ class LLMRequest(Schema):
         for tracing or auditing purposes.
     """
 
+    request_id: str = Field(min_length=1)
     prompt: str
     temperature: float = 0.0
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -47,8 +54,9 @@ class LLMResponse(Schema):
     Fields
     ------
     provider:
-        Short identifier of the provider that produced this response
-        (e.g. ``"gemini"``, ``"azure_openai"``).
+        Enum identifier of the provider that produced this response
+        (e.g. ``ProviderType.GEMINI``).  Serialises to its string value
+        (``"gemini"``) via ``model_dump()``.
     model:
         The specific model name used for generation
         (e.g. ``"gemini-1.5-pro"``).
@@ -67,7 +75,7 @@ class LLMResponse(Schema):
         Token accounting reported by the provider.
     """
 
-    provider: str
+    provider: ProviderType
     model: str
     generated_text: str
     raw_response: dict[str, Any] = Field(default_factory=dict)

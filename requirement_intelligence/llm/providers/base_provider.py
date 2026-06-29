@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse
 
 
 class LLMProvider(ABC):
@@ -52,19 +52,15 @@ class LLMProvider(ABC):
         """
 
     @abstractmethod
-    def generate(
-        self,
-        prompt: str,
-        temperature: float = 0.0,
-    ) -> LLMResponse:
-        """Generate a text response for the given prompt.
+    def generate(self, request: LLMRequest) -> LLMResponse:
+        """Generate a text response for the given request.
 
         Parameters
         ----------
-        prompt:
-            The fully-rendered prompt string.
-        temperature:
-            Sampling temperature (0.0 = deterministic).
+        request:
+            The provider-agnostic :class:`LLMRequest` carrying the prompt,
+            sampling parameters, request_id, and metadata.  All future request
+            attributes evolve inside this object rather than on the signature.
 
         Returns
         -------

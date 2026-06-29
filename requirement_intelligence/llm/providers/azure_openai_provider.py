@@ -13,7 +13,7 @@ To activate this provider in the future:
 
 from __future__ import annotations
 
-from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 
 
@@ -44,18 +44,12 @@ class AzureOpenAIProvider(LLMProvider):
             "This stub will be replaced once the licence is available."
         )
 
-    def generate(
-        self,
-        prompt: str,
-        temperature: float = 0.0,
-    ) -> LLMResponse:
+    def generate(self, request: LLMRequest) -> LLMResponse:
         """Not implemented — Azure OpenAI licence not yet available.
 
         Parameters
         ----------
-        prompt:
-            Ignored at this time.
-        temperature:
+        request:
             Ignored at this time.
 
         Raises

@@ -18,6 +18,24 @@ class SourceSystem(StrEnum):
     OWASP_ZAP = "owasp_zap"
 
 
+class ProviderType(StrEnum):
+    """LLM providers the platform can route generation requests to.
+
+    Only :attr:`GEMINI` is active today; :attr:`AZURE_OPENAI` is a stub. The
+    remaining members are reserved so downstream contracts and configuration can
+    reference them before the corresponding providers are implemented.
+    """
+
+    GEMINI = "gemini"
+    AZURE_OPENAI = "azure_openai"
+
+    # Reserved for future activation — no implementation yet.
+    ANTHROPIC = "anthropic"
+    BEDROCK = "bedrock"
+    OLLAMA = "ollama"
+    OPENAI = "openai"
+
+
 class RequirementType(StrEnum):
     """Classification dimension: the nature of a requirement."""
 

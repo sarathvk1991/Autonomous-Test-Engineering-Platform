@@ -32,10 +32,20 @@ from requirement_intelligence.llm.provider_registry import ProviderRegistry
 from requirement_intelligence.llm.providers.azure_openai_provider import AzureOpenAIProvider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.llm.providers.gemini_provider import GeminiProvider
+from shared.enums.base import ProviderType
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _make_request(
+    prompt: str = "prompt",
+    temperature: float = 0.0,
+    request_id: str = "req-001",
+) -> LLMRequest:
+    """Build an LLMRequest with a valid caller-supplied request_id."""
+    return LLMRequest(request_id=request_id, prompt=prompt, temperature=temperature)
+
 
 def _make_fake_gemini_response(
     text: str = "Test response",
@@ -65,7 +75,8 @@ def _make_fake_gemini_response(
 
 @pytest.mark.unit
 def test_llm_request_defaults() -> None:
-    req = LLMRequest(prompt="hello")
+    req = LLMRequest(request_id="req-1", prompt="hello")
+    assert req.request_id == "req-1"
     assert req.prompt == "hello"
     assert req.temperature == 0.0
     assert req.metadata == {}
@@ -73,22 +84,54 @@ def test_llm_request_defaults() -> None:
 
 @pytest.mark.unit
 def test_llm_request_custom_values() -> None:
-    req = LLMRequest(prompt="test", temperature=0.7, metadata={"run_id": "abc"})
+    req = LLMRequest(
+        request_id="req-2",
+        prompt="test",
+        temperature=0.7,
+        metadata={"run_id": "abc"},
+    )
     assert req.temperature == 0.7
     assert req.metadata["run_id"] == "abc"
 
 
 @pytest.mark.unit
 def test_llm_request_frozen() -> None:
-    req = LLMRequest(prompt="immutable")
+    req = LLMRequest(request_id="req-3", prompt="immutable")
     with pytest.raises((ValidationError, TypeError)):
         req.prompt = "mutated"  # type: ignore[misc]
 
 
 @pytest.mark.unit
+def test_llm_request_valid_request_id() -> None:
+    req = LLMRequest(request_id="trace-abc-123", prompt="hi")
+    assert req.request_id == "trace-abc-123"
+
+
+@pytest.mark.unit
+def test_llm_request_missing_request_id_raises() -> None:
+    with pytest.raises(ValidationError):
+        LLMRequest(prompt="no id")  # type: ignore[call-arg]
+
+
+@pytest.mark.unit
+def test_llm_request_empty_request_id_raises() -> None:
+    with pytest.raises(ValidationError):
+        LLMRequest(request_id="", prompt="empty id")
+
+
+@pytest.mark.unit
+def test_llm_request_serializes_to_dict() -> None:
+    req = LLMRequest(request_id="req-ser", prompt="payload", temperature=0.3)
+    data = req.model_dump()
+    assert data["request_id"] == "req-ser"
+    assert data["prompt"] == "payload"
+    assert data["temperature"] == 0.3
+
+
+@pytest.mark.unit
 def test_llm_response_required_fields() -> None:
     resp = LLMResponse(
-        provider="gemini",
+        provider=ProviderType.GEMINI,
         model="gemini-1.5-flash",
         generated_text="result",
     )
@@ -105,7 +148,7 @@ def test_llm_response_required_fields() -> None:
 def test_llm_response_with_usage() -> None:
     usage = LLMUsage(prompt_tokens=5, completion_tokens=15, total_tokens=20)
     resp = LLMResponse(
-        provider="gemini",
+        provider=ProviderType.GEMINI,
         model="gemini-1.5-flash",
         generated_text="ok",
         usage=usage,
@@ -125,7 +168,7 @@ def test_llm_usage_partial_none() -> None:
 @pytest.mark.unit
 def test_llm_response_serializes_to_dict() -> None:
     resp = LLMResponse(
-        provider="gemini",
+        provider=ProviderType.GEMINI,
         model="gemini-1.5-flash",
         generated_text="output",
         finish_reason="stop",
@@ -135,6 +178,37 @@ def test_llm_response_serializes_to_dict() -> None:
     assert data["provider"] == "gemini"
     assert data["finish_reason"] == "stop"
     assert data["latency_ms"] == 123.45
+
+
+@pytest.mark.unit
+def test_llm_response_accepts_provider_type_enum() -> None:
+    resp = LLMResponse(
+        provider=ProviderType.AZURE_OPENAI,
+        model="gpt-4o",
+        generated_text="x",
+    )
+    assert resp.provider == ProviderType.AZURE_OPENAI
+    assert resp.provider == "azure_openai"
+
+
+@pytest.mark.unit
+def test_llm_response_provider_serializes_to_enum_value() -> None:
+    resp = LLMResponse(
+        provider=ProviderType.GEMINI,
+        model="gemini-1.5-flash",
+        generated_text="output",
+    )
+    data = resp.model_dump()
+    assert data["provider"] == "gemini"
+    assert isinstance(data["provider"], str)
+
+
+@pytest.mark.unit
+def test_provider_type_reserves_future_members() -> None:
+    assert ProviderType.GEMINI == "gemini"
+    assert ProviderType.AZURE_OPENAI == "azure_openai"
+    for name in ("ANTHROPIC", "BEDROCK", "OLLAMA", "OPENAI"):
+        assert hasattr(ProviderType, name)
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +289,7 @@ def test_azure_stub_validate_connection_raises_not_implemented() -> None:
 def test_azure_stub_generate_raises_not_implemented() -> None:
     provider = AzureOpenAIProvider()
     with pytest.raises(NotImplementedError, match="not yet enabled"):
-        provider.generate("test prompt")
+        provider.generate(_make_request("test prompt"))
 
 
 @pytest.mark.unit
@@ -276,9 +350,10 @@ def test_gemini_generate_returns_llm_response() -> None:
         "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
         return_value=mock_model,
     ):
-        result = provider.generate("Hello Gemini")
+        result = provider.generate(_make_request("Hello Gemini"))
 
     assert isinstance(result, LLMResponse)
+    assert result.provider == ProviderType.GEMINI
     assert result.provider == "gemini"
     assert result.model == "gemini-1.5-flash"
     assert result.generated_text == "Generated output"
@@ -302,7 +377,7 @@ def test_gemini_generate_populates_usage() -> None:
         "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
         return_value=mock_model,
     ):
-        result = provider.generate("prompt")
+        result = provider.generate(_make_request("prompt"))
 
     assert result.usage is not None
     assert result.usage.prompt_tokens == 8
@@ -321,7 +396,7 @@ def test_gemini_generate_sdk_error_raises_generation_error() -> None:
         return_value=mock_model,
     ):
         with pytest.raises(ProviderGenerationError, match="API quota exceeded"):
-            provider.generate("prompt")
+            provider.generate(_make_request("prompt"))
 
 
 @pytest.mark.unit
@@ -351,7 +426,7 @@ def test_gemini_validate_connection_client_error_raises_connection_error() -> No
 def test_gemini_missing_api_key_generate_raises() -> None:
     provider = GeminiProvider(api_key="")
     with pytest.raises(ProviderConfigurationError):
-        provider.generate("prompt")
+        provider.generate(_make_request("prompt"))
 
 
 @pytest.mark.unit
@@ -461,7 +536,8 @@ def test_full_flow_gemini_via_registry_and_factory() -> None:
         "requirement_intelligence.llm.providers.gemini_provider.GeminiProvider._get_client",
         return_value=mock_model,
     ):
-        result = provider.generate("Analyse this requirement")
+        result = provider.generate(_make_request("Analyse this requirement"))
 
     assert result.generated_text == "Full flow response"
+    assert result.provider == ProviderType.GEMINI
     assert result.provider == "gemini"

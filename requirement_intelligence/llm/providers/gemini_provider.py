@@ -23,8 +23,9 @@ from requirement_intelligence.llm.llm_exceptions import (
     ProviderConnectionError,
     ProviderGenerationError,
 )
-from requirement_intelligence.llm.llm_models import LLMResponse, LLMUsage
+from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from shared.enums.base import ProviderType
 
 _DEFAULT_MODEL = "gemini-1.5-flash"
 _ENV_API_KEY = "GEMINI_API_KEY"
@@ -93,19 +94,14 @@ class GeminiProvider(LLMProvider):
             ) from exc
         return True
 
-    def generate(
-        self,
-        prompt: str,
-        temperature: float = 0.0,
-    ) -> LLMResponse:
+    def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate text using the Gemini API.
 
         Parameters
         ----------
-        prompt:
-            Fully-rendered prompt string.
-        temperature:
-            Sampling temperature forwarded to the model.
+        request:
+            Provider-agnostic :class:`LLMRequest`.  Only ``request.prompt`` and
+            ``request.temperature`` are consumed by this provider today.
 
         Returns
         -------
@@ -125,8 +121,8 @@ class GeminiProvider(LLMProvider):
         try:
             model = self._get_client()
             raw = model.generate_content(
-                prompt,
-                generation_config={"temperature": temperature},
+                request.prompt,
+                generation_config={"temperature": request.temperature},
             )
         except Exception as exc:
             raise ProviderGenerationError(
@@ -201,7 +197,7 @@ class GeminiProvider(LLMProvider):
         raw_response: dict[str, Any] = {"text": generated_text, "finish_reason": finish_reason}
 
         return LLMResponse(
-            provider=self.provider_name,
+            provider=ProviderType.GEMINI,
             model=self._model_name,
             generated_text=generated_text,
             raw_response=raw_response,
