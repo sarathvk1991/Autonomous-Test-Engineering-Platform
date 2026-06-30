@@ -36,6 +36,26 @@ class ProviderType(StrEnum):
     OPENAI = "openai"
 
 
+class ExecutionStatus(StrEnum):
+    """Normalized, provider-independent outcome of an AI execution.
+
+    Every provider adapter (Gemini, Azure OpenAI, Anthropic, Bedrock, Ollama, …)
+    maps its provider-specific completion/termination signal onto one of these
+    members *before* constructing an :class:`~requirement_intelligence.llm.llm_models.LLMResponse`.
+    Downstream components — notably the Response Validation framework — read this
+    normalized outcome and never interpret provider-specific codes.
+
+    Members are added additively as new outcomes need representing; absence of a
+    member is never inferred from provider strings.
+    """
+
+    #: The execution finished normally. Default outcome (backward compatible).
+    COMPLETED = "completed"
+
+    #: The execution terminated because it timed out.
+    TIMEOUT = "timeout"
+
+
 class RequirementType(StrEnum):
     """Classification dimension: the nature of a requirement."""
 
@@ -73,6 +93,6 @@ class RequirementStatus(StrEnum):
 class ValidationVerdict(StrEnum):
     """Outcome of a validation gate such as CP1."""
 
-    PASS = "pass"
+    PASS = "pass"  # noqa: S105 - a verdict value, not a secret
     FAIL = "fail"
     WARN = "warn"

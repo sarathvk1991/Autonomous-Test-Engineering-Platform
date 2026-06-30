@@ -4,7 +4,7 @@
 | --------- | ----- |
 | Package | `requirement_intelligence/validation/rules/transport/` |
 | Layer | Transport — the most foundational validation concern |
-| Status | Two production rules implemented (`TRANSPORT-0001`, `TRANSPORT-0002`) |
+| Status | Three production rules implemented (`TRANSPORT-0001`, `TRANSPORT-0002`, `TRANSPORT-0003`) |
 | Governing specifications | `docs/architecture/validation-rule-catalog.md` · `docs/development/validation-rule-development-guide.md` |
 
 ---
@@ -106,6 +106,73 @@ provider metadata.
 > resolves the overall verdict to `BLOCKED` (a `CRITICAL` finding makes the output
 > unsafe to process). The response is correctly *rejected* — never `PASSED`.
 
+### `TRANSPORT-0003` — Timeout
+
+| Field | Value |
+| ----- | ----- |
+| Rule ID | `TRANSPORT-0003` |
+| Class | `TimeoutRule` |
+| Name | Timeout |
+| Layer | `TRANSPORT` |
+| Rule Version | `1.0.0` |
+| Classification | Core |
+| Severity | `CRITICAL` |
+| Blocking | `True` |
+| Purpose | Verify that the completed AI execution did not terminate because of a timeout. |
+
+**Behaviour**
+
+| Condition | Outcome |
+| --------- | ------- |
+| `execution_status` is `COMPLETED` (or any non-timeout outcome) | **Pass** — returns an empty collection. |
+| `execution_status` is `TIMEOUT` | **Fail** — returns exactly one `CRITICAL`, blocking `ValidationIssue`. |
+| `llm_response` is `None` | **Defers** — existence is `TRANSPORT-0001`'s concern; returns no findings. |
+
+The rule validates **execution outcome only**. It never inspects generated
+content, requirements, recommendations, risks, JSON, schema, reasoning, provider
+metadata, or business logic.
+
+**Failure issue (every canonical field populated)**
+
+| Field | Value |
+| ----- | ----- |
+| `severity` | `CRITICAL` |
+| `blocking` | `True` |
+| `category` / `validation_layer` | `transport` |
+| `location` | `execution` |
+| `message` | "The AI execution terminated because of a timeout." |
+| `recommendation` | "Retry the AI analysis or investigate execution timeout settings." |
+| `evidence` | `None` |
+| `issue_id` | `TRANSPORT-0003:timeout` (deterministic) |
+| `correlation_id` | derived from the response's execution identity |
+
+> **Verdict note.** Like `TRANSPORT-0002`, a `CRITICAL` timeout finding resolves to
+> `BLOCKED` under the frozen verdict model — the response is *rejected*.
+
+#### Why timeout validation is independent of provider implementations
+
+The rule reads **only** the normalized, provider-independent
+`ExecutionStatus` on the `LLMResponse` — never a provider-specific timeout code.
+Each provider adapter (Gemini, Azure OpenAI, Anthropic, Bedrock, Ollama, …)
+**normalizes** its own termination signal into `ExecutionStatus` *before*
+constructing the `LLMResponse`. The validator never normalizes and never
+understands provider codes; normalization is exclusively a provider-adapter
+responsibility (`shared/enums/base.py :: ExecutionStatus`).
+
+```text
+   Provider-specific termination signal
+            │ (provider adapter normalizes — the ONLY place this happens)
+            ▼
+   ExecutionStatus.{COMPLETED | TIMEOUT}   ← normalized, provider-independent
+            │ read read-only
+            ▼
+   TimeoutRule (provider-agnostic)
+```
+
+This is why a new provider needs **no** change to the rule: as long as it
+normalizes its timeout into `ExecutionStatus.TIMEOUT`, `TRANSPORT-0003` validates
+it correctly and unchanged.
+
 ---
 
 ## Current Rules
@@ -114,23 +181,26 @@ provider metadata.
 | ------- | ---- | ------- |
 | `TRANSPORT-0001` | Response Exists | An LLM response object is present on the `AnalysisResult`. |
 | `TRANSPORT-0002` | Empty Response | An existing LLM response carries usable generated content. |
+| `TRANSPORT-0003` | Timeout | The completed AI execution did not terminate because of a timeout. |
 
-### Why `TRANSPORT-0001` and `TRANSPORT-0002` are separate rules
+### Why the Transport rules are separate
 
-They validate **two distinct concerns** and must remain separate (Validation Rule
+Each validates **one distinct concern** and must remain separate (Validation Rule
 Catalog §3 — one rule, one responsibility):
 
 | Rule | Single concern | Reads | Fails when |
 | ---- | -------------- | ----- | ---------- |
 | `TRANSPORT-0001` | The **response object exists** | `llm_response` (presence) | `llm_response is None` |
 | `TRANSPORT-0002` | The **generated content exists** | `llm_response.generated_text` (emptiness) | content is empty / whitespace-only |
+| `TRANSPORT-0003` | The **execution did not time out** | `llm_response.execution_status` (normalized outcome) | `execution_status == TIMEOUT` |
 
 A single combined "response is usable" rule would hide *which* aspect failed (a
-missing response object vs. a present-but-empty one), couple two independent
+missing object vs. an empty one vs. a timed-out execution), couple independent
 reasons to change, and break the one-concern-per-rule contract. Keeping them
 separate means each can fail, evolve, and be reasoned about independently — and
-`TRANSPORT-0002` deliberately **defers** (returns no findings) when the response
-object is absent, so the two rules never report the same condition twice.
+`TRANSPORT-0002` and `TRANSPORT-0003` deliberately **defer** (return no findings)
+when the response object is absent, so the rules never report the same condition
+twice.
 
 ---
 
@@ -142,7 +212,6 @@ will be a separate single-concern rule added to this package and registered via
 
 | Rule ID | Name | Concern |
 | ------- | ---- | ------- |
-| `TRANSPORT-0003` | Timeout | The generation did not time out. |
 | `TRANSPORT-0004` | Provider Failure | The generation did not fail at the delivery boundary. |
 
 ---
@@ -155,7 +224,7 @@ no behavioural change to the registry. It must be called **before** the pipeline
 is constructed (the pipeline seals its registry on construction).
 
 ```text
-   ValidationRegistry ──register_transport_rules──► [ TRANSPORT-0001, TRANSPORT-0002 ]
+   ValidationRegistry ──register_transport_rules──► [ TRANSPORT-0001, TRANSPORT-0002, TRANSPORT-0003 ]
             │ (construct & seal)
             ▼
    ValidationPipeline ──executes rules in layer order──► ValidationResult

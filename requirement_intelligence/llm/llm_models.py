@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import Field
 
 from shared.contracts.base import Schema
-from shared.enums.base import ProviderType
+from shared.enums.base import ExecutionStatus, ProviderType
 
 
 class LLMRequest(Schema):
@@ -67,7 +67,15 @@ class LLMResponse(Schema):
         auditing.  Downstream components must not parse this field.
     finish_reason:
         Provider-reported reason the generation stopped
-        (e.g. ``"stop"``, ``"max_tokens"``).
+        (e.g. ``"stop"``, ``"max_tokens"``).  Provider-specific; downstream
+        components must not interpret it.
+    execution_status:
+        The **normalized, provider-independent** outcome of the execution
+        (e.g. completed, timed out).  Provider adapters map their
+        provider-specific termination signals onto this enum; downstream
+        validation reads it without any provider knowledge.  Defaults to
+        :attr:`~shared.enums.base.ExecutionStatus.COMPLETED` so existing callers
+        and providers remain unchanged (backward compatible).
     latency_ms:
         Wall-clock time from request dispatch to response receipt, in
         milliseconds.
@@ -80,5 +88,6 @@ class LLMResponse(Schema):
     generated_text: str
     raw_response: dict[str, Any] = Field(default_factory=dict)
     finish_reason: str | None = None
+    execution_status: ExecutionStatus = ExecutionStatus.COMPLETED
     latency_ms: float | None = None
     usage: LLMUsage | None = None
