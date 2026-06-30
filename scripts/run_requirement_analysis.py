@@ -207,6 +207,40 @@ def _resolve_output_base(output_dir: str) -> Path:
     return base.resolve()
 
 
+def run_validation_phase(result: Any, console: Console) -> None:
+    """Optional Response Validation phase (additive; default behaviour unchanged).
+
+    Flow: Requirement Analysis -> Response Validator -> ValidationResult. Runs the
+    registered validation rules (currently TRANSPORT-0001) over the produced
+    ``AnalysisResult`` and prints a concise validation summary. The Validator owns
+    orchestration; this CLI only assembles dependencies and displays the result.
+    """
+    # Imported lazily so the default analysis path never pays for the validation
+    # subsystem, and so this phase is wholly opt-in.
+    from requirement_intelligence.validation import (
+        ValidationConfiguration,
+        ValidationPipeline,
+        ValidationRegistry,
+    )
+    from requirement_intelligence.validation.response import ResponseValidator
+    from requirement_intelligence.validation.rules.transport import register_transport_rules
+
+    console.action("\nRunning Response Validation")
+    registry = ValidationRegistry()
+    register_transport_rules(registry)
+    pipeline = ValidationPipeline(registry)
+    validator = ResponseValidator(registry, pipeline, ValidationConfiguration())
+
+    validation = validator.validate(result)
+    summary = validation.validation_summary
+    statistics = validation.validation_statistics
+
+    console.ok(f"Overall Verdict : {validation.overall_verdict}")
+    console.note(f"  Rules Executed      : {statistics.rules_executed}")
+    console.note(f"  Issues Found        : {summary.total_issues}")
+    console.note(f"  Validation Duration : {statistics.validation_duration_ms:.2f} ms")
+
+
 # ===========================================================================
 # Subcommand handlers
 # ===========================================================================
@@ -306,6 +340,15 @@ def handle_analyze(args: argparse.Namespace) -> int:
     if result is not None:
         console.note(f"  provider={args.provider} model={result.model}")
         console.note(f"  json_valid={write_result.json_valid}")
+
+    # Optional, opt-in Response Validation phase. Default behaviour is unchanged:
+    # validation runs only with --validate and only when a real result exists
+    # (never for --dry-run, which produces no response to validate).
+    if getattr(args, "validate", False) and result is not None:
+        try:
+            run_validation_phase(result, console)
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Response validation failed: {exc}")
     return 0
 
 
@@ -457,6 +500,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist a permanent, timestamped execution history copy.",
     )
     analyze.add_argument(
+        "--validate",
+        action="store_true",
+        help="After a live analysis, run the Response Validator and show the validation summary.",
+    )
+    analyze.add_argument(
         "--verbose", action="store_true", help="Display detailed progress output."
     )
     analyze.set_defaults(func=handle_analyze)
@@ -519,6 +567,10 @@ analyze OPTIONS
                          (implies --save-execution; never overwrites — adds -1, -2…).
   --dry-run              Stop after prompt generation; do not call the provider.
   --save-execution       Keep a permanent, timestamped execution history copy.
+  --validate             After a live analysis, run the Response Validator and
+                         print a validation summary (rules executed, issues,
+                         verdict, duration). Optional; default behaviour is
+                         unchanged. Has no effect with --dry-run.
   --verbose              Detailed progress output.
 
 EXAMPLES
