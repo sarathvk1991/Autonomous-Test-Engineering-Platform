@@ -488,6 +488,49 @@ a closed one (§9.10).
 | `TRANSPORT-0003` | TimeoutRule | The generation did not time out. |
 | `TRANSPORT-0004` | ProviderFailureRule | The generation did not fail at the delivery boundary. |
 
+#### Transport Layer Status — FROZEN
+
+| Attribute | Value |
+| --------- | ----- |
+| **Status** | **FROZEN** |
+| Production rules | `TRANSPORT-0001` · `TRANSPORT-0002` · `TRANSPORT-0003` · `TRANSPORT-0004` |
+| Rule range | Fully allocated for the layer's four execution guarantees |
+| Stability (§11) | **Frozen** — the architecture's highest confidence level |
+| Further rules planned | None |
+
+The Transport layer is **complete**. Its four rules guarantee, in order, that a
+response **exists** (`TRANSPORT-0001`), **carries usable content**
+(`TRANSPORT-0002`), came from an execution that **did not time out**
+(`TRANSPORT-0003`), and came from an execution that **did not fail at the
+provider/delivery boundary** (`TRANSPORT-0004`). Together these are the complete
+set of *delivery-level* guarantees; no Transport concern remains unrepresented.
+
+- The rule range is **fully allocated** — there is no Transport concern left to
+  catalogue.
+- **No further Transport rules are currently planned.**
+- **Adding, removing, or re-scoping a Transport rule requires an approved
+  Architecture Decision Record** (§22 Rule Governance). A new Transport Rule ID
+  may be minted only through governance.
+- **Implementation changes may still occur** — a rule's mechanism may be
+  optimised or a defect fixed, advancing the Validator Version (and, if a rule's
+  definition genuinely changes, its Rule Version) per §20. These are *mechanism*
+  changes, not *architecture* changes.
+- **Architectural responsibilities are frozen.** Each rule's identity, layer
+  ownership, single concern, severity, and blocking capability are immutable.
+
+> **Architectural Decision**
+> **The Transport layer is now immutable.** It validates exactly one family of
+> concerns — *delivery-level guarantees about the response* — and that family is
+> fully covered by four single-responsibility rules over normalized,
+> provider-independent signals (`llm_response` presence, `generated_text`
+> emptiness, and the `ExecutionStatus` outcomes `TIMEOUT` and `FAILED`). Because
+> every Transport guarantee is already owned by exactly one rule, any further
+> change would either duplicate an existing responsibility or cross into another
+> layer's concern (Syntax onward). Freezing the layer protects the foundational
+> guarantees that every higher layer is permitted to assume without re-checking.
+> The layer may evolve only through an approved ADR; its responsibilities do not
+> change.
+
 ### 9.2 Syntax
 
 | Rule ID | Name | Single concern |
