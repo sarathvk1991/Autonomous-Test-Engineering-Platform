@@ -4,7 +4,7 @@
 | --------- | ----- |
 | Package | `requirement_intelligence/validation/rules/transport/` |
 | Layer | Transport — the most foundational validation concern |
-| Status | Three production rules implemented (`TRANSPORT-0001`, `TRANSPORT-0002`, `TRANSPORT-0003`) |
+| Status | **Complete** — all four production rules implemented (`TRANSPORT-0001`–`TRANSPORT-0004`); layer frozen |
 | Governing specifications | `docs/architecture/validation-rule-catalog.md` · `docs/development/validation-rule-development-guide.md` |
 
 ---
@@ -59,8 +59,7 @@ provider-independent `LLMResponse` — none of them ever touches a provider.
    │                  reads execution_status == TIMEOUT            │
    ├──────────────────────────────────────────────────────────────┤
    │  TRANSPORT-0004  ProviderFailure  guarantee: no delivery       │
-   │                  (RESERVED)        failure                     │
-   │                  reads execution_status == FAILED            │
+   │                  reads execution_status == FAILED   failure    │
    └──────┬───────────────────────────────────────────────────────┘
           │ findings assembled (highest severity wins)
           ▼
@@ -80,14 +79,14 @@ rules never overlap and a finding always names the precise broken guarantee:
 | `TRANSPORT-0001` | A response object exists | `llm_response` (presence) | `llm_response is None` |
 | `TRANSPORT-0002` | Usable content exists | `generated_text` (emptiness) | empty / whitespace-only |
 | `TRANSPORT-0003` | The execution did not time out | `execution_status` | `== TIMEOUT` |
-| `TRANSPORT-0004` *(reserved)* | The execution did not fail at the delivery boundary | `execution_status` | `== FAILED` |
+| `TRANSPORT-0004` | The execution did not fail at the delivery boundary | `execution_status` | `== FAILED` |
 
 `TIMEOUT` and `FAILED` are **sibling, non-overlapping** execution outcomes (the
 adapter normalizes a timeout to `TIMEOUT` and any other delivery-boundary failure
-to `FAILED`). This is why `TRANSPORT-0003` and the reserved `TRANSPORT-0004` each
-own exactly one outcome and never collide. Rules `0002`–`0004` deliberately
-**defer** (no findings) when the response object is absent, leaving that to
-`TRANSPORT-0001` — so no condition is ever reported twice.
+to `FAILED`). This is why `TRANSPORT-0003` and `TRANSPORT-0004` each own exactly
+one outcome and never collide. Rules `0002`–`0004` deliberately **defer** (no
+findings) when the response object is absent, leaving that to `TRANSPORT-0001` —
+so no condition is ever reported twice.
 
 ---
 
@@ -242,6 +241,66 @@ This is why a new provider needs **no** change to the rule: as long as it
 normalizes its timeout into `ExecutionStatus.TIMEOUT`, `TRANSPORT-0003` validates
 it correctly and unchanged.
 
+### `TRANSPORT-0004` — Provider Failure
+
+| Field | Value |
+| ----- | ----- |
+| Rule ID | `TRANSPORT-0004` |
+| Class | `ProviderFailureRule` |
+| Name | Provider Failure |
+| Layer | `TRANSPORT` |
+| Rule Version | `1.0.0` |
+| Classification | Core |
+| Severity | `CRITICAL` |
+| Blocking | `True` |
+| Purpose | Verify that the AI execution did not fail at the provider/delivery boundary. |
+
+**Behaviour**
+
+| Condition | Outcome |
+| --------- | ------- |
+| `execution_status` is `COMPLETED` (or any non-failure outcome, incl. `TIMEOUT`) | **Pass** — returns an empty collection. |
+| `execution_status` is `FAILED` | **Fail** — returns exactly one `CRITICAL`, blocking `ValidationIssue`. |
+| `llm_response` is `None` | **Defers** — existence is `TRANSPORT-0001`'s concern; returns no findings. |
+
+The rule validates **execution outcome only**. It reads **only**
+`execution_status` — never `finish_reason`, `raw_response`, the provider SDK
+payload, `generated_text`, requirements, recommendations, or risks.
+
+**Failure issue (every canonical field populated)**
+
+| Field | Value |
+| ----- | ----- |
+| `severity` | `CRITICAL` |
+| `blocking` | `True` |
+| `category` / `validation_layer` | `transport` |
+| `location` | `execution` |
+| `message` | "The AI execution failed at the provider delivery boundary." |
+| `recommendation` | "Retry the AI request or investigate the provider failure before continuing." |
+| `evidence` | `None` |
+| `issue_id` | `TRANSPORT-0004:provider_failure` (deterministic) |
+| `correlation_id` | derived from the response's execution identity |
+
+> **Verdict note.** Like `TRANSPORT-0002`/`TRANSPORT-0003`, a `CRITICAL` finding
+> resolves to `BLOCKED` under the frozen verdict model — the response is *rejected*.
+
+#### Relationship to `TRANSPORT-0003`: `TIMEOUT` vs `FAILED`
+
+`TRANSPORT-0003` and `TRANSPORT-0004` are **sibling** rules over the same
+normalized field (`execution_status`), but they validate **disjoint** outcomes:
+
+| Outcome | Meaning | Owned by |
+| ------- | ------- | -------- |
+| `ExecutionStatus.TIMEOUT` | The execution was cut short by a deadline/time-limit. | `TRANSPORT-0003` |
+| `ExecutionStatus.FAILED` | The execution failed at the delivery boundary (a provider/transport error or refusal that is **not** a timeout). | `TRANSPORT-0004` |
+
+A timeout is normalized to `TIMEOUT` (never `FAILED`); any other delivery-boundary
+failure is normalized to `FAILED` (never `TIMEOUT`). Because the outcomes are
+mutually exclusive, each rule fails on exactly one value and they **never collide**
+— a `TIMEOUT` execution passes `TRANSPORT-0004`, and a `FAILED` execution passes
+`TRANSPORT-0003`. This is why they are two rules, not one: each owns one outcome,
+fails on one value, and can evolve independently.
+
 ---
 
 ## Current Rules
@@ -251,6 +310,7 @@ it correctly and unchanged.
 | `TRANSPORT-0001` | Response Exists | An LLM response object is present on the `AnalysisResult`. |
 | `TRANSPORT-0002` | Empty Response | An existing LLM response carries usable generated content. |
 | `TRANSPORT-0003` | Timeout | The completed AI execution did not terminate because of a timeout. |
+| `TRANSPORT-0004` | Provider Failure | The AI execution did not fail at the provider/delivery boundary. |
 
 ### Why the Transport rules are separate
 
@@ -262,26 +322,45 @@ Catalog §3 — one rule, one responsibility):
 | `TRANSPORT-0001` | The **response object exists** | `llm_response` (presence) | `llm_response is None` |
 | `TRANSPORT-0002` | The **generated content exists** | `llm_response.generated_text` (emptiness) | content is empty / whitespace-only |
 | `TRANSPORT-0003` | The **execution did not time out** | `llm_response.execution_status` (normalized outcome) | `execution_status == TIMEOUT` |
+| `TRANSPORT-0004` | The **execution did not fail at the provider boundary** | `llm_response.execution_status` (normalized outcome) | `execution_status == FAILED` |
 
 A single combined "response is usable" rule would hide *which* aspect failed (a
-missing object vs. an empty one vs. a timed-out execution), couple independent
-reasons to change, and break the one-concern-per-rule contract. Keeping them
-separate means each can fail, evolve, and be reasoned about independently — and
-`TRANSPORT-0002` and `TRANSPORT-0003` deliberately **defer** (return no findings)
-when the response object is absent, so the rules never report the same condition
-twice.
+missing object vs. an empty one vs. a timed-out vs. a failed execution), couple
+independent reasons to change, and break the one-concern-per-rule contract.
+Keeping them separate means each can fail, evolve, and be reasoned about
+independently — and `TRANSPORT-0002`–`TRANSPORT-0004` deliberately **defer**
+(return no findings) when the response object is absent, so the rules never report
+the same condition twice.
 
 ---
 
-## Future Rules
+## Transport Layer Complete
 
-Reserved in the Validation Rule Catalog (§9.1); **not implemented yet**. Each
-will be a separate single-concern rule added to this package and registered via
-`register_transport_rules`, with no framework change:
+The Transport layer is **complete and frozen**: exactly four production rules,
+each guaranteeing one foundational property of the execution before any higher
+layer runs.
 
-| Rule ID | Name | Concern |
-| ------- | ---- | ------- |
-| `TRANSPORT-0004` | Provider Failure | The generation did not fail at the delivery boundary. |
+| # | Guarantee | Rule |
+| - | --------- | ---- |
+| 1 | **The response exists.** | `TRANSPORT-0001` Response Exists |
+| 2 | **The response contains usable content.** | `TRANSPORT-0002` Empty Response |
+| 3 | **The execution did not time out.** | `TRANSPORT-0003` Timeout |
+| 4 | **The execution did not fail at the provider boundary.** | `TRANSPORT-0004` Provider Failure |
+
+Because every Transport rule is `CRITICAL` and blocking, a violation of any of the
+four guarantees rejects the response (`BLOCKED`) before content is interpreted.
+Therefore **every higher validation layer — Syntax, Schema, Structural, Content,
+Evidence, Traceability, Reasoning, Business Rule — may safely assume** that a
+response which reaches it:
+
+- exists (is a real `LLMResponse`),
+- carries non-empty generated content,
+- came from an execution that completed (no timeout), and
+- came from an execution that did not fail at the provider boundary.
+
+Higher layers never re-check these foundational facts; they build on them. No
+further Transport rules are planned — the layer's reserved range is fully
+allocated for its four execution guarantees.
 
 ---
 
@@ -293,7 +372,7 @@ no behavioural change to the registry. It must be called **before** the pipeline
 is constructed (the pipeline seals its registry on construction).
 
 ```text
-   ValidationRegistry ──register_transport_rules──► [ TRANSPORT-0001, TRANSPORT-0002, TRANSPORT-0003 ]
+   ValidationRegistry ──register_transport_rules──► [ TRANSPORT-0001, TRANSPORT-0002, TRANSPORT-0003, TRANSPORT-0004 ]
             │ (construct & seal)
             ▼
    ValidationPipeline ──executes rules in layer order──► ValidationResult
