@@ -45,6 +45,30 @@ class ExecutionStatus(StrEnum):
     Downstream components — notably the Response Validation framework — read this
     normalized outcome and never interpret provider-specific codes.
 
+    Each member is a distinct execution outcome owned by exactly one Transport
+    validation rule, so the outcomes never overlap:
+
+    * ``COMPLETED`` — the execution finished normally (success).
+    * ``TIMEOUT``   — the execution was cut short by a timeout. Consumed by
+      ``TRANSPORT-0003`` (TimeoutRule).
+    * ``FAILED``    — the execution failed at the delivery boundary: a provider
+      or transport error (or refusal) at the call boundary that is **not** a
+      timeout. Consumed by the reserved ``TRANSPORT-0004`` (ProviderFailureRule).
+
+    Conceptual normalization mapping (provider-independent — never SDK values)::
+
+        Provider response                    Adapter normalizes to   ExecutionStatus
+        ---------------------------------    ---------------------   ---------------
+        a normal, finished generation        success              →  COMPLETED
+        a deadline / time-limit signal       timed out            →  TIMEOUT
+        a transport/provider error or        failed at the        →  FAILED
+          refusal at the call boundary         delivery boundary
+
+    ``TIMEOUT`` and ``FAILED`` are **sibling** failure outcomes: a timeout is
+    normalized to ``TIMEOUT`` (never ``FAILED``), and any other delivery-boundary
+    failure is normalized to ``FAILED``. Keeping them distinct lets each Transport
+    rule validate exactly one outcome.
+
     Members are added additively as new outcomes need representing; absence of a
     member is never inferred from provider strings.
     """
@@ -52,8 +76,12 @@ class ExecutionStatus(StrEnum):
     #: The execution finished normally. Default outcome (backward compatible).
     COMPLETED = "completed"
 
-    #: The execution terminated because it timed out.
+    #: The execution was cut short by a timeout. Consumed by TRANSPORT-0003.
     TIMEOUT = "timeout"
+
+    #: The execution failed at the delivery boundary — a provider/transport error
+    #: that is not a timeout. Consumed by the reserved TRANSPORT-0004.
+    FAILED = "failed"
 
 
 class RequirementType(StrEnum):

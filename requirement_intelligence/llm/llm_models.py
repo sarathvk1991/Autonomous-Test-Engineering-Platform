@@ -51,36 +51,79 @@ class LLMUsage(Schema):
 class LLMResponse(Schema):
     """Provider-agnostic response returned to every downstream component.
 
+    Execution semantics — interpretable vs. opaque fields
+    -----------------------------------------------------
+    Every field on this model is already **normalized** by the provider adapter
+    (see *Provider Normalization Contract* below).  Fields fall into three kinds:
+
+    * **Provider-independent (downstream MAY interpret).** Normalized values that
+      every downstream component — validators, CP1, output writer — may read and
+      reason about:
+
+      - ``generated_text`` — the normalized primary text output.
+      - ``execution_status`` — the normalized execution outcome
+        (:class:`~shared.enums.base.ExecutionStatus`).
+      - ``usage`` — normalized token accounting (:class:`LLMUsage`).
+      - ``latency_ms`` — normalized wall-clock duration metric.
+
+    * **Provider-specific (downstream must NEVER interpret).** Opaque, retained
+      for audit/observability only; reasoning over them would couple a component
+      to a provider:
+
+      - ``finish_reason`` — a provider-reported string (e.g. ``"stop"``,
+        ``"max_tokens"``). **Never** parse it to infer an outcome; read
+        ``execution_status`` instead.
+      - ``raw_response`` — the full, unmodified provider payload. **Never** parse
+        it. It exists for auditing.
+
+    * **Identity (informational).** ``provider`` and ``model`` identify the
+      origin for routing/observability; they are not validation signals.
+
+    Provider Normalization Contract
+    -------------------------------
+    A provider adapter is the **only** place normalization happens. Before
+    constructing an ``LLMResponse``, every adapter must normalize:
+
+    * the **execution outcome** → :class:`~shared.enums.base.ExecutionStatus`,
+    * **token usage** → :class:`LLMUsage`,
+    * **latency** → ``latency_ms``,
+    * the **generated text** → ``generated_text``.
+
+    **No downstream component, no validator, and no validation rule performs
+    normalization.** They consume the already-normalized, provider-independent
+    fields. A new provider conforms by normalizing into these same fields — no
+    downstream change is required.
+
     Fields
     ------
     provider:
-        Enum identifier of the provider that produced this response
+        Identity. Enum identifier of the provider that produced this response
         (e.g. ``ProviderType.GEMINI``).  Serialises to its string value
         (``"gemini"``) via ``model_dump()``.
     model:
-        The specific model name used for generation
+        Identity. The specific model name used for generation
         (e.g. ``"gemini-1.5-pro"``).
     generated_text:
-        The primary text output from the model.
+        Provider-independent. The normalized primary text output from the model.
     raw_response:
-        The full, unmodified payload returned by the provider SDK, stored for
-        auditing.  Downstream components must not parse this field.
+        Provider-specific. The full, unmodified payload returned by the provider
+        SDK, stored for auditing.  Downstream components must **never** parse it.
     finish_reason:
-        Provider-reported reason the generation stopped
-        (e.g. ``"stop"``, ``"max_tokens"``).  Provider-specific; downstream
-        components must not interpret it.
+        Provider-specific. Provider-reported reason the generation stopped
+        (e.g. ``"stop"``, ``"max_tokens"``).  Downstream components must **never**
+        interpret it; read ``execution_status`` instead.
     execution_status:
-        The **normalized, provider-independent** outcome of the execution
-        (e.g. completed, timed out).  Provider adapters map their
+        Provider-independent. The **normalized** outcome of the execution
+        (completed, timed out, failed).  Provider adapters map their
         provider-specific termination signals onto this enum; downstream
         validation reads it without any provider knowledge.  Defaults to
         :attr:`~shared.enums.base.ExecutionStatus.COMPLETED` so existing callers
         and providers remain unchanged (backward compatible).
     latency_ms:
-        Wall-clock time from request dispatch to response receipt, in
-        milliseconds.
+        Provider-independent. Normalized wall-clock time from request dispatch to
+        response receipt, in milliseconds.
     usage:
-        Token accounting reported by the provider.
+        Provider-independent. Normalized token accounting reported by the provider.
     """
 
     provider: ProviderType

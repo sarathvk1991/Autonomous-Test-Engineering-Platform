@@ -22,6 +22,75 @@ Catalog §16).
 
 ---
 
+## Transport Layer Architecture
+
+Normalization happens once, at the provider adapter. Every Transport rule then
+validates a single, already-normalized execution guarantee off the
+provider-independent `LLMResponse` — none of them ever touches a provider.
+
+```text
+   ┌──────────────┐
+   │   Provider    │  Gemini · Azure OpenAI · Anthropic · Bedrock · Ollama · …
+   └──────┬───────┘     (provider-specific SDK response)
+          │
+          ▼
+   ┌──────────────────┐
+   │  Provider Adapter │  NORMALIZES: outcome → ExecutionStatus, usage → LLMUsage,
+   │  (only normalizer)│             latency → latency_ms, text → generated_text
+   └──────┬───────────┘
+          │ constructs
+          ▼
+   ┌──────────────────────────────────────────────────────────────┐
+   │                      LLMResponse                              │
+   │  provider-independent: generated_text · execution_status ·   │
+   │                        usage · latency_ms                    │
+   │  provider-specific (opaque): finish_reason · raw_response    │
+   └──────┬───────────────────────────────────────────────────────┘
+          │ carried on the AnalysisResult, validated in layer order
+          ▼
+   ┌──────────────────────────────────────────────────────────────┐
+   │  TRANSPORT-0001  ResponseExists   guarantee: a response object │
+   │                  reads llm_response (presence)                │
+   ├──────────────────────────────────────────────────────────────┤
+   │  TRANSPORT-0002  EmptyResponse    guarantee: usable content    │
+   │                  reads generated_text (emptiness)             │
+   ├──────────────────────────────────────────────────────────────┤
+   │  TRANSPORT-0003  Timeout          guarantee: not timed out     │
+   │                  reads execution_status == TIMEOUT            │
+   ├──────────────────────────────────────────────────────────────┤
+   │  TRANSPORT-0004  ProviderFailure  guarantee: no delivery       │
+   │                  (RESERVED)        failure                     │
+   │                  reads execution_status == FAILED            │
+   └──────┬───────────────────────────────────────────────────────┘
+          │ findings assembled (highest severity wins)
+          ▼
+   ┌──────────────┐
+   │ ValidationResult │
+   └──────────────┘
+```
+
+### One rule, one execution guarantee
+
+Each Transport rule validates **exactly one execution guarantee**, reading
+exactly one provider-independent signal. The guarantees are disjoint, so the
+rules never overlap and a finding always names the precise broken guarantee:
+
+| Rule | Execution guarantee | Reads (provider-independent) | Fails when |
+| ---- | ------------------- | ---------------------------- | ---------- |
+| `TRANSPORT-0001` | A response object exists | `llm_response` (presence) | `llm_response is None` |
+| `TRANSPORT-0002` | Usable content exists | `generated_text` (emptiness) | empty / whitespace-only |
+| `TRANSPORT-0003` | The execution did not time out | `execution_status` | `== TIMEOUT` |
+| `TRANSPORT-0004` *(reserved)* | The execution did not fail at the delivery boundary | `execution_status` | `== FAILED` |
+
+`TIMEOUT` and `FAILED` are **sibling, non-overlapping** execution outcomes (the
+adapter normalizes a timeout to `TIMEOUT` and any other delivery-boundary failure
+to `FAILED`). This is why `TRANSPORT-0003` and the reserved `TRANSPORT-0004` each
+own exactly one outcome and never collide. Rules `0002`–`0004` deliberately
+**defer** (no findings) when the response object is absent, leaving that to
+`TRANSPORT-0001` — so no condition is ever reported twice.
+
+---
+
 ## Rule Catalog
 
 ### `TRANSPORT-0001` — Response Exists

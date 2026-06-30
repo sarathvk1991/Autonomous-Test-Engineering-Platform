@@ -169,6 +169,13 @@ class TestSuccessfulExecution:
         stand_in = SimpleNamespace(llm_response=None, execution_id="EX-1")
         assert TimeoutRule().validate(stand_in) == []
 
+    def test_failed_status_passes_reserved_for_provider_failure(self) -> None:
+        # TimeoutRule fails ONLY on TIMEOUT; a delivery-boundary FAILED outcome is
+        # a sibling concern owned by the reserved TRANSPORT-0004 (ProviderFailure),
+        # so TimeoutRule must not react to it. This confirms the outcomes are
+        # orthogonal and the execution model is ready for TRANSPORT-0004.
+        assert TimeoutRule().validate(_analysis_result(ExecutionStatus.FAILED)) == []
+
 
 # ---------------------------------------------------------------------------
 # 3. Timed-out execution & issue contents
