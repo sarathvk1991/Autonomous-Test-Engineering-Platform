@@ -3,9 +3,9 @@
 | Attribute | Value |
 | --------- | ----- |
 | Package | `requirement_intelligence/validation/` |
-| Status | Foundation — framework **frozen**; no rules yet |
+| Status | Foundation — framework **frozen**; canonical models implemented; no rules yet |
 | Governing specifications | `docs/architecture/ai-response-validation.md` · `docs/architecture/validation-canonical-models.md` |
-| Next task | Canonical validation models (`ValidationIssue`, `ValidationResult`, …) |
+| Next task | Concrete validation rules + Response Validator orchestration |
 
 ---
 
@@ -17,9 +17,10 @@ Platform.  No requirement normalisation, CP1 validation, feature generation,
 test generation, or output writing may consume AI output that has not first
 passed through this layer.
 
-This package provides the **framework skeleton** — the extensible, deterministic
-infrastructure that future validation rules plug into.  It contains no actual
-validation logic; that arrives in subsequent tasks.
+This package provides the **framework** — the extensible, deterministic
+infrastructure (rule contract, registry, pipeline) — and the **canonical
+information model** the framework produces.  It contains no actual validation
+logic yet; concrete rules arrive in a subsequent task.
 
 ---
 
@@ -33,7 +34,7 @@ services that consume its verdict:
           │
           ▼
    Validation Canonical Models ← ValidationIssue / Summary / Statistics /
-          │                       Result / Configuration (next task)
+          │                       Configuration / FrameworkMetadata / Result
           ▼
    Validation Rules            ← concrete, per-layer rule implementations (future)
           │
@@ -41,7 +42,7 @@ services that consume its verdict:
    Response Validator          ← assembles a pipeline from configuration (future)
           │
           ▼
-   Requirement Analysis Service ← upstream producer of the AI response that the
+   Requirement Analysis Service ← upstream producer of the AnalysisResult that the
                                   Response Validator gates before downstream use
 ```
 
@@ -61,9 +62,9 @@ it to the Requirement Analysis Service and other downstream consumers.
   │                  Response Validation Framework                    │
   │                                                                  │
   │  ValidationConfiguration ──────────────────────────────►         │
-  │  (future canonical model)                                        │
+  │  (execution policy)                                              │
   │                              ┌────────────────────────┐          │
-  │  AI Response ──────────────► │  ValidationPipeline    │          │
+  │  AnalysisResult ───────────► │  ValidationPipeline    │          │
   │                              │  (orchestrator)        │          │
   │                              └──────────┬─────────────┘          │
   │                                         │ iterates               │
@@ -76,19 +77,22 @@ it to the Requirement Analysis Service and other downstream consumers.
   │                         ┌──────────────▼───────────────┐         │
   │                         │   ValidationRule (abstract)  │         │
   │                         │   × N (one per concern)      │         │
-  │                         └──────────────────────────────┘         │
-  │                                        │ produces (future)       │
-  │                                        ▼                        │
-  │                         ┌──────────────────────────────┐         │
-  │                         │   ValidationIssue            │         │
-  │                         │   (next task)                │         │
-  │                         └──────────────────────────────┘         │
-  │                                        │ aggregated into         │
+  │                         └──────────────┬───────────────┘         │
+  │                                        │ produces                │
   │                                        ▼                         │
   │                         ┌──────────────────────────────┐         │
-  │                         │   ValidationResult           │         │
-  │                         │   (next task)                │         │
-  │                         └──────────────────────────────┘         │
+  │                         │   ValidationIssue × N        │         │
+  │                         └──────────────┬───────────────┘         │
+  │                                        │ derived + owned into     │
+  │                                        ▼                         │
+  │   ┌──────────────────────────────────────────────────────────┐  │
+  │   │                  ValidationResult                        │  │
+  │   │  owns: Summary · Statistics · ValidationIssue collection │  │
+  │   │  references: Configuration · FrameworkMetadata           │  │
+  │   │  contains: original AnalysisResult                       │  │
+  │   │  verdict: PASSED / PASSED_WITH_WARNINGS / FAILED / BLOCKED│  │
+  │   └──────────────────────────────────────────────────────────┘  │
+  │            ▲ always returned — even when empty (PASSED)           │
   └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -259,9 +263,31 @@ Inspect the state via `registry.state` or `registry.is_sealed`.
 `ValidationPipeline` orchestrates rule execution.
 
 * Accepts a populated `ValidationRegistry` and **seals it** on construction.
-* Calls `rule.validate(response)` for each enabled rule, in registry order.
-* Collects and returns findings without interpreting them.
-* Contains **no validation logic, no AI knowledge, no business rules**.
+* `run(analysis_result, configuration=None)` calls `rule.validate(analysis_result)`
+  for each enabled rule, in registry order.
+* **Always returns a `ValidationResult`** — see *Pipeline output* below.
+* Contains **no validation logic, no AI knowledge, no business rules**.  It only
+  *derives* a summary and verdict by rolling up the issues the rules produced;
+  it never decides trustworthiness itself.
+
+#### Pipeline output — always a `ValidationResult`
+
+`run()` is the **permanent framework contract**: it always returns a
+fully-populated `ValidationResult`, and **there are no placeholder return types
+(`list[Any]`, `None`, temporary objects) anywhere in the framework**.
+
+* An **empty run** — no rules registered, or zero issues produced — is a *valid*
+  execution, **not** a placeholder.  Its `ValidationSummary`,
+  `ValidationStatistics`, and `ValidationFrameworkMetadata` are still populated,
+  and the verdict is `PASSED`.
+* The verdict follows **highest severity wins** (architecture §6, §8): any
+  `CRITICAL` ⇒ `BLOCKED`; else any `ERROR` ⇒ `FAILED`; else any `WARNING` ⇒
+  `PASSED_WITH_WARNINGS`; else `PASSED`.
+* The original `AnalysisResult` is preserved on the result, unaltered.
+* A rule that raises propagates the exception unchanged (an infrastructure
+  failure, never a verdict) after the pipeline records `PipelineState.FAILED`.
+
+Future implementations must **populate** this object, never replace it.
 
 #### Pipeline lifecycle
 
@@ -288,11 +314,42 @@ how the state is read.
 | `DISPOSED` | Reserved for a future explicit teardown step. |
 
 Designed for future evolution:
-- **Fail Fast**: will halt after foundational blocking findings once canonical
-  models are available.
+- **Fail Fast**: a future revision may halt after a foundational blocking issue.
+  Today every enabled rule runs; the halt is a deferred behavioural change.
 - **Parallel execution**: Rule Independence makes intra-layer parallelism safe.
-- **`ValidationResult`**: the return type will change once canonical models are
-  defined.
+
+### `models/` — the Validation Canonical Models
+
+The implementation-independent information model, governed by
+`docs/architecture/validation-canonical-models.md`.  All models inherit the
+shared `Schema` base (immutable, strict, `camelCase` serialization) and carry
+**information only** — no behaviour, no rules, no I/O.
+
+| Model | Role |
+| ----- | ---- |
+| `ValidationIssue` | One atomic, immutable finding; severity fixed at creation; evidence optional. |
+| `ValidationSummary` | Derived roll-up (counts + health) over the issues; holds **no** issue objects. |
+| `ValidationStatistics` | Operational telemetry of a run; never influences the verdict. |
+| `ValidationConfiguration` | Execution policy (enabled layers, thresholds, collection flags); never philosophy. |
+| `ValidationFrameworkMetadata` | Immutable provenance: framework / contract / pipeline / registry versions. |
+| `ValidationResult` | Aggregate root and **sole** framework output (see ownership below). |
+
+Controlled vocabulary (dedicated `StrEnum`s in `models/validation_enums.py`):
+`ValidationSeverity` (`INFO`/`WARNING`/`ERROR`/`CRITICAL`), `ValidationVerdict`
+(`PASSED`/`PASSED_WITH_WARNINGS`/`FAILED`/`BLOCKED`), `ValidationHealth`
+(`HEALTHY`/`WARNING`/`DEGRADED`/`CRITICAL`).
+
+**`ValidationResult` relationships** (per architecture §8):
+
+```text
+   ValidationResult
+     ├─ owns ──────► ValidationSummary        (derived counts + health)
+     ├─ owns ──────► ValidationStatistics     (telemetry)
+     ├─ owns ──────► ValidationIssue[]         (immutable tuple; may be empty)
+     ├─ references ► ValidationConfiguration   (the governing policy)
+     ├─ references ► ValidationFrameworkMetadata (producing-framework provenance)
+     └─ contains ──► AnalysisResult            (the preserved original, unaltered)
+```
 
 ### `validation_exceptions.py`
 
@@ -321,10 +378,10 @@ architecture principles this framework upholds:
 
 | Principle | How this framework upholds it |
 | --------- | ----------------------------- |
-| **Fail Fast** (§3.1) | Layer ordering; pipeline halts on blocking findings (future) |
+| **Fail Fast** (§3.1) | Layer ordering; pipeline halt on a foundational blocking issue (deferred) |
 | **Never Guess** (§3.2) | Rules produce findings for missing/ambiguous content; no inference |
-| **Preserve Original Response** (§3.3) | Pipeline passes response unchanged; rules must not mutate it |
-| **Deterministic Validation** (§3.4) | Rules are stateless; registry ordering is stable |
+| **Preserve Original Response** (§3.3) | Pipeline passes the `AnalysisResult` unchanged and preserves it on the result |
+| **Deterministic Validation** (§3.4) | Rules are stateless; registry ordering is stable; summary/verdict are pure derivations |
 | **Layered Validation** (§3.5) | Nine ordered layers; each rule owns exactly one concern |
 | **Rule Independence** (§3.11) | Rules share no state; any permutation yields the same findings |
 | **Provider Independence** (§3.8) | No provider reference anywhere in this framework |
@@ -332,34 +389,14 @@ architecture principles this framework upholds:
 ### Validation Canonical Models
 
 `docs/architecture/validation-canonical-models.md` defines the validation
-**information model** — the meaning, ownership, relationships, and lifecycle of
-`ValidationIssue`, `ValidationSummary`, `ValidationStatistics`,
-`ValidationResult`, and `ValidationConfiguration`.
-
-This framework does **not** yet contain those models.  The current
-`validate()` return type (`list[Any]`) and `run()` return type (`list[Any]`)
-are open placeholders.  The next task fills them in with the canonical types.
+**information model**.  It is **implemented** in `models/` (see above): the five
+canonical models plus `ValidationFrameworkMetadata`.  `ValidationPipeline.run()`
+returns the aggregate-root `ValidationResult`; **no placeholder return types
+remain** anywhere in the framework.
 
 ---
 
 ## Future work (next tasks)
-
-### Canonical Validation Models (next task)
-
-The following will be added in the next task under this package or a sibling:
-
-| Model | Purpose |
-| ----- | ------- |
-| `ValidationIssue` | Atomic, immutable finding — one rule, one condition |
-| `ValidationSummary` | Derived roll-up of the issue collection |
-| `ValidationStatistics` | Operational metrics of a validation run |
-| `ValidationResult` | Immutable aggregate root — the sole pipeline output |
-| `ValidationConfiguration` | Input that shapes a run; never alters verdict logic |
-
-Once these are defined:
-1. `ValidationRule.validate()` will be typed as `list[ValidationIssue]`.
-2. `ValidationPipeline.run()` will return `ValidationResult`.
-3. The pipeline will gain Fail Fast halt logic.
 
 ### Response Validator (future)
 
@@ -381,7 +418,9 @@ Rules implementing the nine layers will be added under `validation/rules/`
 | **Explicit registration only** | Avoids implicit magic; keeps the framework testable and auditable. Mirrors the LLM factory pattern. |
 | **Registry owns ordering** | Single source of truth; the pipeline never re-sorts. Separation of ordering logic from execution logic. |
 | **Instances, not classes, in registry** | Rules are stateless; sharing instances is safe and avoids repeated construction. |
-| **`list[Any]` return placeholder** | Stable signature before canonical models exist; typed `list[ValidationIssue]` in the next task without a breaking change. |
+| **`run()` always returns `ValidationResult`** | The permanent contract: an empty run is a valid `PASSED` result, never a placeholder. Future work populates this object, never replaces it. |
+| **Summary/verdict derived in the pipeline, not the models** | Models hold information only; rolling issues up into a summary/verdict is pure derivation, kept in the framework-integration layer. |
+| **Validation enums live beside the models** | The platform's `shared` `ValidationVerdict` (CP1: PASS/FAIL/WARN) has different semantics; the subsystem's four-state vocabulary is kept local to avoid name collision. |
 | **Framework exceptions separate from findings** | A `ValidationFrameworkError` is an infrastructure failure; a `ValidationIssue` is a normal outcome. Conflating them would confuse error handling. |
 | **`enabled` defaults to `True`** | Opt-in disable (override to `False`) is safer than opt-in enable. A rule that forgets to return `True` would silently skip validation. |
 | **Identity in immutable `ValidationRuleMetadata`** | A single frozen identity value is versioned, observable, and safe to embed in result records. Legacy identity properties remain as read-through wrappers, so no caller breaks. |

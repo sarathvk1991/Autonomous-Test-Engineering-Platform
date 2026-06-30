@@ -77,6 +77,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
+from requirement_intelligence.validation.models.validation_issue import ValidationIssue
 from requirement_intelligence.validation.validation_rule_layer import (
     LAYER_ORDER,
     ValidationLayer,
@@ -232,7 +233,7 @@ class ValidationRule(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def validate(self, response: Any) -> list[Any]:
+    def validate(self, response: Any) -> list[ValidationIssue]:
         """Evaluate this rule against *response* and return findings.
 
         This method is the sole place where validation logic lives.  It must
@@ -242,19 +243,19 @@ class ValidationRule(ABC):
         Parameters
         ----------
         response:
-            The AI response to evaluate.  The exact type is determined by the
-            canonical models introduced in the next task.  Rules must treat
-            *response* as **read-only** and must not modify it.
+            The analysed response to evaluate (an
+            :class:`~requirement_intelligence.analysis.analysis_models.AnalysisResult`
+            carrier supplied by the pipeline).  Rules must treat *response* as
+            **read-only** and must not modify it.  It is typed ``Any`` here so the
+            rule contract does not depend on the analysis layer's concrete shape.
 
         Returns
         -------
-        list[Any]
-            An ordered list of findings.  An empty list means this rule
-            observed no condition worth recording.
-
-            The concrete element type will be ``ValidationIssue`` once the
-            canonical models are defined (next task).  Until then, ``Any``
-            acts as the open placeholder to preserve a stable signature.
+        list[ValidationIssue]
+            An ordered list of canonical
+            :class:`~requirement_intelligence.validation.models.validation_issue.ValidationIssue`
+            findings.  An empty list means this rule observed no condition worth
+            recording.
 
         Notes
         -----

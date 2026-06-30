@@ -24,11 +24,20 @@ Design constraints
 from __future__ import annotations
 
 import dataclasses
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from requirement_intelligence.analysis.analysis_models import AnalysisResult
+from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.validation.models import (
+    ValidationIssue,
+    ValidationResult,
+    ValidationSeverity,
+    ValidationVerdict,
+)
 from requirement_intelligence.validation.validation_exceptions import (
     ValidationFrameworkError,
     ValidationPipelineError,
@@ -52,12 +61,57 @@ from requirement_intelligence.validation.validation_rule_metadata import (
     DEFAULT_RULE_VERSION,
     ValidationRuleMetadata,
 )
+from shared.enums.base import ProviderType
 
 # ---------------------------------------------------------------------------
 # Minimal concrete stubs — used exclusively within this test module
 # ---------------------------------------------------------------------------
 
 _PACKAGE_DIR = Path(__file__).resolve().parents[2] / "requirement_intelligence" / "validation"
+
+_TS = datetime(2026, 6, 30, 12, 0, 0, tzinfo=UTC)
+
+
+def _analysis_result(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> AnalysisResult:
+    """Build a minimal, valid AnalysisResult for pipeline tests."""
+    return AnalysisResult(
+        analysis_id=analysis_id,
+        execution_id=execution_id,
+        source_consolidated_id="C-1",
+        prompt_version="1.0",
+        reasoning_contract_version="1.0",
+        provider=ProviderType.GEMINI,
+        model="model",
+        started_at=_TS,
+        completed_at=_TS,
+        duration_ms=1.0,
+        llm_response=LLMResponse(provider=ProviderType.GEMINI, model="model", generated_text="x"),
+    )
+
+
+def _issue(
+    issue_id: str,
+    layer: ValidationLayer,
+    *,
+    severity: ValidationSeverity = ValidationSeverity.ERROR,
+    blocking: bool = False,
+    category: str | None = None,
+) -> ValidationIssue:
+    """Build a minimal, valid ValidationIssue for pipeline tests."""
+    return ValidationIssue(
+        issue_id=issue_id,
+        category=category if category is not None else layer.value,
+        severity=severity,
+        validation_layer=layer,
+        rule_id=f"{layer.value.upper()}-0001",
+        rule_version="1.0.0",
+        message="finding",
+        location="$",
+        recommendation="fix it",
+        blocking=blocking,
+        correlation_id="EX-1",
+        created_at=_TS,
+    )
 
 
 class _StubRule(ValidationRule):
@@ -379,46 +433,66 @@ class TestValidationPipelineOrdering:
         assert len(ordered) == 1
         assert ordered[0].rule_id == "SYNTAX-0001"
 
-    def test_run_empty_registry_returns_empty_list(self) -> None:
+    def test_run_empty_registry_returns_valid_result(self) -> None:
         registry = ValidationRegistry()
         pipeline = ValidationPipeline(registry)
-        result = pipeline.run("any response")
-        assert result == []
+        result = pipeline.run(_analysis_result())
+        assert isinstance(result, ValidationResult)
+        assert result.validation_issues == ()
+        assert result.overall_verdict == ValidationVerdict.PASSED
 
-    def test_run_collects_findings_from_all_rules(self) -> None:
+    def test_run_collects_issues_from_all_rules(self) -> None:
         registry = ValidationRegistry()
         registry.register(
             _StubRule(
-                "TRANSPORT-0001", "T", ValidationLayer.TRANSPORT, findings=["finding-t"]
+                "TRANSPORT-0001",
+                "T",
+                ValidationLayer.TRANSPORT,
+                findings=[_issue("ISS-T", ValidationLayer.TRANSPORT)],
             )
         )
         registry.register(
-            _StubRule("SYNTAX-0001", "S", ValidationLayer.SYNTAX, findings=["finding-s"])
+            _StubRule(
+                "SYNTAX-0001",
+                "S",
+                ValidationLayer.SYNTAX,
+                findings=[_issue("ISS-S", ValidationLayer.SYNTAX)],
+            )
         )
         pipeline = ValidationPipeline(registry)
-        result = pipeline.run("any response")
-        assert "finding-t" in result
-        assert "finding-s" in result
+        result = pipeline.run(_analysis_result())
+        ids = [issue.issue_id for issue in result.validation_issues]
+        assert "ISS-T" in ids
+        assert "ISS-S" in ids
 
     def test_run_respects_rule_execution_order(self) -> None:
-        """Findings must appear in layer order, not registration order."""
+        """Issues must appear in layer order, not registration order."""
         registry = ValidationRegistry()
         # Register SCHEMA before SYNTAX intentionally.
         registry.register(
-            _StubRule("SCHEMA-0001", "Schema", ValidationLayer.SCHEMA, findings=["schema-finding"])
+            _StubRule(
+                "SCHEMA-0001",
+                "Schema",
+                ValidationLayer.SCHEMA,
+                findings=[_issue("ISS-SCHEMA", ValidationLayer.SCHEMA)],
+            )
         )
         registry.register(
             _StubRule(
-                "SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX, findings=["syntax-finding"]
+                "SYNTAX-0001",
+                "Syntax",
+                ValidationLayer.SYNTAX,
+                findings=[_issue("ISS-SYNTAX", ValidationLayer.SYNTAX)],
             )
         )
         pipeline = ValidationPipeline(registry)
-        result = pipeline.run("response")
+        result = pipeline.run(_analysis_result())
+        ids = [issue.issue_id for issue in result.validation_issues]
         # SYNTAX layer precedes SCHEMA layer.
-        assert result.index("syntax-finding") < result.index("schema-finding")
+        assert ids.index("ISS-SYNTAX") < ids.index("ISS-SCHEMA")
 
     def test_run_passes_response_to_every_rule(self) -> None:
-        """Each rule must receive the same response object."""
+        """Each rule must receive the same AnalysisResult object."""
         received: list[Any] = []
 
         class _CapturingRule(ValidationRule):
@@ -442,20 +516,26 @@ class TestValidationPipelineOrdering:
         registry.register(_CapturingRule("SYNTAX-0001", ValidationLayer.SYNTAX))
         pipeline = ValidationPipeline(registry)
 
-        sentinel = object()
-        pipeline.run(sentinel)
+        analysis = _analysis_result()
+        pipeline.run(analysis)
 
-        assert received == [sentinel, sentinel]
+        assert received == [analysis, analysis]
 
-    def test_run_does_not_modify_response(self) -> None:
-        """The pipeline must not mutate the response object."""
+    def test_run_preserves_original_analysis_result(self) -> None:
+        """The pipeline preserves the exact AnalysisResult on the result."""
         registry = ValidationRegistry()
         registry.register(_StubRule("SYNTAX-0001", "S", ValidationLayer.SYNTAX))
         pipeline = ValidationPipeline(registry)
 
-        response = {"key": "original_value"}
-        pipeline.run(response)
-        assert response == {"key": "original_value"}
+        analysis = _analysis_result()
+        result = pipeline.run(analysis)
+        assert result.analysis_result is analysis
+
+    def test_run_rejects_non_analysis_result(self) -> None:
+        registry = ValidationRegistry()
+        pipeline = ValidationPipeline(registry)
+        with pytest.raises(ValidationPipelineError):
+            pipeline.run("not an analysis result")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -767,7 +847,7 @@ class TestPipelineLifecycle:
         registry = ValidationRegistry()
         registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
         pipeline = ValidationPipeline(registry)
-        pipeline.run("response")
+        pipeline.run(_analysis_result())
         assert pipeline.state is PipelineState.COMPLETED
 
     def test_pipeline_failed_after_rule_raises(self) -> None:
@@ -785,20 +865,28 @@ class TestPipelineLifecycle:
         registry.register(_ExplodingRule())
         pipeline = ValidationPipeline(registry)
         with pytest.raises(ValidationRuleError, match="boom"):
-            pipeline.run("response")
+            pipeline.run(_analysis_result())
         assert pipeline.state is PipelineState.FAILED
 
     def test_state_does_not_change_findings(self) -> None:
         """Re-running after COMPLETED yields identical findings (state is inert)."""
         registry = ValidationRegistry()
         registry.register(
-            _StubRule("SYNTAX-0001", "S", ValidationLayer.SYNTAX, findings=["f"])
+            _StubRule(
+                "SYNTAX-0001",
+                "S",
+                ValidationLayer.SYNTAX,
+                findings=[_issue("ISS-1", ValidationLayer.SYNTAX)],
+            )
         )
         pipeline = ValidationPipeline(registry)
-        first = pipeline.run("response")
+        analysis = _analysis_result()
+        first = pipeline.run(analysis)
         assert pipeline.state is PipelineState.COMPLETED
-        second = pipeline.run("response")
-        assert first == second == ["f"]
+        second = pipeline.run(analysis)
+        first_ids = [i.issue_id for i in first.validation_issues]
+        second_ids = [i.issue_id for i in second.validation_issues]
+        assert first_ids == second_ids == ["ISS-1"]
 
     def test_invalid_registry_leaves_pipeline_unbuilt(self) -> None:
         with pytest.raises(ValidationPipelineError):

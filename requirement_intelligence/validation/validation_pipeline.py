@@ -3,8 +3,9 @@
 The ValidationPipeline is the single point of execution for the Response
 Validation Layer.  It receives a
 :class:`~requirement_intelligence.validation.validation_registry.ValidationRegistry`,
-asks it for the ordered set of enabled rules, invokes each rule against the AI
-response, and collects the findings.
+asks it for the ordered set of enabled rules, invokes each rule against the
+analysed response, collects the findings, and assembles them into the canonical
+:class:`~requirement_intelligence.validation.models.validation_result.ValidationResult`.
 
 Design notes
 ------------
@@ -27,17 +28,21 @@ Design notes
   finding set.  The current implementation is sequential; the signature and
   return contract are stable for a future concurrent implementation.
 
-* **Fail Fast (§3.1).**  Foundational layers (Transport, Syntax, Schema,
-  Structural) are *progression-stopping* when they produce blocking findings.
-  The pipeline provides the mechanism to check for blocking findings after
-  each layer and halt accordingly.  The logic that classifies a finding as
-  blocking lives in the canonical models (next task); the pipeline wires the
-  halt behaviour once those models are available.
+* **Derivation, not judgement.**  Assembling the
+  :class:`~requirement_intelligence.validation.models.validation_summary.ValidationSummary`,
+  the overall verdict, and the run health is pure *derivation* over the issues
+  the rules already produced — it rolls findings up, it does not decide
+  trustworthiness.  The verdict follows "highest severity wins" exactly as the
+  architecture mandates (§6, §8): any ``CRITICAL`` ⇒ ``BLOCKED``; else any
+  ``ERROR`` ⇒ ``FAILED``; else any ``WARNING`` ⇒ ``PASSED_WITH_WARNINGS``; else
+  ``PASSED``.
 
-* **No ValidationResult yet.**  This task establishes the framework skeleton.
-  The canonical output type (ValidationResult) and finding type
-  (ValidationIssue) are defined in the next task.  The pipeline's ``run()``
-  method therefore returns ``list[Any]`` as a stable placeholder signature.
+* **ValidationResult is the permanent contract.**  :meth:`ValidationPipeline.run`
+  *always* returns a fully-populated ``ValidationResult`` — including when no
+  rules are registered or zero issues are produced.  An empty result is a valid
+  execution, not a placeholder: its summary, statistics, and framework metadata
+  are still populated and its verdict is ``PASSED``.  There are no placeholder
+  return types anywhere in the framework.
 
 Relationship to other frameworks
 ---------------------------------
@@ -51,12 +56,30 @@ The ValidationPipeline is the structural equivalent of:
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Sequence
+from datetime import datetime
 from enum import Enum
-from typing import Any
 
+from requirement_intelligence.analysis.analysis_models import AnalysisResult
+from requirement_intelligence.validation.models import (
+    FRAMEWORK_VERSION,
+    PIPELINE_VERSION,
+    REGISTRY_VERSION,
+    ValidationConfiguration,
+    ValidationFrameworkMetadata,
+    ValidationHealth,
+    ValidationIssue,
+    ValidationResult,
+    ValidationSeverity,
+    ValidationStatistics,
+    ValidationSummary,
+    ValidationVerdict,
+)
 from requirement_intelligence.validation.validation_exceptions import ValidationPipelineError
 from requirement_intelligence.validation.validation_registry import ValidationRegistry
 from requirement_intelligence.validation.validation_rule import ValidationRule
+from shared.utils.ids import new_id, utc_now
 
 
 class PipelineState(Enum):
@@ -194,55 +217,208 @@ class ValidationPipeline:
     # Execution
     # ------------------------------------------------------------------
 
-    def run(self, response: Any) -> list[Any]:
-        """Execute all enabled rules against *response* and collect findings.
+    def run(
+        self,
+        analysis_result: AnalysisResult,
+        configuration: ValidationConfiguration | None = None,
+    ) -> ValidationResult:
+        """Validate *analysis_result* and return the canonical ``ValidationResult``.
 
-        Rules are executed in the order returned by :meth:`get_ordered_rules`.
-        Each rule's findings are appended to the result list in the order they
-        are produced.  The pipeline does not interpret findings; it collects
-        and returns them.
+        Rules are executed in the order returned by :meth:`get_ordered_rules`,
+        each receiving *analysis_result* unchanged.  Their issues are collected,
+        a summary and verdict are derived, telemetry is recorded, and everything
+        is assembled into a single immutable
+        :class:`~requirement_intelligence.validation.models.validation_result.ValidationResult`.
+
+        This is the **permanent framework contract**.  The method *always*
+        returns a fully-populated ``ValidationResult``:
+
+        * With **no rules registered** or **zero issues produced**, the result is
+          still valid — not a placeholder.  Its summary, statistics, and
+          framework metadata are populated, and its verdict is ``PASSED``.
+        * The original *analysis_result* is preserved on the result, unaltered.
+
+        The pipeline never inspects or mutates *analysis_result*; it passes it to
+        each rule and carries it through to the result.
 
         Future evolution
         ----------------
-        * **Fail Fast** — once canonical models are available (next task), the
-          pipeline will inspect each finding for its blocking indicator and halt
-          progression when a foundational layer raises a blocking issue.
-        * **Parallel execution** — rules within the same layer may be evaluated
+        * **Fail Fast** — a future revision may inspect each issue's ``blocking``
+          indicator and halt progression after a foundational blocking issue.
+          That is a behavioural change, deferred to a later task; today every
+          enabled rule runs.
+        * **Parallel execution** — rules within a layer may be evaluated
           concurrently.  Rule Independence guarantees this is safe.
-        * **ValidationResult** — the return type will change from ``list[Any]``
-          to a ``ValidationResult`` aggregate once the canonical models are
-          defined.
 
         Parameters
         ----------
-        response:
-            The AI response to validate.  Passed unchanged to each rule.  The
-            pipeline never inspects or modifies *response*.
+        analysis_result:
+            The analysed AI response to validate.  Passed unchanged to each rule
+            and preserved on the returned result.
+        configuration:
+            The execution policy that governs the run.  When omitted, a
+            fully-defaulted :class:`ValidationConfiguration` is used.
 
         Returns
         -------
-        list[Any]
-            A flat, ordered list of findings collected from every rule.  An
-            empty list means no rule raised any finding.  The concrete element
-            type will be ``ValidationIssue`` once canonical models are defined.
+        ValidationResult
+            The single, immutable output of the framework — always populated.
 
         Raises
         ------
         ValidationPipelineError
-            If an unexpected error occurs during rule execution that cannot be
-            attributed to a specific rule's contract violation.
+            If *analysis_result* is not an :class:`AnalysisResult` instance.
+
+        Any exception raised by a rule propagates unchanged after the pipeline
+        records the :attr:`PipelineState.FAILED` state — a rule contract failure
+        is an infrastructure error, never a validation verdict.
         """
+        if not isinstance(analysis_result, AnalysisResult):
+            raise ValidationPipelineError(
+                f"ValidationPipeline.run requires an AnalysisResult instance; "
+                f"got {type(analysis_result).__name__!r}."
+            )
+
+        config = configuration if configuration is not None else ValidationConfiguration()
+
         self._state = PipelineState.RUNNING
+        started_at = utc_now()
         try:
-            findings: list[Any] = []
+            issues: list[ValidationIssue] = []
+            rules_executed = 0
+            rules_passed = 0
+            rules_failed = 0
             for rule in self.get_ordered_rules():
-                rule_findings = rule.validate(response)
-                findings.extend(rule_findings)
+                rules_executed += 1
+                rule_findings = rule.validate(analysis_result)
+                if rule_findings:
+                    rules_failed += 1
+                    issues.extend(rule_findings)
+                else:
+                    rules_passed += 1
         except BaseException:
             # State is observational; record the failure and re-raise the
             # original exception unchanged so existing error handling is
             # unaffected.
             self._state = PipelineState.FAILED
             raise
+        completed_at = utc_now()
+
+        result = self._assemble_result(
+            analysis_result=analysis_result,
+            configuration=config,
+            issues=issues,
+            rules_executed=rules_executed,
+            rules_passed=rules_passed,
+            rules_failed=rules_failed,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
         self._state = PipelineState.COMPLETED
-        return findings
+        return result
+
+    # ------------------------------------------------------------------
+    # Result assembly (pure derivation — no validation judgement)
+    # ------------------------------------------------------------------
+
+    def _assemble_result(
+        self,
+        *,
+        analysis_result: AnalysisResult,
+        configuration: ValidationConfiguration,
+        issues: list[ValidationIssue],
+        rules_executed: int,
+        rules_passed: int,
+        rules_failed: int,
+        started_at: datetime,
+        completed_at: datetime,
+    ) -> ValidationResult:
+        """Assemble the canonical ``ValidationResult`` from collected issues.
+
+        Pure derivation: rolls up the issues into a summary, derives the verdict
+        by "highest severity wins", records telemetry, and stamps framework
+        provenance.  No trustworthiness decision is taken here.
+        """
+        summary = self._derive_summary(issues)
+        verdict = self._derive_verdict(issues)
+        duration_ms = (completed_at - started_at).total_seconds() * 1000.0
+
+        statistics = ValidationStatistics(
+            validation_duration_ms=duration_ms,
+            rules_executed=rules_executed,
+            rules_passed=rules_passed,
+            rules_failed=rules_failed,
+            started_at=started_at,
+            completed_at=completed_at,
+            validator_version=FRAMEWORK_VERSION,
+            validation_contract_version=configuration.validation_contract_version,
+            execution_id=analysis_result.execution_id,
+        )
+
+        framework_metadata = ValidationFrameworkMetadata(
+            framework_version=FRAMEWORK_VERSION,
+            validation_contract_version=configuration.validation_contract_version,
+            pipeline_version=PIPELINE_VERSION,
+            registry_version=REGISTRY_VERSION,
+        )
+
+        return ValidationResult(
+            validation_id=new_id(),
+            execution_id=analysis_result.execution_id,
+            analysis_id=analysis_result.analysis_id,
+            analysis_result=analysis_result,
+            validation_summary=summary,
+            validation_statistics=statistics,
+            validation_issues=tuple(issues),
+            validation_configuration=configuration,
+            validation_framework_metadata=framework_metadata,
+            overall_verdict=verdict,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+
+    @staticmethod
+    def _derive_summary(issues: Sequence[ValidationIssue]) -> ValidationSummary:
+        """Roll the issue collection up into a derived summary (counts only)."""
+        info = sum(1 for i in issues if i.severity == ValidationSeverity.INFO)
+        warning = sum(1 for i in issues if i.severity == ValidationSeverity.WARNING)
+        error = sum(1 for i in issues if i.severity == ValidationSeverity.ERROR)
+        critical = sum(1 for i in issues if i.severity == ValidationSeverity.CRITICAL)
+        blocking = sum(1 for i in issues if i.blocking)
+        category_counts = dict(Counter(i.category for i in issues))
+
+        return ValidationSummary(
+            total_issues=len(issues),
+            info_count=info,
+            warning_count=warning,
+            error_count=error,
+            critical_count=critical,
+            blocking_issue_count=blocking,
+            category_counts=category_counts,
+            overall_health=ValidationPipeline._derive_health(
+                critical=critical, error=error, warning=warning
+            ),
+        )
+
+    @staticmethod
+    def _derive_verdict(issues: Sequence[ValidationIssue]) -> ValidationVerdict:
+        """Derive the overall verdict by "highest severity wins" (§6, §8)."""
+        severities = {i.severity for i in issues}
+        if ValidationSeverity.CRITICAL in severities:
+            return ValidationVerdict.BLOCKED
+        if ValidationSeverity.ERROR in severities:
+            return ValidationVerdict.FAILED
+        if ValidationSeverity.WARNING in severities:
+            return ValidationVerdict.PASSED_WITH_WARNINGS
+        return ValidationVerdict.PASSED
+
+    @staticmethod
+    def _derive_health(*, critical: int, error: int, warning: int) -> ValidationHealth:
+        """Map the highest severity present onto the run's qualitative health."""
+        if critical > 0:
+            return ValidationHealth.CRITICAL
+        if error > 0:
+            return ValidationHealth.DEGRADED
+        if warning > 0:
+            return ValidationHealth.WARNING
+        return ValidationHealth.HEALTHY

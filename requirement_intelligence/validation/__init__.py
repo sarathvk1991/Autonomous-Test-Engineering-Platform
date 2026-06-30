@@ -39,6 +39,21 @@ Governing specifications
 
 from __future__ import annotations
 
+from requirement_intelligence.validation.models import (
+    DEFAULT_VALIDATION_CONTRACT_VERSION,
+    FRAMEWORK_VERSION,
+    PIPELINE_VERSION,
+    REGISTRY_VERSION,
+    ValidationConfiguration,
+    ValidationFrameworkMetadata,
+    ValidationHealth,
+    ValidationIssue,
+    ValidationResult,
+    ValidationSeverity,
+    ValidationStatistics,
+    ValidationSummary,
+    ValidationVerdict,
+)
 from requirement_intelligence.validation.validation_exceptions import (
     ValidationFrameworkError,
     ValidationPipelineError,
@@ -63,16 +78,29 @@ from requirement_intelligence.validation.validation_rule_metadata import (
 )
 
 __all__ = [
+    "DEFAULT_VALIDATION_CONTRACT_VERSION",
+    "FRAMEWORK_VERSION",
     "LAYER_ORDER",
+    "PIPELINE_VERSION",
+    "REGISTRY_VERSION",
     "PipelineState",
     "RegistryState",
+    "ValidationConfiguration",
     "ValidationFrameworkError",
+    "ValidationFrameworkMetadata",
+    "ValidationHealth",
+    "ValidationIssue",
     "ValidationLayer",
     "ValidationPipeline",
     "ValidationPipelineError",
     "ValidationRegistry",
     "ValidationRegistryError",
+    "ValidationResult",
     "ValidationRule",
     "ValidationRuleError",
     "ValidationRuleMetadata",
+    "ValidationSeverity",
+    "ValidationStatistics",
+    "ValidationSummary",
+    "ValidationVerdict",
 ]
