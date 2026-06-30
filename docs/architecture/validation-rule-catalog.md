@@ -355,8 +355,11 @@ Response Validation Architecture §4). Every rule belongs to exactly one layer.
   interpreted without ambiguity.
 - **Reads.** The **normalized representation** (`ParsedResponse`) created once by
   the Response Normalization Layer (Response Normalization Contract). Syntax rules
-  **read** that representation — its normalization outcome and syntactic
-  observations — they never parse or normalize the response themselves.
+  **read** that representation — its **Normalization Outcome** and **Normalization
+  Observations** — they never parse or normalize the response themselves. Those
+  outcomes and observations are **facts**; a Syntax rule may *decide*, by reading a
+  fact, to raise a `ValidationIssue`, but the fact itself is never an issue
+  (Response Normalization Contract §10).
 - **Responsibilities.** Detect a not-well-formed (malformed) response, ambiguous
   or duplicated field identifiers, and character-encoding integrity problems.
 - **Typical validations.** The normalization outcome reports a single,
@@ -373,12 +376,12 @@ Response Validation Architecture §4). Every rule belongs to exactly one layer.
 > **Architectural Decision — Syntax validates structure; it does not recover it.**
 > The transition from text to structure happens **once**, in the Response
 > Normalization Layer, before the pipeline runs. Every layer from Syntax onward
-> reads the **same** `ParsedResponse`: the Syntax layer reads its normalization
-> outcome and observations, and Schema, Structural, Content, Evidence,
-> Traceability, Reasoning, and Business Rule read its normalized structure. No
-> validation layer parses, and no validation layer normalizes — which is what lets
-> the layers stay independent (§16) and the "is it well-formed?" concern stay owned
-> by exactly one layer (§8).
+> reads the **same** `ParsedResponse` (a Shared Platform Artifact): the Syntax
+> layer reads its Normalization Outcome and Normalization Observations, and Schema,
+> Structural, Content, Evidence, Traceability, Reasoning, and Business Rule read its
+> normalized structure. No validation layer parses, and no validation layer
+> normalizes — which is what lets the layers stay independent (§16) and the "is it
+> well-formed?" concern stay owned by exactly one layer (§8).
 
 ### 8.3 Schema
 
@@ -1247,6 +1250,11 @@ The philosophy of the validation rule catalog, distilled:
 | **Lifecycle status** | A rule's state: Draft, Approved, Implemented, Deprecated, or Retired (§7). |
 | **Rule Catalog Version** | The independent version of this catalog as a whole, governing the set of rules and their governance (§21). |
 | **Catalog** | The complete governed set of validation rules defined by this document. |
+| **ParsedResponse** | The canonical, provider- and format-independent normalized structure of the response; a Shared Platform Artifact created once by the Response Normalization Layer and read by every layer from Syntax onward (§8.2; Response Normalization Contract). |
+| **Response Normalization Layer** | The permanent subsystem that creates the `ParsedResponse` once, before validation; no validation rule parses or normalizes (§8.2; Response Normalization Contract). |
+| **Normalization Outcome** | A normalized fact — `NORMALIZED` / `MALFORMED` — the Syntax layer judges; never itself a verdict (Response Normalization Contract §9). |
+| **Normalization Observation** | A recorded, un-judged fact on the `ParsedResponse` (e.g. a duplicate identifier); never a severity, verdict, or `ValidationIssue` until a rule decides to raise one (Response Normalization Contract §8, §10). |
+| **Shared Platform Artifact** | An artifact produced once and shared read-only across the platform; `ParsedResponse` is one — validation is its first consumer, not its owner (Response Normalization Contract §7). |
 
 ## Appendix B — Conformance Checklist
 

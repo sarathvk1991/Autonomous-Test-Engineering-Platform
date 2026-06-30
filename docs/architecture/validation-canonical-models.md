@@ -72,7 +72,7 @@ one cohesive **result aggregate** rooted at the `ValidationResult`.
 
 | Model | Role | One-line meaning |
 | ----- | ---- | ---------------- |
-| **ParsedResponse** | Consumed representation | The single, immutable, provider- and format-independent normalized structure of the response; the substrate every validation layer reads (§8). |
+| **ParsedResponse** | Consumed representation (Shared Platform Artifact) | The single, immutable, provider- and format-independent normalized structure of the response; the substrate every validation layer — and every other platform consumer — reads (§8). |
 | **ValidationIssue** | Atomic finding | One objective, immutable observation about the response. |
 | **ValidationSummary** | Derived overview | A roll-up of all issues; never authored, only derived. |
 | **ValidationStatistics** | Operational metrics | Observational facts about the run; never affect the verdict. |
@@ -80,13 +80,15 @@ one cohesive **result aggregate** rooted at the `ValidationResult`.
 | **ValidationConfiguration** | Behaviour input | Declares which layers, thresholds, and observability govern a run. |
 
 > **Architectural Decision**
-> **`ParsedResponse` is a Core Canonical Model, not a Syntax-specific one.** It is
-> a peer of `LLMResponse`, `AnalysisResult`, and the validation result models, and
-> is **consumed by multiple validation layers** — the Syntax layer reads its
-> normalization outcome, and Schema, Structural, Content, Evidence, Traceability,
-> Reasoning, and Business Rule all read its normalized structure. Syntax is merely
-> its **first** consumer, not its owner. It is created once, before validation, by
-> the **Response Normalization Layer** (Response Normalization Contract); the
+> **`ParsedResponse` is a Core Canonical Model and a Shared Platform Artifact, not
+> a Syntax-specific or Validation-specific one.** It is a peer of `LLMResponse`,
+> `AnalysisResult`, and the validation result models, and is **consumed across the
+> platform** — within validation the Syntax layer reads its Normalization Outcome
+> and every later layer reads its normalized structure, and beyond validation
+> Requirement Normalization, Feature Generation, Test Generation, AI Evaluation,
+> Analytics, and future components read the same instance. Validation is merely its
+> **first** consumer, not its owner. It is created once, before any consumer runs,
+> by the **Response Normalization Layer** (Response Normalization Contract); the
 > models here govern *what it holds*, never *how it is created*.
 
 ### 2.1 Relationship diagram
@@ -304,66 +306,82 @@ shapes *how thoroughly* validation runs; it never decides *what is trustworthy*.
 ## 8. ParsedResponse
 
 The **ParsedResponse** is the canonical **structural representation of an AI
-response** — the single, normalized view of the response's structure that every
-validation layer consumes. It is the substrate of validation: the Syntax layer
-reads its normalization outcome, and every later layer reads its normalized
-structure.
+response** — the single, normalized view of the response's structure. It is a
+**Shared Platform Artifact**: validation is its **first** consumer, not its owner.
+The Syntax layer reads its **Normalization Outcome**, every later validation layer
+reads its **normalized structure**, and every other platform consumer (Requirement
+Normalization, Feature Generation, Test Generation, AI Evaluation, Analytics, and
+future components) reads the **same instance**.
 
 **Purpose.** Carry the one normalized structure of the response — together with
-the normalization outcome and the syntactic observations a later layer needs — so
-that **validation layers read structure; they never recover it.**
+the Normalization Outcome and the Normalization Observations a consumer needs — so
+that **consumers read structure; they never recover it.**
 
-**Creation.** A ParsedResponse is *created once*, before validation begins, by the
+**Creation.** A ParsedResponse is *created once*, before any consumer runs, by the
 **Response Normalization Layer** (governed by the Response Normalization
 Contract). These canonical models govern *what it holds*; the Response
-Normalization Contract governs *how it is created*. No validation layer creates,
-recovers, or re-derives it.
+Normalization Contract governs *how it is created, owned, shared, and versioned*.
+No consumer creates, recovers, or re-derives it.
 
-**Lifecycle.** Created once from the response's normalized text, **immutable**
-thereafter, and **read-only** for every rule. It is never mutated and never
-re-created during a run.
+**Lifecycle.** Created exactly once from the response's normalized text,
+**immutable** thereafter, **shared** across the platform, **never copied, never
+mutated, never recreated** (Response Normalization Contract §6).
 
 **Invariants.**
 - **Immutable after creation** — no attribute changes once it exists.
+- **Shared, single instance** — every consumer receives the identical instance;
+  none reparses `generated_text`.
 - **Provider-independent** — it holds no provider payloads or provider strings.
 - **Format-independent** — it represents normalized structure, **not** a specific
   serialization format.
-- **Observation-only** — it records the structure that is present; it never
-  repairs, completes, or judges it.
+- **Observation-only** — it records the structure and facts that are present; it
+  never repairs, completes, or judges them.
 
 **Relationships.** A ParsedResponse is a normalized derivative of the response's
-`generated_text`; it is reached by rules via the analysis result under
+`generated_text`; it is reached by consumers via the analysis result under
 validation; it is the structural counterpart of the execution-outcome
-normalization already established for the Transport layer.
+normalization already established for the Transport layer. Its representation is
+versioned by the **ParsedResponse Version**; the meaning of normalization is
+versioned by the **Normalization Contract Version** (Response Normalization
+Contract §12).
 
 ### 8.1 Conceptual attributes
 
 | Attribute | Meaning |
 | --------- | ------- |
-| **Normalization Outcome** | A normalized, provider-independent fact: whether the response was `NORMALIZED` (well-formed structure recovered) or `MALFORMED` (no well-formed structure). The fact the Syntax layer validates. |
-| **Normalized Structure** | When `NORMALIZED`: the format-neutral structural view (objects, arrays, scalars, identifiers) that Schema, Structural, Content, Evidence, Traceability, Reasoning, and Business Rule layers read. |
-| **Syntactic Observations** | Normalized facts a structural view alone would lose — e.g. duplicate field identifiers within an object, and character-encoding integrity — captured for the Syntax layer to judge. |
+| **Normalization Outcome** | A normalized, provider-independent **fact**: whether the response was `NORMALIZED` (well-formed structure recovered) or `MALFORMED` (no well-formed structure). The fact the Syntax layer judges. |
+| **Normalized Structure** | When `NORMALIZED`: the format-neutral structural view (objects, arrays, scalars, identifiers) that Schema, Structural, Content, Evidence, Traceability, Reasoning, and Business Rule layers — and every other platform consumer — read. |
+| **Normalization Observations** | Recorded, **un-judged facts** a structural view alone would lose — e.g. duplicate field identifiers within an object, and character-encoding observations — captured for a consumer to interpret. They carry no severity and no verdict, and are **never** a `ValidationIssue` (Response Normalization Contract §8, §10). |
 | **Source Reference** | A link back to the response's preserved original `generated_text`, so the normalized view never replaces the original. |
 
 > **Architectural Decision**
 > **`ParsedResponse` represents normalized structure, not a specific serialization
 > format.** The structure a response expresses — its objects, arrays, scalars, and
 > identifiers — is independent of the format used to express it. A future
-> structured format normalizes into the *same* `ParsedResponse`, and no validation
-> layer changes. Binding the model to one format would make every layer
-> format-aware and defeat the purpose of a canonical representation.
+> structured format normalizes into the *same* `ParsedResponse`, and no consumer
+> changes. Binding the model to one format would make every consumer format-aware
+> and defeat the purpose of a canonical representation.
+
+> **Architectural Decision**
+> **`ParsedResponse` is a Shared Platform Artifact, not a Validation artifact.**
+> It is produced once by the Response Normalization Layer and read, unchanged, by
+> the whole platform. Validation's primacy in time confers no ownership; no
+> consumer may shape it to its own needs. It is governed by these models (its
+> shape) and the Response Normalization Contract (its creation, ownership, sharing,
+> and versioning).
 
 > **Principle**
 > The ParsedResponse is **created once and read many times**. The Response
 > Normalization Layer owns its *creation*; the ParsedResponse owns its
-> *information*; the Validation Framework *consumes* that information. These three
-> roles never merge — which is exactly what keeps every validation rule
-> independent and free of any need to recover structure for itself.
+> *information*; consumers *consume* that information. These three roles never
+> merge — which is exactly what keeps every validation rule independent and free of
+> any need to recover structure for itself. **Normalization records facts;
+> validation interprets facts** (Response Normalization Contract §10).
 
 > **Example**
 > Normalization Outcome `NORMALIZED`; Normalized Structure a document with an
 > executive-summary object, a requirements array, a risks array, and a
-> recommendations array; Syntactic Observations record that no duplicate field
+> recommendations array; Normalization Observations record that no duplicate field
 > identifier occurred and the encoding is intact; Source Reference points to the
 > preserved `generated_text`. The Syntax layer reads the outcome and observations;
 > the Schema layer reads the structure. Nothing about this representation changes
@@ -567,8 +585,9 @@ A Response Validator implementation conforms to these canonical models only if
 every box can be checked:
 
 - [ ] Models remain implementation-independent (no language, framework, storage, or serialization assumptions).
-- [ ] ParsedResponse is a Core Canonical Model, created once before validation, immutable, provider- and format-independent, and observation-only.
-- [ ] No validation layer creates, recovers, or re-derives the ParsedResponse; every layer reads it.
+- [ ] ParsedResponse is a Core Canonical Model and a Shared Platform Artifact, created once before any consumer runs, immutable, shared, provider- and format-independent, and observation-only.
+- [ ] No consumer creates, recovers, re-derives, copies, mutates, or reparses the ParsedResponse; every consumer reads the same instance.
+- [ ] Normalization Observations and the Normalization Outcome are un-judged facts — they carry no severity or verdict and are never a ValidationIssue.
 - [ ] ValidationIssue is immutable, with severity fixed at creation.
 - [ ] ValidationResult is immutable and is the sole output of validation.
 - [ ] The original response is preserved unchanged within the result.

@@ -25,6 +25,17 @@
 > replaces any format- or mechanism-specific framing, and creation
 > (Response Normalization Layer), information (`ParsedResponse`), and consumption
 > (Validation Framework) are treated as three separate concerns.
+>
+> The Response Normalization architecture has since been **frozen** (Response
+> Normalization Contract §17). Three further refinements that post-date this review
+> and govern its conclusions: (1) `ParsedResponse` is a **Shared Platform Artifact**
+> — validation is its *first* consumer, not its owner, and Requirement
+> Normalization, Feature Generation, Test Generation, AI Evaluation, and Analytics
+> read the same instance; (2) **normalization produces facts, validation produces
+> judgments** — a Normalization Outcome or Normalization Observation is never a
+> severity, verdict, or `ValidationIssue`; (3) normalization carries **two
+> independent versions** — the **Normalization Contract Version** (semantics) and
+> the **ParsedResponse Version** (representation shape).
 
 ---
 
@@ -138,7 +149,7 @@ The brief listed several concerns; each belongs to exactly one layer:
 | ----- | ----------------- | ----- | ------------------ |
 | **Response Normalization** *(not a validation layer)* | Creating the normalized representation once | `LLMResponse.generated_text` | Any judgement — it validates nothing |
 | **Transport** | Delivery-level guarantees about the execution | `llm_response` presence, `generated_text` emptiness, `execution_status` | Anything about the *content* of the text |
-| **Syntax** | Well-formedness of the response as structured data | the **normalized representation** → its **normalization outcome** + syntactic observations | Whether the structure matches an expected shape |
+| **Syntax** | Well-formedness of the response as structured data | the **normalized representation** → its **Normalization Outcome** + **Normalization Observations** | Whether the structure matches an expected shape |
 | **Schema** | Conformance of the normalized structure to the expected, versioned shape | the **normalized structure** (fields, types, enums, required collections) | Field *meaning* or *quality* |
 | **Structural** | Presence/composition of required containers & relationships | the **normalized structure** (top-level sections, nesting) | The *content* inside containers |
 | **Content** | Field-level value validity (presence, range, duplication) | the **normalized structure** (individual values) | Groundedness, traceability, coherence |
@@ -232,10 +243,10 @@ The refinement separates three concerns with three owners:
 
 | Aspect | Specification |
 | ------ | ------------- |
-| **Responsibility** | Hold the single, normalized structural view of `generated_text`, the **normalization outcome**, and the **syntactic observations** needed by Syntax — so that validators *read*, never *recover structure*. |
-| **Normalization outcome** | A normalized enum, e.g. `NORMALIZED` / `MALFORMED` — analogous to `ExecutionStatus`. This is the fact `SYNTAX-0001` reads. |
-| **Structure** | When `NORMALIZED`: a normalized structural tree (objects/arrays/scalars/identifiers) — the input Schema/Structural/Content/… read. **Format-neutral by definition.** |
-| **Syntactic observations** | Normalized facts a naïve structural view would lose — e.g. **duplicate field identifiers** (a normalized structure silently de-duplicates), needed by `SYNTAX-0002`; and **encoding integrity**, needed by `SYNTAX-0003`. |
+| **Responsibility** | Hold the single, normalized structural view of `generated_text`, the **Normalization Outcome**, and the **Normalization Observations** needed by consumers — so that consumers *read*, never *recover structure*. |
+| **Normalization Outcome** | A normalized enum, e.g. `NORMALIZED` / `MALFORMED` — analogous to `ExecutionStatus`. This is the **fact** `SYNTAX-0001` reads (never itself a verdict). |
+| **Structure** | When `NORMALIZED`: a normalized structural tree (objects/arrays/scalars/identifiers) — the input Schema/Structural/Content/… and every other platform consumer read. **Format-neutral by definition.** |
+| **Normalization Observations** | Recorded, un-judged **facts** a naïve structural view would lose — e.g. **duplicate field identifiers** (a normalized structure silently de-duplicates), needed by `SYNTAX-0002`; and **encoding integrity**, needed by `SYNTAX-0003`. They carry no severity or verdict and are never a `ValidationIssue` (Response Normalization Contract §8, §10). |
 | **Ownership / producer** | The **Response Normalization Layer** — a permanent, first-class component between `LLMResponse` and the Response Validator. Structure recovery is a **format** concern, identical across providers, so it is **not** per-adapter and **not** per-rule logic. |
 | **Carrier** | Recommended: a field on `LLMResponse` (a normalized derivative of `generated_text`, sitting beside `execution_status`). Alternative: on `AnalysisResult`. Either keeps it on the canonical model the rules already receive. |
 | **Lifecycle** | Created **once**, immediately after `generated_text` is available and before validation; **immutable**; **read-only** for every rule; never mutated, never re-derived. |
@@ -269,7 +280,7 @@ independence:
    generated_text (provider-independent text)
         │ Response Normalization Layer — format-level normalization, the ONLY recovery
         ▼
-   ParsedResponse { normalization outcome · structure · syntactic observations }
+   ParsedResponse { Normalization Outcome · structure · Normalization Observations }
         │ read read-only
         ▼
    Syntax rules (normalization outcome)  →  Schema+ rules (structure)
@@ -386,7 +397,7 @@ and layer ownership, and matches the established normalization precedent.
 2. **Normalize once, in the Response Normalization Layer** (post-adapter,
    pre-pipeline), governed by the **Response Normalization Contract**. Structure
    recovery is a format concern, not per-provider and not per-rule logic.
-3. **Design the representation to record syntactic observations** a normalized
+3. **Design the representation to record Normalization Observations** a normalized
    structure loses — at minimum duplicate-identifier occurrences (`SYNTAX-0002`)
    and an encoding-integrity signal (`SYNTAX-0003`).
 4. **Keep it observation-only** — normalize, never repair (no completion, no
