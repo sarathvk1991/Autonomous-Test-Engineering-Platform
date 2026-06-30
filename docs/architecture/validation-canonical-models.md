@@ -60,31 +60,45 @@ implementation.
 > The architecture defines validation **philosophy**. The canonical models define
 > validation **information**. **Implementations must conform to both.** This split
 > lets the information model stay stable while implementations evolve, and lets
-> philosophy stay stable while the information model is extended (§12).
+> philosophy stay stable while the information model is extended (§13).
 
 ---
 
 ## 2. Canonical Models Overview
 
-Validation is described by **five canonical models**. Together they form one
-cohesive aggregate rooted at the `ValidationResult`.
+Validation is described by **six canonical models**. One — the `ParsedResponse`
+— is the normalized **representation validation consumes**; the other five form
+one cohesive **result aggregate** rooted at the `ValidationResult`.
 
 | Model | Role | One-line meaning |
 | ----- | ---- | ---------------- |
+| **ParsedResponse** | Consumed representation | The single, immutable, provider- and format-independent normalized structure of the response; the substrate every validation layer reads (§8). |
 | **ValidationIssue** | Atomic finding | One objective, immutable observation about the response. |
 | **ValidationSummary** | Derived overview | A roll-up of all issues; never authored, only derived. |
 | **ValidationStatistics** | Operational metrics | Observational facts about the run; never affect the verdict. |
 | **ValidationResult** | Canonical output | The single, immutable output of validation; owns everything. |
 | **ValidationConfiguration** | Behaviour input | Declares which layers, thresholds, and observability govern a run. |
 
+> **Architectural Decision**
+> **`ParsedResponse` is a Core Canonical Model, not a Syntax-specific one.** It is
+> a peer of `LLMResponse`, `AnalysisResult`, and the validation result models, and
+> is **consumed by multiple validation layers** — the Syntax layer reads its
+> normalization outcome, and Schema, Structural, Content, Evidence, Traceability,
+> Reasoning, and Business Rule all read its normalized structure. Syntax is merely
+> its **first** consumer, not its owner. It is created once, before validation, by
+> the **Response Normalization Layer** (Response Normalization Contract); the
+> models here govern *what it holds*, never *how it is created*.
+
 ### 2.1 Relationship diagram
 
 ```text
-        ┌───────────────────────────┐
-        │  ValidationConfiguration  │  influences how a run executes
-        └─────────────┬─────────────┘
-                      │ governs (input, not contained)
-                      ▼
+        ┌───────────────────────────┐    ┌───────────────────────────┐
+        │  ValidationConfiguration  │    │      ParsedResponse        │  consumed
+        │  influences how a run runs │    │  the normalized structure  │  representation
+        └─────────────┬─────────────┘    │  every layer reads         │  (created once,
+                      │ governs           └─────────────┬─────────────┘   before the run)
+                      │ (input)                         │ read by every layer (input)
+                      ▼                                 ▼
         ┌───────────────────────────────────────────────┐
         │              ValidationResult                  │  the canonical output
         │                                                │
@@ -103,6 +117,7 @@ cohesive aggregate rooted at the `ValidationResult`.
 
 | Relationship | Meaning |
 | ------------ | ------- |
+| **ParsedResponse → Run** | The normalized representation is an *input* every validation layer reads; it is created once before the run and is not a finding the run produces. |
 | **Configuration → Result** | Configuration is an *input* that shapes the run; it is referenced by the result, not owned as a finding. |
 | **Result contains Issues** | The result is the owner of every issue produced during the run. |
 | **Result contains Summary** | The summary is a derived roll-up the result carries; it cannot exist on its own. |
@@ -286,10 +301,81 @@ shapes *how thoroughly* validation runs; it never decides *what is trustworthy*.
 
 ---
 
-## 8. Model Relationships
+## 8. ParsedResponse
 
-The five models form one aggregate with clear ownership, aggregation, and
-derivation lines.
+The **ParsedResponse** is the canonical **structural representation of an AI
+response** — the single, normalized view of the response's structure that every
+validation layer consumes. It is the substrate of validation: the Syntax layer
+reads its normalization outcome, and every later layer reads its normalized
+structure.
+
+**Purpose.** Carry the one normalized structure of the response — together with
+the normalization outcome and the syntactic observations a later layer needs — so
+that **validation layers read structure; they never recover it.**
+
+**Creation.** A ParsedResponse is *created once*, before validation begins, by the
+**Response Normalization Layer** (governed by the Response Normalization
+Contract). These canonical models govern *what it holds*; the Response
+Normalization Contract governs *how it is created*. No validation layer creates,
+recovers, or re-derives it.
+
+**Lifecycle.** Created once from the response's normalized text, **immutable**
+thereafter, and **read-only** for every rule. It is never mutated and never
+re-created during a run.
+
+**Invariants.**
+- **Immutable after creation** — no attribute changes once it exists.
+- **Provider-independent** — it holds no provider payloads or provider strings.
+- **Format-independent** — it represents normalized structure, **not** a specific
+  serialization format.
+- **Observation-only** — it records the structure that is present; it never
+  repairs, completes, or judges it.
+
+**Relationships.** A ParsedResponse is a normalized derivative of the response's
+`generated_text`; it is reached by rules via the analysis result under
+validation; it is the structural counterpart of the execution-outcome
+normalization already established for the Transport layer.
+
+### 8.1 Conceptual attributes
+
+| Attribute | Meaning |
+| --------- | ------- |
+| **Normalization Outcome** | A normalized, provider-independent fact: whether the response was `NORMALIZED` (well-formed structure recovered) or `MALFORMED` (no well-formed structure). The fact the Syntax layer validates. |
+| **Normalized Structure** | When `NORMALIZED`: the format-neutral structural view (objects, arrays, scalars, identifiers) that Schema, Structural, Content, Evidence, Traceability, Reasoning, and Business Rule layers read. |
+| **Syntactic Observations** | Normalized facts a structural view alone would lose — e.g. duplicate field identifiers within an object, and character-encoding integrity — captured for the Syntax layer to judge. |
+| **Source Reference** | A link back to the response's preserved original `generated_text`, so the normalized view never replaces the original. |
+
+> **Architectural Decision**
+> **`ParsedResponse` represents normalized structure, not a specific serialization
+> format.** The structure a response expresses — its objects, arrays, scalars, and
+> identifiers — is independent of the format used to express it. A future
+> structured format normalizes into the *same* `ParsedResponse`, and no validation
+> layer changes. Binding the model to one format would make every layer
+> format-aware and defeat the purpose of a canonical representation.
+
+> **Principle**
+> The ParsedResponse is **created once and read many times**. The Response
+> Normalization Layer owns its *creation*; the ParsedResponse owns its
+> *information*; the Validation Framework *consumes* that information. These three
+> roles never merge — which is exactly what keeps every validation rule
+> independent and free of any need to recover structure for itself.
+
+> **Example**
+> Normalization Outcome `NORMALIZED`; Normalized Structure a document with an
+> executive-summary object, a requirements array, a risks array, and a
+> recommendations array; Syntactic Observations record that no duplicate field
+> identifier occurred and the encoding is intact; Source Reference points to the
+> preserved `generated_text`. The Syntax layer reads the outcome and observations;
+> the Schema layer reads the structure. Nothing about this representation changes
+> during validation.
+
+---
+
+## 9. Model Relationships
+
+The result models form one aggregate with clear ownership, aggregation, and
+derivation lines; the `ParsedResponse` is the consumed representation that feeds
+the run.
 
 ```text
         ValidationConfiguration   ──influences──►  (a validation run)
@@ -322,37 +408,42 @@ derivation lines.
 
 ---
 
-## 9. Model Lifecycle
+## 10. Model Lifecycle
 
 The models come into being in a fixed conceptual order: configuration precedes
-the run; issues are observed during it; the summary and statistics are produced
-from it; and the result finalises everything.
+the run; the normalized representation is created once before the run; issues are
+observed during it; the summary and statistics are produced from it; and the
+result finalises everything.
 
 ```text
    1. ValidationConfiguration exists  ──  before any validation begins
                  │
                  ▼
-   2. Validation run begins under that configuration
+   2. ParsedResponse is created       ──  normalized once, before the run, by the
+                 │                         Response Normalization Layer (immutable)
+                 ▼
+   3. Validation run begins under that configuration, reading the ParsedResponse
                  │
                  ▼
-   3. ValidationIssue objects are created  ──  one per observed condition (immutable)
+   4. ValidationIssue objects are created  ──  one per observed condition (immutable)
                  │
                  ▼
-   4. ValidationSummary is derived  ──  computed from the issue collection
+   5. ValidationSummary is derived  ──  computed from the issue collection
                  │
                  ▼
-   5. ValidationStatistics are collected  ──  observed facts of the run
+   6. ValidationStatistics are collected  ──  observed facts of the run
                  │
                  ▼
-   6. ValidationResult is finalised  ──  assembled once, then immutable
+   7. ValidationResult is finalised  ──  assembled once, then immutable
                  │
                  ▼
-   7. ValidationResult returned  ──  the sole output, carrying the verdict
+   8. ValidationResult returned  ──  the sole output, carrying the verdict
 ```
 
 | Stage | What happens | State after |
 | ----- | ------------ | ----------- |
 | **Configuration** | The governing configuration is established | Exists before validation; unchanged by the run |
+| **Normalization** | The Response Normalization Layer creates the `ParsedResponse` once | Immutable; read by every layer; never re-created |
 | **Issue creation** | Layers observe conditions and emit immutable issues | Each issue is complete and frozen at creation |
 | **Summary derivation** | The roll-up is computed from the issues | Faithful projection of the findings |
 | **Statistics collection** | Operational metrics are recorded | Observational only; no verdict effect |
@@ -366,13 +457,14 @@ from it; and the result finalises everything.
 
 ---
 
-## 10. Model Invariants
+## 11. Model Invariants
 
 These invariants are binding on every conforming implementation. They are the
 architectural guarantees the models exist to uphold.
 
 | # | Invariant | Why it matters |
 | - | --------- | -------------- |
+| 0 | **ParsedResponse is immutable, provider- and format-independent, and observation-only.** | The substrate every layer reads must be stable, origin-neutral, format-neutral, and never repaired — or layers would disagree about the same response. |
 | 1 | **ValidationIssue is immutable.** | Findings are objective observations; mutation would break determinism and audit. |
 | 2 | **ValidationResult is immutable.** | The output must be a stable, reproducible record of one run. |
 | 3 | **ValidationSummary is derived only.** | A summary that could be authored could disagree with the facts it summarises. |
@@ -391,7 +483,7 @@ architectural guarantees the models exist to uphold.
 
 ---
 
-## 11. Relationship to Other Architecture Documents
+## 12. Relationship to Other Architecture Documents
 
 These models do not stand alone. They realise the information half of the
 validation subsystem and connect to the platform's surrounding architecture.
@@ -400,29 +492,35 @@ validation subsystem and connect to the platform's surrounding architecture.
 | -------- | ---------------------------- |
 | **AI Reasoning Contract** | Defines what trustworthy output requires (evidence, traceability). The Evidence and Location attributes of a ValidationIssue make the *presence* of those requirements observable. |
 | **Requirement Analysis Service** | Produces the raw response. The Original Response preserved in a ValidationResult is exactly what that service emitted. |
+| **Response Normalization Contract** | Governs how the `ParsedResponse` defined here is *created* — once, before validation, by the Response Normalization Layer. These models define *what* the `ParsedResponse` holds; that contract defines *how* it comes into being. |
 | **AI Response Validation** | Defines validation philosophy. These models are the canonical information that philosophy operates on; a validator conforms to both. |
 | **Prompt Framework** | Shapes the request behind the response. The schema a run validates against — recorded in statistics — aligns with what the prompt asked for. |
 | **Execution Package** | Carries the response and its provenance into validation; supplies the Correlation Identifier these models propagate. |
 | **Response Validator (future)** | The implementation that *realises* these models; bound to them and to the AI Response Validation Architecture. |
 | **CP1 Validation (future)** | A downstream consumer of the ValidationResult; it reads, never alters, the canonical output. |
 
-### 11.1 Dependency diagram
+### 12.1 Dependency diagram
 
 ```text
    [AI Reasoning Contract]        [Prompt Framework]
             │ defines trust            │ shapes request
             ▼                          ▼
    [Requirement Analysis Service] ──► raw response ──► (Execution Package: provenance)
-                                                              │
-                                                              ▼
+            │ emits LLMResponse (generated_text)
+            ▼
+   [Response Normalization Contract] ── governs ──► Response Normalization Layer
+            │ creates the ParsedResponse (ONCE)
+            ▼
    [AI Response Validation Architecture] ── philosophy ──►  ┌─────────────────────────┐
                                                             │  VALIDATION CANONICAL    │
    [Validation Canonical Models] ──── information ───────►  │  MODELS (this document)  │
-                                                            └────────────┬────────────┘
+   (ParsedResponse · ValidationIssue · ValidationSummary ·  │  defines ParsedResponse  │
+    ValidationStatistics · ValidationResult ·               │  + the result aggregate  │
+    ValidationConfiguration)                                └────────────┬────────────┘
                                                   realised by            │ conforms to both
                                                             ▼            ▼
                                               [Response Validator (future)]
-                                                            │ emits ValidationResult
+                                                            │ reads ParsedResponse; emits ValidationResult
                                                             ▼
                                               [CP1 Validation (future)] (consumer)
 ```
@@ -430,15 +528,17 @@ validation subsystem and connect to the platform's surrounding architecture.
 > **Architectural Decision**
 > A Response Validator implementation conforms to **two** governing artifacts at
 > once: the **AI Response Validation Architecture** (philosophy) and the
-> **Validation Canonical Models** (information). Downstream consumers depend only
-> on the ValidationResult and never reach inside the validator.
+> **Validation Canonical Models** (information). The **Response Normalization
+> Contract** governs how the `ParsedResponse` is *created*; these models govern
+> what it *holds*. Downstream consumers depend only on the ValidationResult and
+> never reach inside the validator.
 
 ---
 
-## 12. Future Evolution
+## 13. Future Evolution
 
 The information model is designed to be **extended, never replaced**. New models
-may be added to describe concerns not yet modelled; the five canonical models
+may be added to describe concerns not yet modelled; the six canonical models
 remain stable beneath them.
 
 | Possible future model | Intent | Constraint |
@@ -451,7 +551,7 @@ remain stable beneath them.
 
 > **Architectural Decision**
 > **Future models extend the information model; they never replace the canonical
-> models.** Any new model is added alongside the five defined here, bound by the
+> models.** Any new model is added alongside the six defined here, bound by the
 > same invariants — immutability, derivation, observational statistics, preserved
 > original response, and configuration-without-philosophy. A change that mutates a
 > canonical model, lets a derived view author facts, or lets statistics or
@@ -467,6 +567,8 @@ A Response Validator implementation conforms to these canonical models only if
 every box can be checked:
 
 - [ ] Models remain implementation-independent (no language, framework, storage, or serialization assumptions).
+- [ ] ParsedResponse is a Core Canonical Model, created once before validation, immutable, provider- and format-independent, and observation-only.
+- [ ] No validation layer creates, recovers, or re-derives the ParsedResponse; every layer reads it.
 - [ ] ValidationIssue is immutable, with severity fixed at creation.
 - [ ] ValidationResult is immutable and is the sole output of validation.
 - [ ] The original response is preserved unchanged within the result.
@@ -476,5 +578,5 @@ every box can be checked:
 - [ ] ValidationResult owns all issues; the summary cannot exist independently of it.
 - [ ] Model relationships (ownership, aggregation, derivation, reference) are preserved.
 - [ ] The model lifecycle is strictly ordered and one-directional.
-- [ ] Future models extend, and never replace, the five canonical models.
+- [ ] Future models extend, and never replace, the six canonical models.
 - [ ] The implementation conforms to both these models and the AI Response Validation Architecture.

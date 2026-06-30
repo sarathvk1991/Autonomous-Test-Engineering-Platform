@@ -6,7 +6,7 @@
 | Status               | Approved — foundational                                           |
 | Scope                | Every validation rule that may exist in the Response Validation Framework |
 | Governs              | Rule identity, number allocation, metadata, lifecycle, classification, stability, catalog version, profiles, severity, blocking, independence, dependencies, versioning, governance |
-| Depends on           | AI Response Validation Architecture · Validation Canonical Models · AI Reasoning Contract |
+| Depends on           | AI Response Validation Architecture · Validation Canonical Models · Response Normalization Contract · AI Reasoning Contract |
 | Audience             | Solution Architects · Technical Architects · Lead Engineers · QA Architects |
 | Implementation-bound | No — valid regardless of language, framework, persistence, or AI provider |
 
@@ -353,17 +353,32 @@ Response Validation Architecture §4). Every rule belongs to exactly one layer.
 
 - **Purpose.** Confirm the response is well-formed structured data that can be
   interpreted without ambiguity.
-- **Responsibilities.** Detect malformed structure, ambiguous or duplicated field
-  identifiers, and character-encoding integrity problems.
-- **Typical validations.** The response parses into a single, unambiguous
-  structural representation; no field identifier is duplicated within the same
-  structural object; the character encoding is intact.
+- **Reads.** The **normalized representation** (`ParsedResponse`) created once by
+  the Response Normalization Layer (Response Normalization Contract). Syntax rules
+  **read** that representation — its normalization outcome and syntactic
+  observations — they never parse or normalize the response themselves.
+- **Responsibilities.** Detect a not-well-formed (malformed) response, ambiguous
+  or duplicated field identifiers, and character-encoding integrity problems.
+- **Typical validations.** The normalization outcome reports a single,
+  unambiguous structure (`NORMALIZED`, not `MALFORMED`); no field identifier is
+  duplicated within the same structural object; the character encoding is intact.
 - **Must never validate here.** Whether the (well-formed) structure matches the
   *expected* shape — that is Schema. Syntax only asks whether the structure is
-  well-formed at all.
+  well-formed at all. It also never *recovers* the structure; recovery is the
+  Response Normalization Layer's concern, not a validation concern.
 - **Worked example.** A response whose structure cannot be unambiguously
-  interpreted is a Syntax finding; a well-formed structure missing an expected
-  section is a Schema or Structural concern.
+  interpreted (a `MALFORMED` outcome) is a Syntax finding; a well-formed structure
+  missing an expected section is a Schema or Structural concern.
+
+> **Architectural Decision — Syntax validates structure; it does not recover it.**
+> The transition from text to structure happens **once**, in the Response
+> Normalization Layer, before the pipeline runs. Every layer from Syntax onward
+> reads the **same** `ParsedResponse`: the Syntax layer reads its normalization
+> outcome and observations, and Schema, Structural, Content, Evidence,
+> Traceability, Reasoning, and Business Rule read its normalized structure. No
+> validation layer parses, and no validation layer normalizes — which is what lets
+> the layers stay independent (§16) and the "is it well-formed?" concern stay owned
+> by exactly one layer (§8).
 
 ### 8.3 Schema
 
@@ -927,13 +942,16 @@ upstream constrains it; each capability downstream consumes the rules it defines
             │ governs the meaning of trustworthy output
             ▼
    Requirement Analysis Service     (produces the analysed response)
-            │ emits the AnalysisResult to be validated
+            │ emits the AnalysisResult (LLMResponse) to be validated
+            ▼
+   Response Normalization Contract  (how text becomes canonical structure)
+            │ governs the Response Normalization Layer → ParsedResponse (ONCE)
             ▼
    Response Validation Architecture (why & whether output is trustworthy)
             │ defines the validation philosophy & verdict model
             ▼
    Validation Canonical Models      (the validation information model)
-            │ defines issues, results, severity, verdicts
+            │ defines ParsedResponse + issues, results, severity, verdicts
             ▼
    Validation Rule Catalog          ◄── THIS DOCUMENT (the governed set of rules)
             │ defines every rule's identity, layer, severity, blocking
@@ -959,8 +977,9 @@ upstream constrains it; each capability downstream consumes the rules it defines
 | Relationship | Meaning |
 | ------------ | ------- |
 | **AI Reasoning Contract → Requirement Analysis Service** | The contract defines how the AI must reason; the service produces output that should embody it. |
-| **Requirement Analysis Service → Response Validation Architecture** | The service emits the analysed response that the validation gate must judge. |
-| **Response Validation Architecture → Validation Canonical Models** | The philosophy defines verdicts and severity; the canonical models give them a stable information shape. |
+| **Requirement Analysis Service → Response Normalization Contract** | The service emits the `LLMResponse`; the Response Normalization Layer turns it into the canonical `ParsedResponse` once, before validation. |
+| **Response Normalization Contract → Response Validation Architecture** | Normalization produces the structure the validation philosophy operates on; no validation layer normalizes. |
+| **Response Validation Architecture → Validation Canonical Models** | The philosophy defines verdicts and severity; the canonical models give them a stable information shape — including the `ParsedResponse` the rules read. |
 | **Validation Canonical Models → Validation Rule Catalog** | The models define what a finding *is*; this catalog defines which findings *exist* and what each means. |
 | **Validation Rule Catalog → Validation Framework** | The catalog defines the rules; the framework catalogues and executes them. |
 | **Validation Framework → Validation Rules** | The framework runs conforming rule implementations governed by this catalog. |

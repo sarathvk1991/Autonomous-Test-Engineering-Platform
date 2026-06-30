@@ -93,8 +93,8 @@ already produced.
 | Owned responsibility | Description |
 | -------------------- | ----------- |
 | **AI response validation** | The end-to-end act of judging whether an AI response is trustworthy enough to consume. |
-| **JSON / syntax validation** | Confirming the response is well-formed structured data that can be parsed without ambiguity. |
-| **Schema validation** | Confirming the parsed response conforms to the expected, versioned schema. |
+| **Syntax validation** | Confirming the response is well-formed structured data — by reading the normalized representation (`ParsedResponse`) produced by the Response Normalization Layer (§4.4), never by parsing the response itself. |
+| **Schema validation** | Confirming the normalized structure conforms to the expected, versioned schema. |
 | **Structural validation** | Confirming required containers, sections, and relationships are present and correctly shaped. |
 | **Content validation** | Confirming field-level content meets type, range, and presence expectations. |
 | **Evidence validation** | Confirming conclusions are accompanied by the evidence references the platform requires. |
@@ -380,11 +380,11 @@ way unparseable input does.
                   └───────────┬───────────┘
                               ▼
                   ┌───────────────────────┐
-                  │   Syntax / JSON        │  is it well-formed structured data?
-                  └───────────┬───────────┘
+                  │   Syntax Validation    │  is it well-formed structured data?
+                  └───────────┬───────────┘      (reads the normalized representation)
                               ▼
                   ┌───────────────────────┐
-                  │   Schema Validation    │  does it match the expected versioned schema?
+                  │   Schema Validation    │  does the normalized structure match the schema?
                   └───────────┬───────────┘
                               ▼
                   ┌───────────────────────┐
@@ -419,14 +419,78 @@ way unparseable input does.
 | Layer | Concern | Responsibility |
 | ----- | ------- | -------------- |
 | **Transport** | Delivery | Confirm a usable response payload was actually received and is non-empty at the transport level. |
-| **Syntax / JSON** | Well-formedness | Confirm the payload parses unambiguously into structured data. |
-| **Schema** | Shape conformance | Confirm the parsed data matches the expected, versioned schema. |
+| **Syntax** | Well-formedness | Confirm the response is well-formed structured data, by reading the normalized representation (`ParsedResponse`); the layer itself never parses or normalizes (§4.4). |
+| **Schema** | Shape conformance | Confirm the normalized structure matches the expected, versioned schema. |
 | **Structural** | Composition | Confirm required containers, sections, and relationships between them are present and correctly nested. |
 | **Content** | Field validity | Confirm individual values meet type, range, format, and presence expectations. |
 | **Evidence** | Groundedness | Confirm conclusions carry the evidence references the platform requires (cf. AI Reasoning Contract). |
 | **Traceability** | Auditability | Confirm each element carries the links needed to trace it back to its source and context. |
 | **Reasoning** | Coherence | Confirm the output is internally consistent — no contradictions, no orphaned references, severities align with content. |
 | **Business Rule** | Policy | Confirm declared, platform-level structural rules are satisfied (not domain correctness). |
+
+### 4.4 Response Normalization precedes validation
+
+Every layer from Syntax onward reasons about the **structure** the response
+expresses, not the raw text. That structure is recovered **exactly once**, before
+the pipeline runs, by the **Response Normalization Layer** — a permanent,
+first-class architecture component governed by the **Response Normalization
+Contract**. It turns the provider-independent `LLMResponse` into the canonical,
+format-neutral `ParsedResponse` (Validation Canonical Models §8) that the pipeline
+then reads.
+
+```text
+   Provider Adapter
+        │ normalizes outcome → ExecutionStatus, text → generated_text
+        ▼
+   LLMResponse                       (provider-independent text + outcome)
+        │
+        ▼
+   Response Normalization Layer      (recovers structure ONCE; no validation/repair/interpretation)
+        │
+        ▼
+   ParsedResponse                    (canonical, provider- and format-independent structure)
+        │
+        ▼
+   Response Validator
+        │ orchestrates the pipeline
+        ▼
+   Validation Pipeline               (Syntax reads the outcome; Schema onward read the structure)
+        │
+        ▼
+   Validation Result
+```
+
+| Layer | What it reads from the `ParsedResponse` |
+| ----- | --------------------------------------- |
+| **Transport** | Nothing — it reads delivery facts (`execution_status`, presence, emptiness) and runs *before* normalization is consulted. |
+| **Syntax** | The **normalization outcome** (`NORMALIZED` / `MALFORMED`) and syntactic observations (e.g. duplicate identifiers, encoding integrity). |
+| **Schema · Structural · Content · Evidence · Traceability · Reasoning · Business Rule** | The **normalized structure** — the same representation, read by all. |
+
+> **Architectural Decision — why Response Normalization exists.**
+> Recovering structure is a **normalization** concern, not a validation one. If
+> each validation layer recovered structure for itself, the same response would be
+> interpreted many times, the "is it well-formed?" concern would leak into every
+> layer, and two layers could disagree about the same input. A single normalization
+> step produces one shared, deterministic representation — exactly as the provider
+> adapter is the single owner of outcome normalization (`ExecutionStatus`).
+
+> **Architectural Decision — why no validation layer parses or normalizes.**
+> The Response Normalization Layer **owns creation**; the `ParsedResponse` **owns
+> information**; the validation framework **consumes information**. Therefore the
+> Syntax layer **validates** the normalized representation — it does not produce
+> it — and Schema, Structural, Content, Evidence, Traceability, Reasoning, and
+> Business Rule all consume the **exact same** representation. No validation layer
+> performs parsing, and no validation layer performs normalization. This upholds
+> Rule Independence (§3.11): no layer depends on another having recovered structure
+> first.
+
+> **Architectural Decision — why `ParsedResponse` is format-independent.**
+> The `ParsedResponse` represents **normalized structure, not a specific
+> serialization format.** A structured document may be expressed in different
+> formats over time; the structure it expresses is the same. Keeping the
+> representation format-neutral means a new structured format normalizes into the
+> *same* `ParsedResponse` and no validation layer changes (Response Normalization
+> Contract §7).
 
 ---
 
@@ -589,7 +653,7 @@ validate **truths about the world** that no deterministic check can establish.
 | Concern | Within validation boundary? |
 | ------- | --------------------------- |
 | Transport / delivery of a usable response | ✓ |
-| JSON / syntax parsing | ✓ |
+| Syntax — well-formedness of the normalized structure | ✓ |
 | Schema conformance | ✓ |
 | Structural completeness | ✓ |
 | Content / field validity | ✓ |
@@ -729,6 +793,8 @@ capability consumes.
 | -------- | -------------------------- |
 | **AI Reasoning Contract** | Defines what *trustworthy* output looks like — evidence, traceability, honesty. This layer enforces the *presence* of what that contract requires. |
 | **Requirement Analysis Service** | Produces the raw, un-validated Analysis Result. This layer is its immediate, mandatory consumer. |
+| **Response Normalization Contract** | Governs the Response Normalization Layer that turns the `LLMResponse` into the canonical `ParsedResponse` (§4.4) *before* validation. This layer **reads** that representation; it never normalizes. |
+| **Validation Canonical Models — `ParsedResponse`** | The canonical, format-neutral normalized structure this layer consumes: the Syntax layer reads its outcome, every later layer reads its structure. |
 | **Prompt Framework** | Shapes the request that produced the response. The schema this layer validates against is aligned with what the prompt asks for. |
 | **Execution Package** | Carries the response and its provenance into validation; supplies the metadata this layer correlates against. |
 | **Platform Capabilities** | The broader set of engineering capabilities that depend on validated output as a precondition. |
@@ -753,17 +819,21 @@ capability consumes.
         [AI Reasoning Contract]        [Prompt Framework]
                   │ defines trust            │ shapes request
                   ▼                          ▼
-        [Requirement Analysis Service] ──► raw Analysis Result
+        [Requirement Analysis Service] ──► raw Analysis Result (LLMResponse)
                   │  (via Execution Package)
+                  ▼
+        [Response Normalization Contract] ──► Response Normalization Layer
+                  │ creates the ParsedResponse ONCE (no validation/repair)
                   ▼
         ┌─────────────────────────────────────────────┐
         │        RESPONSE VALIDATION LAYER             │  ◄── mandatory
         │   transport · syntax · schema · structure    │      quality gate
-        │   content · evidence · traceability ·        │
-        │   reasoning · business rules                 │ ◄── conforms to ──┐
-        └───────────────────┬─────────────────────────┘                   │
+        │   content · evidence · traceability ·        │   reads the ParsedResponse;
+        │   reasoning · business rules                 │ ◄─ never normalizes ──┐
+        └───────────────────┬─────────────────────────┘                       │
                             │ PASSED / PASSED_WITH_WARNINGS only  [Validation Canonical
-                            │                                      Models (future)]
+                            │                                      Models — ParsedResponse
+                            │                                      + issue/result models]
                             │                                     defines the validation
                             │                                     information model
                             ▼
@@ -976,7 +1046,13 @@ The philosophy of the Response Validation Layer, distilled:
    │                     AI Generation Layer                       │
    │        (Requirement Analysis Service · providers)             │
    └───────────────────────────┬──────────────────────────────────┘
-                               │ raw, un-validated response
+                               │ LLMResponse (raw, un-validated)
+                               ▼
+   ┌──────────────────────────────────────────────────────────────┐
+   │              Response Normalization Layer                     │
+   │   creates the ParsedResponse ONCE · no validation / repair    │
+   └───────────────────────────┬──────────────────────────────────┘
+                               │ ParsedResponse (canonical, format-neutral structure)
                                ▼
    ╔══════════════════════════════════════════════════════════════╗
    ║              RESPONSE VALIDATION LAYER                        ║
@@ -1047,6 +1123,8 @@ The philosophy of the Response Validation Layer, distilled:
 | **Validation Result** | The aggregate verdict over all issues, in one of four states, preserving the original response (§8). |
 | **Evidence** | The references that ground a conclusion in source artifacts, required for trustworthiness (cf. AI Reasoning Contract). |
 | **Schema** | The expected, versioned shape a response must conform to. |
+| **Response Normalization Layer** | The permanent, first-class component that turns the `LLMResponse` into the canonical `ParsedResponse` exactly once, before validation; it performs no validation, repair, or interpretation (§4.4; Response Normalization Contract). |
+| **ParsedResponse** | The canonical, provider- and format-independent normalized structure of the response, consumed by every validation layer; the Syntax layer reads its outcome, every later layer reads its structure (§4.4; Validation Canonical Models §8). |
 | **Traceability** | The linkage that lets each output element be traced back to its source and execution context. |
 | **Severity** | The degree to which an issue threatens trustworthiness: INFO, WARNING, ERROR, or CRITICAL (§6). |
 | **Business Rule** | A declared, platform-level structural rule the response must satisfy — not a domain-correctness judgement. |
