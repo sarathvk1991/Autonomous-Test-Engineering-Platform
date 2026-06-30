@@ -243,29 +243,33 @@ class TestRuleIndependence:
 
 @pytest.mark.unit
 class TestRegistration:
-    def test_register_transport_rules_registers_the_rule(self) -> None:
+    def test_register_transport_rules_includes_this_rule(self) -> None:
+        # ``register_transport_rules`` registers the whole Transport set; this
+        # rule must be present (membership, not exclusivity, as the set grows).
         registry = ValidationRegistry()
         register_transport_rules(registry)
-        assert registry.list_rule_ids() == ["TRANSPORT-0001"]
+        assert "TRANSPORT-0001" in registry.list_rule_ids()
 
-    def test_registered_rule_is_response_exists_rule(self) -> None:
+    def test_rule_can_be_registered_directly(self) -> None:
         registry = ValidationRegistry()
-        register_transport_rules(registry)
+        registry.register(ResponseExistsRule())
         rules = registry.get_enabled_rules()
         assert len(rules) == 1
         assert isinstance(rules[0], ResponseExistsRule)
 
 
 # ---------------------------------------------------------------------------
-# 6. Pipeline execution
+# 6. Pipeline execution (TRANSPORT-0001 in isolation)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestPipelineExecution:
     def _pipeline(self) -> ValidationPipeline:
+        # Isolate TRANSPORT-0001 so these assertions stay stable as the Transport
+        # rule set grows; the full-set behaviour is covered by the 0002 suite.
         registry = ValidationRegistry()
-        register_transport_rules(registry)
+        registry.register(ResponseExistsRule())
         return ValidationPipeline(registry)
 
     def test_pipeline_executes_rule_and_passes(self) -> None:
@@ -286,7 +290,7 @@ class TestPipelineExecution:
 
 
 # ---------------------------------------------------------------------------
-# 7. Response Validator integration
+# 7. Response Validator integration (TRANSPORT-0001 in isolation)
 # ---------------------------------------------------------------------------
 
 
@@ -294,7 +298,7 @@ class TestPipelineExecution:
 class TestResponseValidatorIntegration:
     def _validator(self) -> ResponseValidator:
         registry = ValidationRegistry()
-        register_transport_rules(registry)
+        registry.register(ResponseExistsRule())
         pipeline = ValidationPipeline(registry)
         return ResponseValidator(registry, pipeline, ValidationConfiguration())
 

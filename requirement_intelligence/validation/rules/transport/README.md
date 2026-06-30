@@ -4,7 +4,7 @@
 | --------- | ----- |
 | Package | `requirement_intelligence/validation/rules/transport/` |
 | Layer | Transport — the most foundational validation concern |
-| Status | First production rule implemented (`TRANSPORT-0001`) |
+| Status | Two production rules implemented (`TRANSPORT-0001`, `TRANSPORT-0002`) |
 | Governing specifications | `docs/architecture/validation-rule-catalog.md` · `docs/development/validation-rule-development-guide.md` |
 
 ---
@@ -62,13 +62,75 @@ provider-specific logic, no retries, no repair, and no mutation.
 | `evidence` | `None` |
 | `correlation_id` | derived from the response's execution identity |
 
+### `TRANSPORT-0002` — Empty Response
+
+| Field | Value |
+| ----- | ----- |
+| Rule ID | `TRANSPORT-0002` |
+| Class | `EmptyResponseRule` |
+| Name | Empty Response |
+| Layer | `TRANSPORT` |
+| Rule Version | `1.0.0` |
+| Classification | Core |
+| Severity | `CRITICAL` |
+| Blocking | `True` |
+| Purpose | Verify that an existing LLM response contains usable generated content. |
+
+**Behaviour**
+
+| Condition | Outcome |
+| --------- | ------- |
+| `generated_text` exists and `generated_text.strip()` is non-empty | **Pass** — returns an empty collection. |
+| `generated_text == ""` or contains only whitespace | **Fail** — returns exactly one `CRITICAL`, blocking `ValidationIssue`. |
+| `llm_response` is `None` | **Defers** — existence is `TRANSPORT-0001`'s concern; returns no findings. |
+
+The rule examines **only** the emptiness of generated content. It never inspects
+requirements, recommendations, risks, JSON, schema, structure, reasoning, or
+provider metadata.
+
+**Failure issue (every canonical field populated)**
+
+| Field | Value |
+| ----- | ----- |
+| `severity` | `CRITICAL` |
+| `blocking` | `True` |
+| `category` / `validation_layer` | `transport` |
+| `location` | `generated_text` |
+| `message` | "The LLM response contains no generated content." |
+| `recommendation` | "Regenerate the AI response before continuing." |
+| `evidence` | `None` |
+| `issue_id` | `TRANSPORT-0002:generated_text` (deterministic) |
+| `correlation_id` | derived from the response's execution identity |
+
+> **Verdict note.** Because the issue is `CRITICAL`, the frozen verdict model
+> resolves the overall verdict to `BLOCKED` (a `CRITICAL` finding makes the output
+> unsafe to process). The response is correctly *rejected* — never `PASSED`.
+
 ---
 
 ## Current Rules
 
 | Rule ID | Name | Concern |
 | ------- | ---- | ------- |
-| `TRANSPORT-0001` | Response Exists | An LLM response is present on the `AnalysisResult`. |
+| `TRANSPORT-0001` | Response Exists | An LLM response object is present on the `AnalysisResult`. |
+| `TRANSPORT-0002` | Empty Response | An existing LLM response carries usable generated content. |
+
+### Why `TRANSPORT-0001` and `TRANSPORT-0002` are separate rules
+
+They validate **two distinct concerns** and must remain separate (Validation Rule
+Catalog §3 — one rule, one responsibility):
+
+| Rule | Single concern | Reads | Fails when |
+| ---- | -------------- | ----- | ---------- |
+| `TRANSPORT-0001` | The **response object exists** | `llm_response` (presence) | `llm_response is None` |
+| `TRANSPORT-0002` | The **generated content exists** | `llm_response.generated_text` (emptiness) | content is empty / whitespace-only |
+
+A single combined "response is usable" rule would hide *which* aspect failed (a
+missing response object vs. a present-but-empty one), couple two independent
+reasons to change, and break the one-concern-per-rule contract. Keeping them
+separate means each can fail, evolve, and be reasoned about independently — and
+`TRANSPORT-0002` deliberately **defers** (returns no findings) when the response
+object is absent, so the two rules never report the same condition twice.
 
 ---
 
@@ -80,7 +142,6 @@ will be a separate single-concern rule added to this package and registered via
 
 | Rule ID | Name | Concern |
 | ------- | ---- | ------- |
-| `TRANSPORT-0002` | Empty Response | The received response is non-empty. |
 | `TRANSPORT-0003` | Timeout | The generation did not time out. |
 | `TRANSPORT-0004` | Provider Failure | The generation did not fail at the delivery boundary. |
 
@@ -94,7 +155,7 @@ no behavioural change to the registry. It must be called **before** the pipeline
 is constructed (the pipeline seals its registry on construction).
 
 ```text
-   ValidationRegistry ──register_transport_rules──► [ TRANSPORT-0001 ]
+   ValidationRegistry ──register_transport_rules──► [ TRANSPORT-0001, TRANSPORT-0002 ]
             │ (construct & seal)
             ▼
    ValidationPipeline ──executes rules in layer order──► ValidationResult

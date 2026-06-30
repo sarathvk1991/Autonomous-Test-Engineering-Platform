@@ -7,9 +7,9 @@ content, structure, schema, or meaning.
 Currently implemented
 ---------------------
 * ``TRANSPORT-0001`` :class:`ResponseExistsRule` — the LLM response is present.
+* ``TRANSPORT-0002`` :class:`EmptyResponseRule` — the response carries content.
 
 Reserved (future) — see ``docs/architecture/validation-rule-catalog.md`` §9.1:
-* ``TRANSPORT-0002`` EmptyResponseRule
 * ``TRANSPORT-0003`` TimeoutRule
 * ``TRANSPORT-0004`` ProviderFailureRule
 
@@ -24,19 +24,24 @@ constructed (the pipeline seals its registry on construction).
 
 from __future__ import annotations
 
+from requirement_intelligence.validation.rules.transport.empty_response_rule import (
+    EmptyResponseRule,
+)
 from requirement_intelligence.validation.rules.transport.response_exists_rule import (
     ResponseExistsRule,
 )
 from requirement_intelligence.validation.validation_registry import ValidationRegistry
 
-__all__ = ["ResponseExistsRule", "register_transport_rules"]
+__all__ = ["EmptyResponseRule", "ResponseExistsRule", "register_transport_rules"]
 
 
 def register_transport_rules(registry: ValidationRegistry) -> None:
     """Register every implemented Transport rule with *registry*.
 
     Uses the existing :meth:`ValidationRegistry.register` mechanism; the
-    registry's behaviour is unchanged.  New Transport rules are added by
+    registry's behaviour is unchanged.  Rules are registered in catalog order
+    (``TRANSPORT-0001`` then ``TRANSPORT-0002``); within the Transport layer the
+    pipeline preserves registration order.  New Transport rules are added by
     registering them here — no framework change is required.
 
     Parameters
@@ -45,3 +50,4 @@ def register_transport_rules(registry: ValidationRegistry) -> None:
         The open registry to populate.  Must not yet be sealed.
     """
     registry.register(ResponseExistsRule())
+    registry.register(EmptyResponseRule())
