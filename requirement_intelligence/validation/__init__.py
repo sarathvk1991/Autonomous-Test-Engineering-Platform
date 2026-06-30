@@ -14,8 +14,11 @@ run the pipeline:
     from requirement_intelligence.validation import (
         ValidationLayer,
         ValidationPipeline,
+        PipelineState,
         ValidationRegistry,
+        RegistryState,
         ValidationRule,
+        ValidationRuleMetadata,
         ValidationFrameworkError,
         ValidationPipelineError,
         ValidationRegistryError,
@@ -42,16 +45,27 @@ from requirement_intelligence.validation.validation_exceptions import (
     ValidationRegistryError,
     ValidationRuleError,
 )
-from requirement_intelligence.validation.validation_pipeline import ValidationPipeline
-from requirement_intelligence.validation.validation_registry import ValidationRegistry
+from requirement_intelligence.validation.validation_pipeline import (
+    PipelineState,
+    ValidationPipeline,
+)
+from requirement_intelligence.validation.validation_registry import (
+    RegistryState,
+    ValidationRegistry,
+)
 from requirement_intelligence.validation.validation_rule import (
     LAYER_ORDER,
     ValidationLayer,
     ValidationRule,
 )
+from requirement_intelligence.validation.validation_rule_metadata import (
+    ValidationRuleMetadata,
+)
 
 __all__ = [
     "LAYER_ORDER",
+    "PipelineState",
+    "RegistryState",
     "ValidationFrameworkError",
     "ValidationLayer",
     "ValidationPipeline",
@@ -60,4 +74,5 @@ __all__ = [
     "ValidationRegistryError",
     "ValidationRule",
     "ValidationRuleError",
+    "ValidationRuleMetadata",
 ]

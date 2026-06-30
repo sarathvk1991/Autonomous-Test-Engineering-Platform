@@ -51,11 +51,58 @@ The ValidationPipeline is the structural equivalent of:
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
 from requirement_intelligence.validation.validation_exceptions import ValidationPipelineError
 from requirement_intelligence.validation.validation_registry import ValidationRegistry
 from requirement_intelligence.validation.validation_rule import ValidationRule
+
+
+class PipelineState(Enum):
+    """Observable lifecycle state of a :class:`ValidationPipeline`.
+
+    The state is **informational only**.  It is exposed for observability and
+    debugging; it **never** influences validation behaviour.  No branching
+    decision inside the pipeline is taken on the basis of this state, and the
+    findings a run produces are identical regardless of how the state is read.
+
+    Members
+    -------
+    CREATED
+        The pipeline object is being constructed but is not yet ready.
+    READY
+        Construction succeeded; the pipeline is ready to run.  The registry has
+        been sealed and the ordered rule set is available.
+    RUNNING
+        A :meth:`ValidationPipeline.run` call is in progress.
+    COMPLETED
+        The most recent :meth:`ValidationPipeline.run` call finished
+        successfully.
+    FAILED
+        The most recent :meth:`ValidationPipeline.run` call raised before
+        completing.
+    DISPOSED
+        Reserved for a future explicit teardown step.  Not entered by any
+        current transition.
+
+    Transitions
+    -----------
+    ::
+
+        (construct) ─► CREATED ─► READY ─► RUNNING ─► COMPLETED ─► RUNNING ...
+                                              │
+                                              └─► FAILED ─► RUNNING ...
+
+        DISPOSED is reserved and is not part of any current transition.
+    """
+
+    CREATED = "created"
+    READY = "ready"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    DISPOSED = "disposed"  # reserved — no current transition enters this state
 
 
 class ValidationPipeline:
@@ -92,20 +139,39 @@ class ValidationPipeline:
         registry:
             The :class:`ValidationRegistry` that supplies the ordered rule set.
             The registry must be fully populated before the pipeline is
-            constructed; rules registered after construction are not visible to
-            this pipeline instance.
+            constructed.  Construction **seals** the registry: rules cannot be
+            registered afterwards, which guarantees the pipeline's rule set is
+            fixed for its lifetime.
 
         Raises
         ------
         ValidationPipelineError
             If *registry* is not a :class:`ValidationRegistry` instance.
         """
+        self._state: PipelineState = PipelineState.CREATED
         if not isinstance(registry, ValidationRegistry):
+            # Stay in CREATED; construction never reached READY.
             raise ValidationPipelineError(
                 f"ValidationPipeline requires a ValidationRegistry instance; "
                 f"got {type(registry).__name__!r}."
             )
         self._registry = registry
+        # Sealing the registry freezes the rule set for this pipeline's lifetime.
+        self._registry.seal()
+        self._state = PipelineState.READY
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    @property
+    def state(self) -> PipelineState:
+        """The current observable :class:`PipelineState`.
+
+        Informational only — reading this never changes how the pipeline
+        behaves, and the pipeline never branches on it.
+        """
+        return self._state
 
     # ------------------------------------------------------------------
     # Inspection
@@ -166,8 +232,17 @@ class ValidationPipeline:
             If an unexpected error occurs during rule execution that cannot be
             attributed to a specific rule's contract violation.
         """
-        findings: list[Any] = []
-        for rule in self.get_ordered_rules():
-            rule_findings = rule.validate(response)
-            findings.extend(rule_findings)
+        self._state = PipelineState.RUNNING
+        try:
+            findings: list[Any] = []
+            for rule in self.get_ordered_rules():
+                rule_findings = rule.validate(response)
+                findings.extend(rule_findings)
+        except BaseException:
+            # State is observational; record the failure and re-raise the
+            # original exception unchanged so existing error handling is
+            # unaffected.
+            self._state = PipelineState.FAILED
+            raise
+        self._state = PipelineState.COMPLETED
         return findings

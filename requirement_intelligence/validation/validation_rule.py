@@ -1,10 +1,21 @@
 """Abstract base class and layer model for all validation rules.
 
-This module defines two public names that the entire validation framework
+This module defines the public names that the entire validation framework
 depends on:
 
-* :class:`ValidationLayer` — the ordered enumeration of validation concerns.
+* :class:`ValidationLayer` — the ordered enumeration of validation concerns
+  (re-exported from
+  :mod:`~requirement_intelligence.validation.validation_rule_layer`).
+* :data:`LAYER_ORDER` — the architecture-mandated layer execution order
+  (re-exported from the same module).
 * :class:`ValidationRule` — the abstract contract every rule must satisfy.
+
+``ValidationLayer`` and ``LAYER_ORDER`` are *defined* in
+:mod:`~requirement_intelligence.validation.validation_rule_layer` and re-exported
+here so the historical import paths (and the package root) keep working
+unchanged.  The split exists only to let
+:mod:`~requirement_intelligence.validation.validation_rule_metadata` share the
+layer enum without an import cycle.
 
 No concrete rule implementation belongs here.  This module is the single stable
 contract that :class:`~requirement_intelligence.validation.validation_registry.ValidationRegistry`
@@ -43,82 +54,44 @@ before meaningless secondary errors are accumulated — consistent with the
 Fail Fast principle (§3.1).
 
 The authoritative layer order is exposed as :data:`LAYER_ORDER`.
+
+Rule Documentation Contract
+---------------------------
+Every concrete :class:`ValidationRule` implementation must document the following
+seven sections in its class docstring.  This is a **documentation standard only**
+— it is *not* enforced at runtime — but it is a conformance requirement for any
+rule accepted into the framework:
+
+1. **Purpose** — the single concern the rule validates.
+2. **Validation Layer** — which :class:`ValidationLayer` the rule belongs to.
+3. **Inputs** — what part of the response the rule reads.
+4. **Outputs** — what findings the rule can produce.
+5. **Failure Conditions** — the conditions under which the rule raises a finding.
+6. **Worked Example** — a concrete passing and failing case.
+7. **Architecture Reference** — the governing section of
+   ``docs/architecture/ai-response-validation.md``.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from enum import Enum
 from typing import Any
 
+from requirement_intelligence.validation.validation_rule_layer import (
+    LAYER_ORDER,
+    ValidationLayer,
+)
+from requirement_intelligence.validation.validation_rule_metadata import (
+    ValidationRuleMetadata,
+)
 
-class ValidationLayer(Enum):
-    """Ordered enumeration of validation concerns.
-
-    Each member corresponds to one layer in the progressive validation pipeline.
-    The semantic order (foundational → semantic) is captured in
-    :data:`LAYER_ORDER`; the enum itself does not imply ordering.
-
-    Members
-    -------
-    TRANSPORT
-        Was a usable, non-empty response payload actually received?
-    SYNTAX
-        Is the payload well-formed structured data that can be parsed without
-        ambiguity?
-    SCHEMA
-        Does the parsed structure conform to the expected, versioned schema?
-    STRUCTURAL
-        Are the required containers, sections, and parent-child relationships
-        present and correctly nested?
-    CONTENT
-        Do individual field values meet type, range, format, and presence
-        expectations?
-    EVIDENCE
-        Are conclusions accompanied by the evidence references the platform
-        requires?
-    TRACEABILITY
-        Does every element carry the links needed to trace it to its source and
-        context?
-    REASONING
-        Is the output internally coherent — free of contradictions, orphaned
-        references, and severity mismatches?
-    BUSINESS_RULE
-        Are declared, platform-level structural policies satisfied?
-    """
-
-    TRANSPORT = "transport"
-    SYNTAX = "syntax"
-    SCHEMA = "schema"
-    STRUCTURAL = "structural"
-    CONTENT = "content"
-    EVIDENCE = "evidence"
-    TRACEABILITY = "traceability"
-    REASONING = "reasoning"
-    BUSINESS_RULE = "business_rule"
-
-
-# ---------------------------------------------------------------------------
-# Canonical layer ordering
-# ---------------------------------------------------------------------------
-
-#: The authoritative, architecture-mandated execution order for validation
-#: layers, from the most foundational concern to the most semantic.
-#:
-#: The :class:`~requirement_intelligence.validation.validation_registry.ValidationRegistry`
-#: uses this list to sort rules deterministically.  The
-#: :class:`~requirement_intelligence.validation.validation_pipeline.ValidationPipeline`
-#: relies on registry ordering and never re-sorts.
-LAYER_ORDER: list[ValidationLayer] = [
-    ValidationLayer.TRANSPORT,
-    ValidationLayer.SYNTAX,
-    ValidationLayer.SCHEMA,
-    ValidationLayer.STRUCTURAL,
-    ValidationLayer.CONTENT,
-    ValidationLayer.EVIDENCE,
-    ValidationLayer.TRACEABILITY,
-    ValidationLayer.REASONING,
-    ValidationLayer.BUSINESS_RULE,
+# Re-exported for backward compatibility: callers historically import
+# ``ValidationLayer`` and ``LAYER_ORDER`` from this module.
+__all__ = [
+    "LAYER_ORDER",
+    "ValidationLayer",
+    "ValidationRule",
+    "ValidationRuleMetadata",
 ]
 
 
@@ -164,13 +137,24 @@ class ValidationRule(ABC):
     Adding a new rule
     -----------------
     1. Subclass :class:`ValidationRule`.
-    2. Implement :attr:`rule_id`, :attr:`rule_name`, :attr:`validation_layer`,
+    2. Implement :attr:`metadata` (returning an immutable
+       :class:`~requirement_intelligence.validation.validation_rule_metadata.ValidationRuleMetadata`)
        and :meth:`validate`.
-    3. Optionally override :attr:`enabled` (default ``True``).
+    3. Document the seven Rule Documentation Contract sections (see module
+       docstring) in the subclass docstring.
     4. Register the instance with
        :class:`~requirement_intelligence.validation.validation_registry.ValidationRegistry`.
 
     No other change is required anywhere in the framework.
+
+    Identity comes from metadata
+    ----------------------------
+    A rule's descriptive identity lives in a single immutable
+    :class:`~requirement_intelligence.validation.validation_rule_metadata.ValidationRuleMetadata`
+    value, exposed through :attr:`metadata`.  The legacy identity properties
+    (:attr:`rule_id`, :attr:`rule_name`, :attr:`validation_layer`,
+    :attr:`enabled`) remain as **convenience wrappers** that simply read from
+    :attr:`metadata`, so every existing caller keeps working unchanged.
     """
 
     # ------------------------------------------------------------------
@@ -179,76 +163,69 @@ class ValidationRule(ABC):
 
     @property
     @abstractmethod
+    def metadata(self) -> ValidationRuleMetadata:
+        """Immutable descriptive identity of this rule.
+
+        This is the single source of truth for the rule's identity:
+        ``rule_id``, ``rule_name``, ``rule_version``, ``validation_layer``,
+        ``enabled``, and the reserved extension points.  It must be an immutable
+        :class:`~requirement_intelligence.validation.validation_rule_metadata.ValidationRuleMetadata`.
+
+        Returns
+        -------
+        ValidationRuleMetadata
+            The frozen metadata value describing this rule.  Implementations
+            typically construct it once and return the same value on every
+            access.
+        """
+
+    # ------------------------------------------------------------------
+    # Identity — backward-compatible convenience wrappers
+    # ------------------------------------------------------------------
+    #
+    # These properties used to be the abstract contract.  They are now thin
+    # read-through accessors over :attr:`metadata`, preserved so that the
+    # registry, the pipeline, and any external caller continue to work
+    # unchanged.  Subclasses no longer override them; they implement
+    # :attr:`metadata` instead.
+
+    @property
     def rule_id(self) -> str:
-        """Stable, unique identifier for this rule.
+        """Stable, unique identifier for this rule (reads :attr:`metadata`).
 
-        The identifier is used by the registry, the pipeline, and any future
-        observability tooling to reference this specific rule unambiguously.
-
-        Naming convention
-        -----------------
-        ``<LAYER_PREFIX>-<NNNN>`` — for example ``SYNTAX-0001``,
-        ``EVIDENCE-0042``.  The prefix is the layer name in upper case; the
-        suffix is a zero-padded sequential number within that layer.
-
-        Returns
-        -------
-        str
-            A non-empty, stable identifier.  Must not change between releases
-            once published, because it appears in validation result records.
+        Convention: ``<LAYER_PREFIX>-<NNNN>`` (e.g. ``SYNTAX-0001``).  Must not
+        change once published, because it appears in validation result records.
         """
+        return self.metadata.rule_id
 
     @property
-    @abstractmethod
     def rule_name(self) -> str:
-        """Human-readable name for this rule.
-
-        Used in log output, pipeline summaries, and future observability
-        dashboards.
-
-        Returns
-        -------
-        str
-            A short, descriptive label.  Example: ``"Syntax: Well-formed JSON"``.
-        """
+        """Human-readable name for this rule (reads :attr:`metadata`)."""
+        return self.metadata.rule_name
 
     @property
-    @abstractmethod
     def validation_layer(self) -> ValidationLayer:
-        """The validation layer this rule belongs to.
+        """The validation layer this rule belongs to (reads :attr:`metadata`)."""
+        return self.metadata.validation_layer
 
-        The registry uses this to group rules by layer; the pipeline uses the
-        layer ordering to ensure deterministic, progressive execution.
+    @property
+    def rule_version(self) -> str:
+        """The version of this rule's logic (reads :attr:`metadata`).
 
-        Returns
-        -------
-        ValidationLayer
-            One of the nine pipeline layers.
+        Distinct from the Validation Contract Version (validation *semantics*)
+        and the Validator Version (validator *implementation*).  See
+        :mod:`~requirement_intelligence.validation.validation_rule_metadata`.
         """
-
-    # ------------------------------------------------------------------
-    # Lifecycle control
-    # ------------------------------------------------------------------
+        return self.metadata.rule_version
 
     @property
     def enabled(self) -> bool:
-        """Whether this rule participates in pipeline execution.
+        """Whether this rule participates in pipeline execution (reads :attr:`metadata`).
 
-        Disabled rules are registered but skipped by the pipeline.  This
-        allows rules to be temporarily deactivated without unregistering them
-        — useful during phased rollouts or when a rule is pending a schema
-        update.
-
-        Subclasses may override this property to tie enablement to
-        configuration flags, feature toggles, or contract versions.
-
-        Returns
-        -------
-        bool
-            ``True`` (default) — the rule participates in every pipeline run.
-            ``False`` — the registry excludes this rule from enabled queries.
+        Disabled rules are registered but skipped by the pipeline, allowing a
+        rule to be deactivated without unregistering it.
         """
-        return True
+        return self.metadata.enabled
 
     # ------------------------------------------------------------------
     # Validation

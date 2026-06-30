@@ -23,6 +23,7 @@ Design constraints
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
@@ -34,12 +35,22 @@ from requirement_intelligence.validation.validation_exceptions import (
     ValidationRegistryError,
     ValidationRuleError,
 )
-from requirement_intelligence.validation.validation_pipeline import ValidationPipeline
-from requirement_intelligence.validation.validation_registry import ValidationRegistry
+from requirement_intelligence.validation.validation_pipeline import (
+    PipelineState,
+    ValidationPipeline,
+)
+from requirement_intelligence.validation.validation_registry import (
+    RegistryState,
+    ValidationRegistry,
+)
 from requirement_intelligence.validation.validation_rule import (
     LAYER_ORDER,
     ValidationLayer,
     ValidationRule,
+)
+from requirement_intelligence.validation.validation_rule_metadata import (
+    DEFAULT_RULE_VERSION,
+    ValidationRuleMetadata,
 )
 
 # ---------------------------------------------------------------------------
@@ -52,7 +63,12 @@ _PACKAGE_DIR = Path(__file__).resolve().parents[2] / "requirement_intelligence" 
 class _StubRule(ValidationRule):
     """Minimal concrete rule for testing framework contracts.
 
-    Returns an empty list from validate() to satisfy the abstract contract
+    Implements the new single-source-of-truth :attr:`metadata` contract.  The
+    legacy identity properties (``rule_id``, ``rule_name``, ``validation_layer``,
+    ``enabled``) are provided by :class:`ValidationRule` as convenience wrappers
+    over the metadata, so this stub does not implement them directly.
+
+    Returns an empty list from ``validate()`` to satisfy the abstract contract
     without performing any real validation.
     """
 
@@ -63,28 +79,20 @@ class _StubRule(ValidationRule):
         layer: ValidationLayer,
         enabled: bool = True,
         findings: list[Any] | None = None,
+        rule_version: str = DEFAULT_RULE_VERSION,
     ) -> None:
-        self._rule_id = rule_id
-        self._rule_name = rule_name
-        self._layer = layer
-        self._enabled = enabled
+        self._metadata = ValidationRuleMetadata(
+            rule_id=rule_id,
+            rule_name=rule_name,
+            validation_layer=layer,
+            enabled=enabled,
+            rule_version=rule_version,
+        )
         self._findings: list[Any] = findings if findings is not None else []
 
     @property
-    def rule_id(self) -> str:
-        return self._rule_id
-
-    @property
-    def rule_name(self) -> str:
-        return self._rule_name
-
-    @property
-    def validation_layer(self) -> ValidationLayer:
-        return self._layer
-
-    @property
-    def enabled(self) -> bool:
-        return self._enabled
+    def metadata(self) -> ValidationRuleMetadata:
+        return self._metadata
 
     def validate(self, response: Any) -> list[Any]:
         return list(self._findings)
@@ -415,20 +423,15 @@ class TestValidationPipelineOrdering:
 
         class _CapturingRule(ValidationRule):
             def __init__(self, rule_id: str, layer: ValidationLayer) -> None:
-                self._id = rule_id
-                self._layer = layer
+                self._metadata = ValidationRuleMetadata(
+                    rule_id=rule_id,
+                    rule_name=rule_id,
+                    validation_layer=layer,
+                )
 
             @property
-            def rule_id(self) -> str:
-                return self._id
-
-            @property
-            def rule_name(self) -> str:
-                return self._id
-
-            @property
-            def validation_layer(self) -> ValidationLayer:
-                return self._layer
+            def metadata(self) -> ValidationRuleMetadata:
+                return self._metadata
 
             def validate(self, response: Any) -> list[Any]:
                 received.append(response)
@@ -513,8 +516,11 @@ class TestPackagePublicApi:
 
         assert hasattr(v, "ValidationLayer")
         assert hasattr(v, "ValidationRule")
+        assert hasattr(v, "ValidationRuleMetadata")
         assert hasattr(v, "ValidationRegistry")
+        assert hasattr(v, "RegistryState")
         assert hasattr(v, "ValidationPipeline")
+        assert hasattr(v, "PipelineState")
         assert hasattr(v, "ValidationFrameworkError")
         assert hasattr(v, "ValidationPipelineError")
         assert hasattr(v, "ValidationRegistryError")
@@ -538,3 +544,262 @@ class TestReadmeExists:
     def test_readme_is_not_empty(self) -> None:
         readme = _PACKAGE_DIR / "README.md"
         assert readme.stat().st_size > 0, "README.md exists but is empty"
+
+
+# ---------------------------------------------------------------------------
+# 10. ValidationRuleMetadata — identity model
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestValidationRuleMetadata:
+    """ValidationRuleMetadata is an immutable, correctly-defaulted identity value."""
+
+    def test_active_fields_are_stored(self) -> None:
+        meta = ValidationRuleMetadata(
+            rule_id="SYNTAX-0001",
+            rule_name="Well-formed JSON",
+            validation_layer=ValidationLayer.SYNTAX,
+        )
+        assert meta.rule_id == "SYNTAX-0001"
+        assert meta.rule_name == "Well-formed JSON"
+        assert meta.validation_layer == ValidationLayer.SYNTAX
+
+    def test_enabled_defaults_to_true(self) -> None:
+        meta = ValidationRuleMetadata("E-1", "evidence", ValidationLayer.EVIDENCE)
+        assert meta.enabled is True
+
+    def test_enabled_can_be_false(self) -> None:
+        meta = ValidationRuleMetadata(
+            "E-1", "evidence", ValidationLayer.EVIDENCE, enabled=False
+        )
+        assert meta.enabled is False
+
+    def test_reserved_fields_have_inert_defaults(self) -> None:
+        meta = ValidationRuleMetadata("R-1", "reserved", ValidationLayer.REASONING)
+        assert meta.tags == ()
+        assert meta.documentation_reference is None
+        assert meta.validation_contract_version is None
+        assert meta.future_schema_compatibility is None
+
+    def test_reserved_fields_accept_values(self) -> None:
+        meta = ValidationRuleMetadata(
+            "R-1",
+            "reserved",
+            ValidationLayer.REASONING,
+            tags=("security", "experimental"),
+            documentation_reference="docs/rules/R-1.md",
+            validation_contract_version="1.1",
+            future_schema_compatibility="schema-v2",
+        )
+        assert meta.tags == ("security", "experimental")
+        assert meta.documentation_reference == "docs/rules/R-1.md"
+        assert meta.validation_contract_version == "1.1"
+        assert meta.future_schema_compatibility == "schema-v2"
+
+    def test_value_equality(self) -> None:
+        a = ValidationRuleMetadata("C-1", "content", ValidationLayer.CONTENT)
+        b = ValidationRuleMetadata("C-1", "content", ValidationLayer.CONTENT)
+        assert a == b
+
+    def test_metadata_is_immutable_rule_id(self) -> None:
+        meta = ValidationRuleMetadata("C-1", "content", ValidationLayer.CONTENT)
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            meta.rule_id = "C-2"  # type: ignore[misc]
+
+    def test_metadata_is_immutable_severity_layer(self) -> None:
+        meta = ValidationRuleMetadata("C-1", "content", ValidationLayer.CONTENT)
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            meta.validation_layer = ValidationLayer.SCHEMA  # type: ignore[misc]
+
+    def test_metadata_is_immutable_enabled(self) -> None:
+        meta = ValidationRuleMetadata("C-1", "content", ValidationLayer.CONTENT)
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            meta.enabled = False  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# 11. Backward-compatibility wrappers — legacy identity properties
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRuleBackwardCompatibility:
+    """Legacy identity properties continue to work, reading through metadata."""
+
+    def test_rule_exposes_metadata(self) -> None:
+        rule = _StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX)
+        assert isinstance(rule.metadata, ValidationRuleMetadata)
+
+    def test_rule_id_wrapper_reads_metadata(self) -> None:
+        rule = _StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX)
+        assert rule.rule_id == rule.metadata.rule_id == "SYNTAX-0001"
+
+    def test_rule_name_wrapper_reads_metadata(self) -> None:
+        rule = _StubRule("SYNTAX-0001", "Syntax name", ValidationLayer.SYNTAX)
+        assert rule.rule_name == rule.metadata.rule_name == "Syntax name"
+
+    def test_validation_layer_wrapper_reads_metadata(self) -> None:
+        rule = _StubRule("CONTENT-0001", "Content", ValidationLayer.CONTENT)
+        assert rule.validation_layer == rule.metadata.validation_layer == ValidationLayer.CONTENT
+
+    def test_enabled_wrapper_reads_metadata(self) -> None:
+        rule = _StubRule("E-1", "disabled", ValidationLayer.EVIDENCE, enabled=False)
+        assert rule.enabled is rule.metadata.enabled is False
+
+    def test_registry_orders_rules_via_wrappers(self) -> None:
+        """Registry consumes the wrappers; ordering still works post-refactor."""
+        registry = ValidationRegistry()
+        registry.register(_StubRule("SCHEMA-0001", "Schema", ValidationLayer.SCHEMA))
+        registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
+        assert registry.list_rule_ids() == ["SYNTAX-0001", "SCHEMA-0001"]
+
+
+# ---------------------------------------------------------------------------
+# 12. Rule version
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRuleVersion:
+    """Rule version is independently carried on metadata and defaulted."""
+
+    def test_default_rule_version_constant(self) -> None:
+        assert DEFAULT_RULE_VERSION == "1.0.0"
+
+    def test_metadata_default_rule_version(self) -> None:
+        meta = ValidationRuleMetadata("S-1", "syntax", ValidationLayer.SYNTAX)
+        assert meta.rule_version == "1.0.0"
+
+    def test_metadata_explicit_rule_version(self) -> None:
+        meta = ValidationRuleMetadata(
+            "S-1", "syntax", ValidationLayer.SYNTAX, rule_version="2.3.1"
+        )
+        assert meta.rule_version == "2.3.1"
+
+    def test_rule_version_wrapper_reads_metadata(self) -> None:
+        rule = _StubRule("S-1", "syntax", ValidationLayer.SYNTAX, rule_version="4.0.0")
+        assert rule.rule_version == rule.metadata.rule_version == "4.0.0"
+
+    def test_rule_version_default_via_wrapper(self) -> None:
+        rule = _StubRule("S-1", "syntax", ValidationLayer.SYNTAX)
+        assert rule.rule_version == "1.0.0"
+
+
+# ---------------------------------------------------------------------------
+# 13. Registry sealing lifecycle
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRegistrySealing:
+    """Registry lifecycle: open → sealed; registration only while open."""
+
+    def test_new_registry_is_open(self) -> None:
+        registry = ValidationRegistry()
+        assert registry.state is RegistryState.OPEN
+        assert registry.is_sealed is False
+
+    def test_seal_transitions_to_sealed(self) -> None:
+        registry = ValidationRegistry()
+        registry.seal()
+        assert registry.state is RegistryState.SEALED
+        assert registry.is_sealed is True
+
+    def test_seal_is_idempotent(self) -> None:
+        registry = ValidationRegistry()
+        registry.seal()
+        registry.seal()  # must not raise
+        assert registry.is_sealed is True
+
+    def test_register_allowed_while_open(self) -> None:
+        registry = ValidationRegistry()
+        registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
+        assert registry.rule_count() == 1
+
+    def test_register_after_seal_raises(self) -> None:
+        registry = ValidationRegistry()
+        registry.seal()
+        with pytest.raises(ValidationRegistryError, match="sealed"):
+            registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
+
+    def test_pipeline_construction_seals_registry(self) -> None:
+        registry = ValidationRegistry()
+        registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
+        assert registry.is_sealed is False
+        ValidationPipeline(registry)
+        assert registry.is_sealed is True
+
+    def test_register_after_pipeline_construction_raises(self) -> None:
+        registry = ValidationRegistry()
+        registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
+        ValidationPipeline(registry)
+        with pytest.raises(ValidationRegistryError, match="sealed"):
+            registry.register(_StubRule("SCHEMA-0001", "Schema", ValidationLayer.SCHEMA))
+
+    def test_retrieval_still_works_after_seal(self) -> None:
+        registry = ValidationRegistry()
+        registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
+        registry.seal()
+        assert registry.list_rule_ids() == ["SYNTAX-0001"]
+        assert len(registry.get_enabled_rules()) == 1
+
+
+# ---------------------------------------------------------------------------
+# 14. Pipeline lifecycle
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPipelineLifecycle:
+    """Pipeline state is observable, informational, and never alters behaviour."""
+
+    def test_all_six_states_exist(self) -> None:
+        expected = {"created", "ready", "running", "completed", "failed", "disposed"}
+        assert {state.value for state in PipelineState} == expected
+
+    def test_pipeline_is_ready_after_construction(self) -> None:
+        registry = ValidationRegistry()
+        pipeline = ValidationPipeline(registry)
+        assert pipeline.state is PipelineState.READY
+
+    def test_pipeline_completed_after_successful_run(self) -> None:
+        registry = ValidationRegistry()
+        registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
+        pipeline = ValidationPipeline(registry)
+        pipeline.run("response")
+        assert pipeline.state is PipelineState.COMPLETED
+
+    def test_pipeline_failed_after_rule_raises(self) -> None:
+        class _ExplodingRule(ValidationRule):
+            @property
+            def metadata(self) -> ValidationRuleMetadata:
+                return ValidationRuleMetadata(
+                    "SYNTAX-0001", "Exploder", ValidationLayer.SYNTAX
+                )
+
+            def validate(self, response: Any) -> list[Any]:
+                raise ValidationRuleError("boom")
+
+        registry = ValidationRegistry()
+        registry.register(_ExplodingRule())
+        pipeline = ValidationPipeline(registry)
+        with pytest.raises(ValidationRuleError, match="boom"):
+            pipeline.run("response")
+        assert pipeline.state is PipelineState.FAILED
+
+    def test_state_does_not_change_findings(self) -> None:
+        """Re-running after COMPLETED yields identical findings (state is inert)."""
+        registry = ValidationRegistry()
+        registry.register(
+            _StubRule("SYNTAX-0001", "S", ValidationLayer.SYNTAX, findings=["f"])
+        )
+        pipeline = ValidationPipeline(registry)
+        first = pipeline.run("response")
+        assert pipeline.state is PipelineState.COMPLETED
+        second = pipeline.run("response")
+        assert first == second == ["f"]
+
+    def test_invalid_registry_leaves_pipeline_unbuilt(self) -> None:
+        with pytest.raises(ValidationPipelineError):
+            ValidationPipeline("not a registry")  # type: ignore[arg-type]
