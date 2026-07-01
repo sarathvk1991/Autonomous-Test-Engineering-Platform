@@ -9,11 +9,25 @@ canonical ``NormalizationResult``
 (:mod:`requirement_intelligence.normalization.models.normalization_result`).
 
 It performs **no normalization itself**.  It never parses text, inspects JSON/XML,
-recovers structure, determines an outcome, records observations, creates a
-``ParsedResponse``, or mutates the ``LLMResponse``.  *What* structure a response
-expresses is recovered by the registered ``NORMALIZATION-00NN`` responsibilities
-and assembled by the framework; the Normalizer only decides *how the run is
-conducted* and returns the framework's result unchanged.
+recovers structure, determines an outcome, records observations, or mutates the
+``LLMResponse``.  *What* structure a response expresses is recovered and assembled
+by the five internal normalization **stages** (``NORMALIZATION-0001…0005``),
+coordinated **inside this component's boundary** through a transient ``AssemblyState``
+(ADR-0002); the framework contributes only the generic ``NormalizationResult``
+aggregation (telemetry, framework metadata).  The Normalizer decides *how the run is
+conducted*, drives the stage chain, and populates the framework's result with the
+assembled ``ParsedResponse`` and the recorded observations within its own boundary.
+
+The internal stage chain (ADR-0002)
+-----------------------------------
+The five catalog stages are **internal** to this component and are **not** framework
+``NormalizationResponsibility`` units.  The Normalizer coordinates the four writing
+stages (``0001`` Recover Canonical Structure → ``0002`` Determine Outcome → ``0003``
+Capture Observations → ``0004`` Create Source Reference) and then assembles the
+immutable ``ParsedResponse`` through the coordinator's **consumer seam** (stage
+``0005`` ``AssembleParsedResponse.assemble``).  The ``AssemblyState``, the stages,
+and the coordinator never escape this boundary; the framework remains entirely
+unaware of them.
 
 Single public API
 -----------------
@@ -38,6 +52,7 @@ verdict.
 from __future__ import annotations
 
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.models.parsed_response import ParsedResponse
 from requirement_intelligence.normalization.framework.normalization_exceptions import (
     NormalizationFrameworkError,
 )
@@ -49,7 +64,19 @@ from requirement_intelligence.normalization.framework.normalization_registry imp
 )
 from requirement_intelligence.normalization.models import (
     NormalizationConfiguration,
+    NormalizationObservation,
     NormalizationResult,
+)
+from requirement_intelligence.normalization.response.assembly import (
+    AssembleParsedResponse,
+    AssemblyState,
+    CaptureNormalizationObservations,
+    CreateSourceReference,
+    DetermineNormalizationOutcome,
+    JsonCanonicalStructureRecoverer,
+    NormalizationStageCoordinator,
+    NormalizationStageError,
+    RecoverCanonicalStructure,
 )
 from requirement_intelligence.normalization.response.normalization_execution_context import (
     NormalizationExecutionContext,
@@ -129,6 +156,23 @@ class ResponseNormalizer:
         self._platform_defaults = platform_defaults
         self._last_execution_context: NormalizationExecutionContext | None = None
 
+        # The internal normalization stage chain (ADR-0002), coordinated inside this
+        # component's boundary. The four writing stages run in the coordinator's
+        # loop; stage 0005 assembles the ParsedResponse through the consumer seam.
+        # The stages are stateless and reusable, so the chain is built once. The
+        # JSON recovery mechanism is an implementation detail of stage 0001 — the
+        # single place a serialization format is known — kept out of the orchestrator
+        # so the orchestrator stays format-independent (Catalog §2.2, §3.4).
+        self._stage_coordinator = NormalizationStageCoordinator(
+            [
+                RecoverCanonicalStructure(JsonCanonicalStructureRecoverer()),
+                DetermineNormalizationOutcome(),
+                CaptureNormalizationObservations(),
+                CreateSourceReference(),
+            ]
+        )
+        self._parsed_response_assembler = AssembleParsedResponse()
+
     # ------------------------------------------------------------------
     # Observability (read-only; never performs normalization)
     # ------------------------------------------------------------------
@@ -154,12 +198,16 @@ class ResponseNormalizer:
         1. Resolve and validate the configuration (the configuration hierarchy).
         2. Resolve the Normalization Profile (default: Standard).
         3. Create the immutable execution context (full version provenance).
-        4. Execute the pipeline **exactly once**.
-        5. Return the ``NormalizationResult`` unchanged.
+        4. Execute the framework pipeline **exactly once** (the generic result
+           envelope) and coordinate the internal stage chain **exactly once** (the
+           ``ParsedResponse`` and observations).
+        5. Populate the framework result with the assembled ``ParsedResponse`` and
+           the recorded observations, and return it.
 
-        The Normalizer never parses, inspects, recovers structure, records
-        observations, creates a ``ParsedResponse``, mutates *llm_response*, or
-        interprets the result.
+        The Normalizer's orchestration logic never parses, inspects, recovers
+        structure, determines an outcome, records observations, or mutates
+        *llm_response*; those are performed by the internal stages within its
+        boundary (ADR-0002).
 
         Parameters
         ----------
@@ -258,23 +306,48 @@ class ResponseNormalizer:
         configuration: NormalizationConfiguration,
         context: NormalizationExecutionContext,
     ) -> NormalizationResult:
-        """Invoke the pipeline exactly once and return its result unchanged.
+        """Run the framework pipeline and the internal stage chain, and populate the result.
 
-        No retries, no loops, no recursion, no parallel execution.  Any framework
-        exception — or unexpected internal error — is translated into a
-        ``NormalizationExecutionError`` so that implementation exceptions never
-        leak across the orchestration boundary.  The run's correlation identity is
-        carried from the execution context onto the result.
+        The framework pipeline runs **exactly once** to produce the generic
+        ``NormalizationResult`` (telemetry, framework metadata); the internal stage
+        chain runs **exactly once** to produce the ``ParsedResponse`` and the
+        recorded observations.  The generic result is then populated, **within this
+        boundary**, with those two products (ADR-0002 §7).  Framework statistics are
+        left **unchanged** — they describe the framework pass, not the internal
+        stages.
+
+        No retries, no loops, no recursion, no parallel execution.  A framework
+        exception, an internal-stage infrastructure failure, or any unexpected error
+        is translated into a ``NormalizationExecutionError`` so that implementation
+        exceptions never leak across the orchestration boundary.
         """
         try:
-            return self._pipeline.run(
+            framework_result = self._pipeline.run(
                 llm_response,
                 configuration,
                 correlation_id=context.correlation_id,
             )
+            parsed_response, observations = self._assemble_within_boundary(llm_response)
+            # Populate the generic framework result with the internal-chain products.
+            # ``model_copy`` yields a new immutable result; statistics and framework
+            # metadata are carried through untouched (decision: framework telemetry
+            # describes framework execution, not the internal stages).
+            return framework_result.model_copy(
+                update={
+                    "parsed_response": parsed_response,
+                    "observations": observations,
+                }
+            )
         except NormalizationFrameworkError as exc:
             raise NormalizationExecutionError(
                 f"Normalization execution failed for run "
+                f"{context.normalization_id!r}: {exc}"
+            ) from exc
+        except NormalizationStageError as exc:
+            # An internal-stage infrastructure/ordering failure (never a MALFORMED
+            # fact) — translated so component internals never leak to callers.
+            raise NormalizationExecutionError(
+                f"Normalization stage execution failed for run "
                 f"{context.normalization_id!r}: {exc}"
             ) from exc
         except NormalizationError:
@@ -284,3 +357,30 @@ class ResponseNormalizer:
                 f"Unexpected error during normalization execution for run "
                 f"{context.normalization_id!r}: {exc}"
             ) from exc
+
+    # ------------------------------------------------------------------
+    # Internal stage chain (ADR-0002; never escapes this boundary)
+    # ------------------------------------------------------------------
+
+    def _assemble_within_boundary(
+        self, llm_response: LLMResponse
+    ) -> tuple[ParsedResponse, tuple[NormalizationObservation, ...]]:
+        """Run the internal stage chain and return the ``ParsedResponse`` + observations.
+
+        The coordinator runs the four writing stages over a fresh, boundary-local
+        ``AssemblyState`` and then invokes the **consumer seam** to assemble the
+        ``ParsedResponse`` (stage ``0005``).  The consumer returns **only** the
+        ``ParsedResponse`` (its assembly contract is unchanged); the observations are
+        snapshotted independently from the completed ``AssemblyState`` for the
+        ``NormalizationResult`` — they are never bundled into the consumer's return
+        value and never carried on the ``ParsedResponse`` (Assembly Contract §5, §6).
+        The ``AssemblyState`` itself never escapes this method.
+        """
+        captured_observations: list[NormalizationObservation] = []
+
+        def _consume(assembly_state: AssemblyState) -> ParsedResponse:
+            captured_observations.extend(assembly_state.observations)
+            return self._parsed_response_assembler.assemble(assembly_state)
+
+        parsed_response = self._stage_coordinator.coordinate(llm_response, _consume)
+        return parsed_response, tuple(captured_observations)

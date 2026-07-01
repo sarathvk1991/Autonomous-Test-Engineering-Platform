@@ -43,6 +43,9 @@ from requirement_intelligence.normalization.response.assembly.create_source_refe
 from requirement_intelligence.normalization.response.assembly.determine_normalization_outcome import (  # noqa: E501
     DetermineNormalizationOutcome,
 )
+from requirement_intelligence.normalization.response.assembly.json_canonical_structure_recoverer import (  # noqa: E501
+    JsonCanonicalStructureRecoverer,
+)
 from requirement_intelligence.normalization.response.assembly.normalization_stage import (
     NormalizationStage,
 )
@@ -78,6 +81,7 @@ __all__ = [
     "CaptureNormalizationObservations",
     "CreateSourceReference",
     "DetermineNormalizationOutcome",
+    "JsonCanonicalStructureRecoverer",
     "NormalizationStage",
     "NormalizationStageCoordinator",
     "NormalizationStageError",

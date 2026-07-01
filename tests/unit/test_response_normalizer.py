@@ -29,6 +29,7 @@ import pytest
 from pydantic import ValidationError
 
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.models.parsed_response import ParsedResponse
 from requirement_intelligence.normalization.framework import (
     NormalizationPipeline,
     NormalizationPipelineError,
@@ -41,6 +42,7 @@ from requirement_intelligence.normalization.models import (
     REGISTRY_VERSION,
     RESPONSIBILITY_CATALOG_VERSION,
     NormalizationConfiguration,
+    NormalizationResult,
 )
 from requirement_intelligence.normalization.response import (
     DEFAULT_PROFILE_NAME,
@@ -66,6 +68,16 @@ def _llm_response(text: str = "x") -> LLMResponse:
     return LLMResponse(provider="gemini", model="model", generated_text=text)
 
 
+def _framework_result() -> NormalizationResult:
+    """A real, minimal ``NormalizationResult`` (an empty framework pass).
+
+    The Normalizer now populates the framework result with the assembled
+    ``ParsedResponse`` and observations (via ``model_copy``), so the stubbed
+    ``pipeline.run`` must return a real result rather than a bare sentinel.
+    """
+    return NormalizationPipeline(NormalizationRegistry()).run(_llm_response())
+
+
 class _RecordingRun:
     """Replaces ``NormalizationPipeline.run`` to record calls without responsibilities."""
 
@@ -73,7 +85,7 @@ class _RecordingRun:
         self, *, result: object | None = None, raises: BaseException | None = None
     ) -> None:
         self.calls: list[tuple[Any, Any, Any]] = []
-        self._result = result if result is not None else object()
+        self._result = result if result is not None else _framework_result()
         self._raises = raises
 
     @property
@@ -277,10 +289,22 @@ class TestPipelineInvocation:
         assert used_config is defaults
         assert used_correlation is None  # context correlation is None today
 
-    def test_result_returned_unchanged(self) -> None:
-        sentinel = object()
-        normalizer, _, _, _ = _normalizer(run=_RecordingRun(result=sentinel))
-        assert normalizer.normalize(_llm_response()) is sentinel
+    def test_framework_result_is_populated_with_parsed_response(self) -> None:
+        # The framework result is populated within the boundary with the assembled
+        # ParsedResponse; the framework telemetry (statistics, framework metadata) is
+        # carried through unchanged.
+        framework_result = _framework_result()
+        normalizer, _, _, _ = _normalizer(run=_RecordingRun(result=framework_result))
+        result = normalizer.normalize(_llm_response())
+        assert isinstance(result, NormalizationResult)
+        assert isinstance(result.parsed_response, ParsedResponse)
+        # Framework telemetry is unchanged (same objects, not reinterpreted).
+        assert result.normalization_statistics is framework_result.normalization_statistics
+        assert (
+            result.normalization_framework_metadata
+            is framework_result.normalization_framework_metadata
+        )
+        assert result.normalization_id == framework_result.normalization_id
 
     def test_repeated_normalize_invokes_once_each(self) -> None:
         normalizer, _, _, recording = _normalizer()
