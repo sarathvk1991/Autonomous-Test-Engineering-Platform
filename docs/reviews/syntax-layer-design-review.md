@@ -238,15 +238,15 @@ The refinement separates three concerns with three owners:
 | Concern | Owner | Responsibility |
 | ------- | ----- | -------------- |
 | **Creation** | **Response Normalization Layer** (Response Normalization Contract) | *How* the `ParsedResponse` comes into being — once, deterministically, before validation. |
-| **Information** | **`ParsedResponse`** (Validation Canonical Models §8) | *What* the representation holds — normalized structure, outcome, observations. |
+| **Information** | **`ParsedResponse`** (Validation Canonical Models §8) | *What* the representation holds — normalized structure, outcome, source reference. The Normalization Observations are aggregated by the **`NormalizationResult`**, not the `ParsedResponse`. |
 | **Consumption** | **Validation Framework** (Syntax → Business Rule) | *Reading* the representation to reach verdicts; never creating or normalizing it. |
 
 | Aspect | Specification |
 | ------ | ------------- |
-| **Responsibility** | Hold the single, normalized structural view of `generated_text`, the **Normalization Outcome**, and the **Normalization Observations** needed by consumers — so that consumers *read*, never *recover structure*. |
+| **Responsibility** | Hold the single, normalized structural view of `generated_text`, the **Normalization Outcome**, and a reference to the preserved original — so that consumers *read*, never *recover structure*. The **Normalization Observations** consumers need are aggregated by the **`NormalizationResult`**, not held on the `ParsedResponse`. |
 | **Normalization Outcome** | A normalized enum, e.g. `NORMALIZED` / `MALFORMED` — analogous to `ExecutionStatus`. This is the **fact** `SYNTAX-0001` reads (never itself a verdict). |
 | **Structure** | When `NORMALIZED`: a normalized structural tree (objects/arrays/scalars/identifiers) — the input Schema/Structural/Content/… and every other platform consumer read. **Format-neutral by definition.** |
-| **Normalization Observations** | Recorded, un-judged **facts** a naïve structural view would lose — e.g. **duplicate field identifiers** (a normalized structure silently de-duplicates), needed by `SYNTAX-0002`; and **encoding integrity**, needed by `SYNTAX-0003`. They carry no severity or verdict and are never a `ValidationIssue` (Response Normalization Contract §8, §10). |
+| **Normalization Observations** | Recorded, un-judged **facts** a naïve structural view would lose — aggregated by the **`NormalizationResult`** (the aggregate that owns the `ParsedResponse`), never carried on the `ParsedResponse`. E.g. **duplicate field identifiers** (a normalized structure silently de-duplicates), needed by `SYNTAX-0002`; and **encoding integrity**, needed by `SYNTAX-0003`. They carry no severity or verdict and are never a `ValidationIssue` (Response Normalization Contract §8, §10). |
 | **Ownership / producer** | The **Response Normalization Layer** — a permanent, first-class component between `LLMResponse` and the Response Validator. Structure recovery is a **format** concern, identical across providers, so it is **not** per-adapter and **not** per-rule logic. |
 | **Carrier** | Recommended: a field on `LLMResponse` (a normalized derivative of `generated_text`, sitting beside `execution_status`). Alternative: on `AnalysisResult`. Either keeps it on the canonical model the rules already receive. |
 | **Lifecycle** | Created **once**, immediately after `generated_text` is available and before validation; **immutable**; **read-only** for every rule; never mutated, never re-derived. |
@@ -280,10 +280,12 @@ independence:
    generated_text (provider-independent text)
         │ Response Normalization Layer — format-level normalization, the ONLY recovery
         ▼
-   ParsedResponse { Normalization Outcome · structure · Normalization Observations }
+   Normalization Result (aggregate)
+        ├─ ParsedResponse { Normalization Outcome · structure · source reference }
+        └─ Normalization Observations (execution facts)
         │ read read-only
         ▼
-   Syntax rules (normalization outcome)  →  Schema+ rules (structure)
+   Syntax rules (outcome + observations)  →  Schema+ rules (structure)
 ```
 
 A new provider (Azure OpenAI, Anthropic, Bedrock, Ollama, …) conforms with **no
@@ -301,12 +303,12 @@ proven across the frozen Transport layer.
    Requirement Analysis Service
         │ provider adapter normalizes → LLMResponse(generated_text, execution_status, …)
         ▼
-   Response Normalization Layer: normalize generated_text  →  ParsedResponse   (ONCE)
-        │ attached to the canonical model (LLMResponse / AnalysisResult)
+   Response Normalization Layer: normalize generated_text  →  Normalization Result   (ONCE)
+        │ aggregates the ParsedResponse + Normalization Observations
         ▼
    Response Validator → Validation Pipeline (layer order)
         ├─ Transport  reads execution_status / presence / emptiness     (frozen)
-        ├─ Syntax     reads ParsedResponse.normalization_outcome + observations  ← new layer
+        ├─ Syntax     reads ParsedResponse.normalization_outcome + NormalizationResult observations  ← new layer
         └─ Schema +   read ParsedResponse.structure
         ▼
    ValidationResult
@@ -323,8 +325,8 @@ read the structure without re-deriving it.
 | Rule | Single concern | Reads (under Option B) | Notes |
 | ---- | -------------- | ---------------------- | ----- |
 | `SYNTAX-0001` ValidStructureRule | The response is well-formed structured data | `ParsedResponse.normalization_outcome == MALFORMED` | Foundational; `CRITICAL`/blocking — a malformed response cannot be validated further. |
-| `SYNTAX-0002` DuplicateKeysRule | No duplicate field identifier within an object | `ParsedResponse` duplicate-identifier observation | Requires normalization to **surface duplicates**; a normalized structure silently drops them. This is a concrete requirement on the `ParsedResponse` design. |
-| `SYNTAX-0003` EncodingRule | The response's character encoding is intact | `ParsedResponse` encoding observation (or `generated_text` integrity) | See finding below — its true home needs confirmation. |
+| `SYNTAX-0002` DuplicateKeysRule | No duplicate field identifier within an object | `NormalizationResult` duplicate-identifier observation | Requires normalization to **surface duplicates**; a normalized structure silently drops them. This is a concrete requirement on the Normalization Observation design (aggregated by the `NormalizationResult`). |
+| `SYNTAX-0003` EncodingRule | The response's character encoding is intact | `NormalizationResult` encoding observation (or `generated_text` integrity) | See finding below — its true home needs confirmation. |
 
 **Execution order & dependencies.** Under Option B every Syntax rule reads a
 normalized fact, so the rules are **independent and order-free** (only the
@@ -381,8 +383,8 @@ and layer ownership, and matches the established normalization precedent.
   exists.
 - **Richer syntactic checks.** New Syntax concerns (e.g. additional ambiguity
   classes) become new `SYNTAX-00NN` rules reading additional normalized
-  observations on `ParsedResponse` — additive, governed by ADR, no framework
-  change.
+  observations aggregated by the `NormalizationResult` — additive, governed by ADR,
+  no framework change.
 - **Schema onward.** Every later layer consumes `ParsedResponse.structure`
   unchanged; the abstraction is the shared substrate for the rest of the
   pipeline.

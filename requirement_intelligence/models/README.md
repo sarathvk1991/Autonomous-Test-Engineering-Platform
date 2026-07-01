@@ -60,7 +60,7 @@ one AI response. It is a *peer* of `LLMResponse` and `AnalysisResult`, governed 
 | Execution identity (ids, timestamps) | `NormalizationExecutionContext` |
 | Framework provenance / versions | `NormalizationFrameworkMetadata` |
 | Statistics / telemetry | `NormalizationStatistics` |
-| Normalization **observations** | `NormalizationResult` *(governed deviation from Canonical Models §8.1 — see the module docstring; pending ADR)* |
+| Normalization **observations** | `NormalizationResult` *(the aggregate that owns the `ParsedResponse` together with the observations; Canonical Models §8, Response Normalization Contract §8)* |
 | Verdict, issues, severity, recommendations | `ValidationResult` + aggregate |
 | Provider metadata, raw payload, `generatedText` | `LLMResponse` |
 | Transport state, reasoning, business meaning | their respective owners |

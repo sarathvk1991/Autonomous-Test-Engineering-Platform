@@ -314,8 +314,10 @@ Normalization, Feature Generation, Test Generation, AI Evaluation, Analytics, an
 future components) reads the **same instance**.
 
 **Purpose.** Carry the one normalized structure of the response — together with
-the Normalization Outcome and the Normalization Observations a consumer needs — so
-that **consumers read structure; they never recover it.**
+the Normalization Outcome and a reference to the preserved original — so that
+**consumers read structure; they never recover it.** The Normalization
+Observations a consumer needs are **not** carried here; they are execution facts
+aggregated by the `NormalizationResult` (Response Normalization Contract §8).
 
 **Creation.** A ParsedResponse is *created once*, before any consumer runs, by the
 **Response Normalization Layer** (governed by the Response Normalization
@@ -334,8 +336,8 @@ mutated, never recreated** (Response Normalization Contract §6).
 - **Provider-independent** — it holds no provider payloads or provider strings.
 - **Format-independent** — it represents normalized structure, **not** a specific
   serialization format.
-- **Observation-only** — it records the structure and facts that are present; it
-  never repairs, completes, or judges them.
+- **Observed, never repaired** — it records the structure that is present; it
+  never repairs, completes, or judges it.
 
 **Relationships.** A ParsedResponse is a normalized derivative of the response's
 `generated_text`; it is reached by consumers via the analysis result under
@@ -347,12 +349,30 @@ Contract §12).
 
 ### 8.1 Conceptual attributes
 
+The `ParsedResponse` owns **only the canonical representation** — five attributes,
+and nothing else:
+
 | Attribute | Meaning |
 | --------- | ------- |
+| **ParsedResponse Version** | The version of the representation's *additive shape* (Response Normalization Contract §12), carried on the artifact itself. |
 | **Normalization Outcome** | A normalized, provider-independent **fact**: whether the response was `NORMALIZED` (well-formed structure recovered) or `MALFORMED` (no well-formed structure). The fact the Syntax layer judges. |
 | **Normalized Structure** | When `NORMALIZED`: the format-neutral structural view (objects, arrays, scalars, identifiers) that Schema, Structural, Content, Evidence, Traceability, Reasoning, and Business Rule layers — and every other platform consumer — read. |
-| **Normalization Observations** | Recorded, **un-judged facts** a structural view alone would lose — e.g. duplicate field identifiers within an object, and character-encoding observations — captured for a consumer to interpret. They carry no severity and no verdict, and are **never** a `ValidationIssue` (Response Normalization Contract §8, §10). |
 | **Source Reference** | A link back to the response's preserved original `generated_text`, so the normalized view never replaces the original. |
+| **Metadata** | Free-form metadata carried with the representation; never a verdict, observation, statistic, or provider payload. |
+
+> **Architectural Decision — Normalization Observations are not a ParsedResponse
+> attribute.** Normalization Observations (e.g. duplicate field identifiers,
+> character-encoding observations) are **execution facts produced during
+> normalization**, not intrinsic properties of the canonical representation. They
+> are therefore **aggregated by the `NormalizationResult`** — the aggregate that
+> owns the `ParsedResponse`, the observations, the statistics, the framework
+> metadata, and the execution context — and are **never** carried on the
+> `ParsedResponse`. Every piece of information has exactly one canonical owner: the
+> *representation* is owned by the `ParsedResponse`; the *observations about the
+> run that produced it* are owned by the `NormalizationResult` (Response
+> Normalization Contract §8). Both remain un-judged facts that carry no severity,
+> no verdict, and are never a `ValidationIssue` (Response Normalization Contract
+> §10).
 
 > **Architectural Decision**
 > **`ParsedResponse` represents normalized structure, not a specific serialization
@@ -379,13 +399,15 @@ Contract §12).
 > validation interprets facts** (Response Normalization Contract §10).
 
 > **Example**
-> Normalization Outcome `NORMALIZED`; Normalized Structure a document with an
-> executive-summary object, a requirements array, a risks array, and a
-> recommendations array; Normalization Observations record that no duplicate field
-> identifier occurred and the encoding is intact; Source Reference points to the
-> preserved `generated_text`. The Syntax layer reads the outcome and observations;
-> the Schema layer reads the structure. Nothing about this representation changes
-> during validation.
+> The `ParsedResponse` carries Normalization Outcome `NORMALIZED`; a Normalized
+> Structure that is a document with an executive-summary object, a requirements
+> array, a risks array, and a recommendations array; and a Source Reference
+> pointing to the preserved `generated_text`. The `NormalizationResult` that
+> aggregates it records the Normalization Observations — that no duplicate field
+> identifier occurred and the encoding is intact. The Syntax layer reads the
+> outcome from the `ParsedResponse` and the observations from the
+> `NormalizationResult`; the Schema layer reads the structure from the
+> `ParsedResponse`. Nothing about this representation changes during validation.
 
 ---
 
@@ -482,7 +504,7 @@ architectural guarantees the models exist to uphold.
 
 | # | Invariant | Why it matters |
 | - | --------- | -------------- |
-| 0 | **ParsedResponse is immutable, provider- and format-independent, and observation-only.** | The substrate every layer reads must be stable, origin-neutral, format-neutral, and never repaired — or layers would disagree about the same response. |
+| 0 | **ParsedResponse is immutable, provider- and format-independent, and observed-not-repaired.** | The substrate every layer reads must be stable, origin-neutral, format-neutral, and never repaired — or layers would disagree about the same response. Its Normalization Observations are not carried on it; they are aggregated by the `NormalizationResult`. |
 | 1 | **ValidationIssue is immutable.** | Findings are objective observations; mutation would break determinism and audit. |
 | 2 | **ValidationResult is immutable.** | The output must be a stable, reproducible record of one run. |
 | 3 | **ValidationSummary is derived only.** | A summary that could be authored could disagree with the facts it summarises. |
@@ -585,7 +607,9 @@ A Response Validator implementation conforms to these canonical models only if
 every box can be checked:
 
 - [ ] Models remain implementation-independent (no language, framework, storage, or serialization assumptions).
-- [ ] ParsedResponse is a Core Canonical Model and a Shared Platform Artifact, created once before any consumer runs, immutable, shared, provider- and format-independent, and observation-only.
+- [ ] ParsedResponse is a Core Canonical Model and a Shared Platform Artifact, created once before any consumer runs, immutable, shared, provider- and format-independent, and observed-not-repaired.
+- [ ] ParsedResponse owns only the canonical representation — ParsedResponse Version, Normalization Outcome, Normalized Structure, Source Reference, and Metadata; it does not carry Normalization Observations.
+- [ ] Normalization Observations are aggregated by the NormalizationResult, not the ParsedResponse; the NormalizationResult is the aggregate that owns the ParsedResponse together with the observations, statistics, framework metadata, and execution context.
 - [ ] No consumer creates, recovers, re-derives, copies, mutates, or reparses the ParsedResponse; every consumer reads the same instance.
 - [ ] Normalization Observations and the Normalization Outcome are un-judged facts — they carry no severity or verdict and are never a ValidationIssue.
 - [ ] ValidationIssue is immutable, with severity fixed at creation.

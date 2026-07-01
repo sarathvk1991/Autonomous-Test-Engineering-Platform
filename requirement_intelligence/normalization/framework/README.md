@@ -226,12 +226,13 @@ placeholder** (`Any | None`, always `None` in Phase 1). Producing a real
 field's type annotation tightens (`Any | None` → `ParsedResponse | None`) — no
 field is added, renamed, or moved, so no consumer breaks.
 
-> **Observations ownership (governed deviation).** `validation-canonical-models.md`
-> §8.1 lists Normalization Observations as a ParsedResponse attribute; this build
-> **deliberately keeps observations on `NormalizationResult`** (which already owns
-> them) and excludes them from `ParsedResponse`, so the same facts never live in
-> two canonical homes. This is a **recorded** deviation pending an ADR — see the
-> `ParsedResponse` module docstring.
+> **Observations ownership.** The **`NormalizationResult`** is the aggregate that
+> owns the Normalization Observations together with the `ParsedResponse`, the
+> statistics, the framework metadata, and the execution context. The
+> `ParsedResponse` owns only the canonical representation and never carries
+> observations, so the same facts live in exactly one canonical home. The
+> architecture documents (`validation-canonical-models.md` §8,
+> `response-normalization-contract.md` §8) state this ownership consistently.
 
 ## Relationship to the Response Validator
 

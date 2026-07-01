@@ -253,7 +253,7 @@ strictly separated.
 | Role | Owner | Responsibility |
 | ---- | ----- | -------------- |
 | **Creation** | Response Normalization Layer | *How* the `ParsedResponse` comes into being (once, deterministically). |
-| **Information** | `ParsedResponse` (Validation Canonical Models §8) | *What* the representation holds — normalized structure, outcome, observations. |
+| **Information** | `ParsedResponse` (Validation Canonical Models §8) | *What* the representation holds — normalized structure, outcome, and source reference. The Normalization Observations are aggregated by the Normalization Result, not the `ParsedResponse`. |
 | **Consumption** | Every platform consumer (Validation first; §7) | *Reading* the representation; never creating or normalizing it. |
 
 > **Architectural Decision**
@@ -347,8 +347,23 @@ platform subsystem.
 
 A **Normalization Observation** is a **first-class architectural concept**: a
 recorded, un-judged fact about the response that a naïve structural view would
-lose. The Response Normalization Layer captures observations on the
-`ParsedResponse` so consumers can read them without re-deriving anything.
+lose. The Response Normalization Layer records observations on the **Normalization
+Result** — the aggregate it produces — so consumers can read them without
+re-deriving anything.
+
+> **Architectural Decision — the Normalization Result is the aggregate; the
+> ParsedResponse is the representation.** Response Normalization produces **both**
+> the `ParsedResponse` and the Normalization Observations, but they have **distinct
+> owners**. The `ParsedResponse` is the **Shared Platform Artifact** and owns only
+> the canonical *representation* (its version, the Normalization Outcome, the
+> Normalized Structure, the Source Reference, and its metadata). The **Normalization
+> Result** is the **aggregate** that owns the `ParsedResponse` **together with** the
+> Normalization Observations, the normalization statistics, the framework metadata,
+> and the execution context. Normalization Observations are **execution facts about
+> the run that produced the representation** — not intrinsic properties of the
+> representation — so they are aggregated by the Normalization Result and are
+> **never** carried on the `ParsedResponse`. Every piece of information thus has
+> exactly one canonical owner.
 
 | Observation (examples) | What it records |
 | ---------------------- | --------------- |
@@ -359,7 +374,8 @@ lose. The Response Normalization Layer captures observations on the
 
 Normalization Observations are:
 
-- **Recorded** — captured as facts on the `ParsedResponse`.
+- **Recorded** — captured as facts on the Normalization Result (never on the
+  `ParsedResponse`).
 - **Never judged** — normalization forms no opinion about them.
 - **Never assigned severity** — severity is a validation concept (§10).
 - **Never assigned a verdict** — verdicts are a validation concept (§10).
@@ -440,7 +456,9 @@ Normalization strengthens, and never weakens, provider independence.
    generated_text                       (provider-independent text)
         │ ONE shared, format-level normalization — the only structure recovery
         ▼
-   ParsedResponse                       (provider-independent structure + outcome + observations)
+   Normalization Result                 (aggregate produced by the subsystem)
+        ├─ ParsedResponse               (provider-independent structure + outcome)
+        └─ Normalization Observations   (execution facts about the run)
 ```
 
 A new provider conforms with **no change to normalization and no change to any
@@ -471,7 +489,7 @@ from a change in *validation*.
 | Version | Governs | Changes when… |
 | ------- | ------- | ------------- |
 | **Normalization Contract Version** | Normalization **philosophy, architecture, semantics, and compatibility rules** — the meaning of the outcomes, the observations, the boundary, and the responsibilities. | The *meaning or governance* of normalization changes (a new outcome, a new observation class, a boundary clarification). |
-| **ParsedResponse Version** | The **canonical representation** — the attributes the `ParsedResponse` carries and their **additive evolution and compatibility**. | The *shape* of the representation changes additively (a new attribute, a new observation field). |
+| **ParsedResponse Version** | The **canonical representation** — the attributes the `ParsedResponse` carries and their **additive evolution and compatibility**. | The *shape* of the representation changes additively (a new representation attribute). A new observation is **not** a ParsedResponse shape change — observations are aggregated by the Normalization Result. |
 
 ### 12.1 Why the two versions are intentionally independent
 
@@ -587,7 +605,7 @@ The normalization contract is designed to be **extended, never replaced**.
 | Reserved direction | Intent | Constraint under this contract |
 | ------------------ | ------ | ------------------------------ |
 | **Additional structured formats** | Normalize new structured formats into the same `ParsedResponse`. | Format-neutral by design (§11); no consumer changes. |
-| **Additional Normalization Observations** | Capture new facts a future consumer requires. | Additive observation; advances the ParsedResponse Version (shape) and, if it changes meaning, the Normalization Contract Version. |
+| **Additional Normalization Observations** | Capture new facts a future consumer requires. | Additive observation aggregated by the Normalization Result; advances the Normalization Contract Version if it changes meaning. It does **not** advance the ParsedResponse Version — observations are not carried on the `ParsedResponse`. |
 | **Additional Normalization Outcomes** | Express a new normalized outcome class. | Governed like a new `ExecutionStatus`; advances the Normalization Contract Version; requires an ADR. |
 | **Additional Normalization responsibilities** | Catalog a new normalization behaviour. | A new `NORMALIZATION-00NN` entry (§13); never a validation rule; requires an ADR. |
 | **New consumers** | New platform subsystems read the same `ParsedResponse`. | Read-only consumers of the Shared Platform Artifact (§7); no change to normalization. |
@@ -671,9 +689,10 @@ The normalization contract is designed to be **extended, never replaced**.
 | Term | Definition |
 | ---- | ---------- |
 | **Response Normalization Layer** | The permanent, independent platform subsystem that turns an `LLMResponse` into the canonical `ParsedResponse` exactly once; it validates, repairs, interprets, enriches, filters, mutates, and transforms nothing (§4). |
-| **ParsedResponse** | The canonical, provider- and format-independent normalized structure of the response; created once, immutable, shared, and read by every platform consumer (§5–§7; Validation Canonical Models §8). |
-| **Normalization Outcome** | A normalized, provider-independent fact — `NORMALIZED` or `MALFORMED` — stating whether well-formed structure was recovered (§9). |
-| **Normalization Observation** | A recorded, un-judged fact about the response (e.g. a duplicate identifier, an encoding observation) captured on the `ParsedResponse`; never a severity, verdict, or `ValidationIssue` (§8). |
+| **ParsedResponse** | The canonical, provider- and format-independent normalized structure of the response; created once, immutable, shared, and read by every platform consumer. Owns only the canonical representation — its version, the Normalization Outcome, the Normalized Structure, the Source Reference, and its metadata (§5–§7; Validation Canonical Models §8). |
+| **Normalization Result** | The **aggregate** the subsystem produces: it owns the `ParsedResponse` **together with** the Normalization Observations, the normalization statistics, the framework metadata, and the execution context. The representation is owned by the `ParsedResponse`; the execution facts about the run that produced it are owned by the Normalization Result (§8). |
+| **Normalization Outcome** | A normalized, provider-independent fact — `NORMALIZED` or `MALFORMED` — stating whether well-formed structure was recovered; carried on the `ParsedResponse` (§9). |
+| **Normalization Observation** | A recorded, un-judged fact about the response (e.g. a duplicate identifier, an encoding observation) aggregated by the Normalization Result — never carried on the `ParsedResponse`, and never a severity, verdict, or `ValidationIssue` (§8). |
 | **Shared Platform Artifact** | An artifact produced once and shared read-only across the whole platform; `ParsedResponse` is one, owned by no single consumer (§7). |
 | **Normalization Contract Version** | The version governing normalization *semantics, philosophy, architecture, and compatibility rules* (§12). |
 | **ParsedResponse Version** | The version governing the *canonical representation's additive shape and compatibility* (§12). |
@@ -687,8 +706,8 @@ every box can be checked:
 
 - [ ] Recovers structure **exactly once**, before any consumer runs.
 - [ ] Produces **one** `ParsedResponse` that is immutable, shared, never copied, never mutated, never recreated.
-- [ ] Records a single **Normalization Outcome** (`NORMALIZED` / `MALFORMED`).
-- [ ] Records **Normalization Observations** as un-judged facts — no severity, no verdict, never a `ValidationIssue`.
+- [ ] Records a single **Normalization Outcome** (`NORMALIZED` / `MALFORMED`) on the `ParsedResponse`.
+- [ ] Records **Normalization Observations** on the **Normalization Result** (the aggregate that owns the `ParsedResponse`), never on the `ParsedResponse` — as un-judged facts with no severity, no verdict, never a `ValidationIssue`.
 - [ ] Preserves the original `generated_text` unchanged.
 - [ ] **Never** validates, repairs, interprets, enriches, filters, mutates, or transforms business meaning.
 - [ ] Is **provider- and format-independent** — no provider, vendor, endpoint, or serialization format influences it.

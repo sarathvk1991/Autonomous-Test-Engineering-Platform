@@ -449,23 +449,28 @@ then reads.
    Response Normalization Layer      (recovers structure ONCE; no validation/repair/interpretation)
         │
         ▼
-   ParsedResponse                    (canonical, provider- and format-independent structure)
+   Normalization Result              (aggregate produced by the subsystem)
+        ├─ ParsedResponse            (canonical, provider- and format-independent structure — Shared Platform Artifact)
+        └─ Normalization Observations (execution facts about the run)
         │
         ▼
-   Response Validator
+   Response Validator                (consumes the Normalization Result)
         │ orchestrates the pipeline
         ▼
-   Validation Pipeline               (Syntax reads the outcome; Schema onward read the structure)
+   Validation Pipeline               (Syntax reads the outcome + observations; Schema onward read the structure)
         │
         ▼
    Validation Result
 ```
 
-| Layer | What it reads from the `ParsedResponse` |
-| ----- | --------------------------------------- |
+The Response Validator consumes the **Normalization Result** and reads the
+`ParsedResponse` together with the Normalization Observations the aggregate carries:
+
+| Layer | What it reads |
+| ----- | ------------- |
 | **Transport** | Nothing — it reads delivery facts (`execution_status`, presence, emptiness) and runs *before* normalization is consulted. |
-| **Syntax** | The **Normalization Outcome** (`NORMALIZED` / `MALFORMED`) and **Normalization Observations** (e.g. duplicate identifiers, encoding integrity). |
-| **Schema · Structural · Content · Evidence · Traceability · Reasoning · Business Rule** | The **normalized structure** — the same representation, read by all. |
+| **Syntax** | The **Normalization Outcome** (`NORMALIZED` / `MALFORMED`) from the `ParsedResponse`, and the **Normalization Observations** (e.g. duplicate identifiers, encoding integrity) from the **Normalization Result**. |
+| **Schema · Structural · Content · Evidence · Traceability · Reasoning · Business Rule** | The **normalized structure** from the `ParsedResponse` — the same representation, read by all. |
 
 > **Architectural Decision — why Response Normalization exists.**
 > Recovering structure is a **normalization** concern, not a validation one. If
@@ -494,9 +499,11 @@ then reads.
 > Contract §7).
 
 > **Architectural Decision — normalization produces facts; validation produces
-> judgments.** The `ParsedResponse` carries **facts**: a Normalization Outcome
-> (`NORMALIZED` / `MALFORMED`) and Normalization Observations (e.g. a duplicate
-> identifier, an encoding observation). These facts carry **no severity, no
+> judgments.** Normalization produces **facts** with distinct owners: the
+> `ParsedResponse` carries the Normalization Outcome (`NORMALIZED` / `MALFORMED`),
+> while the Normalization Observations (e.g. a duplicate identifier, an encoding
+> observation) are aggregated by the **Normalization Result**, not the
+> `ParsedResponse`. These facts carry **no severity, no
 > verdict, and are never a `ValidationIssue`.** A validation rule may *read* a fact
 > and *decide* to raise an issue — that judgement, and any severity or
 > recommendation it carries, belongs entirely to validation. This boundary is
@@ -834,12 +841,13 @@ capability consumes.
                   │  (via Execution Package)
                   ▼
         [Response Normalization Contract] ──► Response Normalization Layer
-                  │ creates the ParsedResponse ONCE (no validation/repair)
+                  │ creates the Normalization Result ONCE
+                  │ (ParsedResponse + observations; no validation/repair)
                   ▼
         ┌─────────────────────────────────────────────┐
         │        RESPONSE VALIDATION LAYER             │  ◄── mandatory
         │   transport · syntax · schema · structure    │      quality gate
-        │   content · evidence · traceability ·        │   reads the ParsedResponse;
+        │   content · evidence · traceability ·        │   reads the Normalization Result
         │   reasoning · business rules                 │ ◄─ never normalizes ──┐
         └───────────────────┬─────────────────────────┘                       │
                             │ PASSED / PASSED_WITH_WARNINGS only  [Validation Canonical
@@ -1061,9 +1069,11 @@ The philosophy of the Response Validation Layer, distilled:
                                ▼
    ┌──────────────────────────────────────────────────────────────┐
    │              Response Normalization Layer                     │
-   │   creates the ParsedResponse ONCE · no validation / repair    │
+   │   creates the Normalization Result ONCE · no validation/repair │
    └───────────────────────────┬──────────────────────────────────┘
-                               │ ParsedResponse (canonical, format-neutral structure)
+                               │ Normalization Result
+                               │ (ParsedResponse — canonical, format-neutral
+                               │  structure — + Normalization Observations)
                                ▼
    ╔══════════════════════════════════════════════════════════════╗
    ║              RESPONSE VALIDATION LAYER                        ║
@@ -1137,7 +1147,8 @@ The philosophy of the Response Validation Layer, distilled:
 | **Response Normalization Layer** | The permanent, independent platform subsystem that turns the `LLMResponse` into the canonical `ParsedResponse` exactly once, before validation; it performs no validation, repair, interpretation, enrichment, filtering, mutation, or business transformation (§4.4; Response Normalization Contract). |
 | **ParsedResponse** | The canonical, provider- and format-independent normalized structure of the response; a Shared Platform Artifact consumed by every validation layer (Syntax reads its outcome, every later layer reads its structure) and by every other platform consumer (§4.4; Validation Canonical Models §8). |
 | **Normalization Outcome** | A normalized, provider-independent fact — `NORMALIZED` or `MALFORMED` — that the Syntax layer judges; it is a fact, never a verdict (§4.4; Response Normalization Contract §9). |
-| **Normalization Observation** | A recorded, un-judged fact captured on the `ParsedResponse` (e.g. a duplicate identifier, an encoding observation); it carries no severity or verdict and is never a `ValidationIssue` until a rule decides to raise one (§4.4; Response Normalization Contract §8, §10). |
+| **Normalization Result** | The aggregate produced by the Response Normalization Layer: it owns the `ParsedResponse` together with the Normalization Observations, statistics, framework metadata, and execution context. Validation consumes it and reads the `ParsedResponse` together with the observations (§4.4; Response Normalization Contract §8). |
+| **Normalization Observation** | A recorded, un-judged fact aggregated by the `NormalizationResult` (e.g. a duplicate identifier, an encoding observation) — never carried on the `ParsedResponse`; it carries no severity or verdict and is never a `ValidationIssue` until a rule decides to raise one (§4.4; Response Normalization Contract §8, §10). |
 | **Shared Platform Artifact** | An artifact produced once and shared read-only across the whole platform; `ParsedResponse` is one — validation is its first consumer, not its owner (Response Normalization Contract §7). |
 | **Normalization Contract Version** | The version governing normalization *semantics and governance*, independent of the Validation Contract Version (Response Normalization Contract §12). |
 | **ParsedResponse Version** | The version governing the *additive shape* of the `ParsedResponse` representation, independent of normalization semantics (Response Normalization Contract §12). |
