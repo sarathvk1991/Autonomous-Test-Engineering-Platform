@@ -30,6 +30,9 @@ from requirement_intelligence.normalization.response.assembly.canonical_structur
 from requirement_intelligence.normalization.response.assembly.capture_normalization_observations import (  # noqa: E501
     CaptureNormalizationObservations,
 )
+from requirement_intelligence.normalization.response.assembly.create_source_reference import (
+    CreateSourceReference,
+)
 
 # The fully-qualified stage module path unavoidably exceeds the line-length limit;
 # the package deliberately re-exports concrete stages (mirroring 0001), so E501 is
@@ -56,6 +59,7 @@ from requirement_intelligence.normalization.response.assembly.stage_exceptions i
     NormalizationStageError,
     ObservationCaptureError,
     OutcomeDeterminationError,
+    SourceReferenceCreationError,
     StageCoordinationError,
     StructureRecoveryError,
 )
@@ -67,6 +71,7 @@ __all__ = [
     "AssemblyStateError",
     "CanonicalStructureRecoverer",
     "CaptureNormalizationObservations",
+    "CreateSourceReference",
     "DetermineNormalizationOutcome",
     "NormalizationStage",
     "NormalizationStageCoordinator",
@@ -75,6 +80,7 @@ __all__ = [
     "ObservationCaptureError",
     "OutcomeDeterminationError",
     "RecoverCanonicalStructure",
+    "SourceReferenceCreationError",
     "StageCoordinationError",
     "StructureRecoveryError",
 ]

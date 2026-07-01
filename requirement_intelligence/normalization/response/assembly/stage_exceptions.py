@@ -5,11 +5,12 @@ Hierarchy
 ::
 
     NormalizationStageError
-    ├── StructureRecoveryError       (NORMALIZATION-0001 recovery-mechanism failure)
-    ├── OutcomeDeterminationError    (NORMALIZATION-0002 ordering failure)
-    ├── ObservationCaptureError      (NORMALIZATION-0003 ordering failure)
-    ├── AssemblyStateError           (Assembly State write-contract violation)
-    └── StageCoordinationError       (stage-coordinator wiring failure)
+    ├── StructureRecoveryError        (NORMALIZATION-0001 recovery-mechanism failure)
+    ├── OutcomeDeterminationError     (NORMALIZATION-0002 ordering failure)
+    ├── ObservationCaptureError       (NORMALIZATION-0003 ordering failure)
+    ├── SourceReferenceCreationError  (NORMALIZATION-0004 reference-mechanism failure)
+    ├── AssemblyStateError            (Assembly State write-contract violation)
+    └── StageCoordinationError        (stage-coordinator wiring failure)
 
 Facts, not exceptions
 ---------------------
@@ -72,6 +73,19 @@ class ObservationCaptureError(NormalizationStageError):
     structure from NORMALIZATION-0001 has not been recorded — which is a
     coordination/ordering failure (Assembly Contract §7: ``0003`` never executes
     before ``0001``), never a normalization fact.
+    """
+
+
+class SourceReferenceCreationError(NormalizationStageError):
+    """Raised when the source reference cannot be created for an *infrastructure* reason.
+
+    This is **not** raised for a malformed or empty response — creating a source
+    reference is a **fact** for every response (even an empty one has a stable
+    content reference), never an exception (Assembly Contract §8; Response
+    Normalization Contract §8).  NORMALIZATION-0004 depends on **no** prior stage
+    (Catalog §5), so there is no ordering guard; this is raised only when the
+    reference-creation mechanism itself fails unexpectedly — so that an
+    infrastructure failure never masquerades as a normalization fact.
     """
 
 
