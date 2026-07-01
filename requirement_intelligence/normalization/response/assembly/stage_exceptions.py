@@ -55,3 +55,18 @@ class AssemblyStateError(NormalizationStageError):
     Each owned fact is written **exactly once** (Assembly Contract §7); a second
     write is a programming error in stage coordination, not a normalization fact.
     """
+
+
+class StageCoordinationError(NormalizationStageError):
+    """Raised when the internal stage coordinator is *assembled* incorrectly.
+
+    Example
+    -------
+    The coordinator is constructed with an object that is not a
+    :class:`~requirement_intelligence.normalization.response.assembly.normalization_stage.NormalizationStage`.
+
+    This is a **wiring** error (a programming error in how the coordinator is
+    assembled), never a normalization fact.  It is distinct from a stage's own
+    infrastructure failure during execution, which propagates from the stage
+    unchanged.
+    """

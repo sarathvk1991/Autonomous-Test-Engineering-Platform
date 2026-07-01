@@ -38,9 +38,13 @@ from requirement_intelligence.normalization.response.assembly.normalization_stag
 from requirement_intelligence.normalization.response.assembly.recover_canonical_structure import (
     RecoverCanonicalStructure,
 )
+from requirement_intelligence.normalization.response.assembly.stage_coordinator import (
+    NormalizationStageCoordinator,
+)
 from requirement_intelligence.normalization.response.assembly.stage_exceptions import (
     AssemblyStateError,
     NormalizationStageError,
+    StageCoordinationError,
     StructureRecoveryError,
 )
 
@@ -51,8 +55,10 @@ __all__ = [
     "AssemblyStateError",
     "CanonicalStructureRecoverer",
     "NormalizationStage",
+    "NormalizationStageCoordinator",
     "NormalizationStageError",
     "NormalizationStageMetadata",
     "RecoverCanonicalStructure",
+    "StageCoordinationError",
     "StructureRecoveryError",
 ]
