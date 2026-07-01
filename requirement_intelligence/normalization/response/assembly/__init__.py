@@ -21,6 +21,9 @@ subsequent task (it is not wired here, so no existing component is modified).
 
 from __future__ import annotations
 
+from requirement_intelligence.normalization.response.assembly.assemble_parsed_response import (
+    AssembleParsedResponse,
+)
 from requirement_intelligence.normalization.response.assembly.assembly_state import (
     AssemblyState,
 )
@@ -59,6 +62,7 @@ from requirement_intelligence.normalization.response.assembly.stage_exceptions i
     NormalizationStageError,
     ObservationCaptureError,
     OutcomeDeterminationError,
+    ParsedResponseAssemblyError,
     SourceReferenceCreationError,
     StageCoordinationError,
     StructureRecoveryError,
@@ -67,6 +71,7 @@ from requirement_intelligence.normalization.response.assembly.stage_exceptions i
 __all__ = [
     "DEFAULT_STAGE_ORDER",
     "DEFAULT_STAGE_VERSION",
+    "AssembleParsedResponse",
     "AssemblyState",
     "AssemblyStateError",
     "CanonicalStructureRecoverer",
@@ -79,6 +84,7 @@ __all__ = [
     "NormalizationStageMetadata",
     "ObservationCaptureError",
     "OutcomeDeterminationError",
+    "ParsedResponseAssemblyError",
     "RecoverCanonicalStructure",
     "SourceReferenceCreationError",
     "StageCoordinationError",

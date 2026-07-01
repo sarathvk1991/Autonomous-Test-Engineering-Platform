@@ -9,6 +9,7 @@ Hierarchy
     ├── OutcomeDeterminationError     (NORMALIZATION-0002 ordering failure)
     ├── ObservationCaptureError       (NORMALIZATION-0003 ordering failure)
     ├── SourceReferenceCreationError  (NORMALIZATION-0004 reference-mechanism failure)
+    ├── ParsedResponseAssemblyError   (NORMALIZATION-0005 ordering / misuse failure)
     ├── AssemblyStateError            (Assembly State write-contract violation)
     └── StageCoordinationError        (stage-coordinator wiring failure)
 
@@ -86,6 +87,26 @@ class SourceReferenceCreationError(NormalizationStageError):
     (Catalog §5), so there is no ordering guard; this is raised only when the
     reference-creation mechanism itself fails unexpectedly — so that an
     infrastructure failure never masquerades as a normalization fact.
+    """
+
+
+class ParsedResponseAssemblyError(NormalizationStageError):
+    """Raised when the ``ParsedResponse`` cannot be assembled for an *infrastructure* reason.
+
+    This is **not** raised for a ``MALFORMED`` response — a ``MALFORMED`` outcome is
+    a **fact**, and NORMALIZATION-0005 still assembles a ``ParsedResponse`` for it
+    (with ``normalized_structure`` absent).  It is raised only when:
+
+    * the stage is asked to assemble before its required inputs were recorded — the
+      normalized structure (``0001``), the outcome (``0002``), or the source
+      reference (``0004``) — a coordination/ordering failure (Assembly Contract §7
+      invariant 2: ``0005`` never assembles without an outcome and a source
+      reference); or
+    * the write-loop ``execute`` is invoked on the assembling stage, whose product
+      leaves the boundary through the coordinator's **consumer seam** (``assemble``),
+      never through ``execute`` (Stage Implementation Contract §3.3, §7.2).
+
+    Neither is a normalization fact.
     """
 
 
