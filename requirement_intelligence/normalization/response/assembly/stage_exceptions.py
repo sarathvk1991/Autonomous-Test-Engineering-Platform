@@ -5,8 +5,11 @@ Hierarchy
 ::
 
     NormalizationStageError
-    ├── StructureRecoveryError
-    └── AssemblyStateError
+    ├── StructureRecoveryError       (NORMALIZATION-0001 recovery-mechanism failure)
+    ├── OutcomeDeterminationError    (NORMALIZATION-0002 ordering failure)
+    ├── ObservationCaptureError      (NORMALIZATION-0003 ordering failure)
+    ├── AssemblyStateError           (Assembly State write-contract violation)
+    └── StageCoordinationError       (stage-coordinator wiring failure)
 
 Facts, not exceptions
 ---------------------
@@ -43,6 +46,32 @@ class StructureRecoveryError(NormalizationStageError):
     only when the recovery mechanism itself fails unexpectedly (for example, an
     injected ``CanonicalStructureRecoverer`` raises), so that an infrastructure
     failure never masquerades as a ``MALFORMED`` fact.
+    """
+
+
+class OutcomeDeterminationError(NormalizationStageError):
+    """Raised when the normalization outcome cannot be determined for an *infrastructure* reason.
+
+    This is **not** raised when a response is malformed — a ``MALFORMED`` outcome is
+    a **fact** recorded into the Assembly State (Assembly Contract §8).  It is raised
+    only when NORMALIZATION-0002 runs without its required input — i.e. the
+    normalized structure from NORMALIZATION-0001 has not been recorded — which is a
+    coordination/ordering failure (Assembly Contract §7: ``0002`` never executes
+    before ``0001``), never a normalization fact.
+    """
+
+
+class ObservationCaptureError(NormalizationStageError):
+    """Raised when observations cannot be captured for an *infrastructure* reason.
+
+    This is **not** raised for a malformed or empty response — recording a
+    ``malformed_representation`` observation (or recording **no** observation at
+    all) is a **fact**, and zero observations is a perfectly successful result
+    (Assembly Contract §8; Response Normalization Contract §8).  It is raised only
+    when NORMALIZATION-0003 runs without its required input — i.e. the normalized
+    structure from NORMALIZATION-0001 has not been recorded — which is a
+    coordination/ordering failure (Assembly Contract §7: ``0003`` never executes
+    before ``0001``), never a normalization fact.
     """
 
 

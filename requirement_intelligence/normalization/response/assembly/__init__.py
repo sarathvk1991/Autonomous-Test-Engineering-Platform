@@ -27,6 +27,16 @@ from requirement_intelligence.normalization.response.assembly.assembly_state imp
 from requirement_intelligence.normalization.response.assembly.canonical_structure_recoverer import (
     CanonicalStructureRecoverer,
 )
+from requirement_intelligence.normalization.response.assembly.capture_normalization_observations import (  # noqa: E501
+    CaptureNormalizationObservations,
+)
+
+# The fully-qualified stage module path unavoidably exceeds the line-length limit;
+# the package deliberately re-exports concrete stages (mirroring 0001), so E501 is
+# suppressed on the import line below.
+from requirement_intelligence.normalization.response.assembly.determine_normalization_outcome import (  # noqa: E501
+    DetermineNormalizationOutcome,
+)
 from requirement_intelligence.normalization.response.assembly.normalization_stage import (
     NormalizationStage,
 )
@@ -44,6 +54,8 @@ from requirement_intelligence.normalization.response.assembly.stage_coordinator 
 from requirement_intelligence.normalization.response.assembly.stage_exceptions import (
     AssemblyStateError,
     NormalizationStageError,
+    ObservationCaptureError,
+    OutcomeDeterminationError,
     StageCoordinationError,
     StructureRecoveryError,
 )
@@ -54,10 +66,14 @@ __all__ = [
     "AssemblyState",
     "AssemblyStateError",
     "CanonicalStructureRecoverer",
+    "CaptureNormalizationObservations",
+    "DetermineNormalizationOutcome",
     "NormalizationStage",
     "NormalizationStageCoordinator",
     "NormalizationStageError",
     "NormalizationStageMetadata",
+    "ObservationCaptureError",
+    "OutcomeDeterminationError",
     "RecoverCanonicalStructure",
     "StageCoordinationError",
     "StructureRecoveryError",
