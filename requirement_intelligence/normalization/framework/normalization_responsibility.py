@@ -110,7 +110,9 @@ class NormalizationResponsibility(ABC):
     :class:`~requirement_intelligence.normalization.framework.normalization_metadata.NormalizationResponsibilityMetadata`
     value, exposed through :attr:`metadata`.  Convenience wrappers
     (:attr:`responsibility_id`, :attr:`responsibility_name`,
-    :attr:`responsibility_version`, :attr:`enabled`) read from it.
+    :attr:`responsibility_version`, :attr:`order`, :attr:`enabled`) read from it.
+    This is **runtime identity**; the Normalization Responsibility Catalog remains
+    the governing architecture (see the metadata module docstring).
 
     Adding a new responsibility
     ---------------------------
@@ -135,8 +137,8 @@ class NormalizationResponsibility(ABC):
         """Immutable descriptive identity of this responsibility.
 
         The single source of truth for ``responsibility_id``,
-        ``responsibility_name``, ``responsibility_version``, ``enabled``, and the
-        reserved extension points.  Must be an immutable
+        ``responsibility_name``, ``responsibility_version``, ``order``,
+        ``enabled``, and the reserved extension points.  Must be an immutable
         :class:`NormalizationResponsibilityMetadata`.
 
         Returns
@@ -168,6 +170,18 @@ class NormalizationResponsibility(ABC):
     def responsibility_version(self) -> str:
         """The version of this responsibility's logic (reads :attr:`metadata`)."""
         return self.metadata.responsibility_version
+
+    @property
+    def order(self) -> int:
+        """The responsibility's declared catalog position (reads :attr:`metadata`).
+
+        **Descriptive identity only.**  The registry and pipeline never read this
+        to sequence execution — registration order is the sole execution order
+        (Normalization Responsibility Catalog §8: there is no separate ordering
+        dimension).  It mirrors the frozen ``0001 → … → 0005`` catalog chain
+        (Catalog §4) as runtime provenance.
+        """
+        return self.metadata.order
 
     @property
     def enabled(self) -> bool:

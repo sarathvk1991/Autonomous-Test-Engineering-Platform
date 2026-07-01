@@ -48,6 +48,7 @@ from requirement_intelligence.normalization.framework.normalization_layer import
     NormalizationLayer,
 )
 from requirement_intelligence.normalization.framework.normalization_metadata import (
+    DEFAULT_RESPONSIBILITY_ORDER,
     DEFAULT_RESPONSIBILITY_VERSION,
     NormalizationResponsibilityMetadata,
 )
@@ -64,6 +65,7 @@ from requirement_intelligence.normalization.framework.normalization_responsibili
 )
 
 __all__ = [
+    "DEFAULT_RESPONSIBILITY_ORDER",
     "DEFAULT_RESPONSIBILITY_VERSION",
     "NormalizationFrameworkError",
     "NormalizationLayer",

@@ -147,21 +147,26 @@ class NormalizationRegistry:
             responsibility with the same ``responsibility_id`` is already
             registered.
         """
+        # Identity is consumed through the responsibility's immutable metadata —
+        # the single source of truth — rather than re-reading scattered
+        # properties.  Behaviour is unchanged: the convenience wrappers already
+        # delegate to this same value.
+        responsibility_id = responsibility.metadata.responsibility_id
         if self._state is RegistryState.SEALED:
             raise NormalizationRegistryError(
-                f"Cannot register responsibility {responsibility.responsibility_id!r}: "
+                f"Cannot register responsibility {responsibility_id!r}: "
                 f"the registry is sealed. Registration is only permitted while the "
                 f"registry is OPEN; it is sealed automatically when a "
                 f"NormalizationPipeline is constructed from it."
             )
-        if responsibility.responsibility_id in self._responsibility_ids:
+        if responsibility_id in self._responsibility_ids:
             raise NormalizationRegistryError(
                 f"A responsibility with responsibility_id "
-                f"{responsibility.responsibility_id!r} is already registered. "
+                f"{responsibility_id!r} is already registered. "
                 f"Each responsibility_id must be unique within a registry instance."
             )
         self._responsibilities.append(responsibility)
-        self._responsibility_ids[responsibility.responsibility_id] = responsibility
+        self._responsibility_ids[responsibility_id] = responsibility
 
     # ------------------------------------------------------------------
     # Retrieval

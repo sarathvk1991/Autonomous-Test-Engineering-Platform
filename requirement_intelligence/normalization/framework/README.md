@@ -52,7 +52,7 @@ serialization format, and nothing parses anything.
 | Module | Responsibility |
 | ------ | -------------- |
 | `normalization_responsibility.py` | `NormalizationResponsibility` — the abstract contract (one public method, `normalize`). The sibling of `ValidationRule`. |
-| `normalization_metadata.py` | `NormalizationResponsibilityMetadata` — immutable identity (`NORMALIZATION-NNNN`). |
+| `normalization_metadata.py` | `NormalizationResponsibilityMetadata` — immutable runtime identity (`NORMALIZATION-NNNN`, version, descriptive `order`, reserved extension points). The sibling of `ValidationRuleMetadata`. |
 | `normalization_registry.py` | `NormalizationRegistry` + `RegistryState` — registration, ordering, sealing, duplicate prevention. |
 | `normalization_pipeline.py` | `NormalizationPipeline` + `PipelineState` — orchestration, lifecycle, statistics, result assembly. |
 | `normalization_layer.py` | `NormalizationLayer` — the framework seat of the subsystem (composes registry + pipeline). **Not** the `ResponseNormalizer`. |
@@ -112,6 +112,123 @@ A `NormalizationResponsibility` owns exactly one responsibility from the
 `NORMALIZATION-0001 … 0005`. It is **pure, deterministic, stateless, idempotent,
 non-mutating**, and returns **facts** (`NormalizationObservation`) — never
 judgments. None are implemented in Phase 1.
+
+---
+
+## Normalization Responsibility Metadata
+
+Every `NormalizationResponsibility` owns **exactly one** immutable
+`NormalizationResponsibilityMetadata` value, exposed through its `metadata`
+property. This is the normalization sibling of `ValidationRuleMetadata`, held to
+the same maturity bar. It is the **single source of truth for a responsibility's
+identity**; the legacy read-through properties (`responsibility_id`,
+`responsibility_name`, `responsibility_version`, `order`, `enabled`) are thin
+wrappers that simply delegate to it, so every existing caller keeps working
+unchanged.
+
+```python
+from requirement_intelligence.normalization.framework import (
+    NormalizationResponsibility,
+    NormalizationResponsibilityMetadata,
+)
+
+
+class RecoverCanonicalStructure(NormalizationResponsibility):
+    _METADATA = NormalizationResponsibilityMetadata(
+        responsibility_id="NORMALIZATION-0001",
+        responsibility_name="Recover canonical structure",
+        order=1,  # descriptive catalog position — never used to sequence execution
+    )
+
+    @property
+    def metadata(self) -> NormalizationResponsibilityMetadata:
+        return self._METADATA
+
+    def normalize(self, source):
+        ...  # returns facts; Phase 1 implements none
+
+r = RecoverCanonicalStructure()
+r.responsibility_id  # "NORMALIZATION-0001"  (reads r.metadata.responsibility_id)
+r.order              # 1                     (reads r.metadata.order)
+```
+
+### Why immutable metadata exists
+
+Before this refinement a responsibility scattered its identity across independent
+properties, so identity could not be treated as one versioned, immutable value.
+Consolidating it into one **frozen** object means a responsibility's identity can
+appear safely in `NormalizationResult` records, telemetry, and audit trails with
+**no risk of post-hoc mutation**. Reassigning any attribute raises
+`FrozenInstanceError`; the free-form `metadata` map is a read-only
+`MappingProxyType`, so the value object is immutable in content, not just in its
+attribute bindings.
+
+### What belongs inside metadata — and what does not
+
+| Belongs inside (runtime identity) | Does **not** belong |
+| --------------------------------- | ------------------- |
+| `responsibility_id` — the `NORMALIZATION-NNNN` identifier | normalization behaviour (that is `normalize`) |
+| `responsibility_name` — human-readable label | observations / facts (owned by `NormalizationResult`) |
+| `responsibility_version` — this responsibility's logic version | outcome / verdict / severity (never — Contract §10) |
+| `order` — declared catalog position (**descriptive only**) | execution ordering decisions (registration order owns those) |
+| `enabled` — participation flag | parsing, provider, or format knowledge |
+| `tags`, `documentation_reference` *(reserved)* | the `ParsedResponse` or its shape |
+| `responsibility_catalog_version`, `normalization_contract_version` *(reserved)* | which responsibilities *exist* (the **Catalog** governs that) |
+| `future_schema_compatibility`, `metadata` map *(reserved)* | any mutable state |
+
+### Fields
+
+| Field | Status | Meaning |
+| ----- | ------ | ------- |
+| `responsibility_id` | active | Stable `NORMALIZATION-NNNN` id (Catalog §3.9 — immutable, never a validation rule id). |
+| `responsibility_name` | active | Short human-readable label. |
+| `responsibility_version` | active | Version of *this responsibility's* logic (default `1.0.0`). |
+| `order` | active | Declared catalog position (`1…5`). **Descriptive identity only** — never read to sequence execution. |
+| `enabled` | active | Whether it participates in execution (default `True`). |
+| `tags` | reserved | Free-form classification labels (default `()`). |
+| `documentation_reference` | reserved | Pointer to the responsibility's documentation. |
+| `responsibility_catalog_version` | reserved | The governing catalog version this identity targets. |
+| `future_schema_compatibility` | reserved | Declared ParsedResponse / result schema compatibility marker. |
+| `normalization_contract_version` | reserved | The normalization *semantics* version targeted (the `validation_contract_version` analogue). |
+| `metadata` | reserved | Read-only map of auxiliary descriptive labels. |
+
+Reserved fields carry no behaviour today; they exist so the contract can grow
+without a breaking change — exactly as in `ValidationRuleMetadata`.
+
+### The `order` field and "no separate ordering dimension"
+
+`order` is the normalization analogue of validation's `validation_layer`, but
+with a deliberate difference: **the framework never consumes it to sequence
+execution.** Validation's registry *sorts rules by layer*; normalization's
+registry orders responsibilities by **registration order alone** (Catalog §8:
+"registration order **is** execution order; there is no separate ordering
+dimension"). `order` therefore records the responsibility's *frozen catalog
+position* (`0001 → … → 0005`, Catalog §4) as runtime provenance only. A conforming
+caller registers in catalog order, so `order` and registration order agree by
+construction — without the registry or pipeline ever reading `order`.
+
+### Relationship: Responsibility · Metadata · Registry · Pipeline · Catalog
+
+| Component | Role toward metadata |
+| --------- | -------------------- |
+| **Responsibility** | *Owns* one immutable metadata value and exposes it via `metadata`; its read-through properties delegate to it. |
+| **Metadata** | *Is* the responsibility's runtime identity — the single source of truth. |
+| **Registry** | *Consumes* metadata during registration (duplicate detection keys on `metadata.responsibility_id`); orders by registration, never by `order`. |
+| **Pipeline** | *Executes* enabled responsibilities in registration order; reads no identity directly and never sorts by `order`. |
+| **Responsibility Catalog** | *Governs* the architecture — which responsibilities exist, what each owns, and their frozen order. |
+
+### Runtime identity vs governing architecture
+
+Metadata is **runtime identity**: the value a responsibility carries into results
+and telemetry when it executes. The **Normalization Responsibility Catalog**
+(`docs/architecture/normalization-responsibility-catalog.md`) remains the
+**governing architecture**: it decides *which* `NORMALIZATION-NNNN` responsibilities
+exist, *what* each owns, *what* it depends on, and *in what order* they participate
+— permanently and only through an ADR (Catalog §11). Metadata **declares** a
+responsibility's catalog-assigned identity at runtime; it never defines or
+overrides it. **The catalog governs; the metadata reports.** This mirrors — but
+does not duplicate — how `ValidationRuleMetadata` is runtime identity while the
+Validation Rule Catalog governs the rules.
 
 ---
 
@@ -258,8 +375,11 @@ Normalization is a **sibling** subsystem, not a clone. Every deviation is
 intentional:
 
 1. **No layers.** No `ValidationLayer`/`LAYER_ORDER` analogue; responsibilities
-   execute in registration order. (Hence no layer attribute on metadata, and
-   registry ordering is insertion order.)
+   execute in registration order. Metadata therefore has **no layer attribute**;
+   in its place it carries a **descriptive `order`** (the frozen catalog position)
+   that the framework never reads to sequence execution — registry ordering is
+   insertion order (Catalog §8). See
+   [Normalization Responsibility Metadata](#normalization-responsibility-metadata).
 2. **No verdict / severity / summary / health.** Normalization produces *facts*,
    not *judgments* (Contract §10). `NormalizationResult` has no verdict and no
    summary; `NormalizationObservation` has no severity, recommendation, or

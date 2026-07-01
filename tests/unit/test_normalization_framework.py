@@ -30,6 +30,7 @@ from __future__ import annotations
 import dataclasses
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 
@@ -47,6 +48,7 @@ from requirement_intelligence.normalization.framework import (
     RegistryState,
 )
 from requirement_intelligence.normalization.framework.normalization_metadata import (
+    DEFAULT_RESPONSIBILITY_ORDER,
     DEFAULT_RESPONSIBILITY_VERSION,
 )
 from requirement_intelligence.normalization.models import (
@@ -97,11 +99,13 @@ class _StubResponsibility(NormalizationResponsibility):
         *,
         enabled: bool = True,
         observation_count: int = 0,
+        order: int = DEFAULT_RESPONSIBILITY_ORDER,
     ) -> None:
         self._metadata = NormalizationResponsibilityMetadata(
             responsibility_id=responsibility_id,
             responsibility_name=f"Stub {responsibility_id}",
             enabled=enabled,
+            order=order,
         )
         self._observation_count = observation_count
         self.calls = 0
@@ -121,10 +125,17 @@ class _StubResponsibility(NormalizationResponsibility):
 class _RecordingOrderResponsibility(NormalizationResponsibility):
     """Records its id into a shared list when executed (to assert ordering)."""
 
-    def __init__(self, responsibility_id: str, order_log: list[str]) -> None:
+    def __init__(
+        self,
+        responsibility_id: str,
+        order_log: list[str],
+        *,
+        order: int = DEFAULT_RESPONSIBILITY_ORDER,
+    ) -> None:
         self._metadata = NormalizationResponsibilityMetadata(
             responsibility_id=responsibility_id,
             responsibility_name=responsibility_id,
+            order=order,
         )
         self._order_log = order_log
 
@@ -166,7 +177,23 @@ class TestNormalizationResponsibility:
         assert r.responsibility_id == "NORMALIZATION-0001"
         assert r.responsibility_name == "Stub NORMALIZATION-0001"
         assert r.responsibility_version == DEFAULT_RESPONSIBILITY_VERSION
+        assert r.order == DEFAULT_RESPONSIBILITY_ORDER
         assert r.enabled is True
+
+    def test_order_wrapper_reads_metadata(self) -> None:
+        r = _StubResponsibility("NORMALIZATION-0001", order=1)
+        assert r.order == 1
+        assert r.order == r.metadata.order
+
+    def test_wrappers_are_read_through_not_stored(self) -> None:
+        # Every wrapper is a pure delegate to the single metadata value; changing
+        # the value object (a fresh one) would change what the wrappers report.
+        r = _StubResponsibility("NORMALIZATION-0001", order=3)
+        assert r.responsibility_id is r.metadata.responsibility_id
+        assert r.responsibility_name is r.metadata.responsibility_name
+        assert r.responsibility_version is r.metadata.responsibility_version
+        assert r.order == r.metadata.order
+        assert r.enabled == r.metadata.enabled
 
     def test_disabled_flag_is_read_from_metadata(self) -> None:
         r = _StubResponsibility("NORMALIZATION-0002", enabled=False)
@@ -185,41 +212,120 @@ class TestNormalizationResponsibility:
 
 
 class TestNormalizationResponsibilityMetadata:
+    def _meta(self, **overrides: object) -> NormalizationResponsibilityMetadata:
+        kwargs: dict[str, object] = {
+            "responsibility_id": "NORMALIZATION-0001",
+            "responsibility_name": "x",
+        }
+        kwargs.update(overrides)
+        return NormalizationResponsibilityMetadata(**kwargs)  # type: ignore[arg-type]
+
     def test_is_frozen(self) -> None:
-        meta = NormalizationResponsibilityMetadata(
-            responsibility_id="NORMALIZATION-0001",
-            responsibility_name="x",
-        )
+        meta = self._meta()
         with pytest.raises(dataclasses.FrozenInstanceError):
             meta.responsibility_id = "other"  # type: ignore[misc]
 
+    def test_all_active_and_reserved_fields_are_frozen(self) -> None:
+        meta = self._meta()
+        for attr, value in (
+            ("responsibility_name", "y"),
+            ("responsibility_version", "2.0.0"),
+            ("order", 9),
+            ("enabled", False),
+            ("tags", ("a",)),
+            ("documentation_reference", "doc"),
+            ("responsibility_catalog_version", "1.0"),
+            ("future_schema_compatibility", "1.0"),
+            ("normalization_contract_version", "1.0"),
+            ("metadata", {}),
+        ):
+            with pytest.raises(dataclasses.FrozenInstanceError):
+                setattr(meta, attr, value)
+
     def test_defaults(self) -> None:
-        meta = NormalizationResponsibilityMetadata(
-            responsibility_id="NORMALIZATION-0001",
-            responsibility_name="x",
-        )
+        meta = self._meta()
         assert meta.responsibility_version == DEFAULT_RESPONSIBILITY_VERSION
+        assert meta.order == DEFAULT_RESPONSIBILITY_ORDER
+        assert meta.order == 0
         assert meta.enabled is True
         assert meta.tags == ()
         assert meta.documentation_reference is None
+        assert meta.responsibility_catalog_version is None
+        assert meta.future_schema_compatibility is None
         assert meta.normalization_contract_version is None
+        assert dict(meta.metadata) == {}
+
+    def test_all_fields_can_be_set(self) -> None:
+        meta = NormalizationResponsibilityMetadata(
+            responsibility_id="NORMALIZATION-0002",
+            responsibility_name="Determine outcome",
+            responsibility_version="2.1.0",
+            order=2,
+            enabled=False,
+            tags=("structure", "outcome"),
+            documentation_reference="catalog#NORMALIZATION-0002",
+            responsibility_catalog_version="1.0.0",
+            future_schema_compatibility="parsed-response>=1",
+            normalization_contract_version="1.2.0",
+            metadata={"team": "platform"},
+        )
+        assert meta.responsibility_id == "NORMALIZATION-0002"
+        assert meta.responsibility_name == "Determine outcome"
+        assert meta.responsibility_version == "2.1.0"
+        assert meta.order == 2
+        assert meta.enabled is False
+        assert meta.tags == ("structure", "outcome")
+        assert meta.documentation_reference == "catalog#NORMALIZATION-0002"
+        assert meta.responsibility_catalog_version == "1.0.0"
+        assert meta.future_schema_compatibility == "parsed-response>=1"
+        assert meta.normalization_contract_version == "1.2.0"
+        assert dict(meta.metadata) == {"team": "platform"}
+
+    def test_free_form_metadata_is_read_only(self) -> None:
+        # The whole value object is immutable in *content*, not merely in its
+        # attribute bindings: the free-form map is a read-only MappingProxyType.
+        meta = self._meta(metadata={"k": "v"})
+        assert isinstance(meta.metadata, MappingProxyType)
+        with pytest.raises(TypeError):
+            meta.metadata["k"] = "other"  # type: ignore[index]
+
+    def test_free_form_metadata_copies_source_mapping(self) -> None:
+        # Mutating the caller's original dict must not leak into the frozen value.
+        source = {"k": "v"}
+        meta = self._meta(metadata=source)
+        source["k"] = "mutated"
+        assert dict(meta.metadata) == {"k": "v"}
 
     def test_value_equality(self) -> None:
-        a = NormalizationResponsibilityMetadata(
-            responsibility_id="NORMALIZATION-0001", responsibility_name="x"
+        assert self._meta() == self._meta()
+
+    def test_value_equality_includes_new_fields(self) -> None:
+        assert self._meta(order=1, metadata={"a": 1}) == self._meta(
+            order=1, metadata={"a": 1}
         )
-        b = NormalizationResponsibilityMetadata(
-            responsibility_id="NORMALIZATION-0001", responsibility_name="x"
+        assert self._meta(order=1) != self._meta(order=2)
+        assert self._meta(metadata={"a": 1}) != self._meta(metadata={"a": 2})
+        assert self._meta(responsibility_catalog_version="1.0") != self._meta(
+            responsibility_catalog_version="2.0"
         )
-        assert a == b
 
     def test_has_no_layer_attribute(self) -> None:
-        # Deliberate deviation from ValidationRuleMetadata: normalization has no layers.
-        meta = NormalizationResponsibilityMetadata(
-            responsibility_id="NORMALIZATION-0001", responsibility_name="x"
-        )
+        # Deliberate deviation from ValidationRuleMetadata: normalization has no
+        # layers — it carries a descriptive `order` instead.
+        meta = self._meta()
         assert not hasattr(meta, "validation_layer")
         assert not hasattr(meta, "layer")
+        assert hasattr(meta, "order")
+
+    def test_readme_example_shape(self) -> None:
+        # Mirrors the README's worked example for NORMALIZATION-0001.
+        meta = NormalizationResponsibilityMetadata(
+            responsibility_id="NORMALIZATION-0001",
+            responsibility_name="Recover canonical structure",
+            order=1,
+        )
+        assert meta.responsibility_id == "NORMALIZATION-0001"
+        assert meta.order == 1
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +366,29 @@ class TestNormalizationRegistry:
             "NORMALIZATION-0001",
             "NORMALIZATION-0002",
         ]
+
+    def test_order_field_does_not_influence_registry_ordering(self) -> None:
+        # `order` is descriptive identity only (Catalog §8: no separate ordering
+        # dimension). The registry must still return registration order even when
+        # the declared `order` disagrees.
+        reg = NormalizationRegistry()
+        reg.register(_StubResponsibility("NORMALIZATION-0002", order=2))
+        reg.register(_StubResponsibility("NORMALIZATION-0001", order=1))
+        assert reg.list_responsibility_ids() == [
+            "NORMALIZATION-0002",
+            "NORMALIZATION-0001",
+        ]
+
+    def test_registration_consumes_metadata_identity(self) -> None:
+        # Registration keys duplicate detection on metadata.responsibility_id.
+        reg = NormalizationRegistry()
+        r = _StubResponsibility("NORMALIZATION-0001")
+        reg.register(r)
+        assert reg.get_all_responsibilities()[0].metadata.responsibility_id == (
+            "NORMALIZATION-0001"
+        )
+        with pytest.raises(NormalizationRegistryError, match="already registered"):
+            reg.register(_StubResponsibility("NORMALIZATION-0001"))
 
     def test_enabled_filtering(self) -> None:
         reg = NormalizationRegistry()
@@ -358,6 +487,20 @@ class TestNormalizationPipeline:
         reg.register(_RecordingOrderResponsibility("NORMALIZATION-0001", order_log))
         NormalizationPipeline(reg).run(_SOURCE)
         assert order_log == ["NORMALIZATION-0003", "NORMALIZATION-0001"]
+
+    def test_execution_ignores_declared_order_field(self) -> None:
+        # Even when the declared `order` disagrees with registration, the pipeline
+        # executes in registration order — `order` is never an execution driver.
+        order_log: list[str] = []
+        reg = NormalizationRegistry()
+        reg.register(
+            _RecordingOrderResponsibility("NORMALIZATION-0002", order_log, order=2)
+        )
+        reg.register(
+            _RecordingOrderResponsibility("NORMALIZATION-0001", order_log, order=1)
+        )
+        NormalizationPipeline(reg).run(_SOURCE)
+        assert order_log == ["NORMALIZATION-0002", "NORMALIZATION-0001"]
 
     def test_responsibility_exception_marks_failed_and_propagates(self) -> None:
         reg = NormalizationRegistry()
