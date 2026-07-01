@@ -8,6 +8,8 @@ produces a pass/fail verdict with findings. Logic deferred.
 
 from __future__ import annotations
 
+from pydantic import Field
+
 from requirement_intelligence.models.canonical_requirement import CanonicalRequirement
 from shared.contracts.base import Schema
 from shared.enums.base import ValidationVerdict
@@ -26,7 +28,7 @@ class CP1Result(Schema):
     """Aggregate outcome of a CP1 validation run."""
 
     verdict: ValidationVerdict
-    findings: list[CP1Finding] = []
+    findings: list[CP1Finding] = Field(default_factory=list)
 
 
 class CP1Validator:

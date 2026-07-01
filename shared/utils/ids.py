@@ -6,7 +6,7 @@ Small, dependency-free utilities. Keep this module pure — no I/O, no settings.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def new_id() -> str:
@@ -16,4 +16,4 @@ def new_id() -> str:
 
 def utc_now() -> datetime:
     """Return the current time as a timezone-aware UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)

@@ -19,9 +19,9 @@ from requirement_intelligence.mappers.zap_mapper import ZapMapper
 __all__ = [
     "BaseMapper",
     "JiraMapper",
-    "SonarMapper",
-    "ZapMapper",
     "MapperError",
+    "SonarMapper",
     "UnsupportedRecordError",
+    "ZapMapper",
 ]
 

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from pydantic import Field
+
 from shared.contracts.base import Schema
 from shared.enums.base import (
     RequirementPriority,
@@ -42,9 +44,9 @@ class CanonicalRequirement(Schema):
     priority: RequirementPriority = RequirementPriority.MEDIUM
     status: RequirementStatus = RequirementStatus.INGESTED
 
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
     # Free-form, source-specific fields preserved for traceability/auditing.
-    raw_metadata: dict[str, str] = {}
+    raw_metadata: dict[str, str] = Field(default_factory=dict)

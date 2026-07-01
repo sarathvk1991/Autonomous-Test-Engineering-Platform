@@ -9,7 +9,7 @@ from requirement_intelligence.registry.registry_loader import RegistryLoader
 
 __all__ = [
     "ConnectorRegistry",
-    "RegistryLoader",
     "RegistryError",
+    "RegistryLoader",
     "RegistryValidationError",
 ]

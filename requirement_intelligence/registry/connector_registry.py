@@ -18,7 +18,7 @@ class ConnectorRegistry:
 
         Args:
             loader: Registry loader instance. Defaults to loading from the standard location.
-        
+
         Raises:
             RegistryValidationError: If any enabled source configuration fails metadata validation.
         """
@@ -62,7 +62,7 @@ class ConnectorRegistry:
         for source_config in self.loader.get_enabled_sources():
             connector_class_path = source_config.get("connectorClass", "")
             connector_cls = self._dynamic_load(connector_class_path)
-            
+
             # Instantiate the connector with its configuration
             try:
                 connector = connector_cls(source_config)
@@ -70,7 +70,7 @@ class ConnectorRegistry:
                 raise RegistryValidationError(
                     f"Failed to instantiate connector '{connector_class_path}': {exc}"
                 ) from exc
-            
+
             # Check get_source_id matches sourceId from registry
             registry_source_id = source_config.get("sourceId")
             connector_source_id = connector.get_source_id()

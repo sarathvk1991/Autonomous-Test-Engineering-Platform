@@ -42,7 +42,10 @@ class Settings(BaseSettings):
     app_name: str = Field(default="Autonomous Test Engineering Platform")
     app_env: str = Field(default="local")
     app_debug: bool = Field(default=True)
-    api_host: str = Field(default="0.0.0.0")
+    # Binds all interfaces by design so the app is reachable inside a container /
+    # deployment; the address is configurable via settings. (S104 suppressed
+    # intentionally — changing the default would break deployed reachability.)
+    api_host: str = Field(default="0.0.0.0")  # noqa: S104
     api_port: int = Field(default=8000)
 
     # --- Logging -------------------------------------------------------------

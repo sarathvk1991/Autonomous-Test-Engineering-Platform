@@ -49,7 +49,7 @@ class RegistryLoader:
 
         if not self.registry_path.exists():
             raise RegistryValidationError(f"Registry file not found at: {self.registry_path}")
-        
+
         try:
             with self.registry_path.open("r", encoding="utf-8") as handle:
                 registry = json.load(handle)
@@ -78,7 +78,7 @@ class RegistryLoader:
         for source in registry.get("sources", []):
             # Apply defaults to the source
             source_config = {**defaults, **source}
-            
+
             # Ensure 'enabled' is boolean, evaluate truthiness
             if source_config.get("enabled", False):
                 enabled_sources.append(source_config)
