@@ -62,3 +62,12 @@ Azure OpenAI Analyzer → CP1 Validator → Report Generator`
 - **Logging:** structured via `infrastructure/logging`.
 - **AI:** one reusable Azure OpenAI client factory in `infrastructure/azure_openai`.
 - **Persistence:** PostgreSQL planned; SQLAlchemy/Alembic reserved in deps.
+
+## Governance
+Two living governance artifacts track platform maturity and frozen contracts.
+They *describe* the platform (status and versions); they never define it.
+- **[Platform Capability Matrix](../governance/platform-capability-matrix.md)** —
+  the executive view of every capability's maturity, version, and next milestone.
+- **[Architecture Freeze Index](../governance/architecture-freeze-index.md)** —
+  the authoritative list of every frozen architectural contract and its governing
+  document.
