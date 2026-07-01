@@ -213,15 +213,25 @@ This framework realises the *infrastructure* the Contract governs:
 | Facts, not judgments (§10) | no verdict/severity/summary anywhere |
 | Normalization Responsibility Catalog (§13) | `responsibility_id = NORMALIZATION-NNNN` |
 | Normalization Contract Version (§12) | `NORMALIZATION_CONTRACT_VERSION` |
-| ParsedResponse Version (§12) | owned by the future `ParsedResponse` model |
+| ParsedResponse Version (§12) | `PARSED_RESPONSE_VERSION` on the `ParsedResponse` model |
 
 ## Relationship to ParsedResponse
 
-`ParsedResponse` is a **Core Canonical Model**, implemented by a **separate**
-task. The framework does **not** build it. `NormalizationResult.parsed_response`
-is the **architecture-approved placeholder** (`Any | None`, always `None` today):
-when `ParsedResponse` lands, only the type annotation changes — no field is added,
-renamed, or moved, so no consumer breaks.
+`ParsedResponse` is a **Core Canonical Model** and **Shared Platform Artifact**,
+implemented in [`requirement_intelligence/models/parsed_response.py`](../../models/parsed_response.py)
+by a **separate** task — **not** by this framework. The framework still builds
+none: `NormalizationResult.parsed_response` remains the **architecture-approved
+placeholder** (`Any | None`, always `None` in Phase 1). Producing a real
+`ParsedResponse` is the future `ResponseNormalizer`'s job; when it does, only that
+field's type annotation tightens (`Any | None` → `ParsedResponse | None`) — no
+field is added, renamed, or moved, so no consumer breaks.
+
+> **Observations ownership (governed deviation).** `validation-canonical-models.md`
+> §8.1 lists Normalization Observations as a ParsedResponse attribute; this build
+> **deliberately keeps observations on `NormalizationResult`** (which already owns
+> them) and excludes them from `ParsedResponse`, so the same facts never live in
+> two canonical homes. This is a **recorded** deviation pending an ADR — see the
+> `ParsedResponse` module docstring.
 
 ## Relationship to the Response Validator
 

@@ -19,11 +19,58 @@ serialise to `camelCase` via `model_dump(by_alias=True)`.
 | `SourceArtifact` | `source_artifact.py` | One normalised record from any source system. |
 | `ConsolidatedArtifact` | `consolidated_artifact.py` | A group of related source artifacts for one module. |
 | `RequirementPackage` | `requirement_package.py` | The AI-ready, per-module requirement payload. |
+| `ParsedResponse` | `parsed_response.py` | The canonical normalized **structure** of one AI response — a Shared Platform Artifact (see below). |
 | Enums | `enums.py` | `SourceSystem`, `SourceCategory`, `SourceType`, `RiskLevel`. |
 
 > A pre-existing `CanonicalRequirement` (`canonical_requirement.py`) is also
 > exported from this package; the three models above form the broader canonical
 > pipeline described here.
+
+## ParsedResponse — Shared Platform Artifact
+
+`ParsedResponse` is a **Core Canonical Model** and a **Shared Platform Artifact**:
+the single, immutable, provider- and format-independent normalized **structure** of
+one AI response. It is a *peer* of `LLMResponse` and `AnalysisResult`, governed by
+[`validation-canonical-models.md`](../../../docs/architecture/validation-canonical-models.md)
+§8 (its shape) and
+[`response-normalization-contract.md`](../../../docs/architecture/response-normalization-contract.md)
+(its creation, ownership, sharing, and versioning).
+
+```
+   LLMResponse ─► Response Normalization Layer ─► ParsedResponse ─► every consumer
+   (provider text)   (creates ONCE, before any        (read-only,      (Validation first,
+                      consumer runs)                    never re-derived) then Feature/Test
+                                                                          Gen, Analytics, …)
+```
+
+**What it owns** — *only the canonical representation*:
+
+| Field | Meaning |
+|-------|---------|
+| `parsedResponseVersion` | The **ParsedResponse Version** — the shape version (`PARSED_RESPONSE_VERSION`). Independent of the Normalization Contract, validation, and framework versions. |
+| `normalizationOutcome` | The provider-independent fact `NORMALIZED` / `MALFORMED` (`shared.enums.base.NormalizationOutcome`, the structural sibling of `ExecutionStatus`). |
+| `normalizedStructure` | The format-neutral structural document when `NORMALIZED`; `None` when `MALFORMED`. |
+| `sourceReference` | A *link* to the preserved original `generated_text` — never a copy of the provider payload. |
+| `metadata` | Free-form; never a verdict, observation, statistic, or provider payload. |
+
+**What it deliberately does NOT own** — each stays with its existing owner:
+
+| Excluded concern | Owner |
+|------------------|-------|
+| Execution identity (ids, timestamps) | `NormalizationExecutionContext` |
+| Framework provenance / versions | `NormalizationFrameworkMetadata` |
+| Statistics / telemetry | `NormalizationStatistics` |
+| Normalization **observations** | `NormalizationResult` *(governed deviation from Canonical Models §8.1 — see the module docstring; pending ADR)* |
+| Verdict, issues, severity, recommendations | `ValidationResult` + aggregate |
+| Provider metadata, raw payload, `generatedText` | `LLMResponse` |
+| Transport state, reasoning, business meaning | their respective owners |
+
+**Future consumers.** Validation is merely its *first* consumer; Requirement
+Normalization, Feature Generation, Test Generation, AI Evaluation, Analytics, and
+future components read the **same** instance. No subsystem owns it. It contains
+**information only** — no creation, parsing, validation, provider, repair, or
+business logic. Future work **extends** it (additively, via the ParsedResponse
+Version); it is never replaced.
 
 ## How they relate
 

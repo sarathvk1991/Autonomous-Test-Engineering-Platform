@@ -84,6 +84,37 @@ class ExecutionStatus(StrEnum):
     FAILED = "failed"
 
 
+class NormalizationOutcome(StrEnum):
+    """Normalized, provider-independent structural outcome of one AI response.
+
+    The **structural counterpart** of :class:`ExecutionStatus`: where
+    ``ExecutionStatus`` normalizes an execution *outcome*, ``NormalizationOutcome``
+    normalizes a response's *structure*. Both are provider- and format-independent
+    **facts** — never verdicts (Response Normalization Contract §1.2, §9).
+
+    The Response Normalization Layer records exactly one member on the
+    :class:`~requirement_intelligence.models.parsed_response.ParsedResponse` it
+    produces; the Syntax validation layer *reads* it and *decides* what it means.
+    Recording the outcome is normalization; judging it is validation — the two
+    never merge (Response Normalization Contract §10).
+
+    * ``NORMALIZED`` — the response expressed well-formed structured data and a
+      normalized structure was recovered.
+    * ``MALFORMED`` — the response did not express well-formed structured data;
+      no structure could be recovered.
+
+    The set is deliberately small and governed: a new outcome is an architecture
+    change requiring an ADR, exactly like a new :class:`ExecutionStatus` member
+    (Response Normalization Contract §9, §15).
+    """
+
+    #: Well-formed structure was recovered.
+    NORMALIZED = "normalized"
+
+    #: No well-formed structure could be recovered.
+    MALFORMED = "malformed"
+
+
 class RequirementType(StrEnum):
     """Classification dimension: the nature of a requirement."""
 
