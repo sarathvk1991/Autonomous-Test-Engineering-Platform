@@ -6,7 +6,7 @@
 | Status | Living document — governance artifact |
 | Scope | Every frozen (or freeze-track) architectural contract in the platform |
 | Source of truth | The `docs/architecture/` specifications and the repository state |
-| Sibling document | [Platform Capability Matrix](./platform-capability-matrix.md) |
+| Sibling documents | [Platform Capability Matrix](./platform-capability-matrix.md) · [Architecture Coverage Dashboard](./architecture-coverage-dashboard.md) |
 
 > This document **indexes** existing freezes; it does **not create** them. A freeze
 > is declared inside a governing architecture document; this index records where
@@ -76,6 +76,34 @@ date is invented.
 | **Execution Package** | `EXECUTION_PACKAGE_VERSION` 1.0.0 (`MANIFEST_SCHEMA_VERSION` 1.0.0) | Implemented | Not Frozen (stable) | Not Recorded | `platform_metadata.py` (`execution/`) | — | `execution/` implemented + tested | No dedicated architecture document. |
 | **CLI Architecture** | `CLI_VERSION` 1.0.0 | Implemented | Not Frozen (stable) | Not Recorded | `platform_metadata.py` (`scripts/run_requirement_analysis.py`) | — | `scripts/run_requirement_analysis.py` implemented + tested | Command catalogue in `platform_metadata.CLI_COMMANDS`. |
 | **Prompt Framework** | `PROMPT_FRAMEWORK_VERSION` 1.0.0 (`PROMPT_VERSION` 1.0.0) | Implemented | Not Frozen (stable) | Not Recorded | `requirement-analysis-service.md` (partial) · `prompts/` | Reasoning Contract | `prompts/` implemented + tested | No dedicated architecture document. |
+
+### 4.1 Freeze History
+
+Each **frozen** artifact carries a Freeze History across the lifecycle states
+`Draft → Review → Approved → Frozen → Superseded`. **Only objectively-known states
+are recorded.** Two states are evidenced by the repository — **Approved** (each
+governing document's `Status` line) and **Frozen** (the specific freeze
+declaration cited in §4). The **Draft** and **Review** transitions, and **all
+dates**, are **Not Recorded** — no document records them, so none is invented. **No
+artifact is Superseded.** (The five Approved-but-not-frozen artifacts in §4 —
+Reasoning Contract, Requirement Analysis Service, Execution Package, CLI, Prompt
+Framework — have no Freeze History because they are not frozen.)
+
+Legend: **Reached · date Not Recorded** = the state was reached but no date is
+recorded · **Not Recorded** = no evidence of this transition · **No** = state not
+reached.
+
+| Frozen Artifact | Draft | Review | Approved | Frozen | Superseded | Freeze evidence |
+| --------------- | ----- | ------ | -------- | ------ | ---------- | --------------- |
+| AI Response Validation Architecture | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Architecture Freeze section |
+| Validation Canonical Models | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Invariants §11; ADR-gated §13 |
+| Validation Framework | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Syntax Design Review §"do not modify the frozen framework" |
+| Validation Rule Catalog | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Catalog governance (ADR-gated growth) |
+| Transport Layer | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Rule Catalog §"Transport Layer Status — FROZEN" |
+| Response Validator Architecture | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Architecture Freeze section |
+| Response Normalization Contract | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Header `FROZEN` + §17 |
+| ParsedResponse Ownership | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Single-owner model aligned across docs (§8) |
+| Response Normalization Framework | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Subsystem responsibilities frozen — Contract §4 |
 
 ## 5. Architecture Governance Principles
 
