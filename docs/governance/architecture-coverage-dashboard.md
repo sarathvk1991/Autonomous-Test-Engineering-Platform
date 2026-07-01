@@ -76,13 +76,13 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-022 | Manifest | ✓ | ✓ | ✓ | ✓ | ◑ | ✗ | Ready |
 | CAP-023 | Baseline Metrics | ✓ | ✓ | ✓ | ✓ | ◑ | ✗ | Ready |
 | CAP-024 | Platform CLI | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
-| CAP-030 | Response Normalization (subsystem) | ✓ | ✓ | ✓ | ◑ | ✓ | ✓ | In Progress |
+| CAP-030 | Response Normalization (subsystem) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Ready |
 | CAP-031 | ParsedResponse | ✓ | ✓ | ✓ | ✓ | ✓ | ◑ | Ready |
-| CAP-032 | ResponseNormalizer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Ready |
+| CAP-032 | ResponseNormalizer | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Ready |
 | CAP-040 | Validation Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Ready |
 | CAP-041 | Response Validator | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ | In Progress |
 | CAP-042 | Transport Layer | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Ready |
-| CAP-043 | Syntax Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Blocked |
+| CAP-043 | Syntax Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Ready |
 | CAP-044 | Schema Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
 | CAP-045 | Structural Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
 | CAP-046 | Content Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
@@ -102,13 +102,12 @@ each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 | **Architecture** | 27 | 1 | 0 | Partial: CAP-060. |
 | **Framework** | 28 | 0 | 0 | — (includes not-applicable as satisfied). |
 | **Canonical Models** | 28 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 16 | 3 | 9 | `✗`: CAP-032, CAP-043…050. Partial: CAP-030, CAP-041, CAP-060. |
-| **Testing** | 15 | 3 | 10 | `✗`: CAP-032, CAP-043…050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 3 | 1 | 24 | `✓`: CAP-030, CAP-040, CAP-042. Partial: CAP-031. |
+| **Implementation** | 18 | 2 | 8 | `✗`: CAP-043…050. Partial: CAP-041, CAP-060. |
+| **Testing** | 16 | 3 | 9 | `✗`: CAP-043…050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 1 | 23 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
 
-**Implementation Readiness distribution** (28 total): **Ready 17** · **In Progress
-3** (CAP-030, CAP-041, CAP-060) · **Blocked 1** (CAP-043) · **Planned 7**
-(CAP-044…050).
+**Implementation Readiness distribution** (28 total): **Ready 19** · **In Progress
+2** (CAP-041, CAP-060) · **Blocked 0** · **Planned 7** (CAP-044…050).
 
 ## 6. Remaining architecture work
 
@@ -129,20 +128,24 @@ No other capability is missing architecture: every remaining `✗` is an
 
 ## 7. Implementation readiness
 
-- **Ready to build now (the next milestone): CAP-032 ResponseNormalizer.** Its
-  architecture, framework (CAP-030), and canonical model (CAP-031) are all
-  complete, so it is unblocked. Implementing it (with `NORMALIZATION-0001…0005`)
-  is the single highest-leverage next step and unblocks the validation spine.
+- **Complete: CAP-032 ResponseNormalizer** and **CAP-030 Response Normalization
+  subsystem** — the five internal `NORMALIZATION-0001…0005` stages, the Assembly
+  State, the Stage Coordinator, and the orchestration are implemented, wired
+  end-to-end, and tested; they produce a real `ParsedResponse`.
+- **Ready to build now (the next milestone): CAP-043 Syntax Layer.** Its
+  prerequisites — the Validation Framework (CAP-040), a real `ParsedResponse`
+  (CAP-031/CAP-032), and the `NormalizationResult` observations — are all in place,
+  so it is now **unblocked**. Implementing `SYNTAX-0001…0003` is the highest-leverage
+  next step in the validation spine.
 - **In Progress: CAP-041 Response Validator** (orchestrator built + tested, not
-  wired), **CAP-030 Response Normalization** (framework frozen, responsibilities
-  pending), **CAP-060 CP1 Validator** (partial code).
-- **Blocked: CAP-043 Syntax Layer** — waits on CAP-032 (it needs a real
-  `ParsedResponse` and the `NormalizationResult` observations).
+  wired), **CAP-060 CP1 Validator** (partial code).
 - **Planned: CAP-044…050** — the remaining validation layers, in Rule Catalog
   order, after Syntax.
-- **Frozen and stable (no action): CAP-040 Validation Framework, CAP-042 Transport
-  Layer, CAP-030 Response Normalization contract.**
+- **Frozen and stable (no action): CAP-030 Response Normalization subsystem,
+  CAP-032 ResponseNormalizer, CAP-040 Validation Framework, CAP-042 Transport
+  Layer.**
 
 > Readiness confirms the platform is positioned to **resume implementation**: the
-> next milestone (CAP-032) is fully unblocked, and every downstream validation
-> capability has complete architecture waiting behind it.
+> Response Normalization milestone is complete, the next milestone (CAP-043 Syntax
+> Layer) is fully unblocked, and every downstream validation capability has complete
+> architecture waiting behind it.

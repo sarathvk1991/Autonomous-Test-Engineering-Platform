@@ -9,10 +9,10 @@ identity), the :class:`NormalizationProfile` set, and the orchestration exceptio
 hierarchy.
 
 The :class:`ResponseNormalizer` coordinates the execution context, configuration,
-profile, registry, and pipeline; it performs **no** normalization itself and
-creates **no** ``ParsedResponse`` — that is the work of the future
-``NORMALIZATION-00NN`` responsibilities it will orchestrate.  It is the
-normalization sibling of the
+profile, registry, and pipeline, and drives the five internal normalization
+**stages** (``NORMALIZATION-0001…0005``) that recover structure and assemble the
+``ParsedResponse`` within its boundary (ADR-0002).  Its orchestration logic performs
+**no** normalization itself.  It is the normalization sibling of the
 :class:`~requirement_intelligence.validation.response.response_validator.ResponseValidator`.
 
 Public API

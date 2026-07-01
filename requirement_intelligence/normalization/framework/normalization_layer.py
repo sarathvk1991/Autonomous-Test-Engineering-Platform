@@ -20,11 +20,12 @@ This class is **pure framework orchestration**.  It contains:
 * **no registered responsibilities** — callers register their own.
 
 It is therefore **NOT** the ``ResponseNormalizer``.  The ``ResponseNormalizer``
-is a **future** concrete component that will *use* this framework: it will
-register the real ``NORMALIZATION-0001…0005`` responsibilities, own the
-provider-/format-facing concerns, and produce a real ``ParsedResponse``.  This
-facade is the stable seat it will build upon — exactly as the validation
-framework's pipeline is the seat the ``ResponseValidator`` builds upon.
+is the concrete component that *uses* this framework: it coordinates the five
+internal ``NORMALIZATION-0001…0005`` **stages** through its own Assembly State
+(ADR-0002) — never as framework responsibilities registered here — owns the
+provider-/format-facing concerns, and produces the real ``ParsedResponse`` within
+its own boundary.  This facade is the stable seat it builds upon — exactly as the
+validation framework's pipeline is the seat the ``ResponseValidator`` builds upon.
 
 Why a facade in addition to the pipeline
 ----------------------------------------

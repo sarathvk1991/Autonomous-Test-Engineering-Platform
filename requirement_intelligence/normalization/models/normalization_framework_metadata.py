@@ -26,7 +26,7 @@ are framework-component versions, mirroring the validation framework:
 * ``NORMALIZATION_CONTRACT_VERSION`` — the normalization *semantics* version in
   force (Response Normalization Contract §12).  Independent of the
   **ParsedResponse Version**, which governs the representation's shape and is
-  owned by the ParsedResponse Core Canonical Model (a future task).
+  owned by the ``ParsedResponse`` Core Canonical Model.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ RESPONSIBILITY_CATALOG_VERSION = "1.0.0"
 
 #: The normalization *semantics* version currently in force (contract §12).
 #: Distinct from the ParsedResponse Version (the representation's shape), which
-#: is owned by the future ParsedResponse Core Canonical Model.
+#: is owned by the ``ParsedResponse`` Core Canonical Model.
 NORMALIZATION_CONTRACT_VERSION = "1.0"
 
 

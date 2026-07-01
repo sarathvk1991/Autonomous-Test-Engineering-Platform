@@ -13,11 +13,12 @@ carries no validation semantics.
 
 What a responsibility is
 ------------------------
-A NormalizationResponsibility encapsulates **exactly one normalization
-responsibility** from the Normalization Responsibility Catalog (Response
-Normalization Contract §13) — for example "recover normalized structure" or
-"capture normalization observations".  It reads the normalization *source* and
-records **facts** (Normalization Observations); it never judges them.
+A NormalizationResponsibility is a **generic** framework execution unit that owns
+exactly one observation-producing concern.  It reads the normalization *source* and
+records **facts** (Normalization Observations); it never judges them.  Per
+**ADR-0002** it is **not** one of the ``NORMALIZATION-0001…0005`` catalog stages —
+those are internal stages of the ``ResponseNormalizer`` component, not framework
+responsibilities (see "Scope (ADR-0002)" below).
 
 No layers
 ---------
@@ -50,12 +51,17 @@ objects — **un-judged facts**.  A responsibility never assigns severity, never
 assigns a verdict, and never produces a ``ValidationIssue`` (Response
 Normalization Contract §10).
 
-Phase-1 scope
--------------
-This base class is framework infrastructure.  **No concrete responsibility is
-implemented in Phase 1** — no parsing, no structure recovery, no
-``ParsedResponse`` creation.  Concrete responsibilities (``NORMALIZATION-0001``
-onward) and the ``ResponseNormalizer`` that wires them are future tasks.
+Scope (ADR-0002)
+----------------
+This base class is **generic** framework infrastructure — the reusable contract a
+framework ``NormalizationResponsibility`` implements.  It performs no parsing, no
+structure recovery, and no ``ParsedResponse`` creation.  Per **ADR-0002**, the
+platform's five normalization stages (``NORMALIZATION-0001…0005``) are **internal
+stages of the ``ResponseNormalizer`` component**, coordinated through its Assembly
+State — they are **not** framework ``NormalizationResponsibility`` instances and are
+not registered here.  The platform therefore registers no framework responsibilities
+of its own today; this remains the generic execution seat any observation-producing
+responsibility (e.g. a generic ``EXAMPLE-0001``) can build on.
 
 Responsibility Documentation Contract
 -------------------------------------
@@ -155,9 +161,10 @@ class NormalizationResponsibility(ABC):
     def responsibility_id(self) -> str:
         """Stable, unique identifier (reads :attr:`metadata`).
 
-        Convention: ``NORMALIZATION-NNNN`` (e.g. ``NORMALIZATION-0001``).  Must
+        Convention: ``<NAME>-NNNN`` (e.g. a generic ``EXAMPLE-0001``).  Must
         not change once published, because it appears in result records.  It is
-        **not** a validation rule id.
+        **not** a validation rule id, and it is **not** one of the
+        ``NORMALIZATION-0001…0005`` internal ``ResponseNormalizer`` stages (ADR-0002).
         """
         return self.metadata.responsibility_id
 

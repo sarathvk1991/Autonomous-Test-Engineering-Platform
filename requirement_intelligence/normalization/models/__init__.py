@@ -11,15 +11,17 @@ Models
 * :class:`NormalizationStatistics` — operational telemetry for one run.
 * :class:`NormalizationFrameworkMetadata` — provenance of the producing framework.
 * :class:`NormalizationResult` — the aggregate root and single framework output,
-  carrying the architecture-approved ``ParsedResponse`` placeholder.
+  carrying the ``ParsedResponse`` (populated by the ``ResponseNormalizer``; ``None``
+  in the framework result — ADR-0002).
 
 These models carry **information only**: no normalization behaviour, no parsing,
 no validation, no provider behaviour, no persistence, no I/O.  Per the frozen
 Normalization-Validation boundary (contract §10) they carry **no verdict, no
 severity, and no summary** — normalization produces facts, not judgments.
 
-The ``ParsedResponse`` Core Canonical Model is **not** defined here; it is a
-separate task.  ``NormalizationResult`` carries a typed placeholder for it.
+The ``ParsedResponse`` Core Canonical Model is **not** defined here (it lives in
+``requirement_intelligence/models/parsed_response.py``); ``NormalizationResult``
+carries it in a typed field the ``ResponseNormalizer`` populates (ADR-0002).
 """
 
 from __future__ import annotations

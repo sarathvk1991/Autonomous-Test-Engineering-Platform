@@ -90,7 +90,7 @@ Independent versions govern normalization; they must never be conflated:
 * **Normalization Contract Version** (``normalization_contract_version``, here) —
   the version of normalization *semantics* for the whole subsystem (contract §12).
 * **ParsedResponse Version** — the version of the canonical representation's
-  *shape* (contract §12); owned by the future ParsedResponse model.
+  *shape* (contract §12); owned by the ``ParsedResponse`` model.
 * **Framework / Pipeline / Registry Versions** — framework-component versions (see
   ``normalization_framework_metadata``).
 """
@@ -106,9 +106,9 @@ from typing import Any
 DEFAULT_RESPONSIBILITY_VERSION = "1.0.0"
 
 #: The default ``order`` for a responsibility whose metadata omits one.  ``0``
-#: means "unpositioned": concrete catalog responsibilities declare ``1`` to ``5`` to
-#: mirror their frozen ``NORMALIZATION-000N`` position, but the framework never
-#: consumes ``order`` to sequence execution (registration order is authoritative).
+#: means "unpositioned": a responsibility may declare a position for observability,
+#: but the framework never consumes ``order`` to sequence execution (registration
+#: order is authoritative).
 DEFAULT_RESPONSIBILITY_ORDER = 0
 
 
@@ -126,11 +126,12 @@ class NormalizationResponsibilityMetadata:
     Active attributes
     -----------------
     responsibility_id:
-        Stable, globally unique identifier from the Normalization Responsibility
-        Catalog (contract §13).  Convention: ``NORMALIZATION-NNNN`` (e.g.
-        ``NORMALIZATION-0001``).  It is **not** a validation rule id and never
-        appears in the validation Rule Catalog.  Appears in result records, so it
-        must not change once published (Catalog §3.9, Immutable Identity).
+        Stable, globally unique identifier of a framework responsibility.
+        Convention: ``<NAME>-NNNN`` (e.g. a generic ``EXAMPLE-0001``).  It is
+        **not** a validation rule id, and it is **not** one of the
+        ``NORMALIZATION-0001…0005`` internal ``ResponseNormalizer`` stages
+        (ADR-0002).  Appears in result records, so it must not change once
+        published.
     responsibility_name:
         Short, human-readable label.  Example: ``"Recover canonical structure"``.
     responsibility_version:

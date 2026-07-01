@@ -177,17 +177,17 @@ not applicable.
 
 | ID | Capability | Architecture | Framework | Canonical Models | Implementation | Testing | Frozen |
 | -- | ---------- | :----------: | :-------: | :--------------: | :------------: | :-----: | :----: |
-| CAP-030 | Response Normalization (subsystem) | ✓ | ✓ | ✓ | ◑ | ✓ | ✓ |
+| CAP-030 | Response Normalization (subsystem) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | CAP-031 | ParsedResponse | ✓ | n/a | ✓ | ✓ | ✓ | ◑ |
-| CAP-032 | ResponseNormalizer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| CAP-032 | ResponseNormalizer | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 **Governance**
 
 | ID | Capability | Purpose | Current Version | Introduced In | Owner | Dependencies | Next Planned Milestone | Maturity | Status | Notes |
 | -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
-| CAP-030 | Response Normalization (subsystem) | Turn `LLMResponse` into the canonical structure exactly once | `FRAMEWORK_VERSION` 1.0.0 · `NORMALIZATION_CONTRACT_VERSION` 1.0 | 1.0.0 | Framework | Canonical Models, Provider Framework | Implement `ResponseNormalizer` (CAP-032) | Framework Complete | Contract Frozen | Generic framework (registry/pipeline/result/execution-context) built; **no responsibilities implemented** yet. The five normalization stages are internal to the `ResponseNormalizer`, not framework units (ADR-0002). |
-| CAP-031 | ParsedResponse | The immutable, shared canonical structural representation | `PARSED_RESPONSE_VERSION` 1.0 | 1.0.0 | Shared | `NormalizationOutcome` enum, Canonical Models §8 | None recorded | Production Ready | Complete | `models/parsed_response.py`; ownership aligned (observations owned by `NormalizationResult`). |
-| CAP-032 | ResponseNormalizer | Concrete producer of a real `ParsedResponse`; owns the `NORMALIZATION-0001…0005` **internal stages** + Assembly State (ADR-0002) | `n/a` (stages not built) | Not Recorded | Implementation | Normalization Framework (CAP-030), ParsedResponse (CAP-031), `LLMResponse`, Normalization Assembly Contract | **Next milestone** — implement the five internal stages per the Assembly Contract | Architecture Complete | Planned | Orchestration boundary exists; the five stages are internal to the normalizer, not framework units (ADR-0002); internal collaboration governed by the **Normalization Assembly Contract** (frozen). |
+| CAP-030 | Response Normalization (subsystem) | Turn `LLMResponse` into the canonical structure exactly once | `FRAMEWORK_VERSION` 1.0.0 · `NORMALIZATION_CONTRACT_VERSION` 1.0 | 1.0.0 | Implementation | Canonical Models, Provider Framework | None recorded | Production Ready | Complete · Frozen | **Subsystem complete and operational**: generic framework (registry/pipeline/result/execution-context) + the five internal `NORMALIZATION-0001…0005` stages + `ResponseNormalizer` wired end-to-end (`normalization/`, tested). Governing contracts frozen. The five stages are internal to the `ResponseNormalizer`, not framework units (ADR-0002). |
+| CAP-031 | ParsedResponse | The immutable, shared canonical structural representation | `PARSED_RESPONSE_VERSION` 1.0 | 1.0.0 | Shared | `NormalizationOutcome` enum, Canonical Models §8 | None recorded | Production Ready | Complete | `models/parsed_response.py`; ownership aligned (observations owned by `NormalizationResult`); now assembled by stage `NORMALIZATION-0005` and carried on the `NormalizationResult`. |
+| CAP-032 | ResponseNormalizer | Concrete producer of a real `ParsedResponse`; owns the `NORMALIZATION-0001…0005` **internal stages** + Assembly State (ADR-0002) | `n/a` (via `FRAMEWORK_VERSION` 1.0.0) | 1.0.0 | Implementation | Normalization Framework (CAP-030), ParsedResponse (CAP-031), `LLMResponse`, Normalization Assembly Contract | None recorded | Production Ready | Complete | **Implemented and wired end-to-end**: the five internal stages (`NORMALIZATION-0001…0005`), the Assembly State, the Stage Coordinator, the JSON structure recoverer, and the orchestration populate a real `ParsedResponse` (`normalization/response/`, tested incl. end-to-end). Stages are internal to the normalizer, not framework units (ADR-0002); governed by the frozen **Assembly Contract** and **Stage Implementation Contract**. |
 
 ### 5.5 Validation
 
@@ -247,14 +247,14 @@ Objective counts, derived directly from the repository (no estimation):
 | **Validation layers implemented** | Rule modules under `validation/rules/` | **1 of 9** layers implemented (Transport). |
 | **Validation layers frozen** | Freeze statements in the Rule Catalog | **1 of 9** frozen (Transport). |
 | **LLM providers active** | `platform_metadata.PROVIDERS` with `available=True` | **1 of 5** (Gemini; four reserved). |
-| **Response Normalization** | Framework vs. producer | Framework + `ParsedResponse` complete; **0 of 5** `NORMALIZATION-00NN` responsibilities implemented; `ResponseNormalizer` not built. |
+| **Response Normalization** | Subsystem completeness | **Complete**: framework + `ParsedResponse` + all five internal `NORMALIZATION-0001…0005` stages + `ResponseNormalizer` wired end-to-end. |
 
 | Bucket | Capabilities |
 | ------ | ------------ |
-| **Frozen** | Response Normalization subsystem (CAP-030, contract), Transport Layer (CAP-042), Validation Framework (CAP-040). |
-| **Completed (Production Ready)** | Ingestion & Core (CAP-001…003), AI Generation implementation (CAP-011…014), Execution & Platform (CAP-020…024), ParsedResponse (CAP-031). |
+| **Frozen** | Response Normalization subsystem (CAP-030), ResponseNormalizer (CAP-032), Transport Layer (CAP-042), Validation Framework (CAP-040). |
+| **Completed (Production Ready)** | Ingestion & Core (CAP-001…003), AI Generation implementation (CAP-011…014), Execution & Platform (CAP-020…024), Response Normalization subsystem (CAP-030), ParsedResponse (CAP-031), ResponseNormalizer (CAP-032). |
 | **In Progress** | Response Validator (CAP-041, orchestrator built, not wired), CP1 Validator (CAP-060). |
-| **Planned** | ResponseNormalizer (CAP-032) + `NORMALIZATION-0001…0005`; Syntax → Business Rule layers (CAP-043…050); Feature/Test Generators. |
+| **Planned** | Syntax → Business Rule layers (CAP-043…050); Feature/Test Generators. |
 
 ## 7. Implementation Roadmap
 
@@ -262,15 +262,17 @@ Remaining milestones in **execution order** (no dates; grounded in the
 Response Normalization Contract §13, the Syntax Design Review, and the Rule
 Catalog layer order):
 
-1. **ResponseNormalizer (CAP-032)** — implement the concrete normalizer and the
-   `NORMALIZATION-0001…0005` responsibilities; produce a real `ParsedResponse`.
+> **Completed:** **ResponseNormalizer (CAP-032)** — the concrete normalizer and the
+> five internal `NORMALIZATION-0001…0005` stages produce a real `ParsedResponse`,
+> wired end-to-end and tested. This closes the Response Normalization milestone.
+
+1. **Syntax Layer (CAP-043)** — implement `SYNTAX-0001…0003` (reads the
+   Normalization Outcome from `ParsedResponse` and observations from
+   `NormalizationResult`). **Unblocked** by CAP-032.
 2. **Response Validator wiring (CAP-041)** — register the existing orchestrator as
    a delivered platform capability and wire it end-to-end (CLI/platform catalogue).
-3. **Syntax Layer (CAP-043)** — implement `SYNTAX-0001…0003` (reads the
-   Normalization Outcome from `ParsedResponse` and observations from
-   `NormalizationResult`).
-4. **Schema Layer (CAP-044)** — implement the Schema rules.
-5. **Structural → Content → Evidence → Traceability → Reasoning → Business Rule
+3. **Schema Layer (CAP-044)** — implement the Schema rules.
+4. **Structural → Content → Evidence → Traceability → Reasoning → Business Rule
    (CAP-045…050)** — implement the remaining validation layers in Rule Catalog
    order.
 

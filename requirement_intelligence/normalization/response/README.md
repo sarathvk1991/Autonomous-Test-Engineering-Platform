@@ -5,11 +5,12 @@ the normalization sibling of the [`ResponseValidator`](../../validation/response
 It orchestrates a single normalization run and returns the one canonical
 `NormalizationResult`. It performs **no normalization itself**.
 
-> **Scope.** This package is **orchestration only**. It parses nothing, inspects no
-> JSON/XML, recovers no structure, records no observations, creates no
-> `ParsedResponse`, mutates no `LLMResponse`, and implements no
-> `NORMALIZATION-00NN` responsibility. Those are the work of the responsibilities
-> it will orchestrate — future tasks.
+> **Scope.** The orchestration logic parses nothing, inspects no JSON/XML, recovers
+> no structure, records no observations, and mutates no `LLMResponse`. Structure
+> recovery, outcome determination, observation capture, source referencing, and
+> `ParsedResponse` assembly are performed by the five internal stages
+> (`NORMALIZATION-0001…0005`), coordinated within this component's boundary through
+> a transient Assembly State (ADR-0002).
 
 ---
 

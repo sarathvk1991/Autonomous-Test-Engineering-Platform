@@ -4,7 +4,8 @@
 :class:`~requirement_intelligence.normalization.framework.normalization_pipeline.NormalizationPipeline`
 run produces.  It assembles the configuration that governed the run, the
 framework provenance, the operational statistics, the recorded observations, and
-— once it exists — the canonical ``ParsedResponse``.
+the canonical ``ParsedResponse`` (populated by the ``ResponseNormalizer``, not the
+framework — see below).
 
 It is **information only** and **immutable**: assembled once, never altered.
 
@@ -16,20 +17,18 @@ produces *facts*, not *judgments* (Response Normalization Contract §10); there 
 nothing to "summarise into a verdict".  This is a deliberate deviation from the
 Validation Framework (see the framework README).
 
-The ParsedResponse placeholder
--------------------------------
-``parsed_response`` is the **architecture-approved placeholder** for the
-``ParsedResponse`` Core Canonical Model, which is implemented by a **separate**
-task (it is *not* implemented here).  The field exists now — typed ``Any | None``
-and defaulting to ``None`` — so that:
+The ParsedResponse field
+------------------------
+``parsed_response`` carries the ``ParsedResponse`` Core Canonical Model (defined in
+``requirement_intelligence/models/parsed_response.py``).  The field is typed
+``Any | None`` and defaults to ``None`` so the normalization models stay
+**decoupled** from the validation canonical models (no import) while keeping the
+result's shape and public API stable.
 
-* the result's shape and public API are **stable today**, and
-* when ``ParsedResponse`` lands, only the *type annotation* changes
-  (``Any | None`` → ``ParsedResponse | None``); no field is added, renamed, or
-  moved, so no consumer breaks.
-
-The Phase-1 framework never populates this field — producing a ``ParsedResponse``
-is the future ``ResponseNormalizer``'s responsibility, not the framework's.
+The **framework pipeline** never populates this field — it always leaves it ``None``
+(the framework produces no ``ParsedResponse``).  The ``ResponseNormalizer`` populates
+it **within its own boundary** (ADR-0002): its internal stage ``NORMALIZATION-0005``
+assembles the ``ParsedResponse``, which the Normalizer then attaches to the result.
 """
 
 from __future__ import annotations
@@ -79,10 +78,11 @@ class NormalizationResult(Schema):
         The complete collection of Normalization Observations recorded during the
         run (owned).  An immutable tuple; an empty tuple is a valid result.
     parsed_response:
-        **Placeholder** for the future ``ParsedResponse`` Core Canonical Model.
-        Always ``None`` in the Phase-1 framework (the framework produces no
-        ``ParsedResponse``).  Typed ``Any`` so the API is stable until the model
-        lands; see the module docstring.
+        The ``ParsedResponse`` Core Canonical Model for the run.  Always ``None`` in
+        the **framework** result (the framework produces no ``ParsedResponse``); the
+        ``ResponseNormalizer`` populates it within its own boundary (ADR-0002).
+        Typed ``Any`` to keep the normalization models decoupled from the validation
+        canonical models; see the module docstring.
     started_at / completed_at:
         Wall-clock start and completion timestamps of the normalization run.
     metadata:
@@ -102,7 +102,8 @@ class NormalizationResult(Schema):
     normalization_statistics: NormalizationStatistics
     observations: tuple[NormalizationObservation, ...] = Field(default_factory=tuple)
 
-    # Placeholder for the future ParsedResponse Core Canonical Model.
+    # The ParsedResponse Core Canonical Model (populated by the ResponseNormalizer;
+    # always None in the framework result — ADR-0002).
     parsed_response: Any | None = None
 
     started_at: datetime

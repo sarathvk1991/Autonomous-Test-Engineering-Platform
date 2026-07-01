@@ -1,16 +1,19 @@
 # Response Normalization Framework
 
-The permanent infrastructure through which every future **normalization
-responsibility** executes. It is the framework half of the **Response
+The permanent infrastructure through which **normalization
+responsibilities** execute. It is the framework half of the **Response
 Normalization Layer** — the permanent platform subsystem that sits between the
 provider-independent `LLMResponse` and the Response Validator, governed by
 [`docs/architecture/response-normalization-contract.md`](../../../docs/architecture/response-normalization-contract.md).
 
-> **Phase 1 scope.** This package is **framework infrastructure only**. It
-> implements **no** normalization responsibility, **no** parsing, **no**
-> JSON/format-specific behaviour, **no** provider behaviour, **no**
-> `ParsedResponse`, **no** `ResponseNormalizer`, and **no** Syntax rule. Those are
-> future tasks. This framework exists so they have a stable, governed foundation.
+> **Scope.** This package is **generic framework infrastructure only**. It
+> implements **no** concrete normalization responsibility, **no** parsing, **no**
+> JSON/format-specific behaviour, **no** provider behaviour, and **no**
+> `ParsedResponse`. Per **ADR-0002**, structure recovery and `ParsedResponse`
+> assembly are performed by the `ResponseNormalizer` **component** (in
+> `requirement_intelligence/normalization/response/`) through its five internal
+> stages — not by this framework. Downstream Syntax validation is a separate
+> subsystem and remains future work.
 
 ---
 
@@ -23,7 +26,7 @@ provider-independent `LLMResponse` and the Response Validator, governed by
    Response Normalization Layer        ◄── this subsystem (permanent)
         │  registry → pipeline → result        no validation / repair / interpretation
         ▼
-   ParsedResponse                      (future Core Canonical Model — NOT built here)
+   ParsedResponse                      (Core Canonical Model — assembled by the ResponseNormalizer, not here)
         │
         ▼
    Response Validator                  (first consumer; never normalizes)
@@ -107,11 +110,12 @@ verdict, summary, severity, or health to derive (Contract §10).
 
 ## Responsibilities
 
-A `NormalizationResponsibility` owns exactly one responsibility from the
-**Normalization Responsibility Catalog** (Contract §13):
-`NORMALIZATION-0001 … 0005`. It is **pure, deterministic, stateless, idempotent,
-non-mutating**, and returns **facts** (`NormalizationObservation`) — never
-judgments. None are implemented in Phase 1.
+A `NormalizationResponsibility` is a **generic** framework execution unit that owns
+exactly one observation-producing concern. It is **pure, deterministic, stateless,
+idempotent, non-mutating**, and returns **facts** (`NormalizationObservation`) —
+never judgments. The platform registers **no** framework responsibilities today:
+per **ADR-0002** the five `NORMALIZATION-0001…0005` stages are internal to the
+`ResponseNormalizer` (see the scope note below), not framework responsibilities.
 
 ---
 
@@ -152,7 +156,7 @@ class ExampleObservationResponsibility(NormalizationResponsibility):
         return self._METADATA
 
     def normalize(self, source):
-        ...  # returns facts; Phase 1 implements none
+        ...  # returns facts (illustrative generic example)
 
 r = ExampleObservationResponsibility()
 r.responsibility_id  # "EXAMPLE-0001"  (reads r.metadata.responsibility_id)
@@ -343,12 +347,12 @@ This framework realises the *infrastructure* the Contract governs:
 
 `ParsedResponse` is a **Core Canonical Model** and **Shared Platform Artifact**,
 implemented in [`requirement_intelligence/models/parsed_response.py`](../../models/parsed_response.py)
-by a **separate** task — **not** by this framework. The framework still builds
-none: `NormalizationResult.parsed_response` remains the **architecture-approved
-placeholder** (`Any | None`, always `None` in Phase 1). Producing a real
-`ParsedResponse` is the future `ResponseNormalizer`'s job; when it does, only that
-field's type annotation tightens (`Any | None` → `ParsedResponse | None`) — no
-field is added, renamed, or moved, so no consumer breaks.
+— **not** by this framework. The framework still builds none:
+`NormalizationResult.parsed_response` is always `None` in the **framework** result.
+The `ResponseNormalizer` assembles the `ParsedResponse` (via its internal stage
+`NORMALIZATION-0005`) and populates the field within its own boundary (ADR-0002).
+The field is typed `Any | None` to keep the normalization models decoupled from the
+validation canonical models.
 
 > **Observations ownership.** The **`NormalizationResult`** is the aggregate that
 > owns the Normalization Observations together with the `ParsedResponse`, the
@@ -360,17 +364,17 @@ field is added, renamed, or moved, so no consumer breaks.
 
 ## Relationship to the Response Validator
 
-The `ParsedResponse` this subsystem will eventually produce is a **Shared Platform
-Artifact**; the Response Validator is its **first consumer**, not its owner, and
-never normalizes (Contract §7, §10). This framework and the validation framework
+The `ParsedResponse` this subsystem produces is a **Shared Platform Artifact**; the
+Response Validator is its **first consumer**, not its owner, and never normalizes
+(Contract §7, §10). This framework and the validation framework
 are **siblings** with identical engineering discipline and disjoint
 responsibilities.
 
 ## The ResponseNormalizer (framework consumer)
 
 The `ResponseNormalizer` is the concrete normalization **component** built on top
-of this framework (its orchestration boundary already exists; its five stages are
-not yet implemented). It *uses* this generic framework — owning the
+of this framework (its orchestration boundary and all five internal stages are
+implemented and wired end-to-end). It *uses* this generic framework — owning the
 input/format-facing concerns and producing a real `ParsedResponse`.
 
 Per **ADR-0002**, the catalog stages `NORMALIZATION-0001…0005` are the
@@ -404,9 +408,11 @@ intentional:
    `observations_recorded` replace `rules_passed`/`rules_failed`.
 5. **Configuration carries no layer/severity policy.** Only fact-collection
    toggles remain.
-6. **`ParsedResponse` placeholder.** The result carries a typed placeholder
-   instead of a real model, preserving API stability until the model lands.
-7. **`NormalizationLayer` facade.** A subsystem seat distinct from the future
+6. **`ParsedResponse` carried in a typed field.** The result carries the
+   `ParsedResponse` in an `Any | None` field (populated by the `ResponseNormalizer`,
+   `None` in the framework result), keeping the normalization models decoupled from
+   the validation canonical models.
+7. **`NormalizationLayer` facade.** A subsystem seat distinct from the
    `ResponseNormalizer` (the validation analogue, `ResponseValidator`, already
    exists; its normalization counterpart is deferred).
 8. **Two normalization versions.** `NORMALIZATION_CONTRACT_VERSION` (semantics)

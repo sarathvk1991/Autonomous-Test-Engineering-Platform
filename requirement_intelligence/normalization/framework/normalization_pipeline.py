@@ -31,10 +31,11 @@ Design notes
   result is a valid execution, not a placeholder: its statistics and framework
   metadata are still populated.
 
-* **The ParsedResponse placeholder.**  The result's ``parsed_response`` field is
-  always ``None`` in this Phase-1 framework.  Producing a ``ParsedResponse`` is
-  the future ``ResponseNormalizer``'s job, not the framework's; the field exists
-  now only to keep the result's API stable until the model lands.
+* **The framework produces no ParsedResponse.**  The result's ``parsed_response``
+  field is always ``None`` in the framework result.  The ``ResponseNormalizer``
+  assembles the ``ParsedResponse`` (via its internal stage ``NORMALIZATION-0005``)
+  and populates the field within its own boundary (ADR-0002); the framework never
+  creates one.
 """
 
 from __future__ import annotations
@@ -327,7 +328,7 @@ class NormalizationPipeline:
             normalization_framework_metadata=framework_metadata,
             normalization_statistics=statistics,
             observations=tuple(observations),
-            parsed_response=None,  # Phase-1 placeholder — framework creates none.
+            parsed_response=None,  # framework creates none; Normalizer populates (ADR-0002).
             started_at=started_at,
             completed_at=completed_at,
         )
