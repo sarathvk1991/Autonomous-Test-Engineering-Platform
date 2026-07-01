@@ -126,6 +126,13 @@ identity**; the legacy read-through properties (`responsibility_id`,
 wrappers that simply delegate to it, so every existing caller keeps working
 unchanged.
 
+> **Scope (ADR-0002).** `NormalizationResponsibility` is a **generic** framework
+> execution unit. The catalog stages `NORMALIZATION-0001…0005` are **not** framework
+> responsibilities — they are internal stages of the `ResponseNormalizer`, governed
+> by the Normalization Responsibility Catalog and coordinated within the Normalizer
+> boundary. The example below is therefore an *illustrative generic* responsibility,
+> not a catalog stage.
+
 ```python
 from requirement_intelligence.normalization.framework import (
     NormalizationResponsibility,
@@ -133,11 +140,11 @@ from requirement_intelligence.normalization.framework import (
 )
 
 
-class RecoverCanonicalStructure(NormalizationResponsibility):
+class ExampleObservationResponsibility(NormalizationResponsibility):
     _METADATA = NormalizationResponsibilityMetadata(
-        responsibility_id="NORMALIZATION-0001",
-        responsibility_name="Recover canonical structure",
-        order=1,  # descriptive catalog position — never used to sequence execution
+        responsibility_id="EXAMPLE-0001",
+        responsibility_name="Example observation responsibility",
+        order=1,  # descriptive position — never used to sequence execution
     )
 
     @property
@@ -147,9 +154,9 @@ class RecoverCanonicalStructure(NormalizationResponsibility):
     def normalize(self, source):
         ...  # returns facts; Phase 1 implements none
 
-r = RecoverCanonicalStructure()
-r.responsibility_id  # "NORMALIZATION-0001"  (reads r.metadata.responsibility_id)
-r.order              # 1                     (reads r.metadata.order)
+r = ExampleObservationResponsibility()
+r.responsibility_id  # "EXAMPLE-0001"  (reads r.metadata.responsibility_id)
+r.order              # 1               (reads r.metadata.order)
 ```
 
 ### Why immutable metadata exists
@@ -180,7 +187,7 @@ attribute bindings.
 
 | Field | Status | Meaning |
 | ----- | ------ | ------- |
-| `responsibility_id` | active | Stable `NORMALIZATION-NNNN` id (Catalog §3.9 — immutable, never a validation rule id). |
+| `responsibility_id` | active | Stable, immutable identifier, never a validation rule id (the `ResponseNormalizer`'s internal stages use `NORMALIZATION-NNNN` per Catalog §3.9; ADR-0002). |
 | `responsibility_name` | active | Short human-readable label. |
 | `responsibility_version` | active | Version of *this responsibility's* logic (default `1.0.0`). |
 | `order` | active | Declared catalog position (`1…5`). **Descriptive identity only** — never read to sequence execution. |
@@ -359,13 +366,20 @@ never normalizes (Contract §7, §10). This framework and the validation framewo
 are **siblings** with identical engineering discipline and disjoint
 responsibilities.
 
-## Future: ResponseNormalizer
+## The ResponseNormalizer (framework consumer)
 
-The `ResponseNormalizer` is a **future** concrete component (not built here). It
-will *use* this framework — registering the real `NORMALIZATION-0001…0005`
-responsibilities, owning the input/format-facing concerns, and producing a real
-`ParsedResponse`. `NormalizationLayer` is the stable seat it will build upon,
-exactly as `ResponseValidator` builds upon the validation pipeline.
+The `ResponseNormalizer` is the concrete normalization **component** built on top
+of this framework (its orchestration boundary already exists; its five stages are
+not yet implemented). It *uses* this generic framework — owning the
+input/format-facing concerns and producing a real `ParsedResponse`.
+
+Per **ADR-0002**, the catalog stages `NORMALIZATION-0001…0005` are the
+`ResponseNormalizer`'s **internal stages**, coordinated within its boundary through
+a component-internal **Assembly State** — they are **not** registered as framework
+`NormalizationResponsibility` instances, and this framework never assembles the
+`ParsedResponse` or sees the Assembly State. `NormalizationLayer` is the stable
+generic seat the component builds upon, exactly as `ResponseValidator` builds upon
+the validation pipeline.
 
 ---
 

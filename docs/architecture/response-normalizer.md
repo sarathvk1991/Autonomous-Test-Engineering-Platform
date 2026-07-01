@@ -49,19 +49,22 @@ governed.
 
 > **Principle**
 > **The Response Normalizer coordinates normalization; it never performs it.** What
-> structure a response expresses is recovered by the normalization
-> **responsibilities** (Response Normalization Contract §13) and assembled by the
-> framework into a `NormalizationResult` (which carries the `ParsedResponse`). The
-> Normalizer decides *how the act of normalization is run* — which profile, which
-> configuration — never *what structure is recovered* and never *whether it is
+> structure a response expresses is recovered by the normalization **stages**
+> (`NORMALIZATION-0001…0005`, governed by the Normalization Responsibility Catalog)
+> which run **inside the Normalizer component** and assemble the `ParsedResponse`
+> within its boundary (ADR-0002); the framework contributes the generic
+> `NormalizationResult` aggregation (observations and telemetry). The Normalizer's
+> orchestration role decides *how the act of normalization is run* — which profile,
+> which configuration — never *what structure is recovered* and never *whether it is
 > well-formed*.
 
 | Concern | Owned by | Question it answers |
 | ------- | -------- | ------------------- |
-| **Orchestration** | Response Normalizer | *With what profile and configuration is normalization executed, and how is its result produced?* |
-| **Normalization** | Normalization Responsibilities | *What structure does this response express, and what facts does it record?* |
-| **Assembly** | Normalization Framework + Canonical Models | *What is the single result — the `ParsedResponse` plus observations — of the run?* |
-| **Responsibility definition** | Normalization Responsibility Catalog | *Which responsibilities exist and what does each mean?* |
+| **Orchestration** | Response Normalizer (orchestration role) | *With what profile and configuration is normalization executed, and how is its result produced?* |
+| **Normalization** | Normalization stages `NORMALIZATION-0001…0005` (internal to the Normalizer) | *What structure does this response express, and what facts does it record?* |
+| **`ParsedResponse` assembly** | `ResponseNormalizer` boundary — stage `NORMALIZATION-0005` (ADR-0002) | *What is the single canonical representation of the run?* |
+| **Generic result aggregation** | Normalization Framework + Canonical Models | *What is the run's `NormalizationResult` — observations, telemetry, the carried `ParsedResponse`?* |
+| **Responsibility definition** | Normalization Responsibility Catalog | *Which stages exist and what does each mean?* |
 
 ### 1.3 What this document is **not**
 
@@ -97,7 +100,7 @@ governed.
 | --------------------------- | --------------- |
 | **Normalization logic** | Normalization responsibilities (Responsibility Catalog). |
 | **Responsibility implementations** | The conforming responsibility implementations. |
-| **`ParsedResponse` creation** | The responsibilities that recover structure (Response Normalization Contract §5). |
+| **`ParsedResponse` creation** | The Normalizer's internal stages (stage `NORMALIZATION-0005`, within the Normalizer boundary — Response Normalization Contract §5; ADR-0002). |
 | **The canonical models** | Validation Canonical Models (`ParsedResponse`, `NormalizationResult`). |
 | **The execution context's shape** | The `NormalizationExecutionContext` model and its builder. |
 | **Reasoning** | AI Reasoning Contract. |
@@ -231,16 +234,28 @@ Framework.
 | ------------ | ------- |
 | **LLMResponse → Normalizer** | The generation layer hands over the provider-independent response; this is the *only* input the Normalizer needs to begin. |
 | **Normalizer → Normalization Framework** | The Normalizer drives the framework (an injected registry and pipeline). It never registers responsibilities ad hoc. |
-| **Framework → Pipeline** | The framework executes responsibilities in registration order; the Normalizer never orders them itself. |
-| **Pipeline → Responsibilities** | The pipeline invokes each responsibility; the Normalizer never calls one directly. |
-| **Responsibilities → NormalizationResult** | Facts and the `ParsedResponse` are assembled into the single aggregate result, which the Normalizer returns unchanged. |
+| **Framework → Pipeline** | The framework supplies the generic execution lifecycle; the Normalizer coordinates its five internal stages in the catalog's forward-only order (ADR-0002). |
+| **Stages → `ParsedResponse`** | The internal stages `NORMALIZATION-0001…0005` run inside the Normalizer and assemble the `ParsedResponse` within its boundary (stage `0005`), via a component-internal Assembly State. |
+| **Stages → NormalizationResult** | The assembled `ParsedResponse`, the recorded observations, and the telemetry are carried by the single aggregate result, which the Normalizer returns unchanged. |
 | **NormalizationResult → Response Validator** | Validation is the first consumer; it reads the `ParsedResponse` and observations, and never normalizes. |
 
-> **Architectural Decision — the Normalizer orchestrates; responsibilities
-> normalize; the framework executes.** The `ParsedResponse` is **created by
-> responsibilities**, not by the Normalizer; the `NormalizationResult` **aggregates**
-> that `ParsedResponse` together with the recorded observations and telemetry. The
-> Normalizer owns the *coordination*, never the *content*.
+> **Architectural Decision — the Normalizer orchestrates; internal stages
+> normalize; the framework provides generic execution infrastructure (ADR-0002).**
+> The `ParsedResponse` is **assembled within the `ResponseNormalizer` boundary** by
+> its internal stage `NORMALIZATION-0005`, from the facts produced by the earlier
+> stages through a component-internal **Assembly State** — never by the framework.
+> The framework contributes the generic `NormalizationResult` aggregation
+> (observations and telemetry) and is **unaware** of the Assembly State and
+> `ParsedResponse` construction. The Normalizer's orchestration role owns the
+> *coordination*, never the *content*.
+>
+> The diagram above is read at the **component** level: the "Normalization
+> Responsibilities" it shows are the Normalizer's five internal stages
+> (`NORMALIZATION-0001…0005`), not framework `NormalizationResponsibility`
+> registrations. The framework registry/pipeline supply the generic execution
+> lifecycle; the five stages, their forward-only ordering, and the `ParsedResponse`
+> assembly live **inside** the Normalizer (Normalization Responsibility Catalog §4,
+> §8; ADR-0002).
 
 ---
 
@@ -266,26 +281,30 @@ act below is orchestration; none is normalization.
 
 ## 6. Non-responsibilities
 
-The Normalizer **MUST NEVER**:
+The Normalizer's **orchestration role** **MUST NEVER** (per ADR-0002, the acts
+below are performed by the Normalizer's internal stages `NORMALIZATION-0001…0005`,
+governed by the Responsibility Catalog — never by the orchestration logic and never
+by the framework):
 
-| It never… | Because that belongs to |
+| The orchestration role never… | Because that belongs to |
 | --------- | ----------------------- |
-| **Parses** text, JSON, XML, or any format | a normalization responsibility |
-| **Normalizes** / recovers structure | a normalization responsibility |
+| **Parses** text, JSON, XML, or any format | an internal normalization stage |
+| **Normalizes** / recovers structure | an internal normalization stage (`NORMALIZATION-0001`) |
 | **Repairs** a malformed response | nothing — repair is forbidden platform-wide (Contract §3.2) |
-| **Creates a `ParsedResponse`** | the responsibilities (Contract §5) |
-| **Creates observations** | the responsibilities (Contract §8) |
+| **Assembles a `ParsedResponse`** in the orchestration logic | an internal stage (`NORMALIZATION-0005`) within the Normalizer boundary (Contract §5; ADR-0002) |
+| **Creates observations** | an internal stage (`NORMALIZATION-0003`; Contract §8) |
 | **Judges** or assigns severity / verdict | validation (Contract §10) |
 | **Validates** | the Response Validator |
 | **Mutates the `LLMResponse`** | nothing — the input is immutable |
-| **Implements a responsibility** | the Responsibility Catalog |
 | **Contains business logic** | downstream domain layers |
 
 > **Architectural Decision**
-> The prohibitions above are **frozen**. A Normalizer that parsed, normalized,
-> repaired, judged, created a `ParsedResponse`, recorded an observation, or mutated
-> its input would collapse the boundary between *orchestrating* and *normalizing*
-> and is non-conforming by definition.
+> The prohibitions above are **frozen**. A Normalizer whose *orchestration logic*
+> parsed, normalized, repaired, judged, assembled a `ParsedResponse`, recorded an
+> observation, or mutated its input would collapse the boundary between
+> *orchestrating* and *normalizing* and is non-conforming by definition. (Assembly
+> of the `ParsedResponse` is performed by the Normalizer's internal stage
+> `NORMALIZATION-0005`, not by the orchestration logic — ADR-0002.)
 
 ---
 
@@ -304,16 +323,24 @@ One call to the single public operation produces one coordinated run.
         │  4. invoke the pipeline EXACTLY ONCE
         ▼
    Normalization Framework  ──►  Normalization Pipeline
-        │                              │ runs responsibilities in registration order
+        │                              │ runs the generic execution lifecycle
         │                              ▼
-        │                        Normalization Responsibilities
-        │                              │ recover structure → ParsedResponse + observations
+        │                   Normalizer's internal stages (0001…0005)
+        │                              │ recover structure → assemble ParsedResponse + observations
         ▼                              ▼
-   NormalizationResult  ◄───── assembled by the framework (aggregate)
+   NormalizationResult  ◄───── generic aggregate assembled by the framework;
+                              ParsedResponse assembled by stage 0005 (ADR-0002)
         │
         ▼
    returned UNCHANGED to the caller
 ```
+
+> **Note (ADR-0002).** The five `NORMALIZATION-0001…0005` steps are the Normalizer's
+> **internal stages**, not framework `NormalizationResponsibility` registrations.
+> The framework supplies the generic execution lifecycle and assembles the generic
+> `NormalizationResult` (observations, telemetry); the `ParsedResponse` is assembled
+> inside the Normalizer boundary by stage `0005`, through a component-internal
+> Assembly State the framework never sees.
 
 ### 7.1 Sequence
 
@@ -323,15 +350,16 @@ One call to the single public operation produces one coordinated run.
 | 2 | Normalizer | Resolves configuration; resolves and validates the profile. |
 | 3 | Normalizer | Builds the immutable execution context; records it for observability. |
 | 4 | Normalizer | Invokes the pipeline **once**, passing the resolved configuration. |
-| 5 | Framework | Runs the registered responsibilities; assembles the `NormalizationResult`. |
+| 5 | Framework + internal stages | The framework runs the generic execution lifecycle; the Normalizer's internal stages (`0001…0005`) recover structure and assemble the `ParsedResponse` within the Normalizer boundary (ADR-0002); the framework assembles the generic `NormalizationResult`. |
 | 6 | Normalizer | Returns the `NormalizationResult` unchanged. |
 
 > **Worked example.** A caller submits an `LLMResponse`. The Normalizer resolves
 > the platform-default configuration, resolves the Standard profile, builds an
 > execution context stamped with the framework/pipeline/registry/responsibility-
-> catalog/contract versions, and runs the pipeline once. The framework returns a
-> `NormalizationResult` whose `ParsedResponse` holds the recovered structure and
-> whose observation collection records any un-judged facts. The Normalizer returns
+> catalog/contract versions, and runs the pipeline once. Within the Normalizer
+> boundary the internal stages recover structure and assemble the `ParsedResponse`
+> (stage `0005`); the framework returns the `NormalizationResult` carrying that
+> `ParsedResponse` and the recorded observations (ADR-0002). The Normalizer returns
 > that result unchanged — it never inspects the structure or the observations.
 
 ---
@@ -515,7 +543,7 @@ around it grows.
 
 | Reserved direction | Intent | Constraint |
 | ------------------ | ------ | ---------- |
-| **Normalization responsibilities** | `NORMALIZATION-0001…0005` (and beyond) register into the injected registry. | The Normalizer needs **no change** to orchestrate them. |
+| **Normalization stages** | `NORMALIZATION-0001…0005` (and beyond) are the Normalizer's **internal stages**, coordinated within its boundary through the Assembly State (ADR-0002) — not framework registry registrations. | The Normalizer's orchestration contract needs **no change** to coordinate them. |
 | **Profile-driven selection** | Profiles gain responsibility-selection behaviour. | Behind the same profile shape; the entry point is unchanged. |
 | **Additional configuration layers** | Profile / execution / runtime configuration become wired. | The hierarchy already exists; the public API is unchanged. |
 | **`ParsedResponse` evolution** | The canonical representation grows additively. | Owned by the canonical models; the Normalizer never touches its shape. |

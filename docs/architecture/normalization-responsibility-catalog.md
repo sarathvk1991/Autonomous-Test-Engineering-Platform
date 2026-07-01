@@ -443,6 +443,16 @@ The catalog guarantees strict independence among responsibilities.
 Normalization has **no layers** (the deliberate deviation from validation, which
 orders rules by layer). Ordering therefore comes from registration alone.
 
+> **Clarification (ADR-0002).** This ordering is owned and enforced **inside the
+> `ResponseNormalizer`**: the five responsibilities are the Normalizer's **internal
+> stages**, and "registration" here means their fixed internal stage sequence — not
+> an execution order imposed by the generic Response Normalization Framework
+> registry. The framework provides only generic execution infrastructure and is
+> unaware of the five-stage sequence. The catalog still **governs** the order (§4,
+> §11); ADR-0002 only clarifies *where* it is enforced (the component), which is why
+> the forward-only dependency chain is legitimate without contradicting the
+> framework's order-independent responsibility contract.
+
 | Rule | Statement |
 | ---- | --------- |
 | **Never reordered dynamically** | The order is fixed at registration; nothing re-sorts it at run time. |
@@ -493,12 +503,12 @@ This catalog sits among the frozen normalization and validation artifacts.
    [Response Normalization Contract]        governs the subsystem & this catalog (§13)
             │
             ▼
-   [Normalization Responsibility Catalog]   ◄── THIS DOCUMENT (the governed responsibilities)
-            │ executed by ▼
-   [Response Normalization Framework]        registry · pipeline (runs responsibilities in order)
-            │ coordinated by ▼
-   [Response Normalizer]                     the single orchestration boundary
-            │ produces ▼
+   [Normalization Responsibility Catalog]   ◄── THIS DOCUMENT (the governed stages)
+            │ realised as internal stages, coordinated by ▼
+   [Response Normalizer]                     the single orchestration boundary (ADR-0002)
+            │ builds on ▼
+   [Response Normalization Framework]        generic execution infrastructure (registry · pipeline)
+            │ the Normalizer produces ▼
    [ParsedResponse]  +  [NormalizationResult]   the artifact + its aggregate
             │
             ▼
@@ -508,8 +518,8 @@ This catalog sits among the frozen normalization and validation artifacts.
 | Artifact | Relationship |
 | -------- | ------------ |
 | **Response Normalization Contract** | Defines the catalog's governance and the `NORMALIZATION-00NN` numbering (§13); this document elaborates each entry. |
-| **Response Normalizer** | Orchestrates the responsibilities; never a responsibility itself. It creates no `ParsedResponse` — `0005` does. |
-| **Normalization Framework** | Registers and executes the responsibilities in registration order. |
+| **Response Normalizer** | Coordinates the five responsibilities as its **internal stages** and owns the Assembly State; the `ParsedResponse` is assembled by its internal stage `0005`, within the Normalizer boundary (ADR-0002). |
+| **Normalization Framework** | Provides the **generic execution infrastructure** the Normalizer builds on; it does **not** register or execute the five stages individually and is unaware of the Assembly State and `ParsedResponse` construction (ADR-0002). |
 | **`ParsedResponse`** | The Shared Platform Artifact assembled by `0005` from the facts of `0001`, `0002`, `0004`. |
 | **`NormalizationResult`** | The aggregate that owns the `ParsedResponse` **and** the observations from `0003` (plus telemetry). |
 | **Validation Canonical Models** | Define the `ParsedResponse` shape the responsibilities produce; the catalog never redefines that shape. |
