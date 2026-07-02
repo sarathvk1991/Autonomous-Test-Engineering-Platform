@@ -137,3 +137,63 @@ class DuplicateIdentifierReporter(Protocol):
             ordinary absence of duplicates.
         """
         ...
+
+
+@runtime_checkable
+class EncodingIntegrityReporter(Protocol):
+    """An **optional** recovery-mechanism capability: report character-encoding facts.
+
+    A recovery mechanism may *additionally* implement this protocol to surface
+    character-encoding integrity **facts** it noticed while examining the response
+    text — for example, Unicode replacement characters (U+FFFD) that indicate a
+    lossy or corrupt decode.  The capability is **optional and additive**, exactly
+    like :class:`DuplicateIdentifierReporter`: NORMALIZATION-0001 checks for it
+    (``isinstance``) and forwards the reported facts as a *transient execution fact*
+    (Normalization Assembly Contract §4) for NORMALIZATION-0003 to turn into
+    ``encoding_observation`` observations.  A mechanism that does not implement it
+    simply reports no encoding facts — existing behaviour is unchanged.
+
+    Encoding integrity is a **format-independent** property of the decoded text, so a
+    conforming implementation should judge it on the text alone (not on any
+    serialization format).
+
+    Ownership (Response Normalization Contract §8, §10)
+    ---------------------------------------------------
+    Reporting an encoding **fact** is *detection*, owned by the recovery mechanism.
+    It is **never** an observation, a severity, a verdict, or a ``ValidationIssue`` —
+    those are created downstream (observations by NORMALIZATION-0003; the judgement
+    by ``SYNTAX-0003``).  A reporter therefore returns **plain facts**, never
+    judgments.
+
+    Conformance requirements (structural, not runtime-enforced):
+
+    * **Deterministic** — the same text always yields the same facts, in a stable
+      order.
+    * **Non-mutating / pure** — it never mutates its input and holds no state
+      between calls.
+    * **Never judges** — it reports the encoding facts observed; it never assigns
+      severity, outcome, or verdict.
+    """
+
+    def encoding_observations(self, text: str) -> tuple[str, ...]:
+        """Report character-encoding integrity facts found in *text*.
+
+        Parameters
+        ----------
+        text:
+            The response's provider-independent primary text (``generated_text``),
+            treated as **read-only**.
+
+        Returns
+        -------
+        tuple[str, ...]
+            One entry per recorded encoding-integrity fact (a human-readable
+            detail), in a deterministic order — empty when the encoding is intact.
+
+        Raises
+        ------
+        Exception
+            Only for an unexpected **infrastructure** failure — never to signal the
+            ordinary absence of encoding problems.
+        """
+        ...

@@ -33,10 +33,11 @@ creates the source reference (``0004``), assembles the ``ParsedResponse``
 ``LLMResponse``, or performs any downstream work.  Its single **owned** fact is the
 normalized structure.  When its recovery mechanism additionally reports
 duplicate-identifier **facts** (the optional ``DuplicateIdentifierReporter``
-capability), the stage forwards them as a **transient execution fact** (Assembly
-Contract §4) for ``0003`` to turn into ``duplicate_identifier`` observations — it
-never creates the observation itself, and the duplicate facts are never an owned
-fact.
+capability) or character-encoding integrity **facts** (the optional
+``EncodingIntegrityReporter`` capability), the stage forwards them as **transient
+execution facts** (Assembly Contract §4) for ``0003`` to turn into
+``duplicate_identifier`` / ``encoding_observation`` observations — it never creates
+the observations itself, and the forwarded facts are never an owned fact.
 
 Format independence (Catalog §2.2, §3.4)
 ----------------------------------------
@@ -60,11 +61,13 @@ from __future__ import annotations
 from requirement_intelligence.llm.llm_models import LLMResponse
 from requirement_intelligence.normalization.response.assembly.assembly_state import (
     DUPLICATE_IDENTIFIERS_METADATA_KEY,
+    ENCODING_OBSERVATIONS_METADATA_KEY,
     AssemblyState,
 )
 from requirement_intelligence.normalization.response.assembly.canonical_structure_recoverer import (
     CanonicalStructureRecoverer,
     DuplicateIdentifierReporter,
+    EncodingIntegrityReporter,
 )
 from requirement_intelligence.normalization.response.assembly.normalization_stage import (
     NormalizationStage,
@@ -156,4 +159,15 @@ class RecoverCanonicalStructure(NormalizationStage):
             if duplicate_identifiers:
                 assembly_state.set_internal_metadata(
                     DUPLICATE_IDENTIFIERS_METADATA_KEY, duplicate_identifiers
+                )
+
+        # Likewise forward any character-encoding integrity facts as a TRANSIENT
+        # execution fact.  Encoding integrity is a property of the decoded text and is
+        # **independent of well-formedness**, so it is forwarded regardless of whether
+        # a structure was recovered (a malformed response can still be corrupt).
+        if isinstance(self._recoverer, EncodingIntegrityReporter):
+            encoding_observations = self._recoverer.encoding_observations(text)
+            if encoding_observations:
+                assembly_state.set_internal_metadata(
+                    ENCODING_OBSERVATIONS_METADATA_KEY, encoding_observations
                 )

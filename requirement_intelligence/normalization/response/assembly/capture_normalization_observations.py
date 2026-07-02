@@ -85,11 +85,13 @@ from __future__ import annotations
 from requirement_intelligence.llm.llm_models import LLMResponse
 from requirement_intelligence.normalization.models.normalization_observation import (
     OBSERVATION_DUPLICATE_IDENTIFIER,
+    OBSERVATION_ENCODING,
     OBSERVATION_MALFORMED_REPRESENTATION,
     NormalizationObservation,
 )
 from requirement_intelligence.normalization.response.assembly.assembly_state import (
     DUPLICATE_IDENTIFIERS_METADATA_KEY,
+    ENCODING_OBSERVATIONS_METADATA_KEY,
     AssemblyState,
 )
 from requirement_intelligence.normalization.response.assembly.normalization_stage import (
@@ -200,6 +202,26 @@ class CaptureNormalizationObservations(NormalizationStage):
                         f"structural object."
                     ),
                     location=identifier,
+                    created_at=utc_now(),
+                )
+            )
+
+        # Encoding-integrity observations.  The encoding **facts** were detected by
+        # the recovery mechanism and forwarded by NORMALIZATION-0001 as a transient
+        # execution fact (Assembly Contract §4).  This stage only **reads** those
+        # facts and turns each into an ``encoding_observation`` — it never inspects the
+        # text, never parses, never detects, and never judges.  Absent facts → no
+        # observation (the common case); additive to, and independent of, the
+        # malformed and duplicate observations above.
+        encoding_observations = assembly_state.internal_metadata.get(
+            ENCODING_OBSERVATIONS_METADATA_KEY, ()
+        )
+        for index, detail in enumerate(encoding_observations):
+            assembly_state.add_observation(
+                NormalizationObservation(
+                    observation_id=f"{self.stage_id}:{OBSERVATION_ENCODING}:{index}",
+                    observation_type=OBSERVATION_ENCODING,
+                    detail=detail,
                     created_at=utc_now(),
                 )
             )

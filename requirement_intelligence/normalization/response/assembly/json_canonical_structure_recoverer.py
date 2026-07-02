@@ -45,6 +45,29 @@ import json
 from collections import Counter
 from typing import Any
 
+#: The Unicode replacement character.  Its presence in already-decoded text is the
+#: standard signal of a lossy or corrupt decode (an encoding-integrity problem).
+_REPLACEMENT_CHARACTER = "�"
+
+
+def _detect_encoding_issues(text: str) -> tuple[str, ...]:
+    """Report character-encoding integrity facts in *text* (format-independent, pure).
+
+    ``text`` is already a decoded ``str`` (decoding happens at the provider adapter);
+    the standard, deterministic signal of a lossy/corrupt decode is the Unicode
+    replacement character (U+FFFD).  Returns a single descriptive fact when one or
+    more are present, or an empty tuple when the encoding is intact.  This is a pure
+    function of the text — no serialization format is involved, so it is reused
+    unchanged by any future format recoverer.
+    """
+    replacement_count = text.count(_REPLACEMENT_CHARACTER)
+    if replacement_count == 0:
+        return ()
+    return (
+        f"{replacement_count} Unicode replacement character(s) (U+FFFD) indicate a "
+        f"lossy or corrupt character decode.",
+    )
+
 
 class JsonCanonicalStructureRecoverer:
     """Recovers a format-neutral structure from a JSON response, or records its absence.
@@ -66,6 +89,17 @@ class JsonCanonicalStructureRecoverer:
     pure implementation detail: it creates **no** observation, performs **no**
     validation, and never repairs or mutates anything.  ``recover`` is unchanged and
     still yields the last-value-wins structure standard JSON parsing produces.
+
+    Encoding-integrity detection (optional capability)
+    --------------------------------------------------
+    It **also** implements
+    :class:`~requirement_intelligence.normalization.response.assembly.canonical_structure_recoverer.EncodingIntegrityReporter`:
+    :meth:`encoding_observations` reports character-encoding integrity facts (Unicode
+    replacement characters, U+FFFD) found in the decoded text.  Unlike structure
+    recovery and duplicate detection, this is **format-independent** — it inspects the
+    text alone — so the logic lives in a pure module-level helper the recoverer merely
+    exposes as a capability.  Like the others it creates **no** observation, performs
+    **no** validation, and never repairs or mutates anything.
     """
 
     def recover(self, text: str) -> dict[str, Any] | None:
@@ -141,3 +175,25 @@ class JsonCanonicalStructureRecoverer:
             return ()
 
         return tuple(duplicates)
+
+    def encoding_observations(self, text: str) -> tuple[str, ...]:
+        """Report character-encoding integrity facts found in *text*.
+
+        Format-independent: it inspects the decoded text for the Unicode replacement
+        character (U+FFFD), the standard signal of a lossy/corrupt decode, and
+        reports a fact when any are present.  Independent of JSON well-formedness — a
+        malformed response can still carry encoding corruption — so it never parses
+        and never depends on structure recovery.  Pure and deterministic.
+
+        Parameters
+        ----------
+        text:
+            The response's provider-independent primary text, treated as read-only.
+
+        Returns
+        -------
+        tuple[str, ...]
+            One entry describing the encoding-integrity problem when present; empty
+            when the encoding is intact.
+        """
+        return _detect_encoding_issues(text)

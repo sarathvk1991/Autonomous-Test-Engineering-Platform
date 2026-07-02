@@ -57,6 +57,15 @@ from shared.enums.base import NormalizationOutcome
 #: canonical model, an owned fact, or an observation.
 DUPLICATE_IDENTIFIERS_METADATA_KEY = "duplicate_identifiers"
 
+#: Internal-metadata key under which NORMALIZATION-0001 forwards the encoding-integrity
+#: **facts** its recovery mechanism reported, for NORMALIZATION-0003 to read and turn
+#: into ``encoding_observation`` observations.  Like
+#: :data:`DUPLICATE_IDENTIFIERS_METADATA_KEY`, it names a **transient execution fact**
+#: (Normalization Assembly Contract §4) — boundary-local bookkeeping that never leaves
+#: the ``ResponseNormalizer`` boundary and is never a canonical model, an owned fact,
+#: or an observation.
+ENCODING_OBSERVATIONS_METADATA_KEY = "encoding_observations"
+
 
 class AssemblyState:
     """Transient, mutable, boundary-local medium for one normalization execution.
