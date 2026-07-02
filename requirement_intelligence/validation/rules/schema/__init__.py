@@ -12,12 +12,13 @@ Currently implemented
 ---------------------
 * ``SCHEMA-0001`` :class:`RequiredSectionsRule` — every required **non-collection**
   section/property is present (ADR-0004).
+* ``SCHEMA-0002`` :class:`FieldTypesRule` — every governed field that is present is
+  of its expected type (Rule Catalog §9.3, §8.3).
 
 Reserved (not implemented here)
 -------------------------------
-* ``SCHEMA-0002`` FieldTypesRule, ``SCHEMA-0003`` EnumerationsRule, and
-  ``SCHEMA-0004`` RequiredArraysRule are defined in the Rule Catalog (§9.3) but are
-  **not** implemented by this task.
+* ``SCHEMA-0003`` EnumerationsRule and ``SCHEMA-0004`` RequiredArraysRule are defined
+  in the Rule Catalog (§9.3) but are **not** implemented by this task.
 
 Registration
 ------------
@@ -30,12 +31,16 @@ pipeline seals its registry on construction).
 
 from __future__ import annotations
 
+from requirement_intelligence.validation.rules.schema.field_types_rule import (
+    FieldTypesRule,
+)
 from requirement_intelligence.validation.rules.schema.required_sections_rule import (
     RequiredSectionsRule,
 )
 from requirement_intelligence.validation.validation_registry import ValidationRegistry
 
 __all__ = [
+    "FieldTypesRule",
     "RequiredSectionsRule",
     "register_schema_rules",
 ]
@@ -47,7 +52,7 @@ def register_schema_rules(registry: ValidationRegistry) -> None:
     Uses the existing :meth:`ValidationRegistry.register` mechanism; the registry's
     behaviour is unchanged.  Rules are registered in catalog order; within the Schema
     layer the pipeline preserves registration order.  The remaining Schema rules
-    (``SCHEMA-0002…0004``) are added by registering them here — no framework change is
+    (``SCHEMA-0003…0004``) are added by registering them here — no framework change is
     required.
 
     Parameters
@@ -56,3 +61,4 @@ def register_schema_rules(registry: ValidationRegistry) -> None:
         The open registry to populate.  Must not yet be sealed.
     """
     registry.register(RequiredSectionsRule())
+    registry.register(FieldTypesRule())
