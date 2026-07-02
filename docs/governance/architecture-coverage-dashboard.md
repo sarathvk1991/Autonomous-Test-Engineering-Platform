@@ -146,6 +146,13 @@ No other capability is missing architecture: every remaining `✗` is an
   wired), **CAP-060 CP1 Validator** (partial code).
 - **Planned: CAP-044…050** — the remaining validation layers, in Rule Catalog
   order, after Syntax.
+- **Governed deferral (ADR-0005): `SCHEMA-0003` (EnumerationsRule).** Within the
+  Schema Layer (CAP-044), `SCHEMA-0003` is **Reserved · Deferred · Awaiting governed
+  enumeration** — the governed response schema (`summary` + five string-arrays) has no
+  enumerated field, so the rule has nothing to validate. Its Rule ID is frozen and never
+  reused; it is implementable only once a governed response enumeration exists (ADR-0005
+  activation conditions). This is intentional governance, **not** an implementation or
+  coverage gap; the next Schema milestone is `SCHEMA-0004` (RequiredArraysRule).
 - **Frozen and stable (no action): CAP-030 Response Normalization subsystem,
   CAP-032 ResponseNormalizer, CAP-040 Validation Framework, CAP-042 Transport
   Layer.**

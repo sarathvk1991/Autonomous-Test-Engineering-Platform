@@ -594,12 +594,21 @@ set of *delivery-level* guarantees; no Transport concern remains unrepresented.
 
 ### 9.3 Schema
 
-| Rule ID | Name | Single concern |
-| ------- | ---- | -------------- |
-| `SCHEMA-0001` | RequiredSectionsRule | Every required **non-collection** section/property is present. |
-| `SCHEMA-0002` | FieldTypesRule | Each field is of its expected type. |
-| `SCHEMA-0003` | EnumerationsRule | Each enumerated field holds a permitted value. |
-| `SCHEMA-0004` | RequiredArraysRule | Every required **collection** is present. |
+| Rule ID | Name | Single concern | Status |
+| ------- | ---- | -------------- | ------ |
+| `SCHEMA-0001` | RequiredSectionsRule | Every required **non-collection** section/property is present. | Implemented |
+| `SCHEMA-0002` | FieldTypesRule | Each field is of its expected type. | Implemented |
+| `SCHEMA-0003` | EnumerationsRule | Each enumerated field holds a permitted value. | **Reserved · Deferred · Awaiting governed enumeration (ADR-0005)** |
+| `SCHEMA-0004` | RequiredArraysRule | Every required **collection** is present. | Approved (next Schema milestone) |
+
+> **Deferral note (ADR-0005).** `SCHEMA-0003` is a **permanently reserved catalog
+> identity** whose implementation is **intentionally deferred**: the current governed
+> response schema (`summary` + five string-arrays) contains **no enumerated field**, so
+> the rule has nothing to validate. The Rule ID is frozen and **never renumbered or
+> reused** (§4.3). `SCHEMA-0003` becomes implementable only after a **governed response
+> enumeration exists** (see ADR-0005 activation conditions); until then `SCHEMA-0004` is
+> the next Schema milestone. The "enumerated value" example in §8.3 is **illustrative**,
+> not a declaration that the current schema has an enumerated field.
 
 > **Ownership note (ADR-0004).** Schema is the **sole owner of existence /
 > machine-readable conformance**, including the presence of every required
