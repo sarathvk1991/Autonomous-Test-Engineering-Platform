@@ -153,6 +153,18 @@ No other capability is missing architecture: every remaining `✗` is an
   reused; it is implementable only once a governed response enumeration exists (ADR-0005
   activation conditions). This is intentional governance, **not** an implementation or
   coverage gap; the next Schema milestone is `SCHEMA-0004` (RequiredArraysRule).
+- **Remaining-layer capability status (ADR-0006).** The remaining layers'
+  ownership boundaries are frozen and each catalogued rule is classified against the
+  **current** governed response schema (arrays of bare string statements). **Implementable
+  now:** `CONTENT-0001`, `CONTENT-0002`, `REASONING-0001`, `REASONING-0002`,
+  `REASONING-0003` (CAP-046, CAP-049). **Reserved · Deferred:** `CONTENT-0003/0004`, all
+  Evidence (CAP-047), all Traceability (CAP-048), all Business (CAP-050) — each needs a
+  governed capability that does not exist today (per-item description/confidence/evidence/
+  source, or a declared Business policy). **Structural (CAP-045)** has no active
+  catalogued rules and awaits both a composable response and a cataloguing ADR. A single
+  future **schema-enrichment ADR** (structured response items + declared policies) unblocks
+  most deferrals. This is intentional governance, **not** a coverage gap; no checkmarks
+  change.
 - **Frozen and stable (no action): CAP-030 Response Normalization subsystem,
   CAP-032 ResponseNormalizer, CAP-040 Validation Framework, CAP-042 Transport
   Layer.**
