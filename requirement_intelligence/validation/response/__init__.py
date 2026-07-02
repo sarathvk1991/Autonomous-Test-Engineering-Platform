@@ -54,6 +54,11 @@ from requirement_intelligence.validation.response.validation_profile import (
     all_profiles,
     resolve_profile,
 )
+from requirement_intelligence.validation.response.validator_factory import (
+    build_response_validator,
+    build_validation_pipeline,
+    build_validation_registry,
+)
 
 __all__ = [
     "DEFAULT_PROFILE_NAME",
@@ -71,5 +76,8 @@ __all__ = [
     "ValidationProfileName",
     "all_profiles",
     "build_execution_context",
+    "build_response_validator",
+    "build_validation_pipeline",
+    "build_validation_registry",
     "resolve_profile",
 ]
