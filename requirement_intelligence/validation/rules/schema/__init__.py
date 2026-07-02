@@ -14,11 +14,16 @@ Currently implemented
   section/property is present (ADR-0004).
 * ``SCHEMA-0002`` :class:`FieldTypesRule` — every governed field that is present is
   of its expected type (Rule Catalog §9.3, §8.3).
+* ``SCHEMA-0004`` :class:`RequiredArraysRule` — every required **collection** is
+  present (ADR-0004; Rule Catalog §9.3, §8.3).
 
-Reserved (not implemented here)
--------------------------------
-* ``SCHEMA-0003`` EnumerationsRule and ``SCHEMA-0004`` RequiredArraysRule are defined
-  in the Rule Catalog (§9.3) but are **not** implemented by this task.
+Reserved (deferred — not implemented)
+-------------------------------------
+* ``SCHEMA-0003`` EnumerationsRule is a **permanently reserved catalog identity**
+  whose implementation is **intentionally deferred** (ADR-0005): the governed
+  response schema currently declares no enumerated field, so the rule has nothing to
+  validate.  It becomes implementable only once a governed response enumeration
+  exists.
 
 Registration
 ------------
@@ -34,6 +39,9 @@ from __future__ import annotations
 from requirement_intelligence.validation.rules.schema.field_types_rule import (
     FieldTypesRule,
 )
+from requirement_intelligence.validation.rules.schema.required_arrays_rule import (
+    RequiredArraysRule,
+)
 from requirement_intelligence.validation.rules.schema.required_sections_rule import (
     RequiredSectionsRule,
 )
@@ -41,6 +49,7 @@ from requirement_intelligence.validation.validation_registry import ValidationRe
 
 __all__ = [
     "FieldTypesRule",
+    "RequiredArraysRule",
     "RequiredSectionsRule",
     "register_schema_rules",
 ]
@@ -51,9 +60,9 @@ def register_schema_rules(registry: ValidationRegistry) -> None:
 
     Uses the existing :meth:`ValidationRegistry.register` mechanism; the registry's
     behaviour is unchanged.  Rules are registered in catalog order; within the Schema
-    layer the pipeline preserves registration order.  The remaining Schema rules
-    (``SCHEMA-0003…0004``) are added by registering them here — no framework change is
-    required.
+    layer the pipeline preserves registration order.  ``SCHEMA-0003`` is deferred
+    (ADR-0005) and is therefore not registered — a further Schema rule is added by
+    registering it here, with no framework change required.
 
     Parameters
     ----------
@@ -62,3 +71,4 @@ def register_schema_rules(registry: ValidationRegistry) -> None:
     """
     registry.register(RequiredSectionsRule())
     registry.register(FieldTypesRule())
+    registry.register(RequiredArraysRule())
