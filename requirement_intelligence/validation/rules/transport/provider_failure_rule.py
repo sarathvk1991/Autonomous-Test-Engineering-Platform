@@ -32,9 +32,10 @@ class ProviderFailureRule(ValidationRule):
         Transport — the most foundational concern: did the execution reach the
         platform at all, or did it fail at the provider call boundary?
     Inputs:
-        The analysed response, read-only.  Only the **normalized** execution
-        outcome (``llm_response.execution_status``) is inspected.  No generated
-        content, schema, reasoning, or provider metadata is read.
+        The :class:`ValidationInput`, read-only (ADR-0003).  Only the
+        **normalized** execution outcome
+        (``analysis_result.llm_response.execution_status``) is inspected.  No
+        generated content, schema, reasoning, or provider metadata is read.
     Outputs:
         On a failed execution, exactly one ``ValidationIssue`` with severity
         ``CRITICAL`` and ``blocking=True``.  Otherwise, no findings.
@@ -86,21 +87,22 @@ class ProviderFailureRule(ValidationRule):
     def validate(self, response: Any) -> list[ValidationIssue]:
         """Return one finding if the execution failed; otherwise none.
 
-        The response is treated as read-only.  Only the normalized
+        The ``ValidationInput`` is treated as read-only.  Only the normalized
         ``execution_status`` is examined — the rule fails *only* on
         ``ExecutionStatus.FAILED`` and passes for every other outcome (a timeout
         is the concern of ``TRANSPORT-0003``).  Response *existence* is the concern
         of ``TRANSPORT-0001``; when ``llm_response`` is absent this rule defers and
         returns no findings.
         """
-        llm_response = response.llm_response
+        analysis_result = response.analysis_result
+        llm_response = analysis_result.llm_response
         if llm_response is None:
             return []
         if llm_response.execution_status == ExecutionStatus.FAILED:
-            return [self._provider_failure_issue(response)]
+            return [self._provider_failure_issue(analysis_result)]
         return []
 
-    def _provider_failure_issue(self, response: Any) -> ValidationIssue:
+    def _provider_failure_issue(self, analysis_result: Any) -> ValidationIssue:
         """Build the single, fully-populated issue for a failed execution."""
         return ValidationIssue(
             issue_id=f"{self.rule_id}:provider_failure",
@@ -116,6 +118,6 @@ class ProviderFailureRule(ValidationRule):
                 "Retry the AI request or investigate the provider failure before continuing."
             ),
             blocking=True,
-            correlation_id=response.execution_id,
+            correlation_id=analysis_result.execution_id,
             created_at=utc_now(),
         )

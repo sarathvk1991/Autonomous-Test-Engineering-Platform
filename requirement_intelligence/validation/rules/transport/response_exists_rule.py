@@ -29,8 +29,8 @@ class ResponseExistsRule(ValidationRule):
         Transport — the most foundational concern: was a usable response received
         at all?
     Inputs:
-        The analysed response, read-only.  Only the presence of its
-        ``llm_response`` is inspected; its content is never read.
+        The :class:`ValidationInput`, read-only (ADR-0003).  Only the presence of
+        ``analysis_result.llm_response`` is inspected; its content is never read.
     Outputs:
         On absence, exactly one ``ValidationIssue`` with severity ``CRITICAL`` and
         ``blocking=True``.  On presence, no findings (an empty list).
@@ -38,8 +38,9 @@ class ResponseExistsRule(ValidationRule):
         Raises nothing for a normal validation outcome.  A missing response is a
         finding (returned), never an exception.
     Worked Example:
-        Pass: an ``AnalysisResult`` whose ``llm_response`` is present → ``[]``.
-        Fail: an analysed response whose ``llm_response`` is ``None`` → one
+        Pass: a ``ValidationInput`` whose ``analysis_result.llm_response`` is
+        present → ``[]``.
+        Fail: one whose ``analysis_result.llm_response`` is ``None`` → one
         ``CRITICAL`` blocking issue recommending regeneration.
     Architecture Reference:
         ``TRANSPORT-0001``, Validation Rule Catalog §9.1.
@@ -65,14 +66,16 @@ class ResponseExistsRule(ValidationRule):
     def validate(self, response: Any) -> list[ValidationIssue]:
         """Return one finding if the LLM response is absent; otherwise none.
 
-        The response is treated as read-only.  Only the presence of
-        ``llm_response`` is examined — never its content, structure, or meaning.
+        The ``ValidationInput`` is treated as read-only.  Only the presence of
+        ``analysis_result.llm_response`` is examined — never its content,
+        structure, or meaning.
         """
-        if response.llm_response is not None:
+        analysis_result = response.analysis_result
+        if analysis_result.llm_response is not None:
             return []
-        return [self._missing_response_issue(response)]
+        return [self._missing_response_issue(analysis_result)]
 
-    def _missing_response_issue(self, response: Any) -> ValidationIssue:
+    def _missing_response_issue(self, analysis_result: Any) -> ValidationIssue:
         """Build the single, fully-populated issue for a missing LLM response."""
         return ValidationIssue(
             issue_id=f"{self.rule_id}:llm_response",
@@ -86,6 +89,6 @@ class ResponseExistsRule(ValidationRule):
             evidence=None,
             recommendation="Regenerate the AI response before continuing.",
             blocking=True,
-            correlation_id=response.execution_id,
+            correlation_id=analysis_result.execution_id,
             created_at=utc_now(),
         )

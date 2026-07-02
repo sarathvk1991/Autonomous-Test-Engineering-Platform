@@ -90,23 +90,24 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-048 | Traceability Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
 | CAP-049 | Reasoning Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
 | CAP-050 | Business Rule Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
+| CAP-051 | ValidationInput (canonical input) | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-060 | CP1 Validator | ◑ | ✓ | ✓ | ◑ | ✗ | ✗ | In Progress |
 
 ## 5. Overall coverage summary
 
-Objective counts across all **28** capabilities (no percentages estimated). For
+Objective counts across all **29** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 27 | 1 | 0 | Partial: CAP-060. |
-| **Framework** | 28 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 28 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 18 | 2 | 8 | `✗`: CAP-043…050. Partial: CAP-041, CAP-060. |
-| **Testing** | 16 | 3 | 9 | `✗`: CAP-043…050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 1 | 23 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
+| **Architecture** | 28 | 1 | 0 | Partial: CAP-060. |
+| **Framework** | 29 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 29 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 19 | 2 | 8 | `✗`: CAP-043…050. Partial: CAP-041, CAP-060. |
+| **Testing** | 17 | 3 | 9 | `✗`: CAP-043…050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 1 | 24 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
 
-**Implementation Readiness distribution** (28 total): **Ready 19** · **In Progress
+**Implementation Readiness distribution** (29 total): **Ready 20** · **In Progress
 2** (CAP-041, CAP-060) · **Blocked 0** · **Planned 7** (CAP-044…050).
 
 ## 6. Remaining architecture work
@@ -132,11 +133,15 @@ No other capability is missing architecture: every remaining `✗` is an
   subsystem** — the five internal `NORMALIZATION-0001…0005` stages, the Assembly
   State, the Stage Coordinator, and the orchestration are implemented, wired
   end-to-end, and tested; they produce a real `ParsedResponse`.
+- **Complete: CAP-051 ValidationInput (ADR-0003 plumbing).** The canonical
+  Normalization → Validation input is implemented and tested; the Response Validator
+  and Validation Pipeline consume it and the four Transport rules are migrated.
 - **Ready to build now (the next milestone): CAP-043 Syntax Layer.** Its
   prerequisites — the Validation Framework (CAP-040), a real `ParsedResponse`
-  (CAP-031/CAP-032), and the `NormalizationResult` observations — are all in place,
-  so it is now **unblocked**. Implementing `SYNTAX-0001…0003` is the highest-leverage
-  next step in the validation spine.
+  (CAP-031/CAP-032), the `NormalizationResult` observations, and now the
+  `ValidationInput` input path (CAP-051 / ADR-0003) — are all in place, so it is
+  now **unblocked**. Implementing `SYNTAX-0001…0003` is the highest-leverage next
+  step in the validation spine.
 - **In Progress: CAP-041 Response Validator** (orchestrator built + tested, not
   wired), **CAP-060 CP1 Validator** (partial code).
 - **Planned: CAP-044…050** — the remaining validation layers, in Rule Catalog

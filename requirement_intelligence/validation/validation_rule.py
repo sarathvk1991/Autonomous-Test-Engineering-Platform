@@ -243,11 +243,15 @@ class ValidationRule(ABC):
         Parameters
         ----------
         response:
-            The analysed response to evaluate (an
-            :class:`~requirement_intelligence.analysis.analysis_models.AnalysisResult`
-            carrier supplied by the pipeline).  Rules must treat *response* as
-            **read-only** and must not modify it.  It is typed ``Any`` here so the
-            rule contract does not depend on the analysis layer's concrete shape.
+            The canonical :class:`ValidationInput` supplied by the pipeline
+            (ADR-0003) — the binding of the analysed response and its normalization
+            output.  Transport rules read ``response.analysis_result`` (the
+            ``LLMResponse`` and delivery facts); Syntax onward read
+            ``response.normalization_result`` (the shared ``ParsedResponse`` and the
+            observations).  Rules must treat *response* as **read-only** and must
+            not modify it.  It is typed ``Any`` here so the frozen rule contract does
+            not depend on any concrete layer shape — the same generic signature that
+            already admits the ``ValidationInput`` without change.
 
         Returns
         -------

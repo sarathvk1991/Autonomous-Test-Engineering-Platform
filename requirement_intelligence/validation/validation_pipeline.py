@@ -76,6 +76,7 @@ from requirement_intelligence.validation.models import (
     ValidationSummary,
     ValidationVerdict,
 )
+from requirement_intelligence.validation.models.validation_input import ValidationInput
 from requirement_intelligence.validation.validation_exceptions import ValidationPipelineError
 from requirement_intelligence.validation.validation_registry import ValidationRegistry
 from requirement_intelligence.validation.validation_rule import ValidationRule
@@ -145,7 +146,7 @@ class ValidationPipeline:
         registry.register(MySyntaxRule())
 
         pipeline = ValidationPipeline(registry)
-        findings = pipeline.run(response)
+        findings = pipeline.run(validation_input)
 
     Adding a new rule
     -----------------
@@ -219,15 +220,20 @@ class ValidationPipeline:
 
     def run(
         self,
-        analysis_result: AnalysisResult,
+        validation_input: ValidationInput,
         configuration: ValidationConfiguration | None = None,
     ) -> ValidationResult:
-        """Validate *analysis_result* and return the canonical ``ValidationResult``.
+        """Validate *validation_input* and return the canonical ``ValidationResult``.
 
-        Rules are executed in the order returned by :meth:`get_ordered_rules`,
-        each receiving *analysis_result* unchanged.  Their issues are collected,
-        a summary and verdict are derived, telemetry is recorded, and everything
-        is assembled into a single immutable
+        The pipeline input is the :class:`ValidationInput` (ADR-0003): the binding
+        of the analysed response (``analysis_result``) and its normalization output
+        (``normalization_result``, carrying the shared ``ParsedResponse`` and the
+        observations).  Rules are executed in the order returned by
+        :meth:`get_ordered_rules`, each receiving the *same* ``ValidationInput``
+        unchanged — Transport rules read ``validation_input.analysis_result``;
+        Syntax onward read ``validation_input.normalization_result``.  Their issues
+        are collected, a summary and verdict are derived, telemetry is recorded, and
+        everything is assembled into a single immutable
         :class:`~requirement_intelligence.validation.models.validation_result.ValidationResult`.
 
         This is the **permanent framework contract**.  The method *always*
@@ -236,10 +242,11 @@ class ValidationPipeline:
         * With **no rules registered** or **zero issues produced**, the result is
           still valid — not a placeholder.  Its summary, statistics, and
           framework metadata are populated, and its verdict is ``PASSED``.
-        * The original *analysis_result* is preserved on the result, unaltered.
+        * The original ``AnalysisResult`` (from ``validation_input``) is preserved
+          on the result, unaltered.
 
-        The pipeline never inspects or mutates *analysis_result*; it passes it to
-        each rule and carries it through to the result.
+        The pipeline never inspects or mutates *validation_input*; it passes it to
+        each rule and carries its ``AnalysisResult`` through to the result.
 
         Future evolution
         ----------------
@@ -252,9 +259,9 @@ class ValidationPipeline:
 
         Parameters
         ----------
-        analysis_result:
-            The analysed AI response to validate.  Passed unchanged to each rule
-            and preserved on the returned result.
+        validation_input:
+            The canonical validation input (ADR-0003).  Passed unchanged to each
+            rule; its ``AnalysisResult`` is preserved on the returned result.
         configuration:
             The execution policy that governs the run.  When omitted, a
             fully-defaulted :class:`ValidationConfiguration` is used.
@@ -267,18 +274,19 @@ class ValidationPipeline:
         Raises
         ------
         ValidationPipelineError
-            If *analysis_result* is not an :class:`AnalysisResult` instance.
+            If *validation_input* is not a :class:`ValidationInput` instance.
 
         Any exception raised by a rule propagates unchanged after the pipeline
         records the :attr:`PipelineState.FAILED` state — a rule contract failure
         is an infrastructure error, never a validation verdict.
         """
-        if not isinstance(analysis_result, AnalysisResult):
+        if not isinstance(validation_input, ValidationInput):
             raise ValidationPipelineError(
-                f"ValidationPipeline.run requires an AnalysisResult instance; "
-                f"got {type(analysis_result).__name__!r}."
+                f"ValidationPipeline.run requires a ValidationInput instance; "
+                f"got {type(validation_input).__name__!r}."
             )
 
+        analysis_result: AnalysisResult = validation_input.analysis_result
         config = configuration if configuration is not None else ValidationConfiguration()
 
         self._state = PipelineState.RUNNING
@@ -290,7 +298,7 @@ class ValidationPipeline:
             rules_failed = 0
             for rule in self.get_ordered_rules():
                 rules_executed += 1
-                rule_findings = rule.validate(analysis_result)
+                rule_findings = rule.validate(validation_input)
                 if rule_findings:
                     rules_failed += 1
                     issues.extend(rule_findings)

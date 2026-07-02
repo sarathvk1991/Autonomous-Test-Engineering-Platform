@@ -6,7 +6,7 @@ Covers
 * Successful validation — a response with an LLM response yields no findings.
 * Missing response — exactly one fully-populated ValidationIssue.
 * ValidationIssue contents — severity, blocking, recommendation, message, etc.
-* Immutability — the issue is frozen; the AnalysisResult is never mutated.
+* Immutability — the issue is frozen; the ValidationInput is never mutated.
 * Determinism & idempotency — repeated calls yield identical finding content.
 * Registry registration — the rule registers via the existing mechanism.
 * Pipeline execution — the pipeline runs the rule and returns a ValidationResult.
@@ -15,9 +15,12 @@ Covers
 Design constraints
 ------------------
 * No mocking of the rule's logic; it is exercised directly.
-* The "missing response" case uses a lightweight stand-in object (a valid
+* Per ADR-0003 the rule receives a ``ValidationInput`` (the ``AnalysisResult``
+  bound to its ``NormalizationResult``).  Rules read ``response.analysis_result``.
+* The "missing response" case uses a lightweight duck-typed stand-in (a valid
   ``AnalysisResult`` cannot hold a ``None`` ``llm_response`` — the model requires
-  it — which is exactly why the rule is the architectural guarantee).
+  it — which is exactly why the rule is the architectural guarantee).  The stand-in
+  mirrors the ``ValidationInput`` shape: ``.analysis_result.llm_response is None``.
 * No real AI responses; inputs are built in-memory.
 """
 
@@ -32,8 +35,19 @@ from pydantic import ValidationError
 
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.normalization.framework.normalization_pipeline import (
+    NormalizationPipeline,
+)
+from requirement_intelligence.normalization.framework.normalization_registry import (
+    NormalizationRegistry,
+)
+from requirement_intelligence.normalization.models.normalization_configuration import (
+    NormalizationConfiguration,
+)
+from requirement_intelligence.normalization.response import ResponseNormalizer
 from requirement_intelligence.validation import (
     ValidationConfiguration,
+    ValidationInput,
     ValidationLayer,
     ValidationPipeline,
     ValidationRegistry,
@@ -83,9 +97,27 @@ def _analysis_result(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> A
     )
 
 
+def _validation_input_for(analysis: AnalysisResult) -> ValidationInput:
+    """Bind *analysis* to a real ``NormalizationResult`` (ADR-0003 handoff)."""
+    registry = NormalizationRegistry()
+    normalizer = ResponseNormalizer(
+        registry, NormalizationPipeline(registry), NormalizationConfiguration()
+    )
+    return ValidationInput(
+        analysis_result=analysis,
+        normalization_result=normalizer.normalize(analysis.llm_response),
+    )
+
+
+def _input(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> ValidationInput:
+    return _validation_input_for(_analysis_result(execution_id, analysis_id))
+
+
 def _missing_response(execution_id: str = "EX-1") -> Any:
-    """A stand-in analysed response whose LLM response is absent."""
-    return SimpleNamespace(llm_response=None, execution_id=execution_id)
+    """A duck-typed ``ValidationInput`` whose analysed response has no LLM response."""
+    return SimpleNamespace(
+        analysis_result=SimpleNamespace(llm_response=None, execution_id=execution_id)
+    )
 
 
 def _content(issue: Any) -> tuple[Any, ...]:
@@ -130,10 +162,10 @@ class TestMetadata:
 @pytest.mark.unit
 class TestSuccessfulValidation:
     def test_present_response_yields_no_issues(self) -> None:
-        assert ResponseExistsRule().validate(_analysis_result()) == []
+        assert ResponseExistsRule().validate(_input()) == []
 
     def test_success_returns_empty_list_type(self) -> None:
-        result = ResponseExistsRule().validate(_analysis_result())
+        result = ResponseExistsRule().validate(_input())
         assert isinstance(result, list)
         assert len(result) == 0
 
@@ -203,19 +235,19 @@ class TestRuleIndependence:
         with pytest.raises(ValidationError):
             issue.severity = ValidationSeverity.INFO  # type: ignore[misc]
 
-    def test_does_not_mutate_analysis_result(self) -> None:
+    def test_does_not_mutate_validation_input(self) -> None:
         rule = ResponseExistsRule()
-        analysis = _analysis_result()
-        before = analysis.model_copy(deep=True)
-        rule.validate(analysis)
-        assert analysis == before
+        validation_input = _input()
+        before = validation_input.model_copy(deep=True)
+        rule.validate(validation_input)
+        assert validation_input == before
 
     def test_does_not_mutate_missing_response_input(self) -> None:
         rule = ResponseExistsRule()
         stand_in = _missing_response("EX-9")
         rule.validate(stand_in)
-        assert stand_in.llm_response is None
-        assert stand_in.execution_id == "EX-9"
+        assert stand_in.analysis_result.llm_response is None
+        assert stand_in.analysis_result.execution_id == "EX-9"
 
     def test_deterministic_finding_content(self) -> None:
         rule = ResponseExistsRule()
@@ -231,9 +263,9 @@ class TestRuleIndependence:
         assert len(rule.validate(stand_in)) == 1
         assert len(rule.validate(stand_in)) == 1
         # And the pass path stays empty across repeats.
-        analysis = _analysis_result()
-        assert rule.validate(analysis) == []
-        assert rule.validate(analysis) == []
+        validation_input = _input()
+        assert rule.validate(validation_input) == []
+        assert rule.validate(validation_input) == []
 
 
 # ---------------------------------------------------------------------------
@@ -273,19 +305,20 @@ class TestPipelineExecution:
         return ValidationPipeline(registry)
 
     def test_pipeline_executes_rule_and_passes(self) -> None:
-        result = self._pipeline().run(_analysis_result())
+        result = self._pipeline().run(_input())
         assert result.overall_verdict == ValidationVerdict.PASSED
         assert result.validation_summary.total_issues == 0
 
     def test_pipeline_counts_rule_execution(self) -> None:
-        result = self._pipeline().run(_analysis_result())
+        result = self._pipeline().run(_input())
         assert result.validation_statistics.rules_executed == 1
         assert result.validation_statistics.rules_passed == 1
         assert result.validation_statistics.rules_failed == 0
 
     def test_pipeline_preserves_analysis_result(self) -> None:
         analysis = _analysis_result()
-        result = self._pipeline().run(analysis)
+        result = self._pipeline().run(_validation_input_for(analysis))
+        # The pipeline preserves the exact AnalysisResult drawn from the input.
         assert result.analysis_result is analysis
 
 
@@ -303,10 +336,10 @@ class TestResponseValidatorIntegration:
         return ResponseValidator(registry, pipeline, ValidationConfiguration())
 
     def test_validator_executes_rule_naturally(self) -> None:
-        result = self._validator().validate(_analysis_result())
+        result = self._validator().validate(_input())
         assert result.overall_verdict == ValidationVerdict.PASSED
         assert result.validation_summary.total_issues == 0
 
     def test_validator_reports_rule_executed(self) -> None:
-        result = self._validator().validate(_analysis_result())
+        result = self._validator().validate(_input())
         assert result.validation_statistics.rules_executed == 1

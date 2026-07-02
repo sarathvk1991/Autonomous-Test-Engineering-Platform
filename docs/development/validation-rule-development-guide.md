@@ -262,6 +262,20 @@ override them.
 The `validate` method is the only place logic lives. It must satisfy every Rule
 Independence guarantee (Validation Rule Catalog §16).
 
+> **The `response` is a `ValidationInput` (ADR-0003).** At runtime, `validate`
+> receives the canonical `ValidationInput` — the binding of the analysed response and
+> its normalization output. The abstract contract stays `response: Any` (unchanged),
+> but rules read through it:
+> - **Transport** rules read `response.analysis_result` (the `LLMResponse`, delivery
+>   facts, `execution_id`).
+> - **Syntax** rules read `response.normalization_result.parsed_response.normalization_outcome`
+>   (`SYNTAX-0001`) and `response.normalization_result.observations`
+>   (`SYNTAX-0002`/`SYNTAX-0003`).
+> - **Schema onward** read `response.normalization_result.parsed_response.normalized_structure`.
+>
+> Rules never parse, normalize, copy, or re-derive structure — they read the shared
+> `ParsedResponse` the handoff already produced.
+
 | Property | Engineering meaning |
 | -------- | ------------------- |
 | **Pure function** | Output depends only on the `response` argument — nothing else. |
@@ -280,10 +294,11 @@ class ResponseExistsRule(ValidationRule):
     # ... metadata as above ...
 
     def validate(self, response: Any) -> list[ValidationIssue]:
-        # Read-only inspection of the analysed response.
-        if response.llm_response.generated_text.strip():
+        # Read-only inspection via the ValidationInput (ADR-0003).
+        analysis_result = response.analysis_result
+        if analysis_result.llm_response.generated_text.strip():
             return []  # concern satisfied → no findings
-        return [self._missing_response_issue(response)]
+        return [self._missing_response_issue(analysis_result)]
 ```
 
 **Determinism boundary.** Determinism applies to the **finding content** — the
@@ -292,7 +307,8 @@ class ResponseExistsRule(ValidationRule):
 metadata and are derived, not invented:
 
 - `correlation_id` — derive from the response's execution identity
-  (e.g. `response.execution_id`), so it is stable for a given response.
+  (e.g. `response.analysis_result.execution_id`), so it is stable for a given
+  response.
 - `created_at` — a timestamp; the **one** inherently time-varying field. Keep it
   out of any equality or identity logic, and exclude it from test assertions
   (§11). It never affects the finding.
@@ -332,7 +348,7 @@ from datetime import datetime, timezone
 from requirement_intelligence.validation import ValidationIssue, ValidationSeverity
 
 
-def _missing_response_issue(self, response: Any) -> ValidationIssue:
+def _missing_response_issue(self, analysis_result: Any) -> ValidationIssue:
     return ValidationIssue(
         issue_id=f"{self.rule_id}#response",
         category="transport",
@@ -344,7 +360,7 @@ def _missing_response_issue(self, response: Any) -> ValidationIssue:
         location="$",
         recommendation="Ensure the analysis produced a non-empty response.",
         blocking=True,
-        correlation_id=response.execution_id,
+        correlation_id=analysis_result.execution_id,
         created_at=datetime.now(timezone.utc),
     )
 ```

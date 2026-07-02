@@ -263,7 +263,7 @@ Inspect the state via `registry.state` or `registry.is_sealed`.
 `ValidationPipeline` orchestrates rule execution.
 
 * Accepts a populated `ValidationRegistry` and **seals it** on construction.
-* `run(analysis_result, configuration=None)` calls `rule.validate(analysis_result)`
+* `run(validation_input, configuration=None)` calls `rule.validate(validation_input)` (ADR-0003)
   for each enabled rule, in registry order.
 * **Always returns a `ValidationResult`** — see *Pipeline output* below.
 * Contains **no validation logic, no AI knowledge, no business rules**.  It only

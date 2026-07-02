@@ -384,7 +384,7 @@ is constructed (the pipeline seals its registry on construction).
 
 The `ResponseValidator` is the exclusive orchestration entry point. It is
 assembled from a registry (populated by `register_transport_rules`), a pipeline,
-and the platform-default configuration. Calling `validator.validate(analysis_result)`
+and the platform-default configuration. Calling `validator.validate(validation_input)`
 runs the registered Transport rules naturally and returns the single
 `ValidationResult`:
 

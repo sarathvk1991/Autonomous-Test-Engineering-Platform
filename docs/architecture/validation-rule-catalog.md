@@ -374,6 +374,13 @@ Response Validation Architecture §4). Every rule belongs to exactly one layer.
   interpreted (a `MALFORMED` outcome) is a Syntax finding; a well-formed structure
   missing an expected section is a Schema or Structural concern.
 
+> **Note — how rules reach these facts (ADR-0003).** From Syntax onward, rules
+> receive the `ParsedResponse` and the Normalization Observations through the
+> **`ValidationInput`** canonical model — the immutable, execution-scoped binding of
+> the `AnalysisResult` and its `NormalizationResult` that the Response Validator
+> consumes. This is the plumbing vehicle only; it changes no rule identity, layer,
+> concern, severity, or blocking capability defined in this catalog.
+
 > **Architectural Decision — Syntax validates structure; it does not recover it.**
 > The transition from text to structure happens **once**, in the Response
 > Normalization Layer, before the pipeline runs. Every layer from Syntax onward

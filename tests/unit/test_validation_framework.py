@@ -32,7 +32,18 @@ import pytest
 
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.normalization.framework.normalization_pipeline import (
+    NormalizationPipeline,
+)
+from requirement_intelligence.normalization.framework.normalization_registry import (
+    NormalizationRegistry,
+)
+from requirement_intelligence.normalization.models.normalization_configuration import (
+    NormalizationConfiguration,
+)
+from requirement_intelligence.normalization.response import ResponseNormalizer
 from requirement_intelligence.validation.models import (
+    ValidationInput,
     ValidationIssue,
     ValidationResult,
     ValidationSeverity,
@@ -87,6 +98,23 @@ def _analysis_result(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> A
         duration_ms=1.0,
         llm_response=LLMResponse(provider=ProviderType.GEMINI, model="model", generated_text="x"),
     )
+
+
+def _validation_input_for(analysis: AnalysisResult) -> ValidationInput:
+    """Bind *analysis* to a real ``NormalizationResult`` — the canonical
+    ``ValidationInput`` the pipeline consumes (ADR-0003)."""
+    registry = NormalizationRegistry()
+    normalizer = ResponseNormalizer(
+        registry, NormalizationPipeline(registry), NormalizationConfiguration()
+    )
+    return ValidationInput(
+        analysis_result=analysis,
+        normalization_result=normalizer.normalize(analysis.llm_response),
+    )
+
+
+def _input(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> ValidationInput:
+    return _validation_input_for(_analysis_result(execution_id, analysis_id))
 
 
 def _issue(
@@ -330,9 +358,7 @@ class TestValidationRegistryRetrieval:
     def test_get_enabled_rules_ordering_respects_layer_order(self) -> None:
         registry = ValidationRegistry()
         # Register in reverse order.
-        registry.register(
-            _StubRule("BUSINESS_RULE-0001", "BR rule", ValidationLayer.BUSINESS_RULE)
-        )
+        registry.register(_StubRule("BUSINESS_RULE-0001", "BR rule", ValidationLayer.BUSINESS_RULE))
         registry.register(_StubRule("TRANSPORT-0001", "Transport rule", ValidationLayer.TRANSPORT))
         enabled = registry.get_enabled_rules()
         layers = [rule.validation_layer for rule in enabled]
@@ -352,9 +378,7 @@ class TestValidationRegistryRetrieval:
 
     def test_get_enabled_rules_by_layer_filters_disabled(self) -> None:
         registry = ValidationRegistry()
-        registry.register(
-            _StubRule("SYNTAX-0001", "Enabled", ValidationLayer.SYNTAX, enabled=True)
-        )
+        registry.register(_StubRule("SYNTAX-0001", "Enabled", ValidationLayer.SYNTAX, enabled=True))
         registry.register(
             _StubRule("SYNTAX-0002", "Disabled", ValidationLayer.SYNTAX, enabled=False)
         )
@@ -422,9 +446,7 @@ class TestValidationPipelineOrdering:
 
     def test_get_ordered_rules_excludes_disabled(self) -> None:
         registry = ValidationRegistry()
-        registry.register(
-            _StubRule("SYNTAX-0001", "Enabled", ValidationLayer.SYNTAX, enabled=True)
-        )
+        registry.register(_StubRule("SYNTAX-0001", "Enabled", ValidationLayer.SYNTAX, enabled=True))
         registry.register(
             _StubRule("SCHEMA-0001", "Disabled", ValidationLayer.SCHEMA, enabled=False)
         )
@@ -436,7 +458,7 @@ class TestValidationPipelineOrdering:
     def test_run_empty_registry_returns_valid_result(self) -> None:
         registry = ValidationRegistry()
         pipeline = ValidationPipeline(registry)
-        result = pipeline.run(_analysis_result())
+        result = pipeline.run(_input())
         assert isinstance(result, ValidationResult)
         assert result.validation_issues == ()
         assert result.overall_verdict == ValidationVerdict.PASSED
@@ -460,7 +482,7 @@ class TestValidationPipelineOrdering:
             )
         )
         pipeline = ValidationPipeline(registry)
-        result = pipeline.run(_analysis_result())
+        result = pipeline.run(_input())
         ids = [issue.issue_id for issue in result.validation_issues]
         assert "ISS-T" in ids
         assert "ISS-S" in ids
@@ -486,13 +508,13 @@ class TestValidationPipelineOrdering:
             )
         )
         pipeline = ValidationPipeline(registry)
-        result = pipeline.run(_analysis_result())
+        result = pipeline.run(_input())
         ids = [issue.issue_id for issue in result.validation_issues]
         # SYNTAX layer precedes SCHEMA layer.
         assert ids.index("ISS-SYNTAX") < ids.index("ISS-SCHEMA")
 
     def test_run_passes_response_to_every_rule(self) -> None:
-        """Each rule must receive the same AnalysisResult object."""
+        """Each rule must receive the same ValidationInput object (ADR-0003)."""
         received: list[Any] = []
 
         class _CapturingRule(ValidationRule):
@@ -516,26 +538,26 @@ class TestValidationPipelineOrdering:
         registry.register(_CapturingRule("SYNTAX-0001", ValidationLayer.SYNTAX))
         pipeline = ValidationPipeline(registry)
 
-        analysis = _analysis_result()
-        pipeline.run(analysis)
+        validation_input = _input()
+        pipeline.run(validation_input)
 
-        assert received == [analysis, analysis]
+        assert received == [validation_input, validation_input]
 
     def test_run_preserves_original_analysis_result(self) -> None:
-        """The pipeline preserves the exact AnalysisResult on the result."""
+        """The pipeline preserves the exact AnalysisResult (from the input) on the result."""
         registry = ValidationRegistry()
         registry.register(_StubRule("SYNTAX-0001", "S", ValidationLayer.SYNTAX))
         pipeline = ValidationPipeline(registry)
 
         analysis = _analysis_result()
-        result = pipeline.run(analysis)
+        result = pipeline.run(_validation_input_for(analysis))
         assert result.analysis_result is analysis
 
-    def test_run_rejects_non_analysis_result(self) -> None:
+    def test_run_rejects_non_validation_input(self) -> None:
         registry = ValidationRegistry()
         pipeline = ValidationPipeline(registry)
         with pytest.raises(ValidationPipelineError):
-            pipeline.run("not an analysis result")  # type: ignore[arg-type]
+            pipeline.run("not a validation input")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -650,9 +672,7 @@ class TestValidationRuleMetadata:
         assert meta.enabled is True
 
     def test_enabled_can_be_false(self) -> None:
-        meta = ValidationRuleMetadata(
-            "E-1", "evidence", ValidationLayer.EVIDENCE, enabled=False
-        )
+        meta = ValidationRuleMetadata("E-1", "evidence", ValidationLayer.EVIDENCE, enabled=False)
         assert meta.enabled is False
 
     def test_reserved_fields_have_inert_defaults(self) -> None:
@@ -752,9 +772,7 @@ class TestRuleVersion:
         assert meta.rule_version == "1.0.0"
 
     def test_metadata_explicit_rule_version(self) -> None:
-        meta = ValidationRuleMetadata(
-            "S-1", "syntax", ValidationLayer.SYNTAX, rule_version="2.3.1"
-        )
+        meta = ValidationRuleMetadata("S-1", "syntax", ValidationLayer.SYNTAX, rule_version="2.3.1")
         assert meta.rule_version == "2.3.1"
 
     def test_rule_version_wrapper_reads_metadata(self) -> None:
@@ -847,16 +865,14 @@ class TestPipelineLifecycle:
         registry = ValidationRegistry()
         registry.register(_StubRule("SYNTAX-0001", "Syntax", ValidationLayer.SYNTAX))
         pipeline = ValidationPipeline(registry)
-        pipeline.run(_analysis_result())
+        pipeline.run(_input())
         assert pipeline.state is PipelineState.COMPLETED
 
     def test_pipeline_failed_after_rule_raises(self) -> None:
         class _ExplodingRule(ValidationRule):
             @property
             def metadata(self) -> ValidationRuleMetadata:
-                return ValidationRuleMetadata(
-                    "SYNTAX-0001", "Exploder", ValidationLayer.SYNTAX
-                )
+                return ValidationRuleMetadata("SYNTAX-0001", "Exploder", ValidationLayer.SYNTAX)
 
             def validate(self, response: Any) -> list[Any]:
                 raise ValidationRuleError("boom")
@@ -865,7 +881,7 @@ class TestPipelineLifecycle:
         registry.register(_ExplodingRule())
         pipeline = ValidationPipeline(registry)
         with pytest.raises(ValidationRuleError, match="boom"):
-            pipeline.run(_analysis_result())
+            pipeline.run(_input())
         assert pipeline.state is PipelineState.FAILED
 
     def test_state_does_not_change_findings(self) -> None:
@@ -880,10 +896,10 @@ class TestPipelineLifecycle:
             )
         )
         pipeline = ValidationPipeline(registry)
-        analysis = _analysis_result()
-        first = pipeline.run(analysis)
+        validation_input = _input()
+        first = pipeline.run(validation_input)
         assert pipeline.state is PipelineState.COMPLETED
-        second = pipeline.run(analysis)
+        second = pipeline.run(validation_input)
         first_ids = [i.issue_id for i in first.validation_issues]
         second_ids = [i.issue_id for i in second.validation_issues]
         assert first_ids == second_ids == ["ISS-1"]

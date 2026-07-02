@@ -66,6 +66,7 @@ class CliError(Exception):
 # Console output (presentation only)
 # ===========================================================================
 
+
 class Console:
     """Minimal, professional console reporter for CLI progress output."""
 
@@ -108,6 +109,7 @@ class Console:
 # CLI-level helpers (orchestration glue only)
 # ===========================================================================
 
+
 def _load_dotenv_if_present() -> None:
     """Load a local ``.env`` (gitignored) if python-dotenv is available."""
     env_file = _REPO_ROOT / ".env"
@@ -136,9 +138,7 @@ def _enabled_source_names(registry: Any) -> list[str]:
         return []
 
 
-def run_engineering_pipeline(
-    context: PlatformContext, console: Console
-) -> tuple[int, list[Any]]:
+def run_engineering_pipeline(context: PlatformContext, console: Console) -> tuple[int, list[Any]]:
     """Run Connectors -> Mappers -> Consolidation.
 
     Returns ``(source_artifact_count, consolidated_artifacts)``. Connectors
@@ -177,11 +177,7 @@ def _select_consolidated(consolidated: list[Any]) -> Any:
     """
 
     def _key(c: Any) -> tuple[int, str]:
-        total = (
-            len(c.functional_artifacts)
-            + len(c.security_artifacts)
-            + len(c.quality_artifacts)
-        )
+        total = len(c.functional_artifacts) + len(c.security_artifacts) + len(c.quality_artifacts)
         return (-total, c.consolidated_id)
 
     return sorted(consolidated, key=_key)[0]
@@ -210,15 +206,28 @@ def _resolve_output_base(output_dir: str) -> Path:
 def run_validation_phase(result: Any, console: Console) -> None:
     """Optional Response Validation phase (additive; default behaviour unchanged).
 
-    Flow: Requirement Analysis -> Response Validator -> ValidationResult. Runs the
-    registered validation rules (currently TRANSPORT-0001) over the produced
-    ``AnalysisResult`` and prints a concise validation summary. The Validator owns
-    orchestration; this CLI only assembles dependencies and displays the result.
+    Flow: Requirement Analysis -> Response Normalization -> Response Validator ->
+    ValidationResult. Per ADR-0003 the Response Validator consumes a
+    ``ValidationInput`` (the analysed response bound to its ``NormalizationResult``),
+    not a bare ``AnalysisResult``. This CLI acts as the *handoff seam* (ADR-0003 §4):
+    it normalizes the response once, binds the ``ValidationInput``, and hands it to
+    the Validator. It performs no validation and no judgment itself.
     """
-    # Imported lazily so the default analysis path never pays for the validation
-    # subsystem, and so this phase is wholly opt-in.
+    # Imported lazily so the default analysis path never pays for the validation or
+    # normalization subsystems, and so this phase is wholly opt-in.
+    from requirement_intelligence.normalization.framework.normalization_pipeline import (
+        NormalizationPipeline,
+    )
+    from requirement_intelligence.normalization.framework.normalization_registry import (
+        NormalizationRegistry,
+    )
+    from requirement_intelligence.normalization.models.normalization_configuration import (
+        NormalizationConfiguration,
+    )
+    from requirement_intelligence.normalization.response import ResponseNormalizer
     from requirement_intelligence.validation import (
         ValidationConfiguration,
+        ValidationInput,
         ValidationPipeline,
         ValidationRegistry,
     )
@@ -226,12 +235,26 @@ def run_validation_phase(result: Any, console: Console) -> None:
     from requirement_intelligence.validation.rules.transport import register_transport_rules
 
     console.action("\nRunning Response Validation")
+
+    # Handoff seam: normalize once, then bind the canonical ValidationInput.
+    normalization_registry = NormalizationRegistry()
+    normalizer = ResponseNormalizer(
+        normalization_registry,
+        NormalizationPipeline(normalization_registry),
+        NormalizationConfiguration(),
+    )
+    normalization_result = normalizer.normalize(result.llm_response)
+    validation_input = ValidationInput(
+        analysis_result=result,
+        normalization_result=normalization_result,
+    )
+
     registry = ValidationRegistry()
     register_transport_rules(registry)
     pipeline = ValidationPipeline(registry)
     validator = ResponseValidator(registry, pipeline, ValidationConfiguration())
 
-    validation = validator.validate(result)
+    validation = validator.validate(validation_input)
     summary = validation.validation_summary
     statistics = validation.validation_statistics
 
@@ -244,6 +267,7 @@ def run_validation_phase(result: Any, console: Console) -> None:
 # ===========================================================================
 # Subcommand handlers
 # ===========================================================================
+
 
 def handle_analyze(args: argparse.Namespace) -> int:
     """Execute a complete AI analysis (or a --dry-run up to prompt generation)."""
@@ -258,11 +282,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         )
         return 2
 
-    if (
-        not args.dry_run
-        and args.provider == "gemini"
-        and not os.environ.get("GOOGLE_API_KEY")
-    ):
+    if not args.dry_run and args.provider == "gemini" and not os.environ.get("GOOGLE_API_KEY"):
         console.error(
             "GOOGLE_API_KEY is not set. Set it in your environment or a local "
             ".env file (or use --dry-run to skip the provider call)."
@@ -459,6 +479,7 @@ def handle_help(args: argparse.Namespace) -> int:
 # Argument parsing
 # ===========================================================================
 
+
 def build_parser() -> argparse.ArgumentParser:
     """Construct the argparse parser with one subparser per subcommand."""
     parser = argparse.ArgumentParser(
@@ -504,9 +525,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="After a live analysis, run the Response Validator and show the validation summary.",
     )
-    analyze.add_argument(
-        "--verbose", action="store_true", help="Display detailed progress output."
-    )
+    analyze.add_argument("--verbose", action="store_true", help="Display detailed progress output.")
     analyze.set_defaults(func=handle_analyze)
 
     list_artifacts = subparsers.add_parser(

@@ -37,8 +37,19 @@ from pydantic import ValidationError
 
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.normalization.framework.normalization_pipeline import (
+    NormalizationPipeline,
+)
+from requirement_intelligence.normalization.framework.normalization_registry import (
+    NormalizationRegistry,
+)
+from requirement_intelligence.normalization.models.normalization_configuration import (
+    NormalizationConfiguration,
+)
+from requirement_intelligence.normalization.response import ResponseNormalizer
 from requirement_intelligence.validation import (
     ValidationConfiguration,
+    ValidationInput,
     ValidationLayer,
     ValidationPipeline,
     ValidationRegistry,
@@ -89,6 +100,29 @@ def _analysis_result(generated_text: str, execution_id: str = "EX-1") -> Analysi
     )
 
 
+def _validation_input_for(analysis: AnalysisResult) -> ValidationInput:
+    """Bind *analysis* to a real ``NormalizationResult`` (ADR-0003 handoff)."""
+    registry = NormalizationRegistry()
+    normalizer = ResponseNormalizer(
+        registry, NormalizationPipeline(registry), NormalizationConfiguration()
+    )
+    return ValidationInput(
+        analysis_result=analysis,
+        normalization_result=normalizer.normalize(analysis.llm_response),
+    )
+
+
+def _input(generated_text: str, execution_id: str = "EX-1") -> ValidationInput:
+    return _validation_input_for(_analysis_result(generated_text, execution_id))
+
+
+def _missing_response(execution_id: str = "EX-1") -> Any:
+    """A duck-typed ``ValidationInput`` whose analysed response has no LLM response."""
+    return SimpleNamespace(
+        analysis_result=SimpleNamespace(llm_response=None, execution_id=execution_id)
+    )
+
+
 def _content(issue: Any) -> tuple[Any, ...]:
     return tuple(getattr(issue, field) for field in _CONTENT_FIELDS)
 
@@ -131,15 +165,14 @@ class TestMetadata:
 @pytest.mark.unit
 class TestValidResponse:
     def test_usable_content_yields_no_issues(self) -> None:
-        assert EmptyResponseRule().validate(_analysis_result("a verdict")) == []
+        assert EmptyResponseRule().validate(_input("a verdict")) == []
 
     def test_content_with_surrounding_whitespace_passes(self) -> None:
-        assert EmptyResponseRule().validate(_analysis_result("  real content  ")) == []
+        assert EmptyResponseRule().validate(_input("  real content  ")) == []
 
     def test_defers_when_llm_response_absent(self) -> None:
         # Existence is TRANSPORT-0001's concern; this rule defers (no findings).
-        stand_in = SimpleNamespace(llm_response=None, execution_id="EX-1")
-        assert EmptyResponseRule().validate(stand_in) == []
+        assert EmptyResponseRule().validate(_missing_response()) == []
 
 
 # ---------------------------------------------------------------------------
@@ -150,50 +183,50 @@ class TestValidResponse:
 @pytest.mark.unit
 class TestEmptyContent:
     def test_empty_string_yields_one_issue(self) -> None:
-        assert len(EmptyResponseRule().validate(_analysis_result(""))) == 1
+        assert len(EmptyResponseRule().validate(_input(""))) == 1
 
     def test_whitespace_only_yields_one_issue(self) -> None:
-        assert len(EmptyResponseRule().validate(_analysis_result("   \n\t "))) == 1
+        assert len(EmptyResponseRule().validate(_input("   \n\t "))) == 1
 
     def test_issue_severity_is_critical(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         assert issue.severity == ValidationSeverity.CRITICAL
 
     def test_issue_is_blocking(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         assert issue.blocking is True
 
     def test_issue_layer_and_category(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         # ``ValidationIssue`` stores enum fields by value (Schema use_enum_values).
         assert issue.validation_layer == ValidationLayer.TRANSPORT.value
         assert issue.category == "transport"
 
     def test_issue_identity_fields(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         assert issue.rule_id == "TRANSPORT-0002"
         assert issue.rule_version == "1.0.0"
         assert issue.issue_id == "TRANSPORT-0002:generated_text"
         assert issue.location == "generated_text"
 
     def test_issue_message(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         assert issue.message == "The LLM response contains no generated content."
 
     def test_issue_recommendation(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         assert issue.recommendation == "Regenerate the AI response before continuing."
 
     def test_issue_evidence_is_none(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         assert issue.evidence is None
 
     def test_issue_correlation_from_response(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result("", "EX-88"))[0]
+        issue = EmptyResponseRule().validate(_input("", "EX-88"))[0]
         assert issue.correlation_id == "EX-88"
 
     def test_issue_created_at_populated(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         assert isinstance(issue.created_at, datetime)
 
 
@@ -205,30 +238,30 @@ class TestEmptyContent:
 @pytest.mark.unit
 class TestRuleIndependence:
     def test_issue_is_immutable(self) -> None:
-        issue = EmptyResponseRule().validate(_analysis_result(""))[0]
+        issue = EmptyResponseRule().validate(_input(""))[0]
         with pytest.raises(ValidationError):
             issue.severity = ValidationSeverity.INFO  # type: ignore[misc]
 
-    def test_does_not_mutate_analysis_result(self) -> None:
+    def test_does_not_mutate_validation_input(self) -> None:
         rule = EmptyResponseRule()
-        analysis = _analysis_result("")
-        before = analysis.model_copy(deep=True)
-        rule.validate(analysis)
-        assert analysis == before
+        validation_input = _input("")
+        before = validation_input.model_copy(deep=True)
+        rule.validate(validation_input)
+        assert validation_input == before
 
     def test_deterministic_finding_content(self) -> None:
         rule = EmptyResponseRule()
-        analysis = _analysis_result("")
-        first = rule.validate(analysis)[0]
-        second = rule.validate(analysis)[0]
+        validation_input = _input("")
+        first = rule.validate(validation_input)[0]
+        second = rule.validate(validation_input)[0]
         assert _content(first) == _content(second)
 
     def test_idempotent_no_cumulative_effect(self) -> None:
         rule = EmptyResponseRule()
-        empty = _analysis_result("")
+        empty = _input("")
         assert len(rule.validate(empty)) == 1
         assert len(rule.validate(empty)) == 1
-        full = _analysis_result("content")
+        full = _input("content")
         assert rule.validate(full) == []
         assert rule.validate(full) == []
 
@@ -278,7 +311,7 @@ def _validator() -> ResponseValidator:
 @pytest.mark.unit
 class TestIntegrationPass:
     def test_both_rules_execute_and_pass(self) -> None:
-        result = _validator().validate(_analysis_result("usable content"))
+        result = _validator().validate(_input("usable content"))
         assert result.overall_verdict == ValidationVerdict.PASSED
         assert result.validation_summary.total_issues == 0
         assert result.validation_statistics.rules_executed == 2
@@ -287,7 +320,7 @@ class TestIntegrationPass:
         registry = ValidationRegistry()
         registry.register(ResponseExistsRule())
         registry.register(EmptyResponseRule())
-        result = ValidationPipeline(registry).run(_analysis_result("content"))
+        result = ValidationPipeline(registry).run(_input("content"))
         assert result.validation_statistics.rules_executed == 2
         assert result.validation_statistics.rules_passed == 2
         assert result.validation_summary.total_issues == 0
@@ -301,20 +334,20 @@ class TestIntegrationPass:
 @pytest.mark.unit
 class TestIntegrationEmptyContent:
     def test_transport_0001_passes_and_transport_0002_fails(self) -> None:
-        result = _validator().validate(_analysis_result(""))
+        result = _validator().validate(_input(""))
         failing_ids = [issue.rule_id for issue in result.validation_issues]
         # TRANSPORT-0001 contributes no issue (response exists); only 0002 fails.
         assert failing_ids == ["TRANSPORT-0002"]
         assert result.validation_summary.total_issues == 1
 
     def test_empty_content_is_rejected_not_passed(self) -> None:
-        result = _validator().validate(_analysis_result(""))
+        result = _validator().validate(_input(""))
         # CRITICAL finding ⇒ BLOCKED under the frozen verdict model (never PASSED).
         assert result.overall_verdict == ValidationVerdict.BLOCKED
         assert result.overall_verdict != ValidationVerdict.PASSED
 
     def test_empty_content_counts_one_rule_failed(self) -> None:
-        result = _validator().validate(_analysis_result(""))
+        result = _validator().validate(_input(""))
         stats = result.validation_statistics
         assert stats.rules_executed == 2
         assert stats.rules_passed == 1

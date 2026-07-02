@@ -30,8 +30,9 @@ class EmptyResponseRule(ValidationRule):
         Transport — the most foundational concern, after existence: does the
         received response actually carry content?
     Inputs:
-        The analysed response, read-only.  Only ``llm_response.generated_text`` is
-        inspected for emptiness; its meaning, structure, and schema are never read.
+        The :class:`ValidationInput`, read-only (ADR-0003).  Only
+        ``analysis_result.llm_response.generated_text`` is inspected for emptiness;
+        its meaning, structure, and schema are never read.
     Outputs:
         On empty content, exactly one ``ValidationIssue`` with severity
         ``CRITICAL`` and ``blocking=True``.  On usable content, no findings.
@@ -69,20 +70,22 @@ class EmptyResponseRule(ValidationRule):
     def validate(self, response: Any) -> list[ValidationIssue]:
         """Return one finding if the generated content is empty; otherwise none.
 
-        The response is treated as read-only.  Only the emptiness of
-        ``llm_response.generated_text`` is examined — never its meaning, structure,
-        or schema.  Response *existence* is the concern of ``TRANSPORT-0001``;
-        when ``llm_response`` is absent this rule defers and returns no findings.
+        The ``ValidationInput`` is treated as read-only.  Only the emptiness of
+        ``analysis_result.llm_response.generated_text`` is examined — never its
+        meaning, structure, or schema.  Response *existence* is the concern of
+        ``TRANSPORT-0001``; when ``llm_response`` is absent this rule defers and
+        returns no findings.
         """
-        llm_response = response.llm_response
+        analysis_result = response.analysis_result
+        llm_response = analysis_result.llm_response
         if llm_response is None:
             return []
         generated_text = llm_response.generated_text
         if generated_text and generated_text.strip():
             return []
-        return [self._empty_content_issue(response)]
+        return [self._empty_content_issue(analysis_result)]
 
-    def _empty_content_issue(self, response: Any) -> ValidationIssue:
+    def _empty_content_issue(self, analysis_result: Any) -> ValidationIssue:
         """Build the single, fully-populated issue for empty generated content."""
         return ValidationIssue(
             issue_id=f"{self.rule_id}:generated_text",
@@ -96,6 +99,6 @@ class EmptyResponseRule(ValidationRule):
             evidence=None,
             recommendation="Regenerate the AI response before continuing.",
             blocking=True,
-            correlation_id=response.execution_id,
+            correlation_id=analysis_result.execution_id,
             created_at=utc_now(),
         )

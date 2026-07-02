@@ -32,8 +32,19 @@ from pydantic import ValidationError
 
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.normalization.framework.normalization_pipeline import (
+    NormalizationPipeline,
+)
+from requirement_intelligence.normalization.framework.normalization_registry import (
+    NormalizationRegistry,
+)
+from requirement_intelligence.normalization.models.normalization_configuration import (
+    NormalizationConfiguration,
+)
+from requirement_intelligence.normalization.response import ResponseNormalizer
 from requirement_intelligence.validation import (
     ValidationConfiguration,
+    ValidationInput,
     ValidationPipeline,
     ValidationRegistry,
 )
@@ -83,6 +94,20 @@ def _analysis_result(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> A
     )
 
 
+def _validation_input(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> ValidationInput:
+    """The canonical validation input: an AnalysisResult bound to its
+    NormalizationResult (ADR-0003)."""
+    analysis = _analysis_result(execution_id, analysis_id)
+    registry = NormalizationRegistry()
+    normalizer = ResponseNormalizer(
+        registry, NormalizationPipeline(registry), NormalizationConfiguration()
+    )
+    return ValidationInput(
+        analysis_result=analysis,
+        normalization_result=normalizer.normalize(analysis.llm_response),
+    )
+
+
 class _RecordingRun:
     """Replaces ``ValidationPipeline.run`` to record calls without real rules."""
 
@@ -97,8 +122,8 @@ class _RecordingRun:
     def result(self) -> object:
         return self._result
 
-    def __call__(self, analysis_result: Any, configuration: Any = None) -> object:
-        self.calls.append((analysis_result, configuration))
+    def __call__(self, validation_input: Any, configuration: Any = None) -> object:
+        self.calls.append((validation_input, configuration))
         if self._raises is not None:
             raise self._raises
         return self._result
@@ -158,7 +183,7 @@ class TestConfigurationResolution:
     def test_resolves_platform_defaults_into_pipeline(self) -> None:
         platform_defaults = ValidationConfiguration(validation_contract_version="9.9")
         validator, _, _, recording = _validator(platform_defaults=platform_defaults)
-        validator.validate(_analysis_result())
+        validator.validate(_validation_input())
         _, used_config = recording.calls[0]
         assert used_config is platform_defaults
 
@@ -226,7 +251,7 @@ class TestProfileResolution:
 
     def test_validator_resolves_standard_into_context(self) -> None:
         validator, _, _, _ = _validator()
-        validator.validate(_analysis_result())
+        validator.validate(_validation_input())
         assert validator.last_execution_context is not None
         assert validator.last_execution_context.profile.name == ValidationProfileName.STANDARD
 
@@ -264,7 +289,7 @@ class TestExecutionContextCreation:
 
     def test_validator_records_context(self) -> None:
         validator, _, _, _ = _validator()
-        validator.validate(_analysis_result())
+        validator.validate(_validation_input())
         assert isinstance(validator.last_execution_context, ValidationExecutionContext)
 
 
@@ -277,22 +302,23 @@ class TestExecutionContextCreation:
 class TestPipelineInvocation:
     def test_pipeline_run_invoked_exactly_once(self) -> None:
         validator, _, _, recording = _validator()
-        validator.validate(_analysis_result())
+        validator.validate(_validation_input())
         assert len(recording.calls) == 1
 
     def test_pipeline_receives_analysis_and_config(self) -> None:
         platform_defaults = ValidationConfiguration()
         validator, _, _, recording = _validator(platform_defaults=platform_defaults)
-        ar = _analysis_result()
-        validator.validate(ar)
-        used_analysis, used_config = recording.calls[0]
-        assert used_analysis is ar
+        vi = _validation_input()
+        validator.validate(vi)
+        used_input, used_config = recording.calls[0]
+        assert used_input is vi
+        assert used_input.analysis_result is vi.analysis_result
         assert used_config is platform_defaults
 
     def test_repeated_validate_invokes_once_each(self) -> None:
         validator, _, _, recording = _validator()
-        validator.validate(_analysis_result())
-        validator.validate(_analysis_result())
+        validator.validate(_validation_input())
+        validator.validate(_validation_input())
         assert len(recording.calls) == 2
 
 
@@ -307,7 +333,7 @@ class TestRegistryUsage:
         validator, registry, _, _ = _validator()
         assert validator._registry is registry
         # The Validator adds no rules of its own.
-        validator.validate(_analysis_result())
+        validator.validate(_validation_input())
         assert registry.rule_count() == 0
 
 
@@ -322,7 +348,7 @@ class TestExceptionTranslation:
         framework_error = ValidationPipelineError("boom")
         validator, _, _, _ = _validator(run=_RecordingRun(raises=framework_error))
         with pytest.raises(ValidationExecutionError) as excinfo:
-            validator.validate(_analysis_result())
+            validator.validate(_validation_input())
         # Translated, not leaked: the raised type is an orchestration error.
         assert isinstance(excinfo.value, ResponseValidatorError)
         assert not isinstance(excinfo.value, ValidationPipelineError)
@@ -331,14 +357,14 @@ class TestExceptionTranslation:
     def test_unexpected_error_translated(self) -> None:
         validator, _, _, _ = _validator(run=_RecordingRun(raises=RuntimeError("unexpected")))
         with pytest.raises(ValidationExecutionError) as excinfo:
-            validator.validate(_analysis_result())
+            validator.validate(_validation_input())
         assert isinstance(excinfo.value.__cause__, RuntimeError)
 
     def test_orchestration_error_not_double_wrapped(self) -> None:
         original = ValidationExecutionError("already translated")
         validator, _, _, _ = _validator(run=_RecordingRun(raises=original))
         with pytest.raises(ValidationExecutionError) as excinfo:
-            validator.validate(_analysis_result())
+            validator.validate(_validation_input())
         assert excinfo.value is original
 
 
@@ -396,6 +422,6 @@ class TestValidationResultPropagation:
     def test_result_returned_unchanged(self) -> None:
         recording = _RecordingRun()
         validator, _, _, _ = _validator(run=recording)
-        returned = validator.validate(_analysis_result())
+        returned = validator.validate(_validation_input())
         # The Validator returns exactly what the pipeline produced — unaltered.
         assert returned is recording.result

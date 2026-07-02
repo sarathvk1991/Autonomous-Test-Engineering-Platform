@@ -17,6 +17,16 @@
 > validation, coordinating the framework, the pipeline, the rules, the profile,
 > and the configuration to produce one canonical result.
 
+> **Amendment — ADR-0003 (canonical input).** The Validator's single input is the
+> **`ValidationInput`** canonical model — the binding of the analysed response
+> (`AnalysisResult`) and its same-execution `NormalizationResult` (which carries the
+> shared `ParsedResponse` and the observations). This supersedes the earlier
+> single-input `AnalysisResult` so that Syntax-onward rules can read normalized facts
+> without re-deriving structure. The Single Entry Point is unchanged — still one
+> public method, one input object; the object is simply richer. The Validator never
+> normalizes and never calls the Response Normalizer; the `ValidationInput` is
+> assembled by the handoff seam above both orchestration boundaries (ADR-0003 §4).
+
 ---
 
 ## 1. Purpose
@@ -144,7 +154,7 @@ component that crosses the boundary into the Validation Framework.
 
 | Relationship | Meaning |
 | ------------ | ------- |
-| **AnalysisResult → Validator** | The analysis layer hands over the analysed response; this is the *only* input the Validator needs to begin. |
+| **ValidationInput → Validator** | The handoff seam hands over the `ValidationInput` (analysed response + its `NormalizationResult`; ADR-0003); this is the *only* input the Validator needs to begin. |
 | **Validator → Validation Framework** | The Validator drives the framework to register the selected rules and build a pipeline. It never registers rules ad hoc. |
 | **Framework → Validation Pipeline** | The framework constructs the ordered pipeline; the Validator does not order rules itself. |
 | **Pipeline → Validation Rules** | The pipeline invokes each rule in layer order; the Validator never calls a rule directly. |
@@ -345,7 +355,7 @@ stable even as internal mechanics evolve.
 
 | Step | Name | Description |
 | ---- | ---- | ----------- |
-| 1 | **Receive AnalysisResult** | Accept one analysed response as the input. The Validator confirms the input is structurally present, not whether its verdict is good. |
+| 1 | **Receive ValidationInput** | Accept one `ValidationInput` (the `AnalysisResult` bound to its `NormalizationResult`; ADR-0003) as the input. The Validator confirms the input is structurally present, not whether its verdict is good. |
 | 2 | **Validate configuration** | Confirm the supplied (or default) `ValidationConfiguration` is present and coherent before any work begins (§7). |
 | 3 | **Select Validation Profile** | Choose exactly one profile, which names the rule set to apply (§6). |
 | 4 | **Build Rule Registry** | Ask the framework to register the profile's rules (rule discovery, §10). The Validator never enumerates rules itself. |

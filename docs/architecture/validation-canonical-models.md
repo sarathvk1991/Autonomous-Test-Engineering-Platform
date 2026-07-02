@@ -78,6 +78,14 @@ one cohesive **result aggregate** rooted at the `ValidationResult`.
 | **ValidationStatistics** | Operational metrics | Observational facts about the run; never affect the verdict. |
 | **ValidationResult** | Canonical output | The single, immutable output of validation; owns everything. |
 | **ValidationConfiguration** | Behaviour input | Declares which layers, thresholds, and observability govern a run. |
+| **ValidationInput** | Consumed input binding (ADR-0003) | The immutable, execution-scoped binding of the `AnalysisResult` and its `NormalizationResult`; the canonical input the Response Validator and every rule consume (§8A). |
+
+> **Amendment — ADR-0003.** The **`ValidationInput`** is added as a Core Canonical
+> Model under the extension clause of §13 (new models may be added additively). It
+> is the single object the Response Validator consumes: it *references* (never
+> copies) the `AnalysisResult` and the `NormalizationResult`, reaching the shared
+> `ParsedResponse` and the observations through the latter. It owns only the binding
+> — no facts, no findings, no derived structure. The six models below are unchanged.
 
 > **Architectural Decision**
 > **`ParsedResponse` is a Core Canonical Model and a Shared Platform Artifact, not
@@ -408,6 +416,45 @@ and nothing else:
 > outcome from the `ParsedResponse` and the observations from the
 > `NormalizationResult`; the Schema layer reads the structure from the
 > `ParsedResponse`. Nothing about this representation changes during validation.
+
+---
+
+## 8A. ValidationInput (ADR-0003)
+
+The **ValidationInput** is the canonical **input** to the Response Validation
+subsystem — the single object the Response Validator, the pipeline, and every rule
+consume. It was introduced by **ADR-0003 (Validation Input and the Normalization →
+Validation Handoff)** to resolve how normalized facts reach the validation layers
+without any rule re-deriving structure.
+
+**Purpose.** Bind, for one execution, the analysed response to its normalization
+output, so a single input serves all nine validation layers: Transport reads
+`analysis_result`; Syntax reads the Normalization Outcome and observations via
+`normalization_result`; Schema onward read `normalization_result.parsed_response`'s
+normalized structure.
+
+**Owns only the binding.** It **references, never copies**, exactly two artifacts
+and owns no facts of its own:
+
+| Attribute | Meaning |
+| --------- | ------- |
+| **ValidationInput Version** | The version of this binding's shape (advances additively via ADR). |
+| **AnalysisResult** | The analysed response (referenced) — the `LLMResponse`, execution identity, provenance. Owned by the Requirement Analysis Service. |
+| **NormalizationResult** | The normalization aggregate for the **same execution** (referenced) — carries the shared `ParsedResponse` and **owns** the observations. Owned by the Response Normalizer. |
+| **Metadata** | Free-form metadata; never a finding, verdict, observation, or provider payload. |
+
+**Lifecycle invariant.** Immutable and **execution-scoped**: created exactly once
+after normalization completes, binding exactly one `AnalysisResult` and one
+corresponding `NormalizationResult` for the **same execution**; never rebound, never
+mutated, never reused across executions (ADR-0003 §6). The same-execution binding is
+enforced at construction.
+
+> **Architectural Decision — ValidationInput owns nothing but the binding.** It
+> holds no copy of the `ParsedResponse`, no observations, no findings, and no derived
+> fields. The `ParsedResponse` stays a Shared Platform Artifact reached through the
+> `NormalizationResult`; the observations keep their single home on the
+> `NormalizationResult`. This preserves every frozen ownership rule while giving
+> validation one canonical, uniform input.
 
 ---
 

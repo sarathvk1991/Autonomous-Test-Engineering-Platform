@@ -33,9 +33,10 @@ class TimeoutRule(ValidationRule):
         Transport — the most foundational concern: did the execution complete, or
         was it cut short by a timeout?
     Inputs:
-        The analysed response, read-only.  Only the **normalized** execution
-        outcome (``llm_response.execution_status``) is inspected.  No generated
-        content, schema, reasoning, or provider metadata is read.
+        The :class:`ValidationInput`, read-only (ADR-0003).  Only the
+        **normalized** execution outcome
+        (``analysis_result.llm_response.execution_status``) is inspected.  No
+        generated content, schema, reasoning, or provider metadata is read.
     Outputs:
         On a timed-out execution, exactly one ``ValidationIssue`` with severity
         ``CRITICAL`` and ``blocking=True``.  Otherwise, no findings.
@@ -77,21 +78,22 @@ class TimeoutRule(ValidationRule):
     def validate(self, response: Any) -> list[ValidationIssue]:
         """Return one finding if the execution timed out; otherwise none.
 
-        The response is treated as read-only.  Only the normalized
+        The ``ValidationInput`` is treated as read-only.  Only the normalized
         ``execution_status`` is examined — the rule fails *only* on
         ``ExecutionStatus.TIMEOUT`` and passes for every other outcome (other
         failure modes are the concern of other rules).  Response *existence* is
         the concern of ``TRANSPORT-0001``; when ``llm_response`` is absent this
         rule defers and returns no findings.
         """
-        llm_response = response.llm_response
+        analysis_result = response.analysis_result
+        llm_response = analysis_result.llm_response
         if llm_response is None:
             return []
         if llm_response.execution_status == ExecutionStatus.TIMEOUT:
-            return [self._timeout_issue(response)]
+            return [self._timeout_issue(analysis_result)]
         return []
 
-    def _timeout_issue(self, response: Any) -> ValidationIssue:
+    def _timeout_issue(self, analysis_result: Any) -> ValidationIssue:
         """Build the single, fully-populated issue for a timed-out execution."""
         return ValidationIssue(
             issue_id=f"{self.rule_id}:timeout",
@@ -105,6 +107,6 @@ class TimeoutRule(ValidationRule):
             evidence=None,
             recommendation="Retry the AI analysis or investigate execution timeout settings.",
             blocking=True,
-            correlation_id=response.execution_id,
+            correlation_id=analysis_result.execution_id,
             created_at=utc_now(),
         )

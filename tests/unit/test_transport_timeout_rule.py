@@ -39,8 +39,19 @@ from pydantic import ValidationError
 
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.normalization.framework.normalization_pipeline import (
+    NormalizationPipeline,
+)
+from requirement_intelligence.normalization.framework.normalization_registry import (
+    NormalizationRegistry,
+)
+from requirement_intelligence.normalization.models.normalization_configuration import (
+    NormalizationConfiguration,
+)
+from requirement_intelligence.normalization.response import ResponseNormalizer
 from requirement_intelligence.validation import (
     ValidationConfiguration,
+    ValidationInput,
     ValidationLayer,
     ValidationPipeline,
     ValidationRegistry,
@@ -103,6 +114,36 @@ def _analysis_result(
     )
 
 
+def _validation_input_for(analysis: AnalysisResult) -> ValidationInput:
+    """Bind *analysis* to a real ``NormalizationResult`` (ADR-0003 handoff)."""
+    registry = NormalizationRegistry()
+    normalizer = ResponseNormalizer(
+        registry, NormalizationPipeline(registry), NormalizationConfiguration()
+    )
+    return ValidationInput(
+        analysis_result=analysis,
+        normalization_result=normalizer.normalize(analysis.llm_response),
+    )
+
+
+def _input(
+    execution_status: ExecutionStatus = ExecutionStatus.COMPLETED,
+    *,
+    generated_text: str = "a verdict",
+    execution_id: str = "EX-1",
+) -> ValidationInput:
+    return _validation_input_for(
+        _analysis_result(execution_status, generated_text=generated_text, execution_id=execution_id)
+    )
+
+
+def _missing_response(execution_id: str = "EX-1") -> Any:
+    """A duck-typed ``ValidationInput`` whose analysed response has no LLM response."""
+    return SimpleNamespace(
+        analysis_result=SimpleNamespace(llm_response=None, execution_id=execution_id)
+    )
+
+
 def _content(issue: Any) -> tuple[Any, ...]:
     return tuple(getattr(issue, field) for field in _CONTENT_FIELDS)
 
@@ -145,7 +186,7 @@ class TestMetadata:
 @pytest.mark.unit
 class TestSuccessfulExecution:
     def test_completed_execution_yields_no_issues(self) -> None:
-        assert TimeoutRule().validate(_analysis_result(ExecutionStatus.COMPLETED)) == []
+        assert TimeoutRule().validate(_input(ExecutionStatus.COMPLETED)) == []
 
     def test_default_status_passes(self) -> None:
         # An LLMResponse constructed without an explicit status defaults to
@@ -163,18 +204,17 @@ class TestSuccessfulExecution:
             duration_ms=1.0,
             llm_response=LLMResponse(provider="gemini", model="model", generated_text="x"),
         )
-        assert TimeoutRule().validate(result) == []
+        assert TimeoutRule().validate(_validation_input_for(result)) == []
 
     def test_defers_when_llm_response_absent(self) -> None:
-        stand_in = SimpleNamespace(llm_response=None, execution_id="EX-1")
-        assert TimeoutRule().validate(stand_in) == []
+        assert TimeoutRule().validate(_missing_response()) == []
 
     def test_failed_status_passes_reserved_for_provider_failure(self) -> None:
         # TimeoutRule fails ONLY on TIMEOUT; a delivery-boundary FAILED outcome is
         # a sibling concern owned by the reserved TRANSPORT-0004 (ProviderFailure),
         # so TimeoutRule must not react to it. This confirms the outcomes are
         # orthogonal and the execution model is ready for TRANSPORT-0004.
-        assert TimeoutRule().validate(_analysis_result(ExecutionStatus.FAILED)) == []
+        assert TimeoutRule().validate(_input(ExecutionStatus.FAILED)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -185,51 +225,49 @@ class TestSuccessfulExecution:
 @pytest.mark.unit
 class TestTimeout:
     def test_timeout_yields_one_issue(self) -> None:
-        assert len(TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))) == 1
+        assert len(TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))) == 1
 
     def test_issue_severity_is_critical(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         assert issue.severity == ValidationSeverity.CRITICAL
 
     def test_issue_is_blocking(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         assert issue.blocking is True
 
     def test_issue_layer_and_category(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         # ``ValidationIssue`` stores enum fields by value (Schema use_enum_values).
         assert issue.validation_layer == ValidationLayer.TRANSPORT.value
         assert issue.category == "transport"
 
     def test_issue_identity_fields(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         assert issue.rule_id == "TRANSPORT-0003"
         assert issue.rule_version == "1.0.0"
         assert issue.issue_id == "TRANSPORT-0003:timeout"
         assert issue.location == "execution"
 
     def test_issue_message(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         assert issue.message == "The AI execution terminated because of a timeout."
 
     def test_issue_recommendation(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         assert issue.recommendation == (
             "Retry the AI analysis or investigate execution timeout settings."
         )
 
     def test_issue_evidence_is_none(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         assert issue.evidence is None
 
     def test_issue_correlation_from_response(self) -> None:
-        issue = TimeoutRule().validate(
-            _analysis_result(ExecutionStatus.TIMEOUT, execution_id="EX-99")
-        )[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT, execution_id="EX-99"))[0]
         assert issue.correlation_id == "EX-99"
 
     def test_issue_created_at_populated(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         assert isinstance(issue.created_at, datetime)
 
 
@@ -241,30 +279,30 @@ class TestTimeout:
 @pytest.mark.unit
 class TestRuleIndependence:
     def test_issue_is_immutable(self) -> None:
-        issue = TimeoutRule().validate(_analysis_result(ExecutionStatus.TIMEOUT))[0]
+        issue = TimeoutRule().validate(_input(ExecutionStatus.TIMEOUT))[0]
         with pytest.raises(ValidationError):
             issue.severity = ValidationSeverity.INFO  # type: ignore[misc]
 
-    def test_does_not_mutate_analysis_result(self) -> None:
+    def test_does_not_mutate_validation_input(self) -> None:
         rule = TimeoutRule()
-        analysis = _analysis_result(ExecutionStatus.TIMEOUT)
-        before = analysis.model_copy(deep=True)
-        rule.validate(analysis)
-        assert analysis == before
+        validation_input = _input(ExecutionStatus.TIMEOUT)
+        before = validation_input.model_copy(deep=True)
+        rule.validate(validation_input)
+        assert validation_input == before
 
     def test_deterministic_finding_content(self) -> None:
         rule = TimeoutRule()
-        analysis = _analysis_result(ExecutionStatus.TIMEOUT)
-        first = rule.validate(analysis)[0]
-        second = rule.validate(analysis)[0]
+        validation_input = _input(ExecutionStatus.TIMEOUT)
+        first = rule.validate(validation_input)[0]
+        second = rule.validate(validation_input)[0]
         assert _content(first) == _content(second)
 
     def test_idempotent_no_cumulative_effect(self) -> None:
         rule = TimeoutRule()
-        timed_out = _analysis_result(ExecutionStatus.TIMEOUT)
+        timed_out = _input(ExecutionStatus.TIMEOUT)
         assert len(rule.validate(timed_out)) == 1
         assert len(rule.validate(timed_out)) == 1
-        completed = _analysis_result(ExecutionStatus.COMPLETED)
+        completed = _input(ExecutionStatus.COMPLETED)
         assert rule.validate(completed) == []
         assert rule.validate(completed) == []
 
@@ -285,8 +323,8 @@ class TestRegistration:
         ids = registry.list_rule_ids()
         for rule_id in ("TRANSPORT-0001", "TRANSPORT-0002", "TRANSPORT-0003"):
             assert rule_id in ids
-        assert ids.index("TRANSPORT-0001") < ids.index("TRANSPORT-0002") < ids.index(
-            "TRANSPORT-0003"
+        assert (
+            ids.index("TRANSPORT-0001") < ids.index("TRANSPORT-0002") < ids.index("TRANSPORT-0003")
         )
 
     def test_registered_rule_types(self) -> None:
@@ -317,7 +355,7 @@ def _validator() -> ResponseValidator:
 @pytest.mark.unit
 class TestIntegrationPass:
     def test_all_rules_execute_and_pass(self) -> None:
-        result = _validator().validate(_analysis_result(ExecutionStatus.COMPLETED))
+        result = _validator().validate(_input(ExecutionStatus.COMPLETED))
         assert result.overall_verdict == ValidationVerdict.PASSED
         assert result.validation_summary.total_issues == 0
         assert result.validation_statistics.rules_executed == 3
@@ -327,7 +365,7 @@ class TestIntegrationPass:
         registry.register(ResponseExistsRule())
         registry.register(EmptyResponseRule())
         registry.register(TimeoutRule())
-        result = ValidationPipeline(registry).run(_analysis_result(ExecutionStatus.COMPLETED))
+        result = ValidationPipeline(registry).run(_input(ExecutionStatus.COMPLETED))
         assert result.validation_statistics.rules_executed == 3
         assert result.validation_statistics.rules_passed == 3
         assert result.validation_summary.total_issues == 0
@@ -341,19 +379,19 @@ class TestIntegrationPass:
 @pytest.mark.unit
 class TestIntegrationTimeout:
     def test_only_transport_0003_fails(self) -> None:
-        result = _validator().validate(_analysis_result(ExecutionStatus.TIMEOUT))
+        result = _validator().validate(_input(ExecutionStatus.TIMEOUT))
         failing_ids = [issue.rule_id for issue in result.validation_issues]
         assert failing_ids == ["TRANSPORT-0003"]
         assert result.validation_summary.total_issues == 1
 
     def test_timeout_is_rejected_not_passed(self) -> None:
-        result = _validator().validate(_analysis_result(ExecutionStatus.TIMEOUT))
+        result = _validator().validate(_input(ExecutionStatus.TIMEOUT))
         # CRITICAL finding ⇒ BLOCKED under the frozen verdict model (never PASSED).
         assert result.overall_verdict == ValidationVerdict.BLOCKED
         assert result.overall_verdict != ValidationVerdict.PASSED
 
     def test_timeout_counts_one_rule_failed(self) -> None:
-        result = _validator().validate(_analysis_result(ExecutionStatus.TIMEOUT))
+        result = _validator().validate(_input(ExecutionStatus.TIMEOUT))
         stats = result.validation_statistics
         assert stats.rules_executed == 3
         assert stats.rules_passed == 2

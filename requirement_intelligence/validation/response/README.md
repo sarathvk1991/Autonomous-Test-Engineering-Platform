@@ -5,7 +5,7 @@
 | Package | `requirement_intelligence/validation/response/` |
 | Status | Implemented — orchestration layer; no validation rules yet |
 | Governing specifications | `docs/architecture/response-validator.md` · `docs/architecture/validation-rule-catalog.md` · `docs/architecture/validation-canonical-models.md` · `docs/architecture/ai-response-validation.md` |
-| Public entry point | `ResponseValidator.validate(analysis_result) -> ValidationResult` |
+| Public entry point | `ResponseValidator.validate(validation_input) -> ValidationResult` (ADR-0003) |
 
 ---
 
@@ -38,7 +38,7 @@ unchanged.
 
 ## Execution Flow
 
-`validate(analysis_result)` performs a fixed, ordered sequence
+`validate(validation_input)` performs a fixed, ordered sequence
 (`response-validator.md` §5):
 
 ```text
@@ -137,7 +137,7 @@ behalf. It depends on the framework **contracts**, never their internals.
    ResponseValidator
         │ holds      │ executes once
         ▼            ▼
-   ValidationRegistry   ValidationPipeline.run(analysis_result, configuration)
+   ValidationRegistry   ValidationPipeline.run(validation_input, configuration)
    (held for future            │
     rule discovery)            ▼
                           ValidationResult  (the single output)

@@ -33,7 +33,18 @@ from pydantic import ValidationError
 
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.normalization.framework.normalization_pipeline import (
+    NormalizationPipeline,
+)
+from requirement_intelligence.normalization.framework.normalization_registry import (
+    NormalizationRegistry,
+)
+from requirement_intelligence.normalization.models.normalization_configuration import (
+    NormalizationConfiguration,
+)
+from requirement_intelligence.normalization.response import ResponseNormalizer
 from requirement_intelligence.validation import (
+    ValidationInput,
     ValidationPipeline,
     ValidationRegistry,
     ValidationRule,
@@ -78,6 +89,22 @@ def _analysis_result(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> A
         duration_ms=1.0,
         llm_response=LLMResponse(provider="gemini", model="model", generated_text="x"),
     )
+
+
+def _validation_input_for(analysis: AnalysisResult) -> ValidationInput:
+    """Bind *analysis* to a real ``NormalizationResult`` (the pipeline input; ADR-0003)."""
+    registry = NormalizationRegistry()
+    normalizer = ResponseNormalizer(
+        registry, NormalizationPipeline(registry), NormalizationConfiguration()
+    )
+    return ValidationInput(
+        analysis_result=analysis,
+        normalization_result=normalizer.normalize(analysis.llm_response),
+    )
+
+
+def _input(execution_id: str = "EX-1", analysis_id: str = "AN-1") -> ValidationInput:
+    return _validation_input_for(_analysis_result(execution_id, analysis_id))
 
 
 def _issue(
@@ -271,9 +298,7 @@ class TestSerialization:
         assert "issue_id" not in dumped
 
     def test_issue_enum_serializes_to_value(self) -> None:
-        dumped = _issue(severity=ValidationSeverity.CRITICAL).model_dump(
-            by_alias=True, mode="json"
-        )
+        dumped = _issue(severity=ValidationSeverity.CRITICAL).model_dump(by_alias=True, mode="json")
         assert dumped["severity"] == "critical"
         assert dumped["validationLayer"] == "evidence"
 
@@ -444,13 +469,13 @@ class _IssuingRule(ValidationRule):
 class TestPipelineReturnsValidationResult:
     def test_empty_pipeline_returns_valid_passed_result(self) -> None:
         pipeline = ValidationPipeline(ValidationRegistry())
-        result = pipeline.run(_analysis_result())
+        result = pipeline.run(_input())
         assert isinstance(result, ValidationResult)
         assert result.validation_issues == ()
         assert result.overall_verdict == ValidationVerdict.PASSED
 
     def test_empty_result_still_populates_owned_models(self) -> None:
-        result = ValidationPipeline(ValidationRegistry()).run(_analysis_result())
+        result = ValidationPipeline(ValidationRegistry()).run(_input())
         # Summary, statistics, framework metadata are all populated — not None.
         assert result.validation_summary.total_issues == 0
         assert result.validation_summary.overall_health == ValidationHealth.HEALTHY
@@ -459,7 +484,7 @@ class TestPipelineReturnsValidationResult:
 
     def test_result_preserves_analysis_identity(self) -> None:
         analysis = _analysis_result(execution_id="EX-77", analysis_id="AN-77")
-        result = ValidationPipeline(ValidationRegistry()).run(analysis)
+        result = ValidationPipeline(ValidationRegistry()).run(_validation_input_for(analysis))
         assert result.execution_id == "EX-77"
         assert result.analysis_id == "AN-77"
         assert result.analysis_result is analysis
@@ -473,7 +498,7 @@ class TestPipelineReturnsValidationResult:
                 [_issue("C1", severity=ValidationSeverity.CRITICAL, layer=ValidationLayer.SYNTAX)],
             )
         )
-        result = ValidationPipeline(registry).run(_analysis_result())
+        result = ValidationPipeline(registry).run(_input())
         assert result.overall_verdict == ValidationVerdict.BLOCKED
         assert result.validation_summary.overall_health == ValidationHealth.CRITICAL
 
@@ -486,7 +511,7 @@ class TestPipelineReturnsValidationResult:
                 [_issue("W1", severity=ValidationSeverity.WARNING, layer=ValidationLayer.CONTENT)],
             )
         )
-        result = ValidationPipeline(registry).run(_analysis_result())
+        result = ValidationPipeline(registry).run(_input())
         assert result.overall_verdict == ValidationVerdict.PASSED_WITH_WARNINGS
         assert result.validation_summary.overall_health == ValidationHealth.WARNING
 
@@ -524,7 +549,7 @@ class TestDerivedSummaryAndStatistics:
                 ],
             )
         )
-        return ValidationPipeline(registry).run(_analysis_result())
+        return ValidationPipeline(registry).run(_input())
 
     def test_summary_counts_are_derived(self) -> None:
         summary = self._result_with_mixed_issues().validation_summary
@@ -556,7 +581,7 @@ class TestDerivedSummaryAndStatistics:
     def test_statistics_passed_rule_counts(self) -> None:
         registry = ValidationRegistry()
         registry.register(_IssuingRule("SYNTAX-0001", ValidationLayer.SYNTAX, []))
-        result = ValidationPipeline(registry).run(_analysis_result())
+        result = ValidationPipeline(registry).run(_input())
         assert result.validation_statistics.rules_executed == 1
         assert result.validation_statistics.rules_passed == 1
         assert result.validation_statistics.rules_failed == 0

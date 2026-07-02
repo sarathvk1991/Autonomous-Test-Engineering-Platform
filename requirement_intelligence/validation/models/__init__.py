@@ -10,6 +10,8 @@ The five canonical models plus the framework-provenance model:
 * :class:`ValidationStatistics` — operational telemetry for one run.
 * :class:`ValidationConfiguration` — the execution policy of a run.
 * :class:`ValidationFrameworkMetadata` — provenance of the producing framework.
+* :class:`ValidationInput` — the canonical input to validation: the binding of the
+  ``AnalysisResult`` and its ``NormalizationResult`` (ADR-0003).
 * :class:`ValidationResult` — the aggregate root and single framework output.
 
 And the controlled vocabulary:
@@ -38,6 +40,10 @@ from requirement_intelligence.validation.models.validation_framework_metadata im
     REGISTRY_VERSION,
     ValidationFrameworkMetadata,
 )
+from requirement_intelligence.validation.models.validation_input import (
+    VALIDATION_INPUT_VERSION,
+    ValidationInput,
+)
 from requirement_intelligence.validation.models.validation_issue import ValidationIssue
 from requirement_intelligence.validation.models.validation_result import ValidationResult
 from requirement_intelligence.validation.models.validation_statistics import (
@@ -50,9 +56,11 @@ __all__ = [
     "FRAMEWORK_VERSION",
     "PIPELINE_VERSION",
     "REGISTRY_VERSION",
+    "VALIDATION_INPUT_VERSION",
     "ValidationConfiguration",
     "ValidationFrameworkMetadata",
     "ValidationHealth",
+    "ValidationInput",
     "ValidationIssue",
     "ValidationResult",
     "ValidationSeverity",

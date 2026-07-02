@@ -22,10 +22,10 @@ observability only; it never performs or alters validation.
 
 from __future__ import annotations
 
-from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.validation.models.validation_configuration import (
     ValidationConfiguration,
 )
+from requirement_intelligence.validation.models.validation_input import ValidationInput
 from requirement_intelligence.validation.models.validation_result import ValidationResult
 from requirement_intelligence.validation.response.response_validator_exceptions import (
     ConfigurationResolutionError,
@@ -87,13 +87,11 @@ class ResponseValidator:
     ) -> None:
         if not isinstance(registry, ValidationRegistry):
             raise PipelineConstructionError(
-                f"ResponseValidator requires a ValidationRegistry; "
-                f"got {type(registry).__name__!r}."
+                f"ResponseValidator requires a ValidationRegistry; got {type(registry).__name__!r}."
             )
         if not isinstance(pipeline, ValidationPipeline):
             raise PipelineConstructionError(
-                f"ResponseValidator requires a ValidationPipeline; "
-                f"got {type(pipeline).__name__!r}."
+                f"ResponseValidator requires a ValidationPipeline; got {type(pipeline).__name__!r}."
             )
         if not isinstance(platform_defaults, ValidationConfiguration):
             raise ConfigurationResolutionError(
@@ -123,24 +121,35 @@ class ResponseValidator:
     # Single public API
     # ------------------------------------------------------------------
 
-    def validate(self, analysis_result: AnalysisResult) -> ValidationResult:
-        """Validate *analysis_result* and return its canonical ``ValidationResult``.
+    def validate(self, validation_input: ValidationInput) -> ValidationResult:
+        """Validate *validation_input* and return its canonical ``ValidationResult``.
+
+        The canonical input is the :class:`ValidationInput` (ADR-0003): the binding
+        of the analysed response (``analysis_result``) and its normalization output
+        (``normalization_result``, carrying the shared ``ParsedResponse`` and the
+        observations).  The Validator remains the **single** entry point — one
+        public method, one input object; the object is simply richer than the bare
+        ``AnalysisResult`` it replaced.
 
         Orchestration sequence (``docs/architecture/response-validator.md`` §5):
 
         1. Resolve and validate the configuration (§8 hierarchy).
         2. Resolve the Validation Profile (default: Standard).
-        3. Create the immutable execution context (full version provenance).
-        4. Execute the pipeline **exactly once**.
+        3. Create the immutable execution context from the bound ``AnalysisResult``
+           (full version provenance).
+        4. Execute the pipeline **exactly once** over the ``ValidationInput``.
         5. Return the ``ValidationResult`` unchanged.
 
         The Validator never inspects, interprets, repairs, retries, logs,
-        persists, or reports the result.
+        persists, reports, or normalizes.  It never calls the ``ResponseNormalizer``
+        — the ``ValidationInput`` arrives already assembled by the handoff seam
+        (ADR-0003 §4).
 
         Parameters
         ----------
-        analysis_result:
-            The analysed response to validate.
+        validation_input:
+            The canonical validation input: the ``AnalysisResult`` bound to its
+            same-execution ``NormalizationResult`` (ADR-0003).
 
         Returns
         -------
@@ -160,13 +169,13 @@ class ResponseValidator:
         configuration = self._resolve_configuration()
         profile = self._resolve_profile()
         context = build_execution_context(
-            analysis_result=analysis_result,
+            analysis_result=validation_input.analysis_result,
             profile=profile,
             configuration=configuration,
         )
         self._last_execution_context = context
         return self._execute(
-            analysis_result=analysis_result,
+            validation_input=validation_input,
             configuration=configuration,
             context=context,
         )
@@ -228,7 +237,7 @@ class ResponseValidator:
     def _execute(
         self,
         *,
-        analysis_result: AnalysisResult,
+        validation_input: ValidationInput,
         configuration: ValidationConfiguration,
         context: ValidationExecutionContext,
     ) -> ValidationResult:
@@ -240,11 +249,10 @@ class ResponseValidator:
         across the orchestration boundary.
         """
         try:
-            return self._pipeline.run(analysis_result, configuration)
+            return self._pipeline.run(validation_input, configuration)
         except ValidationFrameworkError as exc:
             raise ValidationExecutionError(
-                f"Validation execution failed for correlation "
-                f"{context.correlation_id!r}: {exc}"
+                f"Validation execution failed for correlation {context.correlation_id!r}: {exc}"
             ) from exc
         except ResponseValidatorError:
             raise
