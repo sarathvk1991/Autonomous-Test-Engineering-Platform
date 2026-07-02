@@ -94,8 +94,8 @@ already produced.
 | -------------------- | ----------- |
 | **AI response validation** | The end-to-end act of judging whether an AI response is trustworthy enough to consume. |
 | **Syntax validation** | Confirming the response is well-formed structured data — by reading the normalized representation (`ParsedResponse`) produced by the Response Normalization Layer (§4.4), never by parsing the response itself. |
-| **Schema validation** | Confirming the normalized structure conforms to the expected, versioned schema. |
-| **Structural validation** | Confirming required containers, sections, and relationships are present and correctly shaped. |
+| **Schema validation** | Confirming the normalized structure conforms to the expected, versioned schema — including the **presence (existence)** of every required section, container, and collection, plus types and enumerations (ADR-0004). |
+| **Structural validation** | Confirming the **composition, hierarchy, and organization** of the parts that exist — nesting and relationships between sections; their *existence* is Schema's, not Structural's (ADR-0004). |
 | **Content validation** | Confirming field-level content meets type, range, and presence expectations. |
 | **Evidence validation** | Confirming conclusions are accompanied by the evidence references the platform requires. |
 | **Traceability validation** | Confirming each output element carries the links that make it auditable. |
@@ -389,7 +389,7 @@ way unparseable input does.
                   └───────────┬───────────┘
                               ▼
                   ┌───────────────────────┐
-                  │ Structural Validation  │  are required containers / relationships present?
+                  │ Structural Validation  │  are the existing parts composed / organized correctly?
                   └───────────┬───────────┘
                               ▼
                   ┌───────────────────────┐
@@ -421,8 +421,8 @@ way unparseable input does.
 | ----- | ------- | -------------- |
 | **Transport** | Delivery | Confirm a usable response payload was actually received and is non-empty at the transport level. |
 | **Syntax** | Well-formedness | Confirm the response is well-formed structured data, by reading the normalized representation (`ParsedResponse`); the layer itself never parses or normalizes (§4.4). |
-| **Schema** | Shape conformance | Confirm the normalized structure matches the expected, versioned schema. |
-| **Structural** | Composition | Confirm required containers, sections, and relationships between them are present and correctly nested. |
+| **Schema** | Shape conformance & existence | Confirm the normalized structure matches the expected, versioned schema — the required sections/containers/collections **exist** and the fields conform (types, enums) (ADR-0004). |
+| **Structural** | Composition / hierarchy | Confirm the sections that **exist** are composed, nested, related, and organized correctly; existence itself is Schema's concern (ADR-0004). |
 | **Content** | Field validity | Confirm individual values meet type, range, format, and presence expectations. |
 | **Evidence** | Groundedness | Confirm conclusions carry the evidence references the platform requires (cf. AI Reasoning Contract). |
 | **Traceability** | Auditability | Confirm each element carries the links needed to trace it back to its source and context. |
@@ -522,13 +522,13 @@ and whether a failure permits the pipeline to continue.
 | -------- | ------- | ---------------- | ------- | ----------------------- |
 | **Transport** | Confirm a usable response was received | Empty payload; truncated response; no content | A response payload of zero length | **No** — nothing to validate |
 | **Syntax** | Confirm well-formed structured data | Malformed structure; unbalanced delimiters; unparseable text | Output is prose where structured data was required | **No** — cannot proceed unparsed |
-| **Schema** | Confirm conformance to the expected versioned schema | Missing required field; unexpected field; wrong shape; version mismatch | A required `severity` field absent on a risk | **No** — downstream relies on shape |
-| **Structure** | Confirm required containers and relationships | Missing section; broken parent-child nesting; empty required collection | The `risks` container is absent entirely | **No** — composition is foundational |
+| **Schema** | Confirm conformance & existence against the expected versioned schema | Missing required section/container/field/collection; wrong type; invalid enum; version mismatch | A required `severity` field absent on a risk; the `risks` container absent entirely (ADR-0004) | **No** — downstream relies on shape |
+| **Structure** | Confirm composition, hierarchy, and organization | Broken parent-child nesting; mis-ordered or mis-organized sections that already exist | A present `risks` container mis-nested in the document hierarchy (its *absence* is a Schema finding, ADR-0004) | **No** — composition is foundational |
 | **Content** | Confirm field-level validity | Wrong type; out-of-range value; invalid enumerated value; empty required string | `confidence` set to a value outside the allowed set | **Conditional** — by severity (§6) |
 | **Evidence** | Confirm conclusions are grounded | Conclusion without evidence reference; dangling evidence link | A risk with an empty evidence list | **Conditional** — by severity (§6) |
 | **Traceability** | Confirm auditable linkage | Missing source link; missing correlation identifier; broken trace chain | A requirement with no source artifact reference | **Conditional** — by severity (§6) |
 | **Reasoning** | Confirm internal coherence | Contradictory items; severity inconsistent with content; orphaned cross-references | Two requirements asserting different limits for the same field | **Conditional** — by severity (§6) |
-| **Business Rules** | Confirm declared platform rules | Violated declared structural policy; prohibited combination present | A response missing a mandated executive summary section | **Conditional** — by severity (§6) |
+| **Business Rules** | Confirm declared platform rules | Violated declared platform policy; prohibited combination present | A response with fewer than the mandated minimum number of recommendations (a *policy* breach; a missing required *section* is Schema existence, ADR-0004) | **Conditional** — by severity (§6) |
 
 > **Architectural Decision**
 > Foundational categories (Transport, Syntax, Schema, Structure) are

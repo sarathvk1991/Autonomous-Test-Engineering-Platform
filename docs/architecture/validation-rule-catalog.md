@@ -372,7 +372,7 @@ Response Validation Architecture §4). Every rule belongs to exactly one layer.
   Response Normalization Layer's concern, not a validation concern.
 - **Worked example.** A response whose structure cannot be unambiguously
   interpreted (a `MALFORMED` outcome) is a Syntax finding; a well-formed structure
-  missing an expected section is a Schema or Structural concern.
+  missing an expected section is a Schema concern (existence; §8.3, ADR-0004).
 
 > **Note — how rules reach these facts (ADR-0003).** From Syntax onward, rules
 > receive the `ParsedResponse` and the Normalization Observations through the
@@ -395,31 +395,57 @@ Response Validation Architecture §4). Every rule belongs to exactly one layer.
 ### 8.3 Schema
 
 - **Purpose.** Confirm the well-formed structure conforms to the expected,
-  versioned shape.
-- **Responsibilities.** Detect missing required sections, wrong field types,
-  invalid enumerated values, and missing required collections.
-- **Typical validations.** All required sections are present; each field is of its
-  expected type; enumerated fields hold a permitted value; required collections
-  exist.
-- **Must never validate here.** The *meaning* or *quality* of conformant content —
-  e.g. whether a present requirement is empty (Content) or unsupported (Evidence).
-- **Worked example.** A confidence field holding a value outside its permitted set
-  is a Schema finding; a confidence that is valid but inconsistent with the
-  requirement's evidence is a Reasoning concern.
+  versioned, **machine-readable** shape.
+- **Responsibilities.** Detect any missing required **property, section, container,
+  or collection** (existence), wrong field types, and invalid enumerated values.
+  **Schema is the sole owner of existence / machine-readable conformance** — a
+  missing required section or container is a Schema finding, never a Structural one
+  (ADR-0004).
+- **Typical validations.** Every required section/container/property is present;
+  each field is of its expected type; enumerated fields hold a permitted value; every
+  required collection is present.
+- **Must never validate here.** The *composition, hierarchy, or organization* of the
+  present parts — nesting, parent–child relationships, ordering (that is Structural,
+  §8.4) — nor the *meaning* or *quality* of conformant content — e.g. whether a
+  present requirement is empty (Content) or unsupported (Evidence).
+- **Worked example.** An absent `risks` container, a required section that is
+  missing, or a confidence field holding a value outside its permitted set are all
+  Schema findings (existence / conformance); whether the present containers are
+  *nested and organized correctly* is a Structural concern, and a confidence that is
+  valid but inconsistent with the requirement's evidence is a Reasoning concern.
+
+> **Architectural Decision (ADR-0004) — existence and machine-readable conformance
+> are Schema.** The presence of every required property, section, container, and
+> collection belongs to the Schema layer, alongside type and enumeration
+> conformance. Structural owns none of it (§8.4).
 
 ### 8.4 Structural
 
-- **Purpose.** Confirm the required containers and relationships between sections
-  are present and correctly composed.
-- **Responsibilities.** Detect missing top-level sections and broken parent–child
-  composition between them.
-- **Typical validations.** The executive summary, requirements, risks, and
-  recommendations containers are present and correctly nested.
-- **Must never validate here.** The *content* of those containers — whether the
-  requirements inside are empty, duplicated, or unsupported. Structural asks only
-  whether the containers and their relationships exist.
-- **Worked example.** An absent risks container is a Structural finding; a present
+- **Purpose.** Confirm the document's **composition, hierarchy, and organization** —
+  how the parts that already exist are nested, related, and arranged.
+- **Responsibilities.** Detect broken parent–child **composition**, incorrect
+  **nesting/relationships**, and mis-**organization** between sections whose
+  existence Schema has already confirmed. **Structural owns no property-existence
+  check** — a missing property, section, container, or collection is a **Schema**
+  finding (§8.3; ADR-0004).
+- **Typical validations.** The present containers are correctly **nested** and
+  **related** (e.g. the requirement items sit within their requirement collection;
+  sections are organized in the expected hierarchy) — *given* that Schema has
+  confirmed those containers exist.
+- **Must never validate here.** The **existence** of any property/section/container/
+  collection (that is Schema, §8.3), nor the *content* of the containers — whether
+  the requirements inside are empty, duplicated, or unsupported (that is Content).
+- **Worked example.** A `risks` container that is **present but mis-nested or
+  mis-organized** relative to the document hierarchy is a Structural finding; an
+  **absent** `risks` container is a **Schema** finding (existence, §8.3); a present
   but empty risk inside it is a Content concern.
+
+> **Architectural Decision (ADR-0004) — composition, hierarchy, and organization
+> are Structural; existence is not.** Structural assumes Schema has already confirmed
+> the required parts exist and conform, and asks only whether they are composed and
+> organized correctly. The former existence rules (`STRUCTURE-0001…0004`) are
+> **Deprecated** (§9.4); their existence concern moved to Schema. Concrete Structural
+> composition rules are catalogued additively via a future ADR.
 
 ### 8.5 Content
 
@@ -570,19 +596,37 @@ set of *delivery-level* guarantees; no Transport concern remains unrepresented.
 
 | Rule ID | Name | Single concern |
 | ------- | ---- | -------------- |
-| `SCHEMA-0001` | RequiredSectionsRule | All required sections are present. |
+| `SCHEMA-0001` | RequiredSectionsRule | Every required **non-collection** section/property is present. |
 | `SCHEMA-0002` | FieldTypesRule | Each field is of its expected type. |
 | `SCHEMA-0003` | EnumerationsRule | Each enumerated field holds a permitted value. |
-| `SCHEMA-0004` | RequiredArraysRule | Each required collection is present. |
+| `SCHEMA-0004` | RequiredArraysRule | Every required **collection** is present. |
+
+> **Ownership note (ADR-0004).** Schema is the **sole owner of existence /
+> machine-readable conformance**, including the presence of every required
+> property, section, container, and collection. Within Schema, existence is
+> partitioned by declared kind so no two rules overlap: a required **non-collection**
+> section/property → `SCHEMA-0001`; a required **collection** (array) → `SCHEMA-0004`;
+> a field's **type** → `SCHEMA-0002`; an **enumerated value** → `SCHEMA-0003`. The
+> former Structural existence rules (`STRUCTURE-0001…0004`) are Deprecated in favour
+> of Schema (§9.4).
 
 ### 9.4 Structural
 
-| Rule ID | Name | Single concern |
-| ------- | ---- | -------------- |
-| `STRUCTURE-0001` | SummaryExistsRule | The executive summary container is present. |
-| `STRUCTURE-0002` | RisksExistsRule | The risks container is present. |
-| `STRUCTURE-0003` | RecommendationsExistsRule | The recommendations container is present. |
-| `STRUCTURE-0004` | RequirementsExistsRule | The requirements container is present. |
+| Rule ID | Name | Single concern | Lifecycle |
+| ------- | ---- | -------------- | --------- |
+| `STRUCTURE-0001` | SummaryExistsRule | ~~The executive summary container is present.~~ Existence moved to Schema (`SCHEMA-0001`). | **Deprecated** (ADR-0004) |
+| `STRUCTURE-0002` | RisksExistsRule | ~~The risks container is present.~~ Existence moved to Schema (`SCHEMA-0004`). | **Deprecated** (ADR-0004) |
+| `STRUCTURE-0003` | RecommendationsExistsRule | ~~The recommendations container is present.~~ Existence moved to Schema (`SCHEMA-0004`). | **Deprecated** (ADR-0004) |
+| `STRUCTURE-0004` | RequirementsExistsRule | ~~The requirements container is present.~~ Existence moved to Schema (`SCHEMA-0004`). | **Deprecated** (ADR-0004) |
+
+> **Deprecation note (ADR-0004).** These four rules were **existence** checks. Under
+> the Schema/Structural boundary (ADR-0004; §8.3, §8.4), property/section/container
+> existence belongs **only to Schema**, so these rules are **Deprecated**. Their Rule
+> IDs are frozen forever and **never reused** (§4.3, §22); no `STRUCTURE-000N`
+> identity is reassigned. The Structural layer's concern is now **composition,
+> hierarchy, and organization**; concrete Structural composition rules will be
+> catalogued **additively** via a future ADR. Until then the Structural layer has no
+> active rules while retaining its position in the pipeline order (§8).
 
 ### 9.5 Content
 

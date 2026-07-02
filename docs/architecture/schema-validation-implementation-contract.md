@@ -103,13 +103,16 @@ versioned schema**. The concern families are already partitioned by the Catalog
 | Enumerated values | `SCHEMA-0003` | Does each enumerated field hold a permitted value? |
 | Required collections present | `SCHEMA-0004` | Does each required collection exist? |
 
-> **Principle**
-> **Presence-of-a-schema-field is Schema; presence-of-a-container-with-nesting is
-> Structural; presence-of-a-non-empty-value is Content.** The word "present" recurs
-> across layers; the *kind* of presence is what assigns the concern. Schema owns
-> presence and validity **as declared by the shape** (a required field/collection
-> exists, a field's type is correct, an enum value is permitted). It owns nothing
-> about how containers are composed, nor about whether a present value is meaningful.
+> **Principle (aligned with ADR-0004)**
+> **Existence of any schema-declared property, section, container, or collection is
+> Schema; composition/hierarchy/organization is Structural; value meaning/quality is
+> Content.** Per ADR-0004, **all** existence — including container and section
+> presence — belongs to Schema; Structural owns no existence check. Schema owns
+> presence *and* machine-readable conformance **as declared by the shape** (a
+> required property/section/container/collection exists, a field's type is correct, an
+> enum value is permitted). It owns nothing about how the present parts are composed,
+> nested, or organized (Structural), nor about whether a present value is meaningful
+> (Content).
 
 Ownership of everything upstream and downstream is unchanged: Response
 Normalization owns creation of the structure; Syntax owns well-formedness;
@@ -268,11 +271,11 @@ Normalization–Validation boundary (Response Normalization Contract §10).
    Syntax                      judges well-formedness: outcome NORMALIZED?  no duplicate
             │                  identifiers?  encoding intact?   (reads outcome + observations)
             ▼
-   Schema                      judges shape conformance: required sections/types/enums/
-            │                  required collections   (reads the normalized structure)  ◄── THIS LAYER
+   Schema                      judges conformance & EXISTENCE: required sections/containers/
+            │                  collections present + types + enums   (reads the structure)  ◄── THIS LAYER
             ▼
-   Structural                  judges composition: required containers present and correctly
-                               nested   (reads the normalized structure)
+   Structural                  judges composition/hierarchy/organization: the parts that
+                               EXIST are nested/related/organized correctly (ADR-0004)
 ```
 
 ### 10.1 What Schema assumes
@@ -370,8 +373,9 @@ introduce nothing new structurally; they fix the Schema application.
 >   permitted — a *shape* defect.
 > - **Syntax** says nothing: the response *was* well-formed; the outcome is
 >   `NORMALIZED`.
-> - **Structural** says nothing: whether the `requirements` container is present and
->   nested is a different concern.
+> - **Structural** says nothing: whether the (existing) `requirements` container is
+>   correctly nested/organized is a different concern (its *presence* is Schema's,
+>   ADR-0004).
 > - **Content** says nothing: whether a *valid* confidence is *consistent with the
 >   evidence* is a Reasoning concern.
 > Only Schema owns "is this value within its permitted set?".
@@ -520,16 +524,17 @@ A reviewer certifies a Schema rule only if the general conformance checklist pas
 | **Expected (versioned) shape** | The governed definition of the sections, types, enumerated value-domains, and required collections the response must exhibit — from the Catalog, the AI Reasoning Contract, and the Prompt Framework; optionally an injected/formal schema in future (§8). |
 | **Shape conformance** | Whether the structure exhibits the expected sections/types/enums/collections — Schema's exclusive concern (§10.3). |
 | **Deferral (Schema)** | Returning `[]` when no normalized structure was recovered, because well-formedness is Syntax's concern (§10.2). |
-| **Composition / nesting** | The presence and parent-child relationships of the top-level containers — **Structural**'s concern, never Schema's (§7, §10.3). |
+| **Composition / hierarchy / organization** | The nesting, parent-child relationships, and arrangement of the parts that already **exist** — **Structural**'s concern, never Schema's (§7, §10.3; ADR-0004). Existence of those parts is **Schema**'s. |
 
 ## Appendix B — Consistency Verification
 
-Verified consistent with every frozen artifact it touches. **No inconsistency was
-found; no ADR is required.**
+Verified consistent with every frozen artifact it touches. The Schema ↔ Structural
+ownership boundary is governed by **ADR-0004** (existence → Schema;
+composition/hierarchy/organization → Structural); this contract is aligned to it.
 
 | Document | Consistency check | Result |
 | -------- | ----------------- | ------ |
-| **Validation Rule Catalog** | Schema layer purpose (§8.3), rules (§9.3), severity (§14 — `SCHEMA-0001` = `ERROR`), blocking (§15) restated as boundary, never redefined or reassigned. | ✅ Consistent — no identity, concern, severity, or blocking changed. |
+| **Validation Rule Catalog** | Schema layer purpose (§8.3), rules (§9.3), severity (§14 — `SCHEMA-0001` = `ERROR`), blocking (§15). The Schema/Structural existence boundary is reassigned by **ADR-0004** (existence → Schema; the Structural existence rules `STRUCTURE-0001…0004` are Deprecated); this contract reflects that reassignment. | ✅ Consistent — aligned with ADR-0004; no severity/blocking changed. |
 | **Validation Rule Implementation Contract** | General lifecycle/input/output/exception/metadata/independence/DI inherited unchanged; only the Schema specialization added. | ✅ Consistent — no general rule changed; no duplication. |
 | **AI Response Validation Architecture** | Progressive layering (§4), Schema category progression-stopping (§5), severity model (§6), formal-schema as future capability (§14) honoured. | ✅ Consistent — `ERROR → FAILED` vs `CRITICAL → BLOCKED` reconciled (§6 note). |
 | **Validation Canonical Models / `ParsedResponse`** | Schema reads `normalized_structure` read-only; never mutates; observations remain the `NormalizationResult`'s. | ✅ Consistent — no canonical model changed. |
