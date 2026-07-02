@@ -167,10 +167,17 @@ No other capability is missing architecture: every remaining `✗` is an
   change.
 - **Reasoning duplicate mechanism (ADR-0008, Proposed).** `REASONING-0002`
   (DuplicateRecommendationRule) has its comparison mechanism frozen as **byte-exact** string
-  equality (case-/whitespace-sensitive, no normalization, no semantics) by ADR-0008. It
-  becomes implementable **only after ADR-0008 is Accepted**; it is **not** marked implemented.
-  Semantic "duplicated conclusions" detection remains a future capability requiring its own
-  ADR. No coverage checkmarks change.
+  equality (case-/whitespace-sensitive, no normalization, no semantics) by ADR-0008 and is
+  **implemented**. Semantic "duplicated conclusions" detection remains a future capability
+  requiring its own ADR.
+- **Reasoning contradiction deferral (ADR-0009, Proposed).** `REASONING-0001`
+  (ContradictoryRequirementRule) is **Reserved · Deferred**: contradiction is inherently
+  semantic/logical and no governed **deterministic** mechanism exists (no faithful
+  surface-form mechanism, unlike duplicates). ADR-0009 adopts **no** mechanism and reserves
+  contradiction for a future semantic-reasoning ADR, **superseding ADR-0006's Implementable
+  classification of `REASONING-0001`**. `REASONING-0003` (CircularLogic) likely faces the
+  same gap and awaits its own review. This is intentional governance, **not** a coverage
+  gap; no checkmarks change.
 - **Frozen and stable (no action): CAP-030 Response Normalization subsystem,
   CAP-032 ResponseNormalizer, CAP-040 Validation Framework, CAP-042 Transport
   Layer.**
