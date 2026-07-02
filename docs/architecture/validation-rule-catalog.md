@@ -646,6 +646,14 @@ set of *delivery-level* guarantees; no Transport concern remains unrepresented.
 | `CONTENT-0003` | MissingDescriptionRule | A requirement carries a description. |
 | `CONTENT-0004` | InvalidConfidenceRule | A confidence value is within its valid range. |
 
+> **Scope note (ADR-0007).** `CONTENT-0002` evaluates duplicate requirement statements
+> **independently within each governed requirement collection** (`functional_requirements`,
+> `security_requirements`, `quality_requirements`); the collections are **never pooled**. A
+> statement appearing once in each collection is **not** a `CONTENT-0002` finding.
+> Cross-collection duplication is **outside** `CONTENT-0002`'s ownership and, if ever
+> required, receives its own future Rule Catalog identity. This clarifies scope only — the
+> rule's identity, severity, and blocking are unchanged.
+
 ### 9.6 Evidence
 
 | Rule ID | Name | Single concern |
