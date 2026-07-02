@@ -84,10 +84,12 @@ from __future__ import annotations
 
 from requirement_intelligence.llm.llm_models import LLMResponse
 from requirement_intelligence.normalization.models.normalization_observation import (
+    OBSERVATION_DUPLICATE_IDENTIFIER,
     OBSERVATION_MALFORMED_REPRESENTATION,
     NormalizationObservation,
 )
 from requirement_intelligence.normalization.response.assembly.assembly_state import (
+    DUPLICATE_IDENTIFIERS_METADATA_KEY,
     AssemblyState,
 )
 from requirement_intelligence.normalization.response.assembly.normalization_stage import (
@@ -131,11 +133,14 @@ class CaptureNormalizationObservations(NormalizationStage):
         """Capture the run's observations and append them to *assembly_state*.
 
         Reads the normalized structure recovered by ``0001`` (this stage's frozen
-        dependency) and the outcome determined by ``0002`` (read, when present, only
-        as corroborating evidence); writes **only** observations, appended to the
-        transient collection.  Recording a ``malformed_representation`` observation
-        — or recording **none** — is a **fact**; the outcome value and the
-        ``LLMResponse`` are never judged, and neither is mutated.
+        dependency), the outcome determined by ``0002`` (read, when present, only as
+        corroborating evidence), and the duplicate-identifier **facts** forwarded by
+        ``0001`` as a transient execution fact; writes **only** observations,
+        appended to the transient collection.  Recording a
+        ``malformed_representation`` observation, a ``duplicate_identifier``
+        observation per forwarded fact, or **none** at all is a **fact**; the outcome
+        value, the forwarded facts, and the ``LLMResponse`` are never judged, and
+        none is mutated.  The stage never parses JSON and never detects duplicates.
 
         Raises
         ------
@@ -160,9 +165,7 @@ class CaptureNormalizationObservations(NormalizationStage):
             outcome = assembly_state.normalization_outcome
             assembly_state.add_observation(
                 NormalizationObservation(
-                    observation_id=(
-                        f"{self.stage_id}:{OBSERVATION_MALFORMED_REPRESENTATION}"
-                    ),
+                    observation_id=(f"{self.stage_id}:{OBSERVATION_MALFORMED_REPRESENTATION}"),
                     observation_type=OBSERVATION_MALFORMED_REPRESENTATION,
                     detail=(
                         "The response did not express recoverable well-formed "
@@ -176,3 +179,27 @@ class CaptureNormalizationObservations(NormalizationStage):
         # When a structure was recovered, no observation is derivable from the
         # recovered structure alone at this stage — zero observations is a fully
         # successful result (Assembly Contract §8; Response Normalization Contract §8).
+
+        # Duplicate-identifier observations.  The duplicate-key **facts** were
+        # detected by the recovery mechanism and forwarded by NORMALIZATION-0001 as a
+        # transient execution fact (Assembly Contract §4).  This stage only **reads**
+        # those facts and turns each into a ``duplicate_identifier`` observation — it
+        # never parses, never detects, and never judges.  Absent facts → no
+        # observation (the common case); this is additive to, and independent of, the
+        # malformed-representation observation above.
+        duplicate_identifiers = assembly_state.internal_metadata.get(
+            DUPLICATE_IDENTIFIERS_METADATA_KEY, ()
+        )
+        for index, identifier in enumerate(duplicate_identifiers):
+            assembly_state.add_observation(
+                NormalizationObservation(
+                    observation_id=(f"{self.stage_id}:{OBSERVATION_DUPLICATE_IDENTIFIER}:{index}"),
+                    observation_type=OBSERVATION_DUPLICATE_IDENTIFIER,
+                    detail=(
+                        f"The field identifier {identifier!r} is duplicated within a "
+                        f"structural object."
+                    ),
+                    location=identifier,
+                    created_at=utc_now(),
+                )
+            )

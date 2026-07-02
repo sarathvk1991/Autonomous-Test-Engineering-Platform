@@ -80,3 +80,60 @@ class CanonicalStructureRecoverer(Protocol):
             :class:`~requirement_intelligence.normalization.response.assembly.stage_exceptions.StructureRecoveryError`.
         """
         ...
+
+
+@runtime_checkable
+class DuplicateIdentifierReporter(Protocol):
+    """An **optional** recovery-mechanism capability: report duplicate field identifiers.
+
+    A recovery mechanism may *additionally* implement this protocol to surface the
+    duplicate field identifiers it noticed while parsing — an implementation detail
+    of the **format** the mechanism understands (duplicate object keys are a
+    format-level fact).  The capability is **optional and additive**: NORMALIZATION-0001
+    checks for it (``isinstance``) and forwards the reported facts as a *transient
+    execution fact* (Normalization Assembly Contract §4) for NORMALIZATION-0003 to
+    turn into ``duplicate_identifier`` observations.  A mechanism that does not
+    implement it simply reports no duplicates — existing behaviour is unchanged.
+
+    Ownership (Response Normalization Contract §8, §10)
+    ---------------------------------------------------
+    Reporting a duplicate-identifier **fact** is *detection*, owned by the recovery
+    mechanism.  It is **never** an observation, a severity, a verdict, or a
+    ``ValidationIssue`` — those are created downstream (observations by
+    NORMALIZATION-0003; the judgement by ``SYNTAX-0002``).  A reporter therefore
+    returns **plain facts**, never judgments.
+
+    Conformance requirements (structural, not runtime-enforced):
+
+    * **Deterministic** — the same text always yields the same duplicate facts, in a
+      stable order.
+    * **Non-mutating / pure** — it never mutates its input and holds no state
+      between calls.
+    * **Never judges** — it reports the identifiers that were duplicated; it never
+      assigns severity, outcome, or verdict.
+    """
+
+    def duplicate_identifiers(self, text: str) -> tuple[str, ...]:
+        """Report the field identifiers duplicated within an object in *text*.
+
+        Parameters
+        ----------
+        text:
+            The response's provider-independent primary text (``generated_text``),
+            treated as **read-only**.
+
+        Returns
+        -------
+        tuple[str, ...]
+            One entry per (object, duplicated-identifier) occurrence, in a
+            deterministic order — empty when no identifier is duplicated, or when
+            *text* is not well-formed (an absent-structure fact is reported by
+            :meth:`CanonicalStructureRecoverer.recover`, never here).
+
+        Raises
+        ------
+        Exception
+            Only for an unexpected **infrastructure** failure — never to signal the
+            ordinary absence of duplicates.
+        """
+        ...

@@ -42,6 +42,7 @@ input.  It references no provider, model, or endpoint.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from typing import Any
 
 
@@ -54,6 +55,17 @@ class JsonCanonicalStructureRecoverer:
     required).  A JSON **object** is the only value that expresses a canonical
     structural document; every other valid JSON value and all malformed input record
     an **absent** structure (``None``).
+
+    Duplicate-key detection (optional capability)
+    ---------------------------------------------
+    It **additionally** implements
+    :class:`~requirement_intelligence.normalization.response.assembly.canonical_structure_recoverer.DuplicateIdentifierReporter`:
+    :meth:`duplicate_identifiers` reports the field identifiers duplicated within a
+    JSON object (at any nesting depth) — a **format-level fact** the recoverer, as
+    the one place JSON is understood, is uniquely able to observe.  Detection is a
+    pure implementation detail: it creates **no** observation, performs **no**
+    validation, and never repairs or mutates anything.  ``recover`` is unchanged and
+    still yields the last-value-wins structure standard JSON parsing produces.
     """
 
     def recover(self, text: str) -> dict[str, Any] | None:
@@ -84,3 +96,48 @@ class JsonCanonicalStructureRecoverer:
         if isinstance(value, dict):
             return value
         return None
+
+    def duplicate_identifiers(self, text: str) -> tuple[str, ...]:
+        """Report field identifiers duplicated within a JSON object in *text*.
+
+        Detection is performed in a **single, standards-compliant parse** using
+        ``json``'s ``object_pairs_hook``, which receives every object's raw
+        ``(key, value)`` pairs *before* de-duplication.  For each object (at any
+        nesting depth) each identifier that appears more than once contributes one
+        entry; the returned order is deterministic.  The recovered structure is
+        **unaffected** — the hook returns ``dict(pairs)``, the identical
+        last-value-wins mapping standard parsing produces.
+
+        Malformed input yields an **empty** tuple: an absent structure is a fact
+        reported by :meth:`recover`, and a document that cannot be parsed has no
+        object in which an identifier could be duplicated.  This never raises for
+        ordinary absence.
+
+        Parameters
+        ----------
+        text:
+            The response's provider-independent primary text, treated as read-only.
+
+        Returns
+        -------
+        tuple[str, ...]
+            One entry per (object, duplicated-identifier) occurrence; empty when no
+            identifier is duplicated or the text is malformed.
+        """
+        duplicates: list[str] = []
+
+        def _record_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+            # Counter preserves first-seen order (Python 3.7+), so the reported
+            # duplicates are deterministic for a given text.
+            counts = Counter(key for key, _ in pairs)
+            duplicates.extend(key for key, count in counts.items() if count > 1)
+            # Return the identical last-value-wins mapping standard parsing yields.
+            return dict(pairs)
+
+        try:
+            json.loads(text, object_pairs_hook=_record_duplicates)
+        except json.JSONDecodeError:
+            # Malformed input has no recoverable object; duplicates are moot here.
+            return ()
+
+        return tuple(duplicates)

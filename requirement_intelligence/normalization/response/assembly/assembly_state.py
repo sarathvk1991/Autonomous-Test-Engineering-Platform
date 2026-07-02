@@ -49,6 +49,14 @@ from requirement_intelligence.normalization.response.assembly.stage_exceptions i
 )
 from shared.enums.base import NormalizationOutcome
 
+#: Internal-metadata key under which NORMALIZATION-0001 forwards the duplicate-key
+#: **facts** its recovery mechanism reported, for NORMALIZATION-0003 to read and
+#: turn into ``duplicate_identifier`` observations.  It names a **transient
+#: execution fact** (Normalization Assembly Contract §4) — boundary-local
+#: bookkeeping that never leaves the ``ResponseNormalizer`` boundary and is never a
+#: canonical model, an owned fact, or an observation.
+DUPLICATE_IDENTIFIERS_METADATA_KEY = "duplicate_identifiers"
+
 
 class AssemblyState:
     """Transient, mutable, boundary-local medium for one normalization execution.
