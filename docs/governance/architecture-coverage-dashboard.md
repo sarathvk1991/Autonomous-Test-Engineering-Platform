@@ -175,9 +175,15 @@ No other capability is missing architecture: every remaining `✗` is an
   semantic/logical and no governed **deterministic** mechanism exists (no faithful
   surface-form mechanism, unlike duplicates). ADR-0009 adopts **no** mechanism and reserves
   contradiction for a future semantic-reasoning ADR, **superseding ADR-0006's Implementable
-  classification of `REASONING-0001`**. `REASONING-0003` (CircularLogic) likely faces the
-  same gap and awaits its own review. This is intentional governance, **not** a coverage
-  gap; no checkmarks change.
+  classification of `REASONING-0001`**.
+- **Reasoning circular-logic deferral (ADR-0010, Proposed).** `REASONING-0003`
+  (CircularLogicRule) is **Reserved · Deferred**: circular logic is inherently
+  semantic/logical and additionally presupposes an inferential dependency structure the
+  bare-string response does not carry (needs both dependency inference and cycle detection —
+  neither governed). ADR-0010 adopts **no** mechanism, **superseding ADR-0006's Implementable
+  classification of `REASONING-0003`**. With ADR-0008/0009/0010 the **Reasoning layer is fully
+  dispositioned** (0002 implemented; 0001 & 0003 deferred). This is intentional governance,
+  **not** a coverage gap; no checkmarks change.
 - **Frozen and stable (no action): CAP-030 Response Normalization subsystem,
   CAP-032 ResponseNormalizer, CAP-040 Validation Framework, CAP-042 Transport
   Layer.**
