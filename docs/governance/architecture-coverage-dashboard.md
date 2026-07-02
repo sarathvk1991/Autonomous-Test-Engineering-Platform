@@ -165,6 +165,12 @@ No other capability is missing architecture: every remaining `✗` is an
   future **schema-enrichment ADR** (structured response items + declared policies) unblocks
   most deferrals. This is intentional governance, **not** a coverage gap; no checkmarks
   change.
+- **Reasoning duplicate mechanism (ADR-0008, Proposed).** `REASONING-0002`
+  (DuplicateRecommendationRule) has its comparison mechanism frozen as **byte-exact** string
+  equality (case-/whitespace-sensitive, no normalization, no semantics) by ADR-0008. It
+  becomes implementable **only after ADR-0008 is Accepted**; it is **not** marked implemented.
+  Semantic "duplicated conclusions" detection remains a future capability requiring its own
+  ADR. No coverage checkmarks change.
 - **Frozen and stable (no action): CAP-030 Response Normalization subsystem,
   CAP-032 ResponseNormalizer, CAP-040 Validation Framework, CAP-042 Transport
   Layer.**
