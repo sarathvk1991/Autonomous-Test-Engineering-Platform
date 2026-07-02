@@ -10,11 +10,14 @@ Currently implemented
 ---------------------
 * ``SYNTAX-0001`` :class:`ValidStructureRule` — the response normalized into
   well-formed structured data (the Normalization Outcome is not ``MALFORMED``).
+* ``SYNTAX-0002`` :class:`DuplicateKeysRule` — normalization reported no
+  ``duplicate_identifier`` observations (no field identifier duplicated within a
+  structural object).
 
 Reserved (not implemented here)
 -------------------------------
-* ``SYNTAX-0002`` DuplicateKeysRule and ``SYNTAX-0003`` EncodingRule are defined in
-  the Rule Catalog (§9.2) but are **not** implemented by this task.
+* ``SYNTAX-0003`` EncodingRule is defined in the Rule Catalog (§9.2) but is **not**
+  implemented by this task.
 
 Registration
 ------------
@@ -27,12 +30,16 @@ constructed (the pipeline seals its registry on construction).
 
 from __future__ import annotations
 
+from requirement_intelligence.validation.rules.syntax.duplicate_keys_rule import (
+    DuplicateKeysRule,
+)
 from requirement_intelligence.validation.rules.syntax.valid_structure_rule import (
     ValidStructureRule,
 )
 from requirement_intelligence.validation.validation_registry import ValidationRegistry
 
 __all__ = [
+    "DuplicateKeysRule",
     "ValidStructureRule",
     "register_syntax_rules",
 ]
@@ -42,10 +49,10 @@ def register_syntax_rules(registry: ValidationRegistry) -> None:
     """Register every implemented Syntax rule with *registry*.
 
     Uses the existing :meth:`ValidationRegistry.register` mechanism; the registry's
-    behaviour is unchanged.  Rules are registered in catalog order; within the
-    Syntax layer the pipeline preserves registration order.  New Syntax rules
-    (``SYNTAX-0002``, ``SYNTAX-0003``) are added by registering them here — no
-    framework change is required.
+    behaviour is unchanged.  Rules are registered in catalog order
+    (``SYNTAX-0001`` → ``SYNTAX-0002``); within the Syntax layer the pipeline
+    preserves registration order.  The remaining Syntax rule (``SYNTAX-0003``) is
+    added by registering it here — no framework change is required.
 
     Parameters
     ----------
@@ -53,3 +60,4 @@ def register_syntax_rules(registry: ValidationRegistry) -> None:
         The open registry to populate.  Must not yet be sealed.
     """
     registry.register(ValidStructureRule())
+    registry.register(DuplicateKeysRule())
