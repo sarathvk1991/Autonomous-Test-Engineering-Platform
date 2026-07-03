@@ -64,6 +64,8 @@ class ValidationReportBuilder:
         issues = result.validation_issues
 
         verdict = _enum_value(result.overall_verdict).upper().replace("_", " ")
+        profile = data.validation_profile
+        profile_name = profile.name if profile is not None else "-"
 
         lines: list[str] = [
             "# Validation Report",
@@ -79,6 +81,7 @@ class ValidationReportBuilder:
             "",
             "| Metric | Value |",
             "| ------ | ----- |",
+            f"| Validation Profile | {_cell(profile_name)} |",
             f"| Rules Executed | {statistics.rules_executed} |",
             f"| Issues Found | {summary.total_issues} |",
             f"| Validation Duration | {statistics.validation_duration_ms:.2f} ms |",

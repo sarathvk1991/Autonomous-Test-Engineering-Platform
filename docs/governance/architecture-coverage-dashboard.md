@@ -80,17 +80,18 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-031 | ParsedResponse | ✓ | ✓ | ✓ | ✓ | ✓ | ◑ | Ready |
 | CAP-032 | ResponseNormalizer | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Ready |
 | CAP-040 | Validation Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Ready |
-| CAP-041 | Response Validator | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ | In Progress |
+| CAP-041 | Response Validator | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-042 | Transport Layer | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Ready |
-| CAP-043 | Syntax Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Ready |
-| CAP-044 | Schema Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
+| CAP-043 | Syntax Layer | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-044 | Schema Layer | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ | In Progress |
 | CAP-045 | Structural Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
-| CAP-046 | Content Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
+| CAP-046 | Content Layer | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ | In Progress |
 | CAP-047 | Evidence Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
 | CAP-048 | Traceability Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
-| CAP-049 | Reasoning Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
+| CAP-049 | Reasoning Layer | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ | In Progress |
 | CAP-050 | Business Rule Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
 | CAP-051 | ValidationInput (canonical input) | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-052 | Validation Profiles | ✓ | ✓ | n/a | ✓ | ✓ | ✗ | Ready |
 | CAP-060 | CP1 Validator | ◑ | ✓ | ✓ | ◑ | ✗ | ✗ | In Progress |
 
 ## 5. Overall coverage summary
@@ -136,16 +137,25 @@ No other capability is missing architecture: every remaining `✗` is an
 - **Complete: CAP-051 ValidationInput (ADR-0003 plumbing).** The canonical
   Normalization → Validation input is implemented and tested; the Response Validator
   and Validation Pipeline consume it and the four Transport rules are migrated.
-- **Ready to build now (the next milestone): CAP-043 Syntax Layer.** Its
-  prerequisites — the Validation Framework (CAP-040), a real `ParsedResponse`
-  (CAP-031/CAP-032), the `NormalizationResult` observations, and now the
-  `ValidationInput` input path (CAP-051 / ADR-0003) — are all in place, so it is
-  now **unblocked**. Implementing `SYNTAX-0001…0003` is the highest-leverage next
-  step in the validation spine.
-- **In Progress: CAP-041 Response Validator** (orchestrator built + tested, not
-  wired), **CAP-060 CP1 Validator** (partial code).
-- **Planned: CAP-044…050** — the remaining validation layers, in Rule Catalog
-  order, after Syntax.
+- **Complete: CAP-041 Response Validator — wired end-to-end.** The composition
+  root (`validation/response/validator_factory.py`) assembles the fully-wired
+  validator; `PlatformContext` is the single construction hub; the CLI `--validate`
+  phase builds the `ValidationInput` via the `ResponseNormalizer` and runs it. The
+  complete `ValidationResult` is persisted (`validation_result.json`) and rendered
+  (`validation_report.md`).
+- **Complete: CAP-043 Syntax Layer.** `SYNTAX-0001…0003` implemented + tested.
+- **Complete: CAP-052 Validation Profiles.** Governed, immutable rule-selection
+  identities (`default`, `strict`, `transport-only`, `syntax-only`, `schema-only`,
+  `content-review`) owned by the `ValidationProfileRegistry`; the Validation Factory
+  builds a registry per profile; ordering stays governed by `LAYER_ORDER`. Selected
+  via CLI `--validation-profile`. Orchestration only — rules are unaware of profiles.
+- **Partially implemented: CAP-044 Schema** (`SCHEMA-0001/0002/0004`; `0003`
+  deferred), **CAP-046 Content** (`CONTENT-0001/0002`), **CAP-049 Reasoning**
+  (`REASONING-0002`).
+- **In Progress: CAP-060 CP1 Validator** (partial code).
+- **Planned / Deferred: CAP-045 Structural, CAP-047 Evidence, CAP-048
+  Traceability, CAP-050 Business Rule** — awaiting governed schema enrichment and
+  cataloguing ADRs.
 - **Governed deferral (ADR-0005): `SCHEMA-0003` (EnumerationsRule).** Within the
   Schema Layer (CAP-044), `SCHEMA-0003` is **Reserved · Deferred · Awaiting governed
   enumeration** — the governed response schema (`summary` + five string-arrays) has no

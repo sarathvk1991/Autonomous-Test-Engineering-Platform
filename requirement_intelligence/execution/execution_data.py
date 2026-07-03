@@ -50,6 +50,12 @@ class ExecutionData:
         validation was executed for this run (``--validate`` on a live analysis).
         ``None`` when validation was not executed (default runs, dry runs). The
         execution package owns persistence; it serialises this object as-is.
+    validation_profile:
+        The governed ``ValidationProfileDefinition`` that selected the executed
+        rules, when validation was executed. ``None`` when validation was not
+        executed. Recorded alongside the result so the report can display it; the
+        profile identity also rides inside the ``ValidationResult`` (its
+        configuration metadata), so persistence needs no separate field.
     """
 
     selected: Any
@@ -66,6 +72,7 @@ class ExecutionData:
     source_artifact_count: int | None = None
     consolidated_artifacts: list[Any] = field(default_factory=list)
     validation_result: Any | None = None
+    validation_profile: Any | None = None
 
     @property
     def full_prompt(self) -> str:

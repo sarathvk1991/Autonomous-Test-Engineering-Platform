@@ -26,9 +26,14 @@ from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
 from requirement_intelligence.registry.connector_registry import ConnectorRegistry
+from requirement_intelligence.validation.profiles import (
+    ValidationProfileDefinition,
+    ValidationProfileRegistry,
+)
 from requirement_intelligence.validation.response import (
     ResponseValidator,
     build_response_validator,
+    build_response_validator_for_profile,
 )
 
 
@@ -93,3 +98,27 @@ class PlatformContext:
         no configuration of its own.
         """
         return build_response_validator()
+
+    def get_validation_profile(
+        self, name: str | None = None
+    ) -> ValidationProfileDefinition:
+        """Return the governed Validation Profile for *name* (default when ``None``).
+
+        Delegates to the :class:`ValidationProfileRegistry`, the sole owner of the
+        immutable governed profile definitions. This method owns only selection — it
+        never defines profiles, constructs validators, or executes validation.
+        """
+        return ValidationProfileRegistry().get(name)
+
+    def create_response_validator_for_profile(
+        self, profile: ValidationProfileDefinition
+    ) -> ResponseValidator:
+        """Return a :class:`ResponseValidator` wired for *profile*.
+
+        Pure composition: delegates to the Validation Factory
+        (:func:`~requirement_intelligence.validation.response.build_response_validator_for_profile`),
+        which builds a registry containing exactly the profile's implemented rules
+        and the validator over it. Rule ordering remains governed by ``LAYER_ORDER``;
+        the profile only narrows the rule set. This method owns only composition.
+        """
+        return build_response_validator_for_profile(profile)

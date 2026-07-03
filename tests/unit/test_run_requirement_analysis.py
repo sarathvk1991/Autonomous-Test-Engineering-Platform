@@ -180,6 +180,12 @@ class FakeContext:
         # Faithful drop-in: the real hub composes the fully-wired validator.
         return PlatformContext().create_response_validator()
 
+    def get_validation_profile(self, name: str | None = None) -> Any:
+        return PlatformContext().get_validation_profile(name)
+
+    def create_response_validator_for_profile(self, profile: Any) -> Any:
+        return PlatformContext().create_response_validator_for_profile(profile)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -878,12 +884,15 @@ def test_validation_phase_executes_all_13_rules(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     # End-to-end through the CLI seam: normalize -> ValidationInput -> validate.
-    cli.run_validation_phase(PlatformContext(), _real_analysis_result(), cli.Console())
+    ctx = PlatformContext()
+    profile = ctx.get_validation_profile("default")
+    cli.run_validation_phase(ctx, _real_analysis_result(), cli.Console(), profile)
     out = capsys.readouterr().out
     assert "Running Response Validation" in out
     assert "Rules Executed      : 13" in out
     assert "Issues Found        : 0" in out
     assert "Overall Verdict : passed" in out
+    assert "Validation Profile  : default" in out
 
 
 @pytest.mark.unit
@@ -896,12 +905,13 @@ def test_validation_phase_obtains_validator_only_from_context() -> None:
         def __init__(self) -> None:
             self.calls = 0
 
-        def create_response_validator(self) -> Any:
+        def create_response_validator_for_profile(self, profile: Any) -> Any:
             self.calls += 1
-            return real.create_response_validator()
+            return real.create_response_validator_for_profile(profile)
 
     ctx = HubContext()
-    cli.run_validation_phase(ctx, _real_analysis_result(), cli.Console())
+    profile = real.get_validation_profile("default")
+    cli.run_validation_phase(ctx, _real_analysis_result(), cli.Console(), profile)
     assert ctx.calls == 1
 
 
@@ -909,19 +919,20 @@ def test_validation_phase_obtains_validator_only_from_context() -> None:
 def test_validate_flag_invokes_validation_phase_with_context(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    calls: list[tuple[Any, Any]] = []
+    calls: list[tuple[Any, Any, Any]] = []
     monkeypatch.setattr(
         cli,
         "run_validation_phase",
-        lambda ctx, result, console: calls.append((ctx, result)),
+        lambda ctx, result, console, profile: calls.append((ctx, result, profile)),
     )
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=FakeResult())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
     assert len(calls) == 1
-    ctx, result = calls[0]
+    ctx, result, profile = calls[0]
     assert isinstance(ctx, FakeContext)  # the single hub is threaded through
     assert isinstance(result, FakeResult)
+    assert profile.name == "default"  # default profile resolved when flag omitted
 
 
 @pytest.mark.unit
@@ -987,6 +998,28 @@ def _real_validation_result(text: str = _GOVERNED_JSON) -> Any:
         analysis_result=analysis, normalization_result=normalization
     )
     return PlatformContext().create_response_validator().validate(validation_input)
+
+
+def _validation_input(text: str = _GOVERNED_JSON) -> Any:
+    """Build a canonical ValidationInput from a governed response *text*."""
+    from requirement_intelligence.normalization.framework.normalization_pipeline import (
+        NormalizationPipeline,
+    )
+    from requirement_intelligence.normalization.framework.normalization_registry import (
+        NormalizationRegistry,
+    )
+    from requirement_intelligence.normalization.models.normalization_configuration import (
+        NormalizationConfiguration,
+    )
+    from requirement_intelligence.normalization.response import ResponseNormalizer
+    from requirement_intelligence.validation import ValidationInput
+
+    analysis = _real_analysis_result(text)
+    registry = NormalizationRegistry()
+    normalization = ResponseNormalizer(
+        registry, NormalizationPipeline(registry), NormalizationConfiguration()
+    ).normalize(analysis.llm_response)
+    return ValidationInput(analysis_result=analysis, normalization_result=normalization)
 
 
 # --- ExecutionWriter: serialises the ValidationResult it receives -----------
@@ -1346,3 +1379,240 @@ def test_cli_validate_report_persists_into_saved_history(
     assert len(history_dirs) == 1
     assert (history_dirs[0] / _VALIDATION_REPORT).exists()
     assert (tmp_path / "latest" / _VALIDATION_REPORT).exists()
+
+
+# ===========================================================================
+# Validation Profiles (CAP-044) — governed, immutable rule-selection identities
+# ===========================================================================
+#
+# Profiles are orchestration only: the ValidationProfileRegistry owns the governed
+# definitions, the Validation Factory builds a registry for a profile, and the
+# profile narrows *which* rules run — never their order (LAYER_ORDER governs that).
+# Rules remain wholly unaware of profiles.
+
+# Expected rule set per governed profile, in Rule-Catalog order.
+_PROFILE_RULE_IDS = {
+    "default": _EXPECTED_RULE_IDS,
+    "strict": _EXPECTED_RULE_IDS,
+    "content-review": _EXPECTED_RULE_IDS,
+    "transport-only": ["TRANSPORT-0001", "TRANSPORT-0002", "TRANSPORT-0003", "TRANSPORT-0004"],
+    "syntax-only": [
+        "TRANSPORT-0001", "TRANSPORT-0002", "TRANSPORT-0003", "TRANSPORT-0004",
+        "SYNTAX-0001", "SYNTAX-0002", "SYNTAX-0003",
+    ],
+    "schema-only": [
+        "TRANSPORT-0001", "TRANSPORT-0002", "TRANSPORT-0003", "TRANSPORT-0004",
+        "SYNTAX-0001", "SYNTAX-0002", "SYNTAX-0003",
+        "SCHEMA-0001", "SCHEMA-0002", "SCHEMA-0004",
+    ],
+}
+
+
+# --- Registry: owns governed, immutable, non-alias definitions --------------
+
+
+@pytest.mark.unit
+def test_profile_registry_lists_all_governed_profiles() -> None:
+    from requirement_intelligence.validation.profiles import ValidationProfileRegistry
+
+    assert ValidationProfileRegistry().names() == [
+        "default",
+        "strict",
+        "transport-only",
+        "syntax-only",
+        "schema-only",
+        "content-review",
+    ]
+
+
+@pytest.mark.unit
+def test_profile_registry_get_default_and_unknown() -> None:
+    from requirement_intelligence.validation.profiles import (
+        UnknownValidationProfileError,
+        ValidationProfileRegistry,
+    )
+
+    registry = ValidationProfileRegistry()
+    assert registry.get().name == "default"  # None resolves to default
+    assert registry.get("strict").name == "strict"
+    with pytest.raises(UnknownValidationProfileError):
+        registry.get("nope")
+
+
+@pytest.mark.unit
+def test_profiles_are_distinct_identities_not_aliases() -> None:
+    # default, strict, and content-review share a rule set today but remain
+    # separate governed identities.
+    from requirement_intelligence.validation.profiles import ValidationProfileRegistry
+
+    registry = ValidationProfileRegistry()
+    default = registry.get("default")
+    strict = registry.get("strict")
+    content_review = registry.get("content-review")
+    assert default.name != strict.name != content_review.name
+    assert default.enabled_layers == strict.enabled_layers == content_review.enabled_layers
+    assert default is not strict
+
+
+# --- Factory / registry contents + ordering per profile ---------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("profile_name", list(_PROFILE_RULE_IDS))
+def test_profile_builds_expected_rule_set_in_order(profile_name: str) -> None:
+    ctx = PlatformContext()
+    profile = ctx.get_validation_profile(profile_name)
+    validator = ctx.create_response_validator_for_profile(profile)
+    assert validator._registry.list_rule_ids() == _PROFILE_RULE_IDS[profile_name]
+
+
+@pytest.mark.unit
+def test_profile_subsets_never_reorder_rules() -> None:
+    # Every profile's rules are a LAYER_ORDER-consistent prefix-by-layer subset of
+    # the full set — ordering is governed by LAYER_ORDER, not the profile.
+    ctx = PlatformContext()
+    for profile_name, expected in _PROFILE_RULE_IDS.items():
+        ids = ctx.create_response_validator_for_profile(
+            ctx.get_validation_profile(profile_name)
+        )._registry.list_rule_ids()
+        assert ids == [rid for rid in _EXPECTED_RULE_IDS if rid in set(expected)]
+
+
+# --- Validator execution honours the profile's rule set ---------------------
+
+
+@pytest.mark.unit
+def test_transport_only_profile_executes_four_rules() -> None:
+    ctx = PlatformContext()
+    profile = ctx.get_validation_profile("transport-only")
+    result = ctx.create_response_validator_for_profile(profile).validate(
+        _validation_input(_GOVERNED_JSON)
+    )
+    assert result.validation_statistics.rules_executed == 4
+
+
+@pytest.mark.unit
+def test_schema_only_skips_content_and_reasoning_issues() -> None:
+    # The invalid response fails SCHEMA-0001, CONTENT-0002, REASONING-0002 under the
+    # full set; under schema-only only the Schema issue can be produced.
+    ctx = PlatformContext()
+    profile = ctx.get_validation_profile("schema-only")
+    result = ctx.create_response_validator_for_profile(profile).validate(
+        _validation_input(_INVALID_JSON)
+    )
+    rule_ids = {issue.rule_id for issue in result.validation_issues}
+    assert rule_ids == {"SCHEMA-0001"}
+    assert result.validation_statistics.rules_executed == 10
+
+
+@pytest.mark.unit
+def test_profile_identity_rides_into_validation_result() -> None:
+    # The selected profile is preserved on the ValidationResult (configuration
+    # metadata) — so validation_result.json contains it without touching a model.
+    ctx = PlatformContext()
+    profile = ctx.get_validation_profile("transport-only")
+    result = ctx.create_response_validator_for_profile(profile).validate(
+        _validation_input(_GOVERNED_JSON)
+    )
+    dumped = result.model_dump(mode="json", by_alias=True)
+    assert dumped["validationConfiguration"]["metadata"]["validationProfile"] == "transport-only"
+    assert dumped["validationConfiguration"]["enabledLayers"] == ["transport"]
+
+
+# --- PlatformContext is the single hub for profile selection ----------------
+
+
+@pytest.mark.unit
+def test_platform_context_owns_profile_selection() -> None:
+    from requirement_intelligence.validation.profiles import ValidationProfileDefinition
+    from requirement_intelligence.validation.response import ResponseValidator
+
+    ctx = PlatformContext()
+    profile = ctx.get_validation_profile("syntax-only")
+    assert isinstance(profile, ValidationProfileDefinition)
+    assert isinstance(ctx.create_response_validator_for_profile(profile), ResponseValidator)
+
+
+# --- CLI accepts --validation-profile ---------------------------------------
+
+
+@pytest.mark.unit
+def test_cli_parser_validation_profile_default_and_override() -> None:
+    assert cli.build_parser().parse_args(["analyze"]).validation_profile == "default"
+    args = cli.build_parser().parse_args(["analyze", "--validation-profile", "schema-only"])
+    assert args.validation_profile == "schema-only"
+
+
+@pytest.mark.unit
+def test_cli_unknown_profile_rejected(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    rc = cli.main(
+        ["analyze", "--validate", "--validation-profile", "nope", "--output-dir", str(tmp_path)]
+    )
+    assert rc == 2
+    assert "Unknown validation profile" in capsys.readouterr().err
+
+
+@pytest.mark.unit
+def test_cli_profile_selects_rule_subset_end_to_end(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert (
+        cli.main(
+            [
+                "analyze", "--validate", "--validation-profile", "transport-only",
+                "--output-dir", str(tmp_path / "executions"),
+            ]
+        )
+        == 0
+    )
+    latest = tmp_path / "latest"
+    on_disk = json.loads((latest / _VALIDATION_ARTIFACT).read_text())
+    assert on_disk["validationStatistics"]["rulesExecuted"] == 4
+    assert on_disk["validationConfiguration"]["metadata"]["validationProfile"] == "transport-only"
+    # The report displays the profile.
+    report = (latest / _VALIDATION_REPORT).read_text()
+    assert "| Validation Profile | transport-only |" in report
+    # The manifest records the requested profile (via command-line arguments).
+    manifest = _read_manifest(latest)
+    assert manifest["commandLineArguments"]["validation_profile"] == "transport-only"
+
+
+@pytest.mark.unit
+def test_cli_default_profile_runs_all_rules(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Backward compatible: omitting --validation-profile runs the full set.
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
+    on_disk = json.loads((tmp_path / "latest" / _VALIDATION_ARTIFACT).read_text())
+    assert on_disk["validationStatistics"]["rulesExecuted"] == len(_EXPECTED_RULE_IDS)
+    assert on_disk["validationConfiguration"]["metadata"]["validationProfile"] == "default"
+
+
+# --- Determinism ------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_profile_registry_selection_is_deterministic() -> None:
+    ctx = PlatformContext()
+    for profile_name in _PROFILE_RULE_IDS:
+        first = ctx.create_response_validator_for_profile(
+            ctx.get_validation_profile(profile_name)
+        )._registry.list_rule_ids()
+        second = ctx.create_response_validator_for_profile(
+            ctx.get_validation_profile(profile_name)
+        )._registry.list_rule_ids()
+        assert first == second

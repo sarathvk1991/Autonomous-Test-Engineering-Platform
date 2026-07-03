@@ -203,7 +203,9 @@ def _resolve_output_base(output_dir: str) -> Path:
     return base.resolve()
 
 
-def run_validation_phase(context: PlatformContext, result: Any, console: Console) -> Any:
+def run_validation_phase(
+    context: PlatformContext, result: Any, console: Console, profile: Any
+) -> Any:
     """Optional Response Validation phase (additive; default behaviour unchanged).
 
     Flow: Requirement Analysis -> Response Normalization -> Response Validator ->
@@ -214,8 +216,10 @@ def run_validation_phase(context: PlatformContext, result: Any, console: Console
     the Validator. It performs no validation and no judgment itself.
 
     The Validator is obtained from :class:`PlatformContext` — the single platform
-    construction hub — which composes the fully-wired validator (every implemented
-    rule, in Rule-Catalog order). The CLI performs no validator wiring of its own.
+    construction hub — which composes the validator for the selected governed
+    *profile* (CAP-044). The profile only narrows which rules run; ordering stays
+    governed by ``LAYER_ORDER``. The CLI performs no validator wiring of its own and
+    chooses no rules itself.
 
     Returns the complete ``ValidationResult`` so the caller can hand it to the
     execution package for persistence (CAP-042). The CLI neither inspects nor mutates
@@ -250,13 +254,14 @@ def run_validation_phase(context: PlatformContext, result: Any, console: Console
         normalization_result=normalization_result,
     )
 
-    validator = context.create_response_validator()
+    validator = context.create_response_validator_for_profile(profile)
 
     validation = validator.validate(validation_input)
     summary = validation.validation_summary
     statistics = validation.validation_statistics
 
     console.ok(f"Overall Verdict : {validation.overall_verdict}")
+    console.note(f"  Validation Profile  : {profile.name}")
     console.note(f"  Rules Executed      : {statistics.rules_executed}")
     console.note(f"  Issues Found        : {summary.total_issues}")
     console.note(f"  Validation Duration : {statistics.validation_duration_ms:.2f} ms")
@@ -289,6 +294,21 @@ def handle_analyze(args: argparse.Namespace) -> int:
         return 2
 
     context = PlatformContext()
+
+    # Resolve the governed Validation Profile up-front (fail fast on an unknown
+    # name), only when validation is requested. PlatformContext owns selection;
+    # the CLI just names the desired profile.
+    validation_profile: Any = None
+    if getattr(args, "validate", False):
+        from requirement_intelligence.validation.profiles import (
+            UnknownValidationProfileError,
+        )
+
+        try:
+            validation_profile = context.get_validation_profile(args.validation_profile)
+        except UnknownValidationProfileError as exc:
+            console.error(str(exc))
+            return 2
 
     try:
         source_count, consolidated = run_engineering_pipeline(context, console)
@@ -335,7 +355,9 @@ def handle_analyze(args: argparse.Namespace) -> int:
     validation_result: Any = None
     if getattr(args, "validate", False) and result is not None:
         try:
-            validation_result = run_validation_phase(context, result, console)
+            validation_result = run_validation_phase(
+                context, result, console, validation_profile
+            )
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Response validation failed: {exc}")
 
@@ -353,6 +375,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         source_artifact_count=source_count,
         consolidated_artifacts=consolidated,
         validation_result=validation_result,
+        validation_profile=validation_profile if validation_result is not None else None,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)
@@ -528,6 +551,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--validate",
         action="store_true",
         help="After a live analysis, run the Response Validator and show the validation summary.",
+    )
+    analyze.add_argument(
+        "--validation-profile",
+        default="default",
+        help=(
+            "Governed validation profile selecting which layers' rules run "
+            "(default: default). Choices: default, strict, transport-only, "
+            "syntax-only, schema-only, content-review. Requires --validate."
+        ),
     )
     analyze.add_argument("--verbose", action="store_true", help="Display detailed progress output.")
     analyze.set_defaults(func=handle_analyze)

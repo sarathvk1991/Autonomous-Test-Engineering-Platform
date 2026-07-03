@@ -27,13 +27,33 @@ designed to receive.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from requirement_intelligence.validation.models.validation_configuration import (
     ValidationConfiguration,
 )
+from requirement_intelligence.validation.profiles import ValidationProfileDefinition
 from requirement_intelligence.validation.response.response_validator import ResponseValidator
 from requirement_intelligence.validation.rules import register_all_rules
+from requirement_intelligence.validation.rules.content import register_content_rules
+from requirement_intelligence.validation.rules.reasoning import register_reasoning_rules
+from requirement_intelligence.validation.rules.schema import register_schema_rules
+from requirement_intelligence.validation.rules.syntax import register_syntax_rules
+from requirement_intelligence.validation.rules.transport import register_transport_rules
 from requirement_intelligence.validation.validation_pipeline import ValidationPipeline
 from requirement_intelligence.validation.validation_registry import ValidationRegistry
+from requirement_intelligence.validation.validation_rule_layer import ValidationLayer
+
+# Maps each implemented layer to its frozen per-layer registration helper. A
+# profile selects a subset of layers; the factory registers exactly those layers'
+# rules. Ordering is unaffected — the registry always sorts by ``LAYER_ORDER``.
+_LAYER_REGISTRARS: dict[ValidationLayer, Callable[[ValidationRegistry], None]] = {
+    ValidationLayer.TRANSPORT: register_transport_rules,
+    ValidationLayer.SYNTAX: register_syntax_rules,
+    ValidationLayer.SCHEMA: register_schema_rules,
+    ValidationLayer.CONTENT: register_content_rules,
+    ValidationLayer.REASONING: register_reasoning_rules,
+}
 
 
 def build_validation_registry() -> ValidationRegistry:
@@ -93,4 +113,51 @@ def build_response_validator(
     registry = build_validation_registry()
     pipeline = ValidationPipeline(registry)
     platform_defaults = configuration if configuration is not None else ValidationConfiguration()
+    return ResponseValidator(registry, pipeline, platform_defaults)
+
+
+def build_validation_registry_for_profile(
+    profile: ValidationProfileDefinition,
+) -> ValidationRegistry:
+    """Return a fresh registry populated with the *profile*'s implemented rules.
+
+    Registers only the per-layer helpers for the profile's ``enabled_layers``; the
+    factory adds no ordering or selection logic of its own. The registry sorts
+    retrieved rules by ``LAYER_ORDER``, so the profile narrows the rule set without
+    ever changing rule order. The registry is returned open (unsealed); the caller
+    or its pipeline seals it.
+    """
+    registry = ValidationRegistry()
+    for layer in profile.enabled_layers:
+        registrar = _LAYER_REGISTRARS.get(layer)
+        if registrar is not None:
+            registrar(registry)
+    return registry
+
+
+def build_response_validator_for_profile(
+    profile: ValidationProfileDefinition,
+    configuration: ValidationConfiguration | None = None,
+) -> ResponseValidator:
+    """Return a ready :class:`ResponseValidator` for *profile*.
+
+    Assembles a registry containing exactly the profile's implemented rules, the
+    pipeline over it, and the validator. When no *configuration* is supplied, a
+    default configuration is used whose ``enabled_layers`` mirror the profile and
+    whose ``metadata`` records the governed profile identity under
+    ``"validationProfile"`` — so the selected profile is preserved, unaltered, on
+    the resulting ``ValidationResult`` (and thus in ``validation_result.json``)
+    without any change to a canonical model. The factory owns composition only; it
+    holds no profile definitions.
+    """
+    registry = build_validation_registry_for_profile(profile)
+    pipeline = ValidationPipeline(registry)
+    platform_defaults = (
+        configuration
+        if configuration is not None
+        else ValidationConfiguration(
+            enabled_layers=tuple(profile.enabled_layers),
+            metadata={"validationProfile": profile.name},
+        )
+    )
     return ResponseValidator(registry, pipeline, platform_defaults)
