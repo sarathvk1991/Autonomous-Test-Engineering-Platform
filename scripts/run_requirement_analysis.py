@@ -203,7 +203,7 @@ def _resolve_output_base(output_dir: str) -> Path:
     return base.resolve()
 
 
-def run_validation_phase(result: Any, console: Console) -> None:
+def run_validation_phase(context: PlatformContext, result: Any, console: Console) -> None:
     """Optional Response Validation phase (additive; default behaviour unchanged).
 
     Flow: Requirement Analysis -> Response Normalization -> Response Validator ->
@@ -212,9 +212,13 @@ def run_validation_phase(result: Any, console: Console) -> None:
     not a bare ``AnalysisResult``. This CLI acts as the *handoff seam* (ADR-0003 §4):
     it normalizes the response once, binds the ``ValidationInput``, and hands it to
     the Validator. It performs no validation and no judgment itself.
+
+    The Validator is obtained from :class:`PlatformContext` — the single platform
+    construction hub — which composes the fully-wired validator (every implemented
+    rule, in Rule-Catalog order). The CLI performs no validator wiring of its own.
     """
-    # Imported lazily so the default analysis path never pays for the validation or
-    # normalization subsystems, and so this phase is wholly opt-in.
+    # Imported lazily so the default analysis path never pays for the normalization
+    # subsystem, and so this phase is wholly opt-in.
     from requirement_intelligence.normalization.framework.normalization_pipeline import (
         NormalizationPipeline,
     )
@@ -225,14 +229,7 @@ def run_validation_phase(result: Any, console: Console) -> None:
         NormalizationConfiguration,
     )
     from requirement_intelligence.normalization.response import ResponseNormalizer
-    from requirement_intelligence.validation import (
-        ValidationConfiguration,
-        ValidationInput,
-        ValidationPipeline,
-        ValidationRegistry,
-    )
-    from requirement_intelligence.validation.response import ResponseValidator
-    from requirement_intelligence.validation.rules.transport import register_transport_rules
+    from requirement_intelligence.validation import ValidationInput
 
     console.action("\nRunning Response Validation")
 
@@ -249,10 +246,7 @@ def run_validation_phase(result: Any, console: Console) -> None:
         normalization_result=normalization_result,
     )
 
-    registry = ValidationRegistry()
-    register_transport_rules(registry)
-    pipeline = ValidationPipeline(registry)
-    validator = ResponseValidator(registry, pipeline, ValidationConfiguration())
+    validator = context.create_response_validator()
 
     validation = validator.validate(validation_input)
     summary = validation.validation_summary
@@ -366,7 +360,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # (never for --dry-run, which produces no response to validate).
     if getattr(args, "validate", False) and result is not None:
         try:
-            run_validation_phase(result, console)
+            run_validation_phase(context, result, console)
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Response validation failed: {exc}")
     return 0

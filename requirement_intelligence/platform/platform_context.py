@@ -26,6 +26,10 @@ from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
 from requirement_intelligence.registry.connector_registry import ConnectorRegistry
+from requirement_intelligence.validation.response import (
+    ResponseValidator,
+    build_response_validator,
+)
 
 
 class PlatformContext:
@@ -78,3 +82,14 @@ class PlatformContext:
             provider=provider,
             configuration=configuration,
         )
+
+    def create_response_validator(self) -> ResponseValidator:
+        """Return a fully wired :class:`ResponseValidator` over every implemented rule.
+
+        Pure composition: delegates to the validation subsystem's composition root
+        :func:`~requirement_intelligence.validation.response.build_response_validator`,
+        which assembles the registry, pipeline, and validator. This method owns only
+        dependency composition — it introduces no validation logic, no caching, and
+        no configuration of its own.
+        """
+        return build_response_validator()

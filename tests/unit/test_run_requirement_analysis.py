@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.analysis.requirement_analysis_service import (
     RequirementAnalysisService,
 )
@@ -36,6 +37,7 @@ from requirement_intelligence.execution.execution_metrics import (
     engineering_metrics,
     execution_package_identifier,
 )
+from requirement_intelligence.llm.llm_models import LLMResponse
 from requirement_intelligence.platform import PlatformCapabilities, PlatformContext
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
@@ -172,6 +174,10 @@ class FakeContext:
         service.analyze.return_value = self._result
         return service
 
+    def create_response_validator(self) -> Any:
+        # Faithful drop-in: the real hub composes the fully-wired validator.
+        return PlatformContext().create_response_validator()
+
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -244,6 +250,11 @@ def test_platform_context_constructs_components() -> None:
         ctx.create_prompt_builder(), provider, config
     )
     assert isinstance(service, RequirementAnalysisService)
+
+    # PlatformContext is the single construction hub for the Response Validator too.
+    from requirement_intelligence.validation.response import ResponseValidator
+
+    assert isinstance(ctx.create_response_validator(), ResponseValidator)
 
 
 # ===========================================================================
@@ -765,3 +776,174 @@ def test_named_execution_collision_never_overwrites(
     )
     assert (base / "prompt-v1.1" / "sentinel.txt").read_text() == "keep"
     assert (base / "prompt-v1.1-1" / "manifest.json").exists()
+
+
+# ===========================================================================
+# Response Validation phase (CAP-041) — PlatformContext-owned wiring
+# ===========================================================================
+#
+# CAP-041 is pure orchestration: the CLI no longer wires a validator by hand.
+# It asks PlatformContext — the single construction hub — for a fully-wired
+# ResponseValidator and hands it the canonical ValidationInput (ADR-0003 seam).
+
+# The full set of implemented rules, in Rule-Catalog order
+# (Transport -> Syntax -> Schema -> Content -> Reasoning).
+_EXPECTED_RULE_IDS = [
+    "TRANSPORT-0001",
+    "TRANSPORT-0002",
+    "TRANSPORT-0003",
+    "TRANSPORT-0004",
+    "SYNTAX-0001",
+    "SYNTAX-0002",
+    "SYNTAX-0003",
+    "SCHEMA-0001",
+    "SCHEMA-0002",
+    "SCHEMA-0004",
+    "CONTENT-0001",
+    "CONTENT-0002",
+    "REASONING-0002",
+]
+
+_DEFERRED_RULE_IDS = [
+    "SCHEMA-0003",
+    "CONTENT-0003",
+    "CONTENT-0004",
+    "REASONING-0001",
+    "REASONING-0003",
+]
+
+# A fully-conformant governed response — passes every implemented rule.
+_GOVERNED_JSON = json.dumps(
+    {
+        "summary": "s",
+        "functional_requirements": ["fr"],
+        "security_requirements": ["sr"],
+        "quality_requirements": ["qr"],
+        "risks": ["r"],
+        "recommendations": ["rec"],
+    }
+)
+
+
+def _real_analysis_result(text: str = _GOVERNED_JSON) -> AnalysisResult:
+    """A genuine AnalysisResult so the real normalizer + validator run end-to-end."""
+    response = LLMResponse(provider="gemini", model="model", generated_text=text)
+    return AnalysisResult(
+        analysis_id="AN-1",
+        execution_id="EX-1",
+        source_consolidated_id="C-1",
+        prompt_version="p1",
+        reasoning_contract_version="r1",
+        provider="gemini",
+        model="model",
+        started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        completed_at=datetime(2026, 1, 1, tzinfo=UTC),
+        duration_ms=1.0,
+        llm_response=response,
+    )
+
+
+@pytest.mark.unit
+def test_create_response_validator_returns_wired_validator() -> None:
+    from requirement_intelligence.validation.response import ResponseValidator
+
+    validator = PlatformContext().create_response_validator()
+    assert isinstance(validator, ResponseValidator)
+
+
+@pytest.mark.unit
+def test_create_response_validator_wires_all_13_rules_in_order() -> None:
+    # A fully wired validator: every implemented rule, in Rule-Catalog order,
+    # identical to the validation subsystem's own composition root.
+    from requirement_intelligence.validation.response import build_validation_registry
+
+    validator = PlatformContext().create_response_validator()
+    assert validator._registry.rule_count() == 13
+    assert validator._registry.list_rule_ids() == _EXPECTED_RULE_IDS
+    assert validator._registry.list_rule_ids() == build_validation_registry().list_rule_ids()
+
+
+@pytest.mark.unit
+def test_create_response_validator_excludes_deferred_rules() -> None:
+    validator = PlatformContext().create_response_validator()
+    ids = set(validator._registry.list_rule_ids())
+    assert ids.isdisjoint(_DEFERRED_RULE_IDS)
+
+
+@pytest.mark.unit
+def test_validation_phase_executes_all_13_rules(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # End-to-end through the CLI seam: normalize -> ValidationInput -> validate.
+    cli.run_validation_phase(PlatformContext(), _real_analysis_result(), cli.Console())
+    out = capsys.readouterr().out
+    assert "Running Response Validation" in out
+    assert "Rules Executed      : 13" in out
+    assert "Issues Found        : 0" in out
+    assert "Overall Verdict : passed" in out
+
+
+@pytest.mark.unit
+def test_validation_phase_obtains_validator_only_from_context() -> None:
+    # Proves the CLI performs no wiring of its own: the validator comes solely
+    # from PlatformContext, the single construction hub.
+    real = PlatformContext()
+
+    class HubContext:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create_response_validator(self) -> Any:
+            self.calls += 1
+            return real.create_response_validator()
+
+    ctx = HubContext()
+    cli.run_validation_phase(ctx, _real_analysis_result(), cli.Console())
+    assert ctx.calls == 1
+
+
+@pytest.mark.unit
+def test_validate_flag_invokes_validation_phase_with_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[tuple[Any, Any]] = []
+    monkeypatch.setattr(
+        cli,
+        "run_validation_phase",
+        lambda ctx, result, console: calls.append((ctx, result)),
+    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=FakeResult())
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
+    assert len(calls) == 1
+    ctx, result = calls[0]
+    assert isinstance(ctx, FakeContext)  # the single hub is threaded through
+    assert isinstance(result, FakeResult)
+
+
+@pytest.mark.unit
+def test_default_run_does_not_validate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[Any] = []
+    monkeypatch.setattr(cli, "run_validation_phase", lambda *a: calls.append(a))
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=FakeResult())
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert cli.main(["analyze", "--output-dir", str(tmp_path / "executions")]) == 0
+    assert calls == []  # validation is opt-in
+
+
+@pytest.mark.unit
+def test_dry_run_with_validate_does_not_validate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[Any] = []
+    monkeypatch.setattr(cli, "run_validation_phase", lambda *a: calls.append(a))
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)])
+    assert (
+        cli.main(
+            ["analyze", "--dry-run", "--validate", "--output-dir", str(tmp_path / "executions")]
+        )
+        == 0
+    )
+    assert calls == []  # no response to validate on a dry run
