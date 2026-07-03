@@ -203,7 +203,7 @@ def _resolve_output_base(output_dir: str) -> Path:
     return base.resolve()
 
 
-def run_validation_phase(context: PlatformContext, result: Any, console: Console) -> None:
+def run_validation_phase(context: PlatformContext, result: Any, console: Console) -> Any:
     """Optional Response Validation phase (additive; default behaviour unchanged).
 
     Flow: Requirement Analysis -> Response Normalization -> Response Validator ->
@@ -216,6 +216,10 @@ def run_validation_phase(context: PlatformContext, result: Any, console: Console
     The Validator is obtained from :class:`PlatformContext` — the single platform
     construction hub — which composes the fully-wired validator (every implemented
     rule, in Rule-Catalog order). The CLI performs no validator wiring of its own.
+
+    Returns the complete ``ValidationResult`` so the caller can hand it to the
+    execution package for persistence (CAP-042). The CLI neither inspects nor mutates
+    it; persistence is owned by the execution package.
     """
     # Imported lazily so the default analysis path never pays for the normalization
     # subsystem, and so this phase is wholly opt-in.
@@ -256,6 +260,7 @@ def run_validation_phase(context: PlatformContext, result: Any, console: Console
     console.note(f"  Rules Executed      : {statistics.rules_executed}")
     console.note(f"  Issues Found        : {summary.total_issues}")
     console.note(f"  Validation Duration : {statistics.validation_duration_ms:.2f} ms")
+    return validation
 
 
 # ===========================================================================
@@ -321,6 +326,19 @@ def handle_analyze(args: argparse.Namespace) -> int:
         console.ok("Success")
         llm_request = prompt_request.to_llm_request(request_id=result.execution_id)
 
+    # Optional, opt-in Response Validation phase. Default behaviour is unchanged:
+    # validation runs only with --validate and only when a real result exists
+    # (never for --dry-run, which produces no response to validate). It is executed
+    # before the package is written so its complete ValidationResult is persisted
+    # into the execution package (CAP-042); the package owns persistence, the CLI
+    # only orchestrates.
+    validation_result: Any = None
+    if getattr(args, "validate", False) and result is not None:
+        try:
+            validation_result = run_validation_phase(context, result, console)
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Response validation failed: {exc}")
+
     data = ExecutionData(
         selected=selected,
         prompt_request=prompt_request,
@@ -334,6 +352,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         command_line_arguments=_serialise_args(args),
         source_artifact_count=source_count,
         consolidated_artifacts=consolidated,
+        validation_result=validation_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)
@@ -354,15 +373,6 @@ def handle_analyze(args: argparse.Namespace) -> int:
     if result is not None:
         console.note(f"  provider={args.provider} model={result.model}")
         console.note(f"  json_valid={write_result.json_valid}")
-
-    # Optional, opt-in Response Validation phase. Default behaviour is unchanged:
-    # validation runs only with --validate and only when a real result exists
-    # (never for --dry-run, which produces no response to validate).
-    if getattr(args, "validate", False) and result is not None:
-        try:
-            run_validation_phase(context, result, console)
-        except Exception as exc:  # surface but never fail the analysis run
-            console.error(f"Response validation failed: {exc}")
     return 0
 
 

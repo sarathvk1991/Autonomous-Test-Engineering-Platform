@@ -7,6 +7,7 @@ made and no real input files are read.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from datetime import UTC, datetime
@@ -215,7 +216,7 @@ def _dry_run_data(execution_name: str | None = None) -> ExecutionData:
     )
 
 
-def _live_data() -> ExecutionData:
+def _live_data(validation_result: Any = None) -> ExecutionData:
     return ExecutionData(
         selected=FakeArtifact("cons-a", quality=2),
         prompt_request=FakePromptRequest(),
@@ -227,6 +228,7 @@ def _live_data() -> ExecutionData:
         reasoning_contract_version="1.0.0",
         execution_name=None,
         command_line_arguments={},
+        validation_result=validation_result,
     )
 
 
@@ -947,3 +949,208 @@ def test_dry_run_with_validate_does_not_validate(
         == 0
     )
     assert calls == []  # no response to validate on a dry run
+
+
+# ===========================================================================
+# ValidationResult persistence (CAP-042) — the execution package owns storage
+# ===========================================================================
+#
+# CAP-042 is purely additive: when validation is executed, the complete
+# ValidationResult is serialised into the execution package as
+# ``validation_result.json``. The validator stays read-only; the ExecutionWriter
+# only serialises the result it is handed; the CLI only orchestrates.
+
+_VALIDATION_ARTIFACT = "validation_result.json"
+
+
+def _real_validation_result(text: str = _GOVERNED_JSON) -> Any:
+    """Produce a genuine ValidationResult via the real hub-wired validator."""
+    from requirement_intelligence.normalization.framework.normalization_pipeline import (
+        NormalizationPipeline,
+    )
+    from requirement_intelligence.normalization.framework.normalization_registry import (
+        NormalizationRegistry,
+    )
+    from requirement_intelligence.normalization.models.normalization_configuration import (
+        NormalizationConfiguration,
+    )
+    from requirement_intelligence.normalization.response import ResponseNormalizer
+    from requirement_intelligence.validation import ValidationInput
+
+    analysis = _real_analysis_result(text)
+    registry = NormalizationRegistry()
+    normalization = ResponseNormalizer(
+        registry, NormalizationPipeline(registry), NormalizationConfiguration()
+    ).normalize(analysis.llm_response)
+    validation_input = ValidationInput(
+        analysis_result=analysis, normalization_result=normalization
+    )
+    return PlatformContext().create_response_validator().validate(validation_input)
+
+
+# --- ExecutionWriter: serialises the ValidationResult it receives -----------
+
+
+@pytest.mark.unit
+def test_writer_persists_validation_result_when_present(tmp_path: Path) -> None:
+    validation = _real_validation_result()
+    result = ExecutionWriter().write(tmp_path, _live_data(validation_result=validation))
+
+    artifact = tmp_path / _VALIDATION_ARTIFACT
+    assert artifact.exists()
+    assert _VALIDATION_ARTIFACT in result.generated_artifacts
+    # The file is the ValidationResult serialised as-is (canonical camelCase JSON).
+    on_disk = json.loads(artifact.read_text())
+    assert on_disk == validation.model_dump(mode="json", by_alias=True)
+    assert on_disk["overallVerdict"] == "passed"
+    assert on_disk["validationStatistics"]["rulesExecuted"] == len(_EXPECTED_RULE_IDS)
+
+
+@pytest.mark.unit
+def test_writer_omits_validation_result_when_absent(tmp_path: Path) -> None:
+    # A live run without validation: no validation artifact, full package intact.
+    result = ExecutionWriter().write(tmp_path, _live_data())
+    assert not (tmp_path / _VALIDATION_ARTIFACT).exists()
+    assert _VALIDATION_ARTIFACT not in result.generated_artifacts
+    # Backward compatible: every classic live artifact is still written.
+    for name in (
+        "analysis_result.json",
+        "raw_llm_response.json",
+        "execution_summary.md",
+        "baseline_metrics.md",
+        "review.md",
+        "manifest.json",
+    ):
+        assert (tmp_path / name).exists()
+
+
+@pytest.mark.unit
+def test_writer_dry_run_never_persists_validation_result(tmp_path: Path) -> None:
+    # Dry runs produce no response and therefore never a validation artifact;
+    # the core-only artifact set is unchanged.
+    ExecutionWriter().write(tmp_path, _dry_run_data())
+    assert not (tmp_path / _VALIDATION_ARTIFACT).exists()
+    assert {p.name for p in tmp_path.iterdir()} == {
+        "consolidated_artifact.json",
+        "prompt.txt",
+        "llm_request.json",
+        "manifest.json",
+    }
+
+
+@pytest.mark.unit
+def test_manifest_references_validation_artifact(tmp_path: Path) -> None:
+    validation = _real_validation_result()
+    result = ExecutionWriter().write(tmp_path, _live_data(validation_result=validation))
+
+    entries = {a["name"]: a for a in result.manifest["generatedArtifacts"]}
+    assert _VALIDATION_ARTIFACT in entries
+    entry = entries[_VALIDATION_ARTIFACT]
+    # The manifest records the artifact's real size and content hash.
+    raw = (tmp_path / _VALIDATION_ARTIFACT).read_bytes()
+    assert entry["bytes"] == len(raw)
+    assert entry["sha256"] == hashlib.sha256(raw).hexdigest()
+    # Additive only: the manifest schema version is unchanged.
+    assert result.manifest["manifestSchemaVersion"] == "1.0.0"
+
+
+@pytest.mark.unit
+def test_manifest_omits_validation_artifact_when_absent(tmp_path: Path) -> None:
+    result = ExecutionWriter().write(tmp_path, _live_data())
+    names = [a["name"] for a in result.manifest["generatedArtifacts"]]
+    assert _VALIDATION_ARTIFACT not in names
+
+
+@pytest.mark.unit
+def test_validation_result_serialization_is_deterministic(tmp_path: Path) -> None:
+    validation = _real_validation_result()
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    ExecutionWriter().write(first, _live_data(validation_result=validation))
+    ExecutionWriter().write(second, _live_data(validation_result=validation))
+    assert (first / _VALIDATION_ARTIFACT).read_bytes() == (
+        second / _VALIDATION_ARTIFACT
+    ).read_bytes()
+
+
+@pytest.mark.unit
+def test_writer_does_not_mutate_validation_result(tmp_path: Path) -> None:
+    validation = _real_validation_result()
+    before = validation.model_copy(deep=True)
+    ExecutionWriter().write(tmp_path, _live_data(validation_result=validation))
+    assert validation == before
+
+
+# --- CLI end-to-end: persistence + history behaviour ------------------------
+
+
+@pytest.mark.unit
+def test_cli_validate_persists_validation_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
+
+    latest = tmp_path / "latest"
+    artifact = latest / _VALIDATION_ARTIFACT
+    assert artifact.exists()
+    manifest = _read_manifest(latest)
+    assert _VALIDATION_ARTIFACT in [a["name"] for a in manifest["generatedArtifacts"]]
+    on_disk = json.loads(artifact.read_text())
+    assert on_disk["overallVerdict"] == "passed"
+    assert on_disk["validationStatistics"]["rulesExecuted"] == len(_EXPECTED_RULE_IDS)
+
+
+@pytest.mark.unit
+def test_cli_live_without_validate_writes_no_validation_artifact(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert cli.main(["analyze", "--output-dir", str(tmp_path / "executions")]) == 0
+
+    latest = tmp_path / "latest"
+    assert not (latest / _VALIDATION_ARTIFACT).exists()
+    assert (latest / "analysis_result.json").exists()  # package otherwise intact
+
+
+@pytest.mark.unit
+def test_cli_dry_run_with_validate_writes_no_validation_artifact(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)])
+    assert (
+        cli.main(
+            ["analyze", "--dry-run", "--validate", "--output-dir", str(tmp_path / "executions")]
+        )
+        == 0
+    )
+    assert not (tmp_path / "latest" / _VALIDATION_ARTIFACT).exists()
+
+
+@pytest.mark.unit
+def test_cli_validate_persists_into_saved_history(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Execution history behaviour is unchanged: the artifact is persisted in the
+    # timestamped history copy and mirrored to latest/.
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    base = tmp_path / "executions"
+    assert (
+        cli.main(["analyze", "--validate", "--save-execution", "--output-dir", str(base)]) == 0
+    )
+
+    history_dirs = [p for p in base.iterdir() if p.is_dir()]
+    assert len(history_dirs) == 1
+    assert (history_dirs[0] / _VALIDATION_ARTIFACT).exists()
+    assert (tmp_path / "latest" / _VALIDATION_ARTIFACT).exists()

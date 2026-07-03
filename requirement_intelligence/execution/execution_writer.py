@@ -120,7 +120,13 @@ class ExecutionWriter:
         return _CORE_ARTIFACTS
 
     def _write_result(self, target_dir: Path, data: ExecutionData) -> tuple[str, ...]:
-        """Write the analysis result artifacts (live runs only)."""
+        """Write the analysis result artifacts (live runs only).
+
+        The optional ``validation_result.json`` is appended only when a
+        ``ValidationResult`` was supplied (i.e. validation was executed). The writer
+        performs no validation and no judgment — it serialises the result as-is, so
+        the execution package owns persistence while validation stays read-only.
+        """
         result = data.result
         _write_json(
             target_dir / "analysis_result.json",
@@ -137,7 +143,13 @@ class ExecutionWriter:
             self._metrics.build(data), encoding="utf-8"
         )
         (target_dir / "review.md").write_text(self._review.build(data), encoding="utf-8")
-        return _RESULT_ARTIFACTS
+        if data.validation_result is None:
+            return _RESULT_ARTIFACTS
+        _write_json(
+            target_dir / "validation_result.json",
+            data.validation_result.model_dump(mode="json", by_alias=True),
+        )
+        return (*_RESULT_ARTIFACTS, "validation_result.json")
 
     @staticmethod
     def _timestamps(data: ExecutionData) -> tuple[str, str]:

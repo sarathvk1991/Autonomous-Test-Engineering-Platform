@@ -45,6 +45,11 @@ class ExecutionData:
     consolidated_artifacts:
         The full list of consolidated artifacts the pipeline produced, used for
         engineering metrics (rank, group sizes). Empty when not supplied.
+    validation_result:
+        The complete ``ValidationResult`` produced by the Response Validator, when
+        validation was executed for this run (``--validate`` on a live analysis).
+        ``None`` when validation was not executed (default runs, dry runs). The
+        execution package owns persistence; it serialises this object as-is.
     """
 
     selected: Any
@@ -60,6 +65,7 @@ class ExecutionData:
     subcommand: str = "analyze"
     source_artifact_count: int | None = None
     consolidated_artifacts: list[Any] = field(default_factory=list)
+    validation_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:
