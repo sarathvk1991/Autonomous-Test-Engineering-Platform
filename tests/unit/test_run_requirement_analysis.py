@@ -33,6 +33,7 @@ from requirement_intelligence.execution import (
     ExecutionWriter,
     ManifestBuilder,
     ReviewBuilder,
+    ValidationReportBuilder,
 )
 from requirement_intelligence.execution.execution_metrics import (
     engineering_metrics,
@@ -1154,3 +1155,194 @@ def test_cli_validate_persists_into_saved_history(
     assert len(history_dirs) == 1
     assert (history_dirs[0] / _VALIDATION_ARTIFACT).exists()
     assert (tmp_path / "latest" / _VALIDATION_ARTIFACT).exists()
+
+
+# ===========================================================================
+# Validation report (CAP-043) — human-readable, presentation only
+# ===========================================================================
+#
+# CAP-043 is purely additive: whenever validation_result.json is written, the
+# ExecutionWriter also emits validation_report.md — a Markdown rendering derived
+# entirely from the ValidationResult. It executes nothing and derives no new
+# findings; it only formats what the result already contains.
+
+_VALIDATION_REPORT = "validation_report.md"
+
+# A response that fails three implemented rules across three layers.
+_INVALID_JSON = json.dumps(
+    {
+        "functional_requirements": ["A", "A"],
+        "security_requirements": [],
+        "quality_requirements": [],
+        "risks": [],
+        "recommendations": ["X", "X"],
+    }
+)
+
+
+# --- ExecutionWriter emits the report alongside the JSON --------------------
+
+
+@pytest.mark.unit
+def test_writer_emits_validation_report_when_present(tmp_path: Path) -> None:
+    validation = _real_validation_result()
+    result = ExecutionWriter().write(tmp_path, _live_data(validation_result=validation))
+
+    report = tmp_path / _VALIDATION_REPORT
+    assert report.exists()
+    assert _VALIDATION_REPORT in result.generated_artifacts
+    # It is written together with the canonical JSON, never on its own.
+    assert (tmp_path / _VALIDATION_ARTIFACT).exists()
+
+
+@pytest.mark.unit
+def test_writer_omits_report_when_validation_absent(tmp_path: Path) -> None:
+    result = ExecutionWriter().write(tmp_path, _live_data())
+    assert not (tmp_path / _VALIDATION_REPORT).exists()
+    assert _VALIDATION_REPORT not in result.generated_artifacts
+
+
+@pytest.mark.unit
+def test_writer_dry_run_never_emits_report(tmp_path: Path) -> None:
+    ExecutionWriter().write(tmp_path, _dry_run_data())
+    assert not (tmp_path / _VALIDATION_REPORT).exists()
+
+
+@pytest.mark.unit
+def test_manifest_includes_validation_report(tmp_path: Path) -> None:
+    validation = _real_validation_result()
+    result = ExecutionWriter().write(tmp_path, _live_data(validation_result=validation))
+
+    entries = {a["name"]: a for a in result.manifest["generatedArtifacts"]}
+    assert _VALIDATION_REPORT in entries
+    raw = (tmp_path / _VALIDATION_REPORT).read_bytes()
+    assert entries[_VALIDATION_REPORT]["bytes"] == len(raw)
+    assert entries[_VALIDATION_REPORT]["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert result.manifest["manifestSchemaVersion"] == "1.0.0"
+
+
+# --- Report content is faithful to the ValidationResult --------------------
+
+
+@pytest.mark.unit
+def test_report_reflects_passing_result() -> None:
+    validation = _real_validation_result()
+    report = ValidationReportBuilder().build(_live_data(validation_result=validation))
+    assert report.startswith("# Validation Report")
+    assert "**PASSED**" in report
+    assert f"| Rules Executed | {len(_EXPECTED_RULE_IDS)} |" in report
+    assert "| Issues Found | 0 |" in report
+    assert "_No issues found._" in report
+    # All five implemented layers appear in the layer summary.
+    for layer in ("Transport", "Syntax", "Schema", "Content", "Reasoning"):
+        assert f"| {layer} |" in report
+
+
+@pytest.mark.unit
+def test_report_reflects_failing_result_issues() -> None:
+    validation = _real_validation_result(_INVALID_JSON)
+    report = ValidationReportBuilder().build(_live_data(validation_result=validation))
+    assert "**FAILED**" in report
+    # Every issue in the result is rendered with its identity and guidance.
+    for issue in validation.validation_issues:
+        assert issue.rule_id in report
+        assert issue.message in report
+        assert issue.recommendation in report
+        assert issue.location in report
+    # Issues-by-layer roll-up counts match the result's own issues.
+    assert "| Schema | 1 |" in report
+    assert "| Content | 1 |" in report
+    assert "| Reasoning | 1 |" in report
+
+
+@pytest.mark.unit
+def test_report_only_contains_result_data() -> None:
+    # Statistics printed in the report come verbatim from the ValidationResult.
+    validation = _real_validation_result(_INVALID_JSON)
+    stats = validation.validation_statistics
+    report = ValidationReportBuilder().build(_live_data(validation_result=validation))
+    assert f"| Rules Passed | {stats.rules_passed} |" in report
+    assert f"| Rules Failed | {stats.rules_failed} |" in report
+    assert f"| Validator Version | {stats.validator_version} |" in report
+    assert validation.validation_id in report
+    assert validation.execution_id in report
+
+
+@pytest.mark.unit
+def test_report_is_deterministic_for_same_result() -> None:
+    validation = _real_validation_result(_INVALID_JSON)
+    builder = ValidationReportBuilder()
+    data = _live_data(validation_result=validation)
+    assert builder.build(data) == builder.build(data) == builder.build(data)
+
+
+@pytest.mark.unit
+def test_report_written_deterministically(tmp_path: Path) -> None:
+    validation = _real_validation_result(_INVALID_JSON)
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    ExecutionWriter().write(first, _live_data(validation_result=validation))
+    ExecutionWriter().write(second, _live_data(validation_result=validation))
+    assert (first / _VALIDATION_REPORT).read_bytes() == (second / _VALIDATION_REPORT).read_bytes()
+
+
+@pytest.mark.unit
+def test_report_does_not_mutate_validation_result(tmp_path: Path) -> None:
+    validation = _real_validation_result(_INVALID_JSON)
+    before = validation.model_copy(deep=True)
+    ExecutionWriter().write(tmp_path, _live_data(validation_result=validation))
+    ValidationReportBuilder().build(_live_data(validation_result=validation))
+    assert validation == before
+
+
+# --- CLI end-to-end + history / backward compatibility ----------------------
+
+
+@pytest.mark.unit
+def test_cli_validate_emits_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
+
+    latest = tmp_path / "latest"
+    assert (latest / _VALIDATION_REPORT).exists()
+    manifest = _read_manifest(latest)
+    assert _VALIDATION_REPORT in [a["name"] for a in manifest["generatedArtifacts"]]
+    assert (latest / _VALIDATION_REPORT).read_text().startswith("# Validation Report")
+
+
+@pytest.mark.unit
+def test_cli_live_without_validate_emits_no_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Backward compatible: an ordinary live run is byte-for-byte as before.
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    assert cli.main(["analyze", "--output-dir", str(tmp_path / "executions")]) == 0
+    assert not (tmp_path / "latest" / _VALIDATION_REPORT).exists()
+
+
+@pytest.mark.unit
+def test_cli_validate_report_persists_into_saved_history(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
+    )
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    base = tmp_path / "executions"
+    assert (
+        cli.main(["analyze", "--validate", "--save-execution", "--output-dir", str(base)]) == 0
+    )
+    history_dirs = [p for p in base.iterdir() if p.is_dir()]
+    assert len(history_dirs) == 1
+    assert (history_dirs[0] / _VALIDATION_REPORT).exists()
+    assert (tmp_path / "latest" / _VALIDATION_REPORT).exists()

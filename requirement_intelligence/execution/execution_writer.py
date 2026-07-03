@@ -25,6 +25,9 @@ from requirement_intelligence.execution.execution_summary_builder import (
 )
 from requirement_intelligence.execution.manifest_builder import ManifestBuilder
 from requirement_intelligence.execution.review_builder import ReviewBuilder
+from requirement_intelligence.execution.validation_report_builder import (
+    ValidationReportBuilder,
+)
 
 _CORE_ARTIFACTS = ("consolidated_artifact.json", "prompt.txt", "llm_request.json")
 _RESULT_ARTIFACTS = (
@@ -73,6 +76,7 @@ class ExecutionWriter:
         self._summary = ExecutionSummaryBuilder()
         self._metrics = BaselineMetricsBuilder()
         self._review = ReviewBuilder()
+        self._validation_report = ValidationReportBuilder()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -122,10 +126,12 @@ class ExecutionWriter:
     def _write_result(self, target_dir: Path, data: ExecutionData) -> tuple[str, ...]:
         """Write the analysis result artifacts (live runs only).
 
-        The optional ``validation_result.json`` is appended only when a
+        The optional ``validation_result.json`` (canonical persistence) and its
+        human-readable twin ``validation_report.md`` are appended only when a
         ``ValidationResult`` was supplied (i.e. validation was executed). The writer
-        performs no validation and no judgment — it serialises the result as-is, so
-        the execution package owns persistence while validation stays read-only.
+        performs no validation and no judgment — it serialises the result as-is and
+        renders a presentation-only report from it, so the execution package owns
+        persistence and reporting while validation stays read-only.
         """
         result = data.result
         _write_json(
@@ -149,7 +155,10 @@ class ExecutionWriter:
             target_dir / "validation_result.json",
             data.validation_result.model_dump(mode="json", by_alias=True),
         )
-        return (*_RESULT_ARTIFACTS, "validation_result.json")
+        (target_dir / "validation_report.md").write_text(
+            self._validation_report.build(data), encoding="utf-8"
+        )
+        return (*_RESULT_ARTIFACTS, "validation_result.json", "validation_report.md")
 
     @staticmethod
     def _timestamps(data: ExecutionData) -> tuple[str, str]:

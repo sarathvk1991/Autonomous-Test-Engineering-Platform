@@ -8,6 +8,7 @@ ManifestBuilder        — manifest.json.
 ExecutionSummaryBuilder— execution_summary.md.
 BaselineMetricsBuilder — baseline_metrics.md.
 ReviewBuilder          — review.md.
+ValidationReportBuilder— validation_report.md.
 """
 
 from requirement_intelligence.execution.baseline_metrics_builder import (
@@ -24,6 +25,9 @@ from requirement_intelligence.execution.execution_writer import (
 )
 from requirement_intelligence.execution.manifest_builder import ManifestBuilder
 from requirement_intelligence.execution.review_builder import ReviewBuilder
+from requirement_intelligence.execution.validation_report_builder import (
+    ValidationReportBuilder,
+)
 
 __all__ = [
     "BaselineMetricsBuilder",
@@ -34,4 +38,5 @@ __all__ = [
     "ExecutionWriter",
     "ManifestBuilder",
     "ReviewBuilder",
+    "ValidationReportBuilder",
 ]
