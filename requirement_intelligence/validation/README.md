@@ -3,9 +3,9 @@
 | Attribute | Value |
 | --------- | ----- |
 | Package | `requirement_intelligence/validation/` |
-| Status | Foundation — framework **frozen**; canonical models implemented; no rules yet |
+| Status | Operational — framework **frozen**; canonical models implemented; 13 rules across 5 layers (Transport, Syntax, Schema, Content, Reasoning); Response Validator wired end-to-end |
 | Governing specifications | `docs/architecture/ai-response-validation.md` · `docs/architecture/validation-canonical-models.md` |
-| Next task | Concrete validation rules + Response Validator orchestration |
+| Next task | Deferred rules/layers only, behind accepted/proposed ADRs (no foundational work remaining) |
 
 ---
 
@@ -18,9 +18,9 @@ test generation, or output writing may consume AI output that has not first
 passed through this layer.
 
 This package provides the **framework** — the extensible, deterministic
-infrastructure (rule contract, registry, pipeline) — and the **canonical
-information model** the framework produces.  It contains no actual validation
-logic yet; concrete rules arrive in a subsequent task.
+infrastructure (rule contract, registry, pipeline) — the **canonical
+information model** the framework produces, and the concrete rules that run on
+it: 13 rules across the Transport, Syntax, Schema, Content, and Reasoning layers.
 
 ---
 
@@ -36,10 +36,10 @@ services that consume its verdict:
    Validation Canonical Models ← ValidationIssue / Summary / Statistics /
           │                       Configuration / FrameworkMetadata / Result
           ▼
-   Validation Rules            ← concrete, per-layer rule implementations (future)
+   Validation Rules            ← concrete, per-layer rule implementations (13 rules)
           │
           ▼
-   Response Validator          ← assembles a pipeline from configuration (future)
+   Response Validator          ← assembles a pipeline from configuration (wired)
           │
           ▼
    Requirement Analysis Service ← upstream producer of the AnalysisResult that the

@@ -626,6 +626,11 @@ analyze OPTIONS
                          print a validation summary (rules executed, issues,
                          verdict, duration). Optional; default behaviour is
                          unchanged. Has no effect with --dry-run.
+  --validation-profile <name>
+                         Governed profile selecting which layers' rules run
+                         (default: default). Choices: default, strict,
+                         transport-only, syntax-only, schema-only,
+                         content-review. Requires --validate.
   --verbose              Detailed progress output.
 
 EXAMPLES

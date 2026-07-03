@@ -977,27 +977,7 @@ _VALIDATION_ARTIFACT = "validation_result.json"
 
 def _real_validation_result(text: str = _GOVERNED_JSON) -> Any:
     """Produce a genuine ValidationResult via the real hub-wired validator."""
-    from requirement_intelligence.normalization.framework.normalization_pipeline import (
-        NormalizationPipeline,
-    )
-    from requirement_intelligence.normalization.framework.normalization_registry import (
-        NormalizationRegistry,
-    )
-    from requirement_intelligence.normalization.models.normalization_configuration import (
-        NormalizationConfiguration,
-    )
-    from requirement_intelligence.normalization.response import ResponseNormalizer
-    from requirement_intelligence.validation import ValidationInput
-
-    analysis = _real_analysis_result(text)
-    registry = NormalizationRegistry()
-    normalization = ResponseNormalizer(
-        registry, NormalizationPipeline(registry), NormalizationConfiguration()
-    ).normalize(analysis.llm_response)
-    validation_input = ValidationInput(
-        analysis_result=analysis, normalization_result=normalization
-    )
-    return PlatformContext().create_response_validator().validate(validation_input)
+    return PlatformContext().create_response_validator().validate(_validation_input(text))
 
 
 def _validation_input(text: str = _GOVERNED_JSON) -> Any:

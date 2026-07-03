@@ -3,7 +3,7 @@
 | Attribute | Value |
 | --------- | ----- |
 | Package | `requirement_intelligence/validation/response/` |
-| Status | Implemented — orchestration layer; no validation rules yet |
+| Status | Implemented — orchestration layer; wired end-to-end over 13 rules across 5 layers, with a Validator Factory and governed Validation Profiles |
 | Governing specifications | `docs/architecture/response-validator.md` · `docs/architecture/validation-rule-catalog.md` · `docs/architecture/validation-canonical-models.md` · `docs/architecture/ai-response-validation.md` |
 | Public entry point | `ResponseValidator.validate(validation_input) -> ValidationResult` (ADR-0003) |
 
