@@ -4,6 +4,7 @@
 | --------- | ----- |
 | Document type | Engineering Governance / Freeze Register |
 | Status | Living document — governance artifact |
+| Governance baseline | **Validation Platform v1.0.0** (Git tag `v1.0.0-validation-platform`; see [release notes](../releases/v1.0.0-validation-platform.md)) |
 | Scope | Every frozen (or freeze-track) architectural contract in the platform |
 | Source of truth | The `docs/architecture/` specifications and the repository state |
 | Sibling documents | [Platform Capability Matrix](./platform-capability-matrix.md) · [Architecture Coverage Dashboard](./architecture-coverage-dashboard.md) |

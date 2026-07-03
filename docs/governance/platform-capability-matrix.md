@@ -4,6 +4,7 @@
 | --------- | ----- |
 | Document type | Engineering Governance / Executive Maturity View |
 | Status | Living document — governance artifact |
+| Governance baseline | **Validation Platform v1.0.0** (Git tag `v1.0.0-validation-platform`; see [release notes](../releases/v1.0.0-validation-platform.md)) |
 | Scope | Every major platform capability and its implementation maturity |
 | Source of truth | The repository — centralized version constants and actual code/tests |
 | Sibling documents | [Architecture Freeze Index](./architecture-freeze-index.md) · [Architecture Coverage Dashboard](./architecture-coverage-dashboard.md) |

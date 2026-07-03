@@ -4,6 +4,7 @@
 | --------- | ----- |
 | Document type | Engineering Governance / Coverage Dashboard |
 | Status | Living document — governance artifact |
+| Governance baseline | **Validation Platform v1.0.0** (Git tag `v1.0.0-validation-platform`; see [release notes](../releases/v1.0.0-validation-platform.md)) |
 | Scope | Lifecycle-stage coverage and implementation readiness for every capability |
 | Source of truth | The repository, via the Platform Capability Matrix |
 | Derived from | Platform Capability Matrix (shared Capability IDs) · Architecture Freeze Index |
