@@ -83,7 +83,7 @@ ARCHITECTURE_COMPONENTS: tuple[Capability, ...] = (
     Capability("Requirement Analysis Service", True, group="ai"),
     Capability("Execution Package", True, group="execution"),
     Capability("Requirement Analysis CLI", True, group="execution"),
-    Capability("Response Validator", False, group="future", note="Planned"),
+    Capability("Response Validator", True, group="ai"),
     Capability("CP1 Validator", False, group="future", note="Planned"),
     Capability("Feature Generator", False, group="future", note="Planned"),
     Capability("Test Generator", False, group="future", note="Planned"),

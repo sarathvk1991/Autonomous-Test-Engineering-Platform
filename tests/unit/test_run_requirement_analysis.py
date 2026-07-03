@@ -599,7 +599,7 @@ def test_version_groups_components(capsys: pytest.CaptureFixture[str]) -> None:
         assert group in out
     assert "✓ Connector Registry" in out
     assert "✓ Requirement Analysis CLI" in out
-    assert "○ Response Validator (Planned)" in out
+    assert "✓ Response Validator" in out
 
 
 @pytest.mark.unit

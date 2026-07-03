@@ -1,6 +1,6 @@
 # ADR 0003 — The Validation Input and the Normalization → Validation Handoff
 
-- **Status:** Proposed (awaiting ratification)
+- **Status:** Accepted
 - **Date:** 2026-07-02
 
 ## Context

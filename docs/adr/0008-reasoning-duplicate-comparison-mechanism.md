@@ -1,6 +1,6 @@
 # ADR 0008 — Reasoning Duplicate Comparison Mechanism (REASONING-0002)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-07-02
 
 ## Context
@@ -149,8 +149,8 @@ This ADR is **governance only**. It makes:
 - ✅ Semantic "duplicated conclusions" has a clean future home (its own ADR + governed
   mechanism) without disturbing `REASONING-0002`'s identity.
 - ✅ Ownership stays unique and layer placement unchanged (Catalog §3.1, §8.5, §8.8).
-- ⚠️ **Status is Proposed.** `REASONING-0002` is **not yet implementable** until this ADR is
-  Accepted. It is **not** marked implemented in governance.
+- ✅ **Status is Accepted.** `REASONING-0002` is implementable under this mechanism and is
+  **implemented + tested**; it is marked implemented in governance.
 - ⚠️ **Version impact:** this ADR clarifies the comparison mechanism of an existing
   catalogued rule without changing its concern's *meaning*, severity, blocking, identity,
   number, or any canonical model. On acceptance it advances **no** version (Rule Catalog
@@ -160,17 +160,15 @@ This ADR is **governance only**. It makes:
 
 ## Governance registration
 
-On this ADR being recorded (Proposed), the following governance documents register it (no
+On this ADR being Accepted, the following governance documents register it (no
 code, no Rule Catalog, no contract, no canonical-model changes):
 
 - `docs/governance/architecture-freeze-index.md` — §6 Relationship to ADRs registers
   ADR-0008; the Validation Rule Catalog artifact row references it.
 - `docs/governance/platform-capability-matrix.md` — the CAP-049 (Reasoning Layer) note
-  records the proposed byte-exact mechanism for `REASONING-0002`; it is **not** marked
-  implemented.
+  records the byte-exact mechanism for `REASONING-0002`; it is marked **implemented**.
 - `docs/governance/architecture-coverage-dashboard.md` — the readiness notes record the
-  proposed mechanism and that `REASONING-0002` becomes implementable **only after** this ADR
-  is Accepted.
+  byte-exact mechanism and that `REASONING-0002` is **implemented** under it.
 
 ## Scope note
 

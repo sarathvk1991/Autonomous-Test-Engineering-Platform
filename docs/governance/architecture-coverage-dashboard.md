@@ -96,20 +96,21 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 
 ## 5. Overall coverage summary
 
-Objective counts across all **29** capabilities (no percentages estimated). For
+Objective counts across all **30** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 28 | 1 | 0 | Partial: CAP-060. |
-| **Framework** | 29 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 29 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 19 | 2 | 8 | `✗`: CAP-043…050. Partial: CAP-041, CAP-060. |
-| **Testing** | 17 | 3 | 9 | `✗`: CAP-043…050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 1 | 24 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
+| **Architecture** | 29 | 1 | 0 | Partial: CAP-060. |
+| **Framework** | 30 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 30 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 22 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
+| **Testing** | 22 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 1 | 25 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
 
-**Implementation Readiness distribution** (29 total): **Ready 20** · **In Progress
-2** (CAP-041, CAP-060) · **Blocked 0** · **Planned 7** (CAP-044…050).
+**Implementation Readiness distribution** (30 total): **Ready 22** · **In Progress
+4** (CAP-044, CAP-046, CAP-049, CAP-060) · **Blocked 0** · **Planned 4** (CAP-045,
+CAP-047, CAP-048, CAP-050).
 
 ## 6. Remaining architecture work
 
@@ -175,11 +176,11 @@ No other capability is missing architecture: every remaining `✗` is an
   future **schema-enrichment ADR** (structured response items + declared policies) unblocks
   most deferrals. This is intentional governance, **not** a coverage gap; no checkmarks
   change.
-- **Reasoning duplicate mechanism (ADR-0008, Proposed).** `REASONING-0002`
+- **Reasoning duplicate mechanism (ADR-0008, Accepted).** `REASONING-0002`
   (DuplicateRecommendationRule) has its comparison mechanism frozen as **byte-exact** string
   equality (case-/whitespace-sensitive, no normalization, no semantics) by ADR-0008 and is
-  **implemented**. Semantic "duplicated conclusions" detection remains a future capability
-  requiring its own ADR.
+  **implemented + tested**. Semantic "duplicated conclusions" detection remains a future
+  capability requiring its own ADR.
 - **Reasoning contradiction deferral (ADR-0009, Proposed).** `REASONING-0001`
   (ContradictoryRequirementRule) is **Reserved · Deferred**: contradiction is inherently
   semantic/logical and no governed **deterministic** mechanism exists (no faithful
@@ -198,7 +199,10 @@ No other capability is missing architecture: every remaining `✗` is an
   CAP-032 ResponseNormalizer, CAP-040 Validation Framework, CAP-042 Transport
   Layer.**
 
-> Readiness confirms the platform is positioned to **resume implementation**: the
-> Response Normalization milestone is complete, the next milestone (CAP-043 Syntax
-> Layer) is fully unblocked, and every downstream validation capability has complete
-> architecture waiting behind it.
+> Readiness confirms the deterministic validation initiative is **feature-complete
+> for the currently governed response schema**: Response Normalization, the Validation
+> Framework, the Response Validator (wired end-to-end with persistence + reporting),
+> five implemented layers (13 rules), and Validation Profiles are all complete. The
+> only remaining validation work is **governed-deferred** (Structural/Evidence/
+> Traceability/Business layers and the deferred rules) behind a future
+> schema-enrichment / semantic-reasoning ADR.

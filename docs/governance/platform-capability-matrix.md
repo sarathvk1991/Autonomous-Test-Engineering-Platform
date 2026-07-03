@@ -74,7 +74,7 @@ renumbering existing ones:
 | `CAP-010…019` | AI Generation | `CAP-010…014` | `CAP-015…019` |
 | `CAP-020…029` | Execution & Platform | `CAP-020…024` | `CAP-025…029` |
 | `CAP-030…039` | Response Normalization | `CAP-030…032` | `CAP-033…039` |
-| `CAP-040…059` | Validation | `CAP-040…050` | `CAP-051…059` |
+| `CAP-040…059` | Validation | `CAP-040…052` | `CAP-053…059` |
 | `CAP-060…` | Downstream / Future | `CAP-060` | `CAP-061…` |
 
 > An ID, once assigned, is **permanent**. A renamed capability keeps its ID; a
@@ -217,12 +217,12 @@ not applicable.
 | CAP-041 | Response Validator | Orchestrate validation over a `ValidationInput` (ADR-0003) | `VALIDATOR_VERSION` 1.0.0 · `RULE_CATALOG_VERSION` 1.0.0 | 1.0.0 | Implementation | Validation Framework, Canonical Models, ValidationInput (CAP-051) | None recorded | Production Ready | Complete | Orchestrator + tests (`validation/response/response_validator.py`); **wired end-to-end**: the composition root (`validator_factory`) assembles the fully-wired validator, `PlatformContext` is the single construction hub, and the CLI `--validate` phase builds the `ValidationInput` via the `ResponseNormalizer`. The complete `ValidationResult` is persisted (`validation_result.json`) and rendered (`validation_report.md`); governed Validation Profiles (CAP-052) select the rule subset. |
 | CAP-042 | Transport Layer | Validate delivery-boundary facts (exists, non-empty, no timeout, no failure) | Rules at `DEFAULT_RULE_VERSION` 1.0.0 | 1.0.0 | Implementation | Validation Framework, ValidationInput (CAP-051), `LLMResponse`/`ExecutionStatus` | None recorded | Frozen | Frozen | 4 rules (`TRANSPORT-0001…0004`) implemented + tested; **migrated to read `response.analysis_result`** under ADR-0003 (identity/severity/blocking unchanged). Rule Catalog §"Transport Layer Status — FROZEN". |
 | CAP-043 | Syntax Layer | Judge well-formedness from the Normalization Outcome + observations | Rules at `DEFAULT_RULE_VERSION` 1.0.0 | 1.0.0 | Implementation | Validation Framework, ValidationInput (CAP-051), ParsedResponse, `NormalizationResult` | None recorded | Production Ready | Complete | 3 rules (`SYNTAX-0001…0003`) implemented + tested. Rule Catalog §8.2 + Syntax Design Review define it; input path resolved by ADR-0003 (`ValidationInput`). |
-| CAP-044 | Schema Layer | Judge structure against the expected shape | `n/a` | Not Recorded | Implementation | Validation Framework, ParsedResponse | Implement `SCHEMA-0004` (next Schema milestone) | Architecture Complete | In Progress | `SCHEMA-0001` (RequiredSectionsRule) and `SCHEMA-0002` (FieldTypesRule) implemented + tested. **`SCHEMA-0003` (EnumerationsRule) is Reserved · Deferred · Awaiting governed enumeration (ADR-0005)** — the governed response schema has no enumerated field, so the rule has nothing to validate; its ID is frozen and never reused. `SCHEMA-0004` (RequiredArraysRule) is the next milestone. |
+| CAP-044 | Schema Layer | Judge structure against the expected shape | Rules at `DEFAULT_RULE_VERSION` 1.0.0 | 1.0.0 | Implementation | Validation Framework, ParsedResponse | None (`SCHEMA-0003` governed-deferred) | Implementation In Progress | In Progress | `SCHEMA-0001` (RequiredSectionsRule), `SCHEMA-0002` (FieldTypesRule), and `SCHEMA-0004` (RequiredArraysRule) implemented + tested. **`SCHEMA-0003` (EnumerationsRule) is Reserved · Deferred · Awaiting governed enumeration (ADR-0005)** — the governed response schema has no enumerated field, so the rule has nothing to validate; its ID is frozen and never reused. |
 | CAP-045 | Structural Layer | Judge composition/hierarchy/organization | `n/a` (not built) | Not Recorded | Implementation | Validation Framework, ParsedResponse | Await Structural cataloguing ADR | Architecture Complete | Deferred | Boundary frozen (ADR-0004); **no active catalogued rules** (`STRUCTURE-0001…0004` Deprecated). Concrete composition rules await a governed **composable/nested response** *and* a cataloguing ADR (ADR-0006 §D). |
-| CAP-046 | Content Layer | Judge content-level concerns | `n/a` (not built) | Not Recorded | Implementation | Validation Framework, ParsedResponse | Implement `CONTENT-0001`, `CONTENT-0002` | Architecture Complete | Partially Implementable | Per ADR-0006: **Implementable** `CONTENT-0001` (EmptyRequirement, **implemented**), `CONTENT-0002` (DuplicateRequirement — scope frozen **within-collection** by ADR-0007; ready to implement). **Reserved · Deferred** `CONTENT-0003` (no per-item description), `CONTENT-0004` (no per-item confidence). |
+| CAP-046 | Content Layer | Judge content-level concerns | Rules at `DEFAULT_RULE_VERSION` 1.0.0 | 1.0.0 | Implementation | Validation Framework, ParsedResponse | None (`CONTENT-0003/0004` deferred) | Implementation In Progress | In Progress | Per ADR-0006: `CONTENT-0001` (EmptyRequirement) **implemented + tested**, `CONTENT-0002` (DuplicateRequirement — scope frozen **within-collection** by ADR-0007) **implemented + tested**. **Reserved · Deferred** `CONTENT-0003` (no per-item description), `CONTENT-0004` (no per-item confidence). |
 | CAP-047 | Evidence Layer | Judge presence/adequacy of evidence | `n/a` (not built) | Not Recorded | Implementation | Validation Framework, ParsedResponse | Await schema enrichment | Architecture Complete | Deferred | Per ADR-0006: **all Reserved · Deferred** (`EVIDENCE-0001…0003`) — the governed response carries no per-item evidence reference. |
 | CAP-048 | Traceability Layer | Judge traceability of claims | `n/a` (not built) | Not Recorded | Implementation | Validation Framework, ParsedResponse | Await schema enrichment | Architecture Complete | Deferred | Per ADR-0006: **all Reserved · Deferred** (`TRACEABILITY-0001…0003`) — no per-item source/trace linkage in the governed response. |
-| CAP-049 | Reasoning Layer | Judge reasoning integrity | `n/a` (not built) | Not Recorded | Implementation | Validation Framework, ParsedResponse, Reasoning Contract | Implement `REASONING-0001…0003` | Architecture Complete | Implementable | Per ADR-0006 (as revised): **`REASONING-0002`** comparison mechanism frozen byte-exact by ADR-0008 — **implemented**. **`REASONING-0001`** (ContradictoryRequirement) is **Reserved · Deferred** by ADR-0009 (Proposed) — no governed deterministic contradiction mechanism. **`REASONING-0003`** (CircularLogic) is **Reserved · Deferred** by ADR-0010 (Proposed) — no governed deterministic mechanism (needs an inferential dependency structure the response lacks). Both supersede their ADR-0006 Implementable classifications. **Reasoning layer fully dispositioned: 0002 implemented; 0001 & 0003 deferred.** Semantic contradiction/coherence detection is a future capability behind a future ADR. |
+| CAP-049 | Reasoning Layer | Judge reasoning integrity | Rules at `DEFAULT_RULE_VERSION` 1.0.0 | 1.0.0 | Implementation | Validation Framework, ParsedResponse, Reasoning Contract | None (`REASONING-0001/0003` deferred) | Implementation In Progress | In Progress | Per ADR-0006 (as revised): **`REASONING-0002`** comparison mechanism frozen byte-exact by ADR-0008 — **implemented + tested**. **`REASONING-0001`** (ContradictoryRequirement) is **Reserved · Deferred** by ADR-0009 (Proposed) — no governed deterministic contradiction mechanism. **`REASONING-0003`** (CircularLogic) is **Reserved · Deferred** by ADR-0010 (Proposed) — no governed deterministic mechanism (needs an inferential dependency structure the response lacks). Both supersede their ADR-0006 Implementable classifications. **Reasoning layer fully dispositioned: 0002 implemented; 0001 & 0003 deferred.** Semantic contradiction/coherence detection is a future capability behind a future ADR. |
 | CAP-050 | Business Rule Layer | Judge domain/business-rule conformance | `n/a` (not built) | Not Recorded | Implementation | Validation Framework, ParsedResponse | Await governed policy | Architecture Complete | Deferred | Per ADR-0006: **all Reserved · Deferred** (`BUSINESS-0001…0004`) — no governed minimum/coverage/completeness policy exists to measure against. |
 | CAP-051 | ValidationInput (canonical input) | The immutable, execution-scoped binding of `AnalysisResult` + `NormalizationResult` consumed by validation (ADR-0003) | `VALIDATION_INPUT_VERSION` 1.0 | 1.0.0 | Shared | AnalysisResult, NormalizationResult (incl. ParsedResponse) | None recorded | Production Ready | Complete | `validation/models/validation_input.py`; implemented + tested (`tests/unit/test_validation_input.py`). Owns only the binding; references never copies. Governed by ADR-0003 + Canonical Models §8A. |
 | CAP-052 | Validation Profiles | Governed, immutable rule-selection identities (which layers' rules run) | `n/a` (orchestration) | 1.0.0 | Implementation | Validation Framework, Response Validator (CAP-041) | Add profiles additively as new layers land | Production Ready | Complete | `validation/profiles/` — `ValidationProfileRegistry` owns six governed profiles (`default`, `strict`, `transport-only`, `syntax-only`, `schema-only`, `content-review`); the Validation Factory builds a registry per profile; ordering stays governed by `LAYER_ORDER`. Orchestration only — rules are unaware of profiles. Selected via CLI `--validation-profile`; recorded in `validation_result.json` and `validation_report.md`. Distinct from the Response Validator's internal run-policy `ValidationProfile`. |
@@ -247,7 +247,7 @@ Objective counts, derived directly from the repository (no estimation):
 
 | View | Derivation | Result |
 | ---- | ---------- | ------ |
-| **Architecture capability catalogue** | `platform_metadata.ARCHITECTURE_COMPONENTS` with `available=True` | **10 of 14** components available (71.4%). Not available: Response Validator, CP1 Validator, Feature Generator, Test Generator. |
+| **Architecture capability catalogue** | `platform_metadata.ARCHITECTURE_COMPONENTS` with `available=True` | **11 of 14** components available (78.6%). Not available: CP1 Validator, Feature Generator, Test Generator. |
 | **Validation layers implemented** | Rule modules under `validation/rules/` | **5 of 9** layers have implemented rules (Transport, Syntax, Schema, Content, Reasoning) — **13 rules total**. Structural, Evidence, Traceability, and Business Rule are deferred (ADR-0005/0006/0009/0010). |
 | **Validation layers frozen** | Freeze statements in the Rule Catalog | **1 of 9** frozen (Transport); Syntax/Schema/Content/Reasoning implemented but not yet freeze-declared. |
 | **LLM providers active** | `platform_metadata.PROVIDERS` with `available=True` | **1 of 5** (Gemini; four reserved). |
@@ -263,9 +263,8 @@ Objective counts, derived directly from the repository (no estimation):
 
 ## 7. Implementation Roadmap
 
-Remaining milestones in **execution order** (no dates; grounded in the
-Response Normalization Contract §13, the Syntax Design Review, and the Rule
-Catalog layer order):
+The deterministic validation initiative is **feature-complete for the currently
+governed response schema**. The following milestones are **complete**:
 
 > **Completed:** **ResponseNormalizer (CAP-032)** — the concrete normalizer and the
 > five internal `NORMALIZATION-0001…0005` stages produce a real `ParsedResponse`,
@@ -273,19 +272,29 @@ Catalog layer order):
 
 > **Completed:** **ADR-0003 plumbing — `ValidationInput` (CAP-051)** — the canonical
 > Normalization → Validation input is implemented; the Response Validator and
-> Validation Pipeline consume it; the four Transport rules are migrated; tests and
-> Ruff are green. The Validation subsystem is now ready for the Syntax milestone.
+> Validation Pipeline consume it; the Transport rules are migrated.
 
-1. **Syntax Layer (CAP-043)** — implement `SYNTAX-0001…0003` (reads the
-   Normalization Outcome from `ParsedResponse` and observations from
-   `NormalizationResult`, both via the `ValidationInput`). **Unblocked** by CAP-032
-   and CAP-051 (ADR-0003).
-2. **Response Validator wiring (CAP-041)** — register the existing orchestrator as
-   a delivered platform capability and wire it end-to-end (CLI/platform catalogue).
-3. **Schema Layer (CAP-044)** — implement the Schema rules.
-4. **Structural → Content → Evidence → Traceability → Reasoning → Business Rule
-   (CAP-045…050)** — implement the remaining validation layers in Rule Catalog
-   order.
+> **Completed:** **Syntax Layer (CAP-043)** — `SYNTAX-0001…0003` implemented + tested.
+
+> **Completed:** **Response Validator wiring (CAP-041)** — the composition root
+> (`validator_factory`), `PlatformContext`, and the CLI `--validate` phase wire the
+> validator end-to-end; `ValidationResult` is persisted (`validation_result.json`)
+> and rendered (`validation_report.md`).
+
+> **Completed:** **Validation Profiles (CAP-052)** — six governed profiles select the
+> rule subset via CLI `--validation-profile`; ordering stays governed by `LAYER_ORDER`.
+
+Remaining validation work — **all governed-deferred pending a future
+schema-enrichment / semantic-reasoning ADR** (no dates; grounded in ADR-0005/0006/
+0009/0010 and the Rule Catalog layer order):
+
+1. **Schema `SCHEMA-0003`** — Reserved · Deferred (ADR-0005): no governed enumerated field.
+2. **Content `CONTENT-0003/0004`** — Reserved · Deferred (ADR-0006): no per-item
+   description/confidence in the governed response.
+3. **Reasoning `REASONING-0001/0003`** — Reserved · Deferred (ADR-0009/0010): no
+   governed deterministic contradiction/circular-logic mechanism.
+4. **Structural, Evidence, Traceability, Business Rule layers (CAP-045/047/048/050)** —
+   Deferred: await a governed composable/enriched response and a cataloguing ADR.
 
 > The roadmap lists only work with an existing architectural mandate. Downstream
 > layers named in the Architecture Overview (Feature/Test Generation, Execution,
