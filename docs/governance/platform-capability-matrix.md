@@ -236,6 +236,7 @@ not applicable.
 | -- | ---------- | :----------: | :-------: | :--------------: | :------------: | :-----: | :----: |
 | CAP-060 | CP1 Validator | ◑ | n/a | ✓ | ◑ | ✗ | ✗ |
 | CAP-062 | CP1 Canonical Models | ✓ | n/a | ✓ | ✓ | ✓ | ✗ |
+| CAP-063 | CP1 Framework | ✓ | ✓ | n/a | ✓ | ✓ | ✗ |
 
 **Governance**
 
@@ -243,6 +244,7 @@ not applicable.
 | -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
 | CAP-060 | CP1 Validator | Downstream quality gate consuming validated output | `n/a` (not built) | 1.0.0 | Implementation | Response Validator | None recorded | Implementation In Progress | Planned | `validators/cp1.py` present; platform catalogue lists CP1 Validator `Planned` — see consistency note. |
 | CAP-062 | CP1 Canonical Models | The immutable CP1 information models (`CP1Input`, `CP1Result`, `CP1Finding`) | `CP1_INPUT_VERSION` 1.0 · `CP1_RESULT_VERSION` 1.0 · `CP1_FINDING_VERSION` 1.0 | 1.0.0 | Shared | ValidationResult · NormalizationResult (CP1Input); `shared` ValidationVerdict | CP1 engine (later milestone) | Production Ready | Complete | `requirement_intelligence/cp1/models/` (first-class **CP1 subsystem**, mirroring `validation/` and `normalization/`); governed by ADR-0011; `CP1Input` mirrors `ValidationInput` (references both artifacts, same-execution integrity). Flat `CP1-NNNN` finding identity (ADR-0012). 100% unit-tested (`tests/unit/test_cp1_models.py`). `CAP-061` (Criteria Catalog) pending ADR-0012 acceptance. |
+| CAP-063 | CP1 Framework | Reusable, behaviour-free CP1 engine infrastructure (criterion contract, registry, pipeline, provenance) | `CP1_FRAMEWORK_VERSION` 1.0.0 · `CP1_PIPELINE_VERSION` 1.0.0 · `CP1_REGISTRY_VERSION` 1.0.0 | 1.0.0 | Framework | CP1 Canonical Models (CAP-062) | CP1 engine (verdict aggregation + `CP1Result` assembly) | Production Ready | Complete | `requirement_intelligence/cp1/framework/`; mirrors the frozen Validation Framework; **flat** `CP1-NNNN` registry (no layers, ADR-0012 §4); pipeline **collects findings, derives no verdict** (aggregation reserved to the engine, ADR-0012 §8). Behaviour-free — knows nothing about engineering readiness. 100% unit-tested (`tests/unit/test_cp1_framework.py`). No criterion exists (catalog empty). |
 
 ## 6. Overall Platform Health
 
