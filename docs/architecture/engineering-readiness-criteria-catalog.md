@@ -3,7 +3,7 @@
 | Attribute            | Value                                                              |
 | -------------------- | ------------------------------------------------------------------ |
 | Document type        | Solution Architecture Specification / Governing Criteria Catalog    |
-| Status               | Approved — foundational — established by **ADR-0012 (Accepted)**; capability **CAP-061**; **structure only, zero criteria defined** |
+| Status               | Approved — foundational — established by **ADR-0012 (Accepted)**; capability **CAP-061**; **one criterion defined — `CP1-0001` (Draft, governed by ADR-0013, Proposed); not implemented** |
 | Scope                | Every engineering-readiness criterion that may exist in the CP1 Validation Engine |
 | Governs              | Criterion identity, number allocation, metadata, lifecycle, classification, ordering, severity contribution, verdict contribution, catalog version, profiles, independence, versioning, governance |
 | Depends on           | ADR-0011 (CP1 Validation Engine & Validation → CP1 Handoff) · ADR-0012 (this catalog's establishment) · CP1Input / CP1Result (identified, ADR-0011) |
@@ -281,15 +281,39 @@ policy (out of scope, §2.2).
 
 ---
 
-## 9. Initial Criteria Catalog
+## 9. Criteria Catalog
 
-> **The initial catalog is empty.** Zero engineering-readiness criteria are
-> defined at establishment (ADR-0012 scope). This section is the reserved home
-> into which criteria are added **additively and additively only** through §11.
+> The catalog was established **empty** (ADR-0012); criteria are added **additively
+> and additively only** through §11.  The **first** criterion, `CP1-0001`, is defined
+> by **ADR-0013 (Proposed)** — governance only; **not implemented**.
 
-| Criterion ID | Name | Single readiness concern | Lifecycle |
-| ------------ | ---- | ------------------------ | --------- |
-| — | *(none defined)* | *(none defined)* | — |
+| Criterion ID | Name | Single readiness concern | Classification | Lifecycle |
+| ------------ | ---- | ------------------------ | -------------- | --------- |
+| `CP1-0001` | RequirementPresenceCriterion | The validated response carries at least one requirement to engineer from. | Core | **Draft** — governed by ADR-0013 (Proposed); not implemented |
+
+### 9.1 `CP1-0001` — RequirementPresenceCriterion (governance metadata)
+
+Complete governance definition per ADR-0013.  **No implementation** — this fixes
+*what* the criterion is, never *how* it is coded.
+
+| Field | Value |
+| ----- | ----- |
+| **Criterion ID** | `CP1-0001` (flat namespace, §4; permanent, never reused). |
+| **Criterion Version** | `1.0.0`. |
+| **Owner** | CP1 subsystem (Engineering Readiness) — architectural owner accountable for the definition. |
+| **Concern** (single) | **Requirement presence** — the validated response carries **at least one** requirement statement to engineer from (the buildability floor). |
+| **Scope** | The **pooled** element count across the three **governed requirement collections** — `functional_requirements` ∪ `security_requirements` ∪ `quality_requirements` — in the normalized structure. |
+| **Out of Scope** | Requirement **quality** (testability, actionability, atomicity, unambiguity — semantic; future); **coverage-against-policy** and **minimum-`N` (`N > 1`)** — the Validation Business Rule layer's `BUSINESS-0001`/`BUSINESS-0003` (Reserved · Deferred, ADR-0006), and any per-domain coverage; `recommendations`, `risks`, and `summary` (not requirements). |
+| **Required Inputs** | **`CP1Input` only** — the normalized structure via `cp1_input.normalization_result.parsed_response.normalized_structure`.  Runs only on seam-admitted (`PASSED`/`PASSED_WITH_WARNINGS`) responses, so a `NORMALIZED` structure is present (ADR-0011 §D5). |
+| **Deterministic Evaluation Basis** | Total element count across the three governed requirement collections **≥ 1**.  Pure counting — deterministic, order-independent, **no** semantics/NLP/LLM/business/domain knowledge. |
+| **PASS meaning** | ≥ 1 requirement present (pooled) — the response is buildable.  Emits **no finding**. |
+| **WARN meaning** | **Not used (reserved).** Presence is binary; a policy-free middle ground does not exist. |
+| **FAIL meaning** | **Zero** requirements across all three governed collections — nothing to engineer.  Emits **one** `CP1Finding` contributing `FAIL`. |
+| **Finding ownership** | **At most one** `CP1Finding` (single atomic concern), `criterion_id = CP1-0001`. |
+| **Recommendation ownership** | The finding's `recommendation` text is **owned by the criterion** (states the resolving action: the response carries no requirements to engineer from). |
+| **Dependencies** | Relies on the **seam gate** guaranteeing a validated, `NORMALIZED` response.  **No dependency on any other criterion** (criterion independence, §5); it never aggregates (the engine does, ADR-0012 §8). |
+| **Future extensions** | Requirement-quality criteria (semantic) and coverage/minimum criteria (policy-driven) are **separate future criteria** requiring, respectively, schema enrichment + semantic-reasoning governance, and a governed coverage policy.  They are **not** CP1-0001. |
+| **Rationale** | It is the **only** deterministic, non-semantic, `CP1Input`-only readiness concern over the bare-string response, and the **precondition of every other** readiness judgement.  It fills a real gap: a **valid-but-empty** requirement set **passes** Validation yet is **not** engineering-ready — CP1-0001 fails it (ADR-0013 §D6). |
 
 ---
 
