@@ -1,7 +1,7 @@
-# ADR 0013 — CP1-0001 (RequirementPresenceCriterion): the First Engineering Readiness Criterion
+# ADR 0013 — CP1-0001 (EngineeringInputAvailabilityCriterion): the First Engineering Readiness Criterion
 
-- **Status:** Proposed
-- **Date:** 2026-07-06
+- **Status:** Accepted
+- **Date:** 2026-07-06 (Proposed) · 2026-07-06 (Accepted)
 
 ## Problem
 
@@ -49,8 +49,8 @@ Design-review findings, from repository evidence:
 3. **The gap Validation does not cover.** A response with **present, valid, empty**
    requirement arrays — `functional_requirements: []`, `security_requirements: []`,
    `quality_requirements: []` — **passes all validation** (`SCHEMA-0004` present;
-   `CONTENT-0001` vacuous; no policy to fail).  It is a **correct artifact with zero
-   requirements to engineer from** — the archetypal *valid-but-not-engineering-ready*
+   `CONTENT-0001` vacuous; no policy to fail).  It is a **correct artifact with no
+   engineering input to begin from** — the archetypal *valid-but-not-engineering-ready*
    case (ADR-0011 §D1/§D2).
 
 ### Forces
@@ -68,24 +68,29 @@ Design-review findings, from repository evidence:
 
 ## Decision
 
-Govern **CP1-0001 — `RequirementPresenceCriterion`**: *the validated response must
-carry **at least one** requirement statement to engineer from.*
+Govern **CP1-0001 — `EngineeringInputAvailabilityCriterion`** — the criterion of
+**Engineering Input Availability**: *the validated response must provide sufficient
+engineering input from which downstream engineering may begin.*
 
 ### D1. Single concern
 
-CP1-0001 owns **exactly one** concern: **requirement presence** — the irreducible
-buildability floor.  It does **not** judge requirement *quality, testability,
-actionability, coverage, or count beyond one*; those are separate concerns.
+CP1-0001 owns **exactly one** concern: **Engineering Input Availability** — *whether
+the validated response provides sufficient engineering input from which downstream
+engineering may begin.*  Concretely, that floor is the presence of **at least one**
+requirement to engineer from.  CP1-0001 does **not** judge requirement *quality,
+testability, actionability, coverage, or count beyond one*; those are separate
+concerns.
 
 ### D2. Deterministic evaluation basis
 
-The **total number of elements across the three governed requirement collections**
-(`functional_requirements` ∪ `security_requirements` ∪ `quality_requirements`) in the
-normalized structure is **≥ 1**.  This is pure element counting — deterministic,
-order-independent, and free of semantics.  The collections are **pooled** (union):
-CP1-0001 asks *"is there anything to build?"*, not *"which domains are covered?"*
-(pooling here is a different concern from `CONTENT-0002`'s within-collection scope —
-no conflict with ADR-0007).
+The mechanism is unchanged: the **pooled requirement count** — the total number of
+elements across the three governed requirement collections (`functional_requirements`
++ `security_requirements` + `quality_requirements`) in the normalized structure — is
+**≥ 1**.  This is pure element counting: deterministic, order-independent, and free of
+semantics.  The collections are **pooled** (union): CP1-0001 asks *"is there any
+engineering input to begin from?"*, not *"which domains are covered?"* (pooling here is
+a different concern from `CONTENT-0002`'s within-collection scope — no conflict with
+ADR-0007).
 
 ### D3. Required inputs
 
@@ -97,59 +102,69 @@ is present.  No other input, no additional canonical model.
 
 ### D4. Verdict contribution
 
-- **PASS** — ≥ 1 requirement present (pooled).  The response is buildable; CP1-0001
-  emits **no finding**.
-- **FAIL** — **zero** requirements across all three governed collections.  Nothing can
-  be engineered; CP1-0001 emits **one** `CP1Finding` contributing `FAIL`.
-- **WARN** — **not used.** Presence is binary; there is no policy-free middle ground.
-  `WARN` is **reserved** for CP1-0001 (a per-domain "partial coverage" WARN would
-  require a governed coverage policy — out of scope, D6).
+- **PASS** — **Engineering input exists** (pooled requirement count ≥ 1).  Downstream
+  engineering may begin; CP1-0001 emits **no finding**.
+- **FAIL** — **No engineering input exists** (zero requirements across all three
+  governed collections).  Downstream engineering cannot begin; CP1-0001 emits **one**
+  `CP1Finding` contributing `FAIL`.
+- **WARN** — **not used.** Availability is binary; there is no policy-free middle
+  ground.  `WARN` is **reserved** for CP1-0001 (a per-domain "partial coverage" WARN
+  would require a governed coverage policy — out of scope, D6).
 
 ### D5. Finding & recommendation ownership
 
 CP1-0001 emits **at most one** `CP1Finding` (single atomic concern → single finding).
 The finding's `criterion_id` is `CP1-0001`; its `recommendation` text is **owned by
-the criterion** and states the resolving action (the response carries no requirements
-to engineer from).  CP1-0001 **never** aggregates — the overall verdict is the
-engine's (ADR-0012 §8).
+the criterion** and states the resolving action — conceptually:
+
+> "The validated response contains no engineering requirements.  Add at least one
+> functional, security, or quality requirement before downstream engineering can
+> begin."
+
+CP1-0001 **never** aggregates — the overall verdict is the engine's (ADR-0012 §8).
 
 ### D6. Scope boundary against Validation (the governed boundary)
 
-CP1-0001 owns **presence (the ≥ 1 buildability floor)**.  It does **not** own
-**coverage-against-policy** or **minimum-`N`** — those remain the Validation Business
-Rule layer's `BUSINESS-0001`/`BUSINESS-0003` (Reserved · Deferred, ADR-0006), unchanged
-by this ADR.  The boundary is drawn by *question and verdict*, not by *mechanism*:
+**Validation owns *artifact correctness*; CP1 owns *engineering readiness*.**  These
+answer two different questions:
 
-| | Validation (Business Rule layer) | CP1-0001 |
-| - | -------------------------------- | -------- |
-| Question | Does the response meet a **declared completeness/coverage policy**? | Is there **anything to engineer** from? |
-| Basis | A **governed policy** (does not exist → Deferred) | The **policy-free floor**: ≥ 1 |
-| Verdict on empty-but-valid set | **PASS** (no policy to fail) | **FAIL** (nothing to build) |
+| | Validation Platform | CP1-0001 |
+| - | ------------------- | -------- |
+| Question | **"Is the artifact valid?"** | **"Can engineering begin?"** |
+| Domain | Artifact correctness (Transport…Business Rule) | Engineering readiness (downstream fitness) |
+| Basis | Structural/content/policy correctness of the response | The **deterministic availability floor**: ≥ 1 engineering input |
+| Verdict on empty-but-valid set | **PASS** (a well-formed empty response is a correct artifact) | **FAIL** (no engineering input → engineering cannot begin) |
 
-Because the two produce **different verdicts on the same input** and rest on
-different bases (a governed policy vs the definitional floor), they are **distinct
-concerns, not an overlap**.  This boundary is governed here explicitly (cf. ADR-0004
-Schema↔Structural, ADR-0007 `CONTENT-0002` scope) — **not silently resolved**.
+The **deterministic availability floor belongs to CP1**, not to Validation, because it
+answers *"Can engineering begin?"* — a downstream-consumability question — rather than
+*"Is the artifact valid?"*.  Validation's Business Rule layer ownership of
+**coverage-against-policy** and **minimum-`N`** (`BUSINESS-0001`/`BUSINESS-0003`,
+Reserved · Deferred, ADR-0006) is **unchanged** and remains distinct: it presupposes a
+*governed completeness policy*; CP1-0001 presupposes only the *definitional floor of
+engineering input*.  Because the two produce **different verdicts on the same input**
+and rest on different bases, they are **distinct concerns, not an overlap**.  This
+boundary is governed here explicitly (cf. ADR-0004 Schema↔Structural, ADR-0007
+`CONTENT-0002` scope) — **not silently resolved**.
 
 ## Questions this ADR resolves
 
 | # | Question | Resolution |
 | - | -------- | ---------- |
-| 3 | Single concern? | **Requirement presence** — one concern (D1). |
-| 4 | Why first? | It is the **only** deterministic, non-semantic, `CP1Input`-only readiness concern over bare strings, and the **precondition** of every other (there is nothing to judge for testability/coverage if there are zero requirements). |
-| 5 | Deterministic? | **Yes** — element count ≥ 1 (D2). |
+| 3 | Single concern? | **Engineering Input Availability** — one concern (D1). |
+| 4 | Why first? | It is the **only** deterministic, non-semantic, `CP1Input`-only readiness concern over bare strings, and the **precondition** of every other (there is nothing to judge for testability/coverage if there is no engineering input). |
+| 5 | Deterministic? | **Yes** — pooled requirement count ≥ 1 (D2). |
 | 6–10 | Semantic / NLP / LLM / business / domain? | **No** to all — pure counting; the ≥ 1 floor is a logical precondition, not domain/business policy. |
 | 11 | `CP1Input` only? | **Yes** (D3). |
 | 12 | New canonical models? | **No.** |
 | 13 | `CP1Input` change? | **No.** |
 | 14 | `CP1Result` change? | **No.** |
 | 15–19 | Framework / engine / composition / PlatformContext / CLI change? | **No** to all. |
-| 20 | Overlap Validation? | **No** — distinct concern; governed boundary (D6). |
+| 20 | Overlap Validation? | **No** — distinct question ("can engineering begin?" vs "is the artifact valid?"); governed boundary (D6). |
 | 21 | Overlap Feature Generation? | **No** — CP1-0001 gates *into* Feature Generation; it synthesises nothing. |
 | 22 | Overlap Test Generation? | **No.** |
-| 23 | PASS/WARN/FAIL independently? | PASS + FAIL used; **WARN reserved** (presence is binary, D4). |
+| 23 | PASS/WARN/FAIL independently? | PASS + FAIL used; **WARN reserved** (availability is binary, D4). |
 | 24 | One finding or many? | **One** (D5). |
-| 25 | Thresholds? | One — the **≥ 1 buildability floor**, **governed here**; any `N > 1` is out of scope (D6). |
+| 25 | Thresholds? | One — the **≥ 1 availability floor**, **governed here**; any `N > 1` is out of scope (D6). |
 | 26 | Future criteria depend on CP1-0001? | **No runtime dependency** — criteria are independent (ADR-0012 §5); CP1-0001 is conceptually the floor but no criterion reads its finding. |
 | 27 | Future criteria independent? | **Yes** — criterion independence (ADR-0012 §5); the engine aggregates all contributions. |
 | 28 | Mutate `CP1Input`? | **No** — criteria are non-mutating (framework contract). |
@@ -172,10 +187,11 @@ Schema↔Structural, ADR-0007 `CONTENT-0002` scope) — **not silently resolved*
   **Rejected:** unlike those, CP1-0001 **has** a governed deterministic basis (count
   ≥ 1) and fills a **real gap Validation does not cover** (the empty-but-valid set).
   Deferring would leave CP1 with no deterministic criterion when one is available.
-- **A5 — Treat presence as a Validation Business Rule (`BUSINESS-0003`) instead.**
-  **Rejected:** validation would **PASS** the empty-but-valid set (no governed policy);
-  presence-for-engineering produces a **different verdict** and belongs to the
-  downstream readiness domain (ADR-0011 §D1).  The boundary is governed in D6.
+- **A5 — Treat availability as a Validation Business Rule (`BUSINESS-0003`) instead.**
+  **Rejected:** validation would **PASS** the empty-but-valid set (a correct artifact);
+  the availability floor answers a **different question** ("can engineering begin?")
+  and belongs to the downstream readiness domain (ADR-0011 §D1).  The boundary is
+  governed in D6.
 
 ## Ownership verification
 
@@ -192,22 +208,23 @@ Schema↔Structural, ADR-0007 `CONTENT-0002` scope) — **not silently resolved*
   (valid-but-empty requirement set) that Validation does not fail.
 - ✅ Determinism, `CP1Input`-only, and single-concern are preserved; no semantics,
   no invented policy, no canonical-model/framework/engine/seam/composition change.
-- ✅ The CP1 ↔ Validation boundary is governed **explicitly** (D6), not silently.
-- ⚠️ **Status is Proposed.** On acceptance, CP1-0001's catalog lifecycle advances
-  Draft → Approved (implementable); implementation is a **separate future milestone**
-  (register the criterion in the composition root; add the criterion class + tests).
-- ⚠️ **Governance registration:** this ADR is registered in the Architecture Freeze
-  Index §6 and the catalog §9 is populated.  The Platform Capability Matrix /
-  Coverage Dashboard `CAP-061` "zero criteria" wording is updated **on acceptance**
-  (a separate, ratified step — not by this ADR).
+- ✅ The CP1 ↔ Validation boundary is governed **explicitly** (D6), not silently, and
+  strengthened by the "Can engineering begin?" vs "Is the artifact valid?" framing.
+- ✅ **Accepted.** CP1-0001's catalog lifecycle is **Approved** (implementable);
+  implementation is a **separate future milestone** (register the criterion in the
+  composition root; add the criterion class + tests).
+- ✅ **Governance registration applied:** this ADR is registered **Accepted** in the
+  Architecture Freeze Index §6; the Criteria Catalog §9 records CP1-0001 **Approved**;
+  the Platform Capability Matrix / Coverage Dashboard `CAP-061` reflect one Approved
+  (not-yet-implemented) criterion and the **Criteria Catalog Version 1.1.0**.
 
 ## Version impact
 
 Introduces the **first criterion** into the Criteria Catalog.  It advances **no**
 existing version and changes **no** frozen contract or canonical model.  On the
 catalog's own discipline (§11), the **Criteria Catalog Version** advances additively
-(1.0.0 → 1.1.0, zero → one criterion) **on acceptance**; the CP1-0001 **Criterion
-Version** is `1.0.0`.
+**1.0.0 → 1.1.0** (zero → one criterion); the CP1-0001 **Criterion Version** is
+`1.0.0`.
 
 ## Scope note
 
@@ -216,5 +233,4 @@ inputs, verdicts, finding/recommendation ownership, and its boundary against
 Validation.  It does **not** implement CP1-0001, create a criterion class, register it
 in the composition root, create tests, or modify any canonical model, framework,
 engine, composition root, seam, `CP1Input`/`CP1Result`/`CP1Finding`, PlatformContext,
-CLI, or any existing ADR.  Implementation is a future milestone contingent on
-acceptance.
+CLI, or any existing ADR.  Implementation is a future milestone.
