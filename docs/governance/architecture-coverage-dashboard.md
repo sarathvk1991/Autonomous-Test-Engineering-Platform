@@ -99,22 +99,23 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-063 | CP1 Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-064 | Validation → CP1 Seam | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-065 | CP1 Engine | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-066 | CP1 Composition Root | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 
 ## 5. Overall coverage summary
 
-Objective counts across all **35** capabilities (no percentages estimated). For
+Objective counts across all **36** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 35 | 0 | 0 | — (CAP-060 now governed by ADR-0011/0012). |
-| **Framework** | 35 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 35 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 27 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
-| **Testing** | 27 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 1 | 30 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
+| **Architecture** | 36 | 0 | 0 | — (CAP-060 now governed by ADR-0011/0012). |
+| **Framework** | 36 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 36 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 28 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
+| **Testing** | 28 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 1 | 31 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
 
-**Implementation Readiness distribution** (35 total): **Ready 27** · **In Progress
+**Implementation Readiness distribution** (36 total): **Ready 28** · **In Progress
 4** (CAP-044, CAP-046, CAP-049, CAP-060) · **Blocked 0** · **Planned 4** (CAP-045,
 CAP-047, CAP-048, CAP-050).
 
@@ -215,10 +216,12 @@ No other capability is missing architecture: every remaining `✗` is an
   §D4/§D5), **CAP-065 CP1 Engine** (`CP1Engine`: executes the registered governed
   criteria via the given pipeline and aggregates their findings into the overall CP1
   verdict — any FAIL→FAIL, else any WARN→WARN, else PASS; ADR-0012 §8; orchestration
-  only). **Next (CAP-066+):** the composition root (build the registry/pipeline from
-  governed criteria), then the first governed criterion `CP1-0001`, then
-  PlatformContext/CLI wiring — none started. The catalog is intentionally empty, so no
-  criterion may be implemented yet.
+  only), **CAP-066 CP1 Composition Root** (`build_cp1_service` → `CP1Service`: explicit,
+  deterministic assembly of the empty registry + engine into a ready-to-run service
+  with a single `run(cp1_input)` entry point; assembly only). **Next (CAP-067+):** the
+  first governed criterion `CP1-0001`, then PlatformContext/CLI wiring — none started.
+  The catalog is intentionally empty, so no criterion may be implemented yet, and the
+  composed service runs with zero criteria (PASS).
 
 > Readiness confirms the deterministic validation initiative is **feature-complete
 > for the currently governed response schema**: Response Normalization, the Validation
