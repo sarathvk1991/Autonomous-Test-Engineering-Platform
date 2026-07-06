@@ -219,12 +219,12 @@ No other capability is missing architecture: every remaining `✗` is an
   only), **CAP-066 CP1 Composition Root** (`build_cp1_service` → `CP1Service`: explicit,
   deterministic assembly of the empty registry + engine into a ready-to-run service
   with a single `run(cp1_input)` entry point; assembly only). **First criterion
-  governed:** `CP1-0001` (EngineeringInputAvailabilityCriterion) is **Approved** by
-  **ADR-0013 (Accepted)** — deterministic pooled-requirement-count ≥ 1, `CP1Input`-only;
-  governance only, **not implemented**. **Next (CAP-067+):** implement `CP1-0001`
-  (criterion class + register in the composition root), then PlatformContext/CLI wiring
-  — none started. Until `CP1-0001` is implemented, the composed service runs with zero
-  registered criteria (PASS).
+  implemented (CAP-067A):** `CP1-0001` (EngineeringInputAvailabilityCriterion, ADR-0013
+  Accepted) — deterministic pooled-requirement-count ≥ 1, `CP1Input`-only; registered in
+  the composition root and 100% unit-tested. A composed `CP1Service` now runs
+  `Validation → CP1 → CP1Result` end-to-end: **PASS** when engineering input exists,
+  **FAIL** when it does not. **Next (CAP-067B+):** PlatformContext/CLI wiring, then
+  further governed criteria (via the catalog's §11 process).
 
 > Readiness confirms the deterministic validation initiative is **feature-complete
 > for the currently governed response schema**: Response Normalization, the Validation

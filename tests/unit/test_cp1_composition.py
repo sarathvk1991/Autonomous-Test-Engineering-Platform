@@ -20,6 +20,7 @@ Design constraints
 
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
@@ -58,6 +59,19 @@ from shared.enums.base import ValidationVerdict
 
 _TS = datetime(2026, 7, 6, 12, 0, 0, tzinfo=UTC)
 
+# The composed service now runs the registered CP1-0001; a valid response carrying at
+# least one requirement makes it PASS (engineering input exists).
+_VALID_RESPONSE = json.dumps(
+    {
+        "summary": "s",
+        "functional_requirements": ["do X"],
+        "security_requirements": [],
+        "quality_requirements": [],
+        "recommendations": [],
+        "risks": [],
+    }
+)
+
 
 # ---------------------------------------------------------------------------
 # CP1Input builder
@@ -76,7 +90,9 @@ def _analysis_result(execution_id: str = "EX-1") -> AnalysisResult:
         started_at=_TS,
         completed_at=_TS,
         duration_ms=1.0,
-        llm_response=LLMResponse(provider="gemini", model="model", generated_text="x"),
+        llm_response=LLMResponse(
+            provider="gemini", model="model", generated_text=_VALID_RESPONSE
+        ),
     )
 
 
@@ -148,7 +164,8 @@ class TestAssembly:
         result = build_cp1_service().run(_cp1_input())
         assert isinstance(result, CP1Result)
 
-    def test_zero_criteria_yields_pass_and_no_findings(self) -> None:
+    def test_valid_input_yields_pass_and_no_findings(self) -> None:
+        # The composed service runs CP1-0001; a response with a requirement PASSes.
         result = build_cp1_service().run(_cp1_input())
         assert result.overall_verdict == ValidationVerdict.PASS
         assert result.findings == ()

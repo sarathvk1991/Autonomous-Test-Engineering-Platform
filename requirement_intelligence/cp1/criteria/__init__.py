@@ -1,13 +1,17 @@
-"""CP1 engineering-readiness criteria (reserved).
+"""CP1 engineering-readiness criteria (CAP-067A).
 
-Reserved home for the concrete engineering-readiness criteria governed by the
-**Engineering Readiness Criteria Catalog** (ADR-0012;
-``docs/architecture/engineering-readiness-criteria-catalog.md``) — the CP1 analogue
-of the Validation ``rules/`` package.
+Concrete criteria governed by the **Engineering Readiness Criteria Catalog** (ADR-0012)
+— the CP1 analogue of the Validation ``rules/`` package.
 
-Intentionally **empty**: the catalog is established with **zero criteria** (ADR-0012),
-so no criterion exists here yet.  No criterion may be implemented until one is
-defined through the catalog's governed additive process.  No implementation.
+* **CP1-0001** — :class:`EngineeringInputAvailabilityCriterion` (ADR-0013): the
+  validated response must provide **at least one** requirement to engineer from
+  (Engineering Input Availability).  The catalog's first and only criterion.
 """
 
 from __future__ import annotations
+
+from requirement_intelligence.cp1.criteria.engineering_input_availability import (
+    EngineeringInputAvailabilityCriterion,
+)
+
+__all__ = ["EngineeringInputAvailabilityCriterion"]

@@ -3,7 +3,7 @@
 | Attribute            | Value                                                              |
 | -------------------- | ------------------------------------------------------------------ |
 | Document type        | Solution Architecture Specification / Governing Criteria Catalog    |
-| Status               | Approved — foundational — established by **ADR-0012 (Accepted)**; capability **CAP-061**; Catalog Version **1.1.0**; **one criterion defined — `CP1-0001` (Approved, governed by ADR-0013, Accepted); not implemented** |
+| Status               | Approved — foundational — established by **ADR-0012 (Accepted)**; capability **CAP-061**; Catalog Version **1.1.0**; **one criterion — `CP1-0001` (Implemented, governed by ADR-0013, Accepted)** |
 | Scope                | Every engineering-readiness criterion that may exist in the CP1 Validation Engine |
 | Governs              | Criterion identity, number allocation, metadata, lifecycle, classification, ordering, severity contribution, verdict contribution, catalog version, profiles, independence, versioning, governance |
 | Depends on           | ADR-0011 (CP1 Validation Engine & Validation → CP1 Handoff) · ADR-0012 (this catalog's establishment) · CP1Input / CP1Result (identified, ADR-0011) |
@@ -22,9 +22,9 @@
 > **Established empty; grows only through governance.** This catalog was established
 > with **zero criteria** (ADR-0012); defining a concrete criterion is a separate,
 > dedicated governance decision. The **first** criterion, `CP1-0001`
-> (EngineeringInputAvailabilityCriterion), is now defined and **Approved** by
-> **ADR-0013 (Accepted)** — governance only; it is **not yet implemented** (its
-> implementation is a future milestone). Further criteria are populated **additively
+> (EngineeringInputAvailabilityCriterion), is defined by **ADR-0013 (Accepted)** and is
+> now **Implemented** (CAP-067A; `cp1/criteria/engineering_input_availability.py`,
+> registered in the composition root). Further criteria are populated **additively
 > through the governed process in §11**.
 
 ---
@@ -286,11 +286,11 @@ policy (out of scope, §2.2).
 
 > The catalog was established **empty** (ADR-0012); criteria are added **additively
 > and additively only** through §11.  The **first** criterion, `CP1-0001`, is defined
-> by **ADR-0013 (Accepted)** — governance only; **not implemented**.
+> by **ADR-0013 (Accepted)** and **Implemented** (CAP-067A).
 
 | Criterion ID | Name | Single readiness concern | Classification | Lifecycle |
 | ------------ | ---- | ------------------------ | -------------- | --------- |
-| `CP1-0001` | EngineeringInputAvailabilityCriterion | Whether the validated response provides sufficient engineering input from which downstream engineering may begin. | Core | **Approved** — governed by ADR-0013 (Accepted); not implemented |
+| `CP1-0001` | EngineeringInputAvailabilityCriterion | Whether the validated response provides sufficient engineering input from which downstream engineering may begin. | Core | **Implemented** — governed by ADR-0013 (Accepted); `cp1/criteria/engineering_input_availability.py` |
 
 ### 9.1 `CP1-0001` — EngineeringInputAvailabilityCriterion (governance metadata)
 

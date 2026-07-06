@@ -37,6 +37,7 @@ engine behaviour).
 
 from __future__ import annotations
 
+from requirement_intelligence.cp1.criteria import EngineeringInputAvailabilityCriterion
 from requirement_intelligence.cp1.engine import CP1Engine
 from requirement_intelligence.cp1.framework import (
     CP1CriterionPipeline,
@@ -76,7 +77,8 @@ def build_cp1_service() -> CP1Service:
     Explicit, deterministic assembly:
 
     1. construct an empty ``CP1CriterionRegistry``;
-    2. register all governed criteria — **none exist yet** (catalog empty, ADR-0012);
+    2. register all governed criteria **explicitly, in catalog order** (no reflection,
+       no auto-discovery) — currently the catalog's one criterion, ``CP1-0001``;
     3. **seal** the registry (registration closed → immutable);
     4. construct the stateless ``CP1Engine``;
     5. return the assembled :class:`CP1Service`.
@@ -84,8 +86,7 @@ def build_cp1_service() -> CP1Service:
     Holds no state; every call returns an equivalent service.
     """
     registry = build_cp1_criterion_registry()
-    # Register all governed criteria here, explicitly, in catalog order.  The
-    # Engineering Readiness Criteria Catalog is intentionally empty (ADR-0012), so
-    # there are zero criteria to register — the architecture-correct state.
+    # Register all governed criteria here, explicitly, in catalog order.
+    registry.register(EngineeringInputAvailabilityCriterion())  # CP1-0001 (ADR-0013)
     registry.seal()
     return CP1Service(registry=registry, engine=CP1Engine())
