@@ -13,6 +13,10 @@ Ownership, reference, and containment:
   :class:`~requirement_intelligence.cp1.models.cp1_input.CP1Input` that was
   judged — the validated input is referenced, never mutated (mirroring how
   ``ValidationResult`` preserves its ``AnalysisResult``; ADR-0011 §D4).
+* **References** the
+  :class:`~requirement_intelligence.cp1.models.framework_metadata.CP1FrameworkMetadata`
+  that produced it — immutable framework provenance, exactly as ``ValidationResult``
+  references its ``ValidationFrameworkMetadata`` (ADR-0011 §D4 "mirror ValidationResult").
 
 This model carries **information only**.  It holds **no** readiness policy, no
 threshold, no scoring, and no judgement logic: the ``overall_verdict`` and the
@@ -23,7 +27,10 @@ end of a run, and never altered.
 Versioning
 ----------
 :data:`CP1_RESULT_VERSION` is the version of this representation's *shape*, owned
-here as its single source of truth and advanced additively via an ADR.
+here as its single source of truth and advanced **additively**.  It is at ``"1.1"``:
+the additive introduction of the referenced ``framework_metadata`` (mirroring
+``ValidationResult``) advanced it from ``"1.0"`` under ADR-0011; no other CP1 model's
+shape changed.
 """
 
 from __future__ import annotations
@@ -36,12 +43,14 @@ from pydantic.alias_generators import to_camel
 
 from requirement_intelligence.cp1.models.cp1_finding import CP1Finding
 from requirement_intelligence.cp1.models.cp1_input import CP1Input
+from requirement_intelligence.cp1.models.framework_metadata import CP1FrameworkMetadata
 from shared.contracts.base import Schema
 from shared.enums.base import ValidationVerdict
 
 #: The **CP1Result Version** — the version of this representation's *shape*.
-#: Owned here as the single source of truth; advances additively via an ADR.
-CP1_RESULT_VERSION = "1.0"
+#: Owned here as the single source of truth; advances additively.  Advanced to
+#: ``"1.1"`` by the additive introduction of ``framework_metadata`` (ADR-0011).
+CP1_RESULT_VERSION = "1.1"
 
 
 class CP1Result(Schema):
@@ -75,6 +84,10 @@ class CP1Result(Schema):
     findings:
         The complete collection of engineering-readiness findings the result owns.
         An immutable tuple; an empty tuple is a valid result.
+    framework_metadata:
+        Provenance of the CP1 framework that produced the result (referenced).
+        Immutable version provenance — mirrors ``ValidationResult``'s reference to
+        its ``ValidationFrameworkMetadata``.
     started_at / completed_at:
         Wall-clock start and completion timestamps of the CP1 run.
     metadata:
@@ -94,6 +107,9 @@ class CP1Result(Schema):
 
     # Owned.
     findings: tuple[CP1Finding, ...] = Field(default_factory=tuple)
+
+    # Referenced — framework provenance (mirrors ValidationResult).
+    framework_metadata: CP1FrameworkMetadata
 
     overall_verdict: ValidationVerdict
     started_at: datetime

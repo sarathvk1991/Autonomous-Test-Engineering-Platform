@@ -44,14 +44,14 @@ from typing import Any
 from requirement_intelligence.cp1.framework.criterion import CP1Criterion
 from requirement_intelligence.cp1.framework.criterion_registry import CP1CriterionRegistry
 from requirement_intelligence.cp1.framework.framework_exceptions import CP1PipelineError
-from requirement_intelligence.cp1.framework.framework_metadata import (
+from requirement_intelligence.cp1.models.cp1_finding import CP1Finding
+from requirement_intelligence.cp1.models.framework_metadata import (
     CP1_FRAMEWORK_VERSION,
     CP1_PIPELINE_VERSION,
     CP1_REGISTRY_VERSION,
     DEFAULT_CP1_CRITERIA_CONTRACT_VERSION,
     CP1FrameworkMetadata,
 )
-from requirement_intelligence.cp1.models.cp1_finding import CP1Finding
 
 
 class CP1PipelineState(Enum):

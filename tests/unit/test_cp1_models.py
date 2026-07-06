@@ -37,6 +37,7 @@ from requirement_intelligence.cp1.models import (
     CP1_INPUT_VERSION,
     CP1_RESULT_VERSION,
     CP1Finding,
+    CP1FrameworkMetadata,
     CP1Input,
     CP1Result,
 )
@@ -187,6 +188,15 @@ def _cp1_finding(
     )
 
 
+def _framework_metadata() -> CP1FrameworkMetadata:
+    return CP1FrameworkMetadata(
+        framework_version="1.0.0",
+        criteria_contract_version="1.0",
+        pipeline_version="1.0.0",
+        registry_version="1.0.0",
+    )
+
+
 def _cp1_result(**overrides: object) -> CP1Result:
     base: dict[str, object] = {
         "cp1_id": "CP1-RUN-1",
@@ -194,6 +204,7 @@ def _cp1_result(**overrides: object) -> CP1Result:
         "execution_id": "EX-1",
         "analysis_id": "AN-1",
         "cp1_input": _cp1_input(),
+        "framework_metadata": _framework_metadata(),
         "overall_verdict": ValidationVerdict.PASS,
         "started_at": _TS,
         "completed_at": _TS,
@@ -211,7 +222,7 @@ def _cp1_result(**overrides: object) -> CP1Result:
 class TestVersionConstants:
     def test_version_values(self) -> None:
         assert CP1_INPUT_VERSION == "1.0"
-        assert CP1_RESULT_VERSION == "1.0"
+        assert CP1_RESULT_VERSION == "1.1"  # additive framework_metadata (ADR-0011)
         assert CP1_FINDING_VERSION == "1.0"
 
     def test_default_version_fields(self) -> None:
@@ -417,6 +428,39 @@ class TestBindingAndOwnership:
         finding = _cp1_finding()
         result = _cp1_result(findings=(finding,))
         assert result.findings[0] is finding
+
+
+# ---------------------------------------------------------------------------
+# 6b. Framework provenance (CP1Result mirrors ValidationResult)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFrameworkProvenance:
+    def test_result_requires_framework_metadata(self) -> None:
+        # framework_metadata is required (mirrors ValidationResult); omitting it fails.
+        with pytest.raises(ValidationError):
+            _cp1_result(framework_metadata=None)
+
+    def test_result_carries_framework_metadata(self) -> None:
+        result = _cp1_result()
+        assert isinstance(result.framework_metadata, CP1FrameworkMetadata)
+        assert result.framework_metadata.framework_version == "1.0.0"
+
+    def test_result_preserves_framework_metadata_instance(self) -> None:
+        meta = _framework_metadata()
+        result = _cp1_result(framework_metadata=meta)
+        assert result.framework_metadata is meta
+
+    def test_framework_metadata_serializes_as_camel(self) -> None:
+        dumped = _cp1_result().model_dump(by_alias=True)
+        assert "frameworkMetadata" in dumped
+        assert dumped["frameworkMetadata"]["frameworkVersion"] == "1.0.0"
+
+    def test_framework_metadata_survives_roundtrip(self) -> None:
+        original = _cp1_result()
+        restored = CP1Result.model_validate_json(original.model_dump_json(by_alias=True))
+        assert restored.framework_metadata == original.framework_metadata
 
 
 # ---------------------------------------------------------------------------

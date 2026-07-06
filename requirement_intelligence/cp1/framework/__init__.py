@@ -47,7 +47,7 @@ from requirement_intelligence.cp1.framework.framework_exceptions import (
     CP1PipelineError,
     CP1RegistryError,
 )
-from requirement_intelligence.cp1.framework.framework_metadata import (
+from requirement_intelligence.cp1.models.framework_metadata import (
     CP1_FRAMEWORK_VERSION,
     CP1_PIPELINE_VERSION,
     CP1_REGISTRY_VERSION,

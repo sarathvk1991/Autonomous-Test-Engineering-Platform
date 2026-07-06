@@ -3,7 +3,7 @@
 | Attribute            | Value                                                              |
 | -------------------- | ------------------------------------------------------------------ |
 | Document type        | Solution Architecture Specification / Governing Criteria Catalog    |
-| Status               | Draft — established by ADR-0012 (Proposed); **structure only, zero criteria defined** |
+| Status               | Approved — foundational — established by **ADR-0012 (Accepted)**; capability **CAP-061**; **structure only, zero criteria defined** |
 | Scope                | Every engineering-readiness criterion that may exist in the CP1 Validation Engine |
 | Governs              | Criterion identity, number allocation, metadata, lifecycle, classification, ordering, severity contribution, verdict contribution, catalog version, profiles, independence, versioning, governance |
 | Depends on           | ADR-0011 (CP1 Validation Engine & Validation → CP1 Handoff) · ADR-0012 (this catalog's establishment) · CP1Input / CP1Result (identified, ADR-0011) |

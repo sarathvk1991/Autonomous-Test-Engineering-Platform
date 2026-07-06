@@ -1,7 +1,7 @@
 # ADR 0012 — The Engineering Readiness Criteria Catalog
 
-- **Status:** Proposed
-- **Date:** 2026-07-06
+- **Status:** Accepted
+- **Date:** 2026-07-06 (Proposed) · 2026-07-06 (Accepted)
 
 ## Problem
 

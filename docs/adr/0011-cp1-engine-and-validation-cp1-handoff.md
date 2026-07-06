@@ -1,7 +1,7 @@
 # ADR 0011 — The CP1 Validation Engine and the Validation → CP1 Handoff
 
-- **Status:** Proposed
-- **Date:** 2026-07-06
+- **Status:** Accepted
+- **Date:** 2026-07-06 (Proposed) · 2026-07-06 (Accepted)
 
 ## Problem
 

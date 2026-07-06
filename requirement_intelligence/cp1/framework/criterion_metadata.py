@@ -29,7 +29,7 @@ Version glossary
   criterion's* definition; advances when that criterion's definition changes.
 * **Criteria Contract Version** — the version of the CP1 catalog *semantics* as a
   whole (governed by the Engineering Readiness Criteria Catalog / ADR-0012); lives
-  in :mod:`~requirement_intelligence.cp1.framework.framework_metadata`.
+  in :mod:`~requirement_intelligence.cp1.models.framework_metadata`.
 * **Framework Version** — the version of the framework *implementation* as a whole;
   also in ``framework_metadata``.
 """

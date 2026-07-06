@@ -3,11 +3,15 @@
 :class:`CP1FrameworkMetadata` describes the framework that executed a CP1 run:
 which framework, which criteria-contract semantics, which pipeline, and which
 registry.  It mirrors the Response Validation Framework's
-``ValidationFrameworkMetadata``.
+``ValidationFrameworkMetadata`` — including its **location**: it is a CP1 canonical
+model living in ``cp1/models/`` (exactly as ``ValidationFrameworkMetadata`` lives in
+``validation/models/``), so that both the framework (which produces it) and
+:class:`~requirement_intelligence.cp1.models.cp1_result.CP1Result` (which references
+it) depend **downward** on the models layer with no cycle.
 
 It is **pure provenance with no behaviour** and carries **no engineering-readiness
-knowledge**.  The framework produces it; the future CP1 engine stamps it onto the
-run's provenance when it assembles a ``CP1Result``.
+knowledge**.  The framework produces it; the CP1 engine references it on the
+``CP1Result`` it assembles.
 
 Version constants
 -----------------

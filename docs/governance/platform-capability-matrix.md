@@ -76,7 +76,7 @@ renumbering existing ones:
 | `CAP-020…029` | Execution & Platform | `CAP-020…024` | `CAP-025…029` |
 | `CAP-030…039` | Response Normalization | `CAP-030…032` | `CAP-033…039` |
 | `CAP-040…059` | Validation | `CAP-040…052` | `CAP-053…059` |
-| `CAP-060…` | Downstream / Future | `CAP-060` | `CAP-061…` |
+| `CAP-060…` | Downstream / Future | `CAP-060…063` | `CAP-064…` |
 
 > An ID, once assigned, is **permanent**. A renamed capability keeps its ID; a
 > removed capability's ID is **retired, never reused**. Allocating the next ID for
@@ -234,7 +234,8 @@ not applicable.
 
 | ID | Capability | Architecture | Framework | Canonical Models | Implementation | Testing | Frozen |
 | -- | ---------- | :----------: | :-------: | :--------------: | :------------: | :-----: | :----: |
-| CAP-060 | CP1 Validator | ◑ | n/a | ✓ | ◑ | ✗ | ✗ |
+| CAP-060 | CP1 Validator | ✓ | n/a | ✓ | ◑ | ✗ | ✗ |
+| CAP-061 | Engineering Readiness Criteria Catalog | ✓ | n/a | n/a | ✓ | n/a | ✗ |
 | CAP-062 | CP1 Canonical Models | ✓ | n/a | ✓ | ✓ | ✓ | ✗ |
 | CAP-063 | CP1 Framework | ✓ | ✓ | n/a | ✓ | ✓ | ✗ |
 
@@ -242,8 +243,9 @@ not applicable.
 
 | ID | Capability | Purpose | Current Version | Introduced In | Owner | Dependencies | Next Planned Milestone | Maturity | Status | Notes |
 | -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
-| CAP-060 | CP1 Validator | Downstream quality gate consuming validated output | `n/a` (not built) | 1.0.0 | Implementation | Response Validator | None recorded | Implementation In Progress | Planned | `validators/cp1.py` present; platform catalogue lists CP1 Validator `Planned` — see consistency note. |
-| CAP-062 | CP1 Canonical Models | The immutable CP1 information models (`CP1Input`, `CP1Result`, `CP1Finding`) | `CP1_INPUT_VERSION` 1.0 · `CP1_RESULT_VERSION` 1.0 · `CP1_FINDING_VERSION` 1.0 | 1.0.0 | Shared | ValidationResult · NormalizationResult (CP1Input); `shared` ValidationVerdict | CP1 engine (later milestone) | Production Ready | Complete | `requirement_intelligence/cp1/models/` (first-class **CP1 subsystem**, mirroring `validation/` and `normalization/`); governed by ADR-0011; `CP1Input` mirrors `ValidationInput` (references both artifacts, same-execution integrity). Flat `CP1-NNNN` finding identity (ADR-0012). 100% unit-tested (`tests/unit/test_cp1_models.py`). `CAP-061` (Criteria Catalog) pending ADR-0012 acceptance. |
+| CAP-060 | CP1 Validator | Downstream quality gate consuming validated output | `n/a` (umbrella) | 1.0.0 | Implementation | Response Validator; CP1 Models (CAP-062); CP1 Framework (CAP-063) | CP1 engine + Validation → CP1 seam | Implementation In Progress | In Progress | Umbrella CP1 capability, now **architecturally governed by ADR-0011 (Accepted)**. Decomposed into CAP-061 (Criteria Catalog), CAP-062 (models), CAP-063 (framework); the engine/seam/criteria remain future milestones. Legacy `validators/cp1.py` stub reconciliation deferred (ADR-0011 §D9). |
+| CAP-061 | Engineering Readiness Criteria Catalog | The governed catalog defining which engineering-readiness criteria exist (`CP1-NNNN` identity, lifecycle, ordering, severity/verdict contribution) | `Catalog Version` 1.0.0 (**zero criteria**) | 1.0.0 | Architecture | ADR-0012 | First governed criterion (`CP1-0001`) via the catalog's additive process | Architecture Complete | Complete (empty by design) | `docs/architecture/engineering-readiness-criteria-catalog.md`; governed by **ADR-0012 (Accepted)**. Established **empty**: defines the structure/governance, **no** criterion/threshold/policy. The CP1 analogue of the Validation Rule Catalog. |
+| CAP-062 | CP1 Canonical Models | The immutable CP1 information models (`CP1Input`, `CP1Result`, `CP1Finding`, `CP1FrameworkMetadata`) | `CP1_INPUT_VERSION` 1.0 · `CP1_RESULT_VERSION` **1.1** · `CP1_FINDING_VERSION` 1.0 | 1.0.0 | Shared | ValidationResult · NormalizationResult (CP1Input); `shared` ValidationVerdict | CP1 engine (later milestone) | Production Ready | Complete | `requirement_intelligence/cp1/models/` (first-class **CP1 subsystem**, mirroring `validation/` and `normalization/`); governed by **ADR-0011 (Accepted)**; `CP1Input` mirrors `ValidationInput` (same-execution integrity); `CP1Result` now **references `CP1FrameworkMetadata`** (provenance), mirroring `ValidationResult` — additive, `CP1_RESULT_VERSION` 1.0→1.1. Flat `CP1-NNNN` finding identity (ADR-0012). 100% unit-tested (`tests/unit/test_cp1_models.py`). |
 | CAP-063 | CP1 Framework | Reusable, behaviour-free CP1 engine infrastructure (criterion contract, registry, pipeline, provenance) | `CP1_FRAMEWORK_VERSION` 1.0.0 · `CP1_PIPELINE_VERSION` 1.0.0 · `CP1_REGISTRY_VERSION` 1.0.0 | 1.0.0 | Framework | CP1 Canonical Models (CAP-062) | CP1 engine (verdict aggregation + `CP1Result` assembly) | Production Ready | Complete | `requirement_intelligence/cp1/framework/`; mirrors the frozen Validation Framework; **flat** `CP1-NNNN` registry (no layers, ADR-0012 §4); pipeline **collects findings, derives no verdict** (aggregation reserved to the engine, ADR-0012 §8). Behaviour-free — knows nothing about engineering readiness. 100% unit-tested (`tests/unit/test_cp1_framework.py`). No criterion exists (catalog empty). |
 
 ## 6. Overall Platform Health
@@ -261,9 +263,10 @@ Objective counts, derived directly from the repository (no estimation):
 | Bucket | Capabilities |
 | ------ | ------------ |
 | **Frozen** | Response Normalization subsystem (CAP-030), ResponseNormalizer (CAP-032), Transport Layer (CAP-042), Validation Framework (CAP-040). |
-| **Completed (Production Ready)** | Ingestion & Core (CAP-001…003), AI Generation implementation (CAP-011…014), Execution & Platform (CAP-020…024), Response Normalization subsystem (CAP-030), ParsedResponse (CAP-031), ResponseNormalizer (CAP-032), **Response Validator (CAP-041, wired end-to-end incl. persistence + reporting)**, Syntax Layer (CAP-043), ValidationInput (CAP-051), **Validation Profiles (CAP-052)**. |
+| **Completed (Production Ready)** | Ingestion & Core (CAP-001…003), AI Generation implementation (CAP-011…014), Execution & Platform (CAP-020…024), Response Normalization subsystem (CAP-030), ParsedResponse (CAP-031), ResponseNormalizer (CAP-032), **Response Validator (CAP-041, wired end-to-end incl. persistence + reporting)**, Syntax Layer (CAP-043), ValidationInput (CAP-051), **Validation Profiles (CAP-052)**, **CP1 Canonical Models (CAP-062)**, **CP1 Framework (CAP-063)**. |
+| **Governed (complete, empty by design)** | Engineering Readiness Criteria Catalog (CAP-061) — established with zero criteria (ADR-0012). |
 | **Partially implemented** | Schema Layer (CAP-044: `SCHEMA-0001/0002/0004`; `0003` deferred), Content Layer (CAP-046: `CONTENT-0001/0002`), Reasoning Layer (CAP-049: `REASONING-0002`). |
-| **In Progress** | CP1 Validator (CAP-060). |
+| **In Progress** | CP1 Validator umbrella (CAP-060) — models + framework done; engine, Validation → CP1 seam, and criteria remain. |
 | **Planned / Deferred** | Structural, Evidence, Traceability, Business Rule layers (CAP-045/047/048/050); Feature/Test Generators. |
 
 ## 7. Implementation Roadmap

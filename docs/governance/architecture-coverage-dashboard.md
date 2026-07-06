@@ -93,34 +93,39 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-050 | Business Rule Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
 | CAP-051 | ValidationInput (canonical input) | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-052 | Validation Profiles | ✓ | ✓ | n/a | ✓ | ✓ | ✗ | Ready |
-| CAP-060 | CP1 Validator | ◑ | ✓ | ✓ | ◑ | ✗ | ✗ | In Progress |
+| CAP-060 | CP1 Validator | ✓ | ✓ | ✓ | ◑ | ✗ | ✗ | In Progress |
+| CAP-061 | Engineering Readiness Criteria Catalog | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-062 | CP1 Canonical Models | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-063 | CP1 Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 
 ## 5. Overall coverage summary
 
-Objective counts across all **30** capabilities (no percentages estimated). For
+Objective counts across all **33** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 29 | 1 | 0 | Partial: CAP-060. |
-| **Framework** | 30 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 30 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 22 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
-| **Testing** | 22 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 1 | 25 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
+| **Architecture** | 33 | 0 | 0 | — (CAP-060 now governed by ADR-0011/0012). |
+| **Framework** | 33 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 33 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 25 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
+| **Testing** | 25 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 1 | 28 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
 
-**Implementation Readiness distribution** (30 total): **Ready 22** · **In Progress
+**Implementation Readiness distribution** (33 total): **Ready 25** · **In Progress
 4** (CAP-044, CAP-046, CAP-049, CAP-060) · **Blocked 0** · **Planned 4** (CAP-045,
 CAP-047, CAP-048, CAP-050).
 
 ## 6. Remaining architecture work
 
-Architecture coverage is effectively complete; the outstanding items are narrow and
+Architecture coverage is complete; the outstanding items are narrow and
 repository-evidenced:
 
-- **CAP-060 CP1 Validator** — architecture is **partial** (`◑`): no dedicated
-  architecture document; it appears only in the Architecture Overview pipeline and
-  the platform catalogue.
+- **CAP-060 CP1 Validator** — architecture is now **complete** (`✓`): governed by
+  **ADR-0011 (Accepted)** and **ADR-0012 (Accepted)**, and decomposed into CAP-061
+  (Criteria Catalog), CAP-062 (models), CAP-063 (framework). Remaining work is
+  **implementation** (the CP1 engine, the Validation → CP1 seam, and concrete
+  criteria), not architecture.
 - **Documentation gap (not a capability gap)** — CAP-020 Execution Package,
   CAP-024 Platform CLI, and CAP-011 Prompt Framework are implemented and marked
   architected, but have **no dedicated architecture document** (governed by
@@ -199,6 +204,13 @@ No other capability is missing architecture: every remaining `✗` is an
 - **Frozen and stable (no action): CAP-030 Response Normalization subsystem,
   CAP-032 ResponseNormalizer, CAP-040 Validation Framework, CAP-042 Transport
   Layer.**
+- **CP1 subsystem (ADR-0011/0012, Accepted).** **Complete:** CAP-061 Engineering
+  Readiness Criteria Catalog (governed, empty by design), CAP-062 CP1 Canonical
+  Models (incl. `CP1Result` referencing `CP1FrameworkMetadata`; `CP1_RESULT_VERSION`
+  1.1), CAP-063 CP1 Framework (behaviour-free; collects findings, derives no verdict).
+  **Next (CAP-064+):** the CP1 engine (verdict aggregation + `CP1Result` assembly),
+  the Validation → CP1 seam, and the first governed criterion `CP1-0001` — none
+  started. The catalog is intentionally empty, so no criterion may be implemented yet.
 
 > Readiness confirms the deterministic validation initiative is **feature-complete
 > for the currently governed response schema**: Response Normalization, the Validation
