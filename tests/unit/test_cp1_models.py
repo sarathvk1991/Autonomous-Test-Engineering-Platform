@@ -32,6 +32,14 @@ import pytest
 from pydantic import ValidationError
 
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
+from requirement_intelligence.cp1.models import (
+    CP1_FINDING_VERSION,
+    CP1_INPUT_VERSION,
+    CP1_RESULT_VERSION,
+    CP1Finding,
+    CP1Input,
+    CP1Result,
+)
 from requirement_intelligence.llm.llm_models import LLMResponse
 from requirement_intelligence.normalization.framework.normalization_pipeline import (
     NormalizationPipeline,
@@ -60,14 +68,6 @@ from requirement_intelligence.validation.models import (
 )
 from requirement_intelligence.validation.models import (
     ValidationVerdict as ValidationSubsystemVerdict,
-)
-from requirement_intelligence.validators.models import (
-    CP1_FINDING_VERSION,
-    CP1_INPUT_VERSION,
-    CP1_RESULT_VERSION,
-    CP1Finding,
-    CP1Input,
-    CP1Result,
 )
 from shared.enums.base import ValidationVerdict  # CP1's PASS / FAIL / WARN vocabulary
 

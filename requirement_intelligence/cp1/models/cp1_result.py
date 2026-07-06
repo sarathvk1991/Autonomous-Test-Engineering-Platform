@@ -7,10 +7,10 @@ gates the handoff to Feature Generation (ADR-0011).
 
 Ownership, reference, and containment:
 
-* **Owns** the :class:`~requirement_intelligence.validators.models.cp1_finding.CP1Finding`
+* **Owns** the :class:`~requirement_intelligence.cp1.models.cp1_finding.CP1Finding`
   collection.
 * **Contains** (preserves unchanged) the
-  :class:`~requirement_intelligence.validators.models.cp1_input.CP1Input` that was
+  :class:`~requirement_intelligence.cp1.models.cp1_input.CP1Input` that was
   judged — the validated input is referenced, never mutated (mirroring how
   ``ValidationResult`` preserves its ``AnalysisResult``; ADR-0011 §D4).
 
@@ -34,8 +34,8 @@ from typing import Any
 from pydantic import ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
-from requirement_intelligence.validators.models.cp1_finding import CP1Finding
-from requirement_intelligence.validators.models.cp1_input import CP1Input
+from requirement_intelligence.cp1.models.cp1_finding import CP1Finding
+from requirement_intelligence.cp1.models.cp1_input import CP1Input
 from shared.contracts.base import Schema
 from shared.enums.base import ValidationVerdict
 

@@ -22,7 +22,7 @@ This model carries **information only**.  It contains **no** readiness policy, n
 threshold, no scoring, and no judgement: it does not decide the criterion's
 verdict, it only *records* the contribution a criterion produced.  Findings are
 *produced by* future CP1 criteria and *owned by* a
-:class:`~requirement_intelligence.validators.models.cp1_result.CP1Result`.
+:class:`~requirement_intelligence.cp1.models.cp1_result.CP1Result`.
 
 Versioning
 ----------

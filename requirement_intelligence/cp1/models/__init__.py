@@ -19,15 +19,15 @@ threshold, no scoring, and no judgement.
 
 from __future__ import annotations
 
-from requirement_intelligence.validators.models.cp1_finding import (
+from requirement_intelligence.cp1.models.cp1_finding import (
     CP1_FINDING_VERSION,
     CP1Finding,
 )
-from requirement_intelligence.validators.models.cp1_input import (
+from requirement_intelligence.cp1.models.cp1_input import (
     CP1_INPUT_VERSION,
     CP1Input,
 )
-from requirement_intelligence.validators.models.cp1_result import (
+from requirement_intelligence.cp1.models.cp1_result import (
     CP1_RESULT_VERSION,
     CP1Result,
 )
