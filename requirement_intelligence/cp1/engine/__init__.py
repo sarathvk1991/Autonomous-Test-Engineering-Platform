@@ -1,15 +1,18 @@
-"""CP1 engine composition (reserved).
+"""CP1 engine (CAP-065).
 
-Reserved home for the assembled, runnable CP1 engine — the composition of the
-framework contract, registry, and pipeline that executes the governed criteria and
-produces a ``CP1Result`` (**ADR-0011 §D7**), analogous to the Validation subsystem's
-composition root (``validator_factory``).
+Hosts the :class:`~requirement_intelligence.cp1.engine.cp1_engine.CP1Engine` — the
+**"Aggregate Result"** stage of the CP1 pattern (ADR-0011 §D7).  **The CP1 Engine
+executes the registered governed criteria and aggregates their findings into the
+overall CP1 verdict**, assembling the single ``CP1Result``.
 
-Intentionally **empty**: this package establishes the subsystem layout only.  No
-engine, composition root, or other implementation exists yet — that is a later
-milestone.  The exact placement of components across ``framework``/``engine``/
-``response`` is finalized by the implementing milestone; this task fixes only the
-layout.
+**Criteria own engineering policy; the engine owns orchestration only.**  The engine
+is handed a ``CP1CriterionPipeline`` and runs it once — it does **not** build a
+registry or pipeline, register criteria, or wire the composition root (a later
+milestone), and it contains no readiness logic, threshold, heuristic, or policy.
 """
 
 from __future__ import annotations
+
+from requirement_intelligence.cp1.engine.cp1_engine import CP1Engine
+
+__all__ = ["CP1Engine"]

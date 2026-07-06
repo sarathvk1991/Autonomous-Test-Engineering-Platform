@@ -14,14 +14,19 @@ between the Validation Platform and Feature Generation, governed by **ADR-0011**
   readiness.
 * :mod:`requirement_intelligence.cp1.criteria` — *reserved* home for the concrete
   engineering-readiness criteria (ADR-0012; the catalog is currently empty).
-* :mod:`requirement_intelligence.cp1.response` — *reserved* home for the CP1
-  orchestrator and the Validation → CP1 handoff-seam consumer (ADR-0011 §D4).
-* :mod:`requirement_intelligence.cp1.engine` — *reserved* home for the assembled,
-  runnable CP1 engine composition, incl. verdict aggregation (ADR-0011 §D7; ADR-0012 §8).
+* :mod:`requirement_intelligence.cp1.response` — the **Validation → CP1 handoff seam**
+  (``ValidationToCP1Handoff``); gates on the Validation verdict and binds one
+  ``CP1Input`` (ADR-0011 §D4/§D5).  **Implemented** (CAP-064).
+* :mod:`requirement_intelligence.cp1.engine` — the **CP1 Engine** (``CP1Engine``): it
+  **executes the registered governed criteria and aggregates their findings into the
+  overall CP1 verdict**, assembling the ``CP1Result`` (ADR-0011 §D7; ADR-0012 §8).
+  **Implemented** (CAP-065).  Criteria own engineering policy; the engine owns
+  orchestration only — it builds no registry/pipeline (that is the composition root).
 
-The three reserved packages are **intentionally empty** subsystem scaffolding: the
-CP1 engine and the concrete engineering-readiness criteria are future milestones.
-This subsystem currently owns its canonical models (CAP-062) and framework (CAP-063).
+The remaining reserved package is the concrete engineering-readiness **criteria**
+(``cp1/criteria/``) — a future milestone; the catalog is currently empty.  This
+subsystem owns its canonical models (CAP-062), framework (CAP-063), seam (CAP-064),
+and engine (CAP-065).
 """
 
 from __future__ import annotations
