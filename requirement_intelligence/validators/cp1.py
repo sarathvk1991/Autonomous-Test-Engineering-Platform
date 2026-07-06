@@ -1,39 +1,52 @@
-"""CP1 Validation Engine.
+"""Legacy CP1 entry-point placeholder.
 
-CP1 ("Control Point 1") is the first quality gate of the platform: it decides
-whether the consolidated/classified/analyzed requirement set is good enough to
-proceed to the Feature Engineering Layer. Encapsulates the CP1 rule set and
-produces a pass/fail verdict with findings. Logic deferred.
+Historical note
+---------------
+This module predates the CP1 subsystem (**ADR-0011**, **ADR-0012**) and the CP1
+canonical models (**CAP-062**).  It formerly defined its own ``CP1Result`` and
+``CP1Finding`` models and consumed an obsolete ``list[CanonicalRequirement]`` input.
+Those have been **reconciled away** (CAP-063A):
+
+* The canonical CP1 models live **only** in
+  :mod:`requirement_intelligence.cp1.models` (``CP1Input``, ``CP1Result``,
+  ``CP1Finding``, ``CP1FrameworkMetadata``).
+* The reusable engine infrastructure lives in
+  :mod:`requirement_intelligence.cp1.framework`.
+
+Current role
+------------
+This file retains **only** a legacy placeholder for the future CP1 entry point
+(:class:`CP1Validator`), per **ADR-0011 §D9**, which retains the ``validators/``
+location and the ``CAP-060`` allocation.  It owns **no** canonical models, no
+framework metadata, no verdict logic, no readiness logic, and no criteria.
+
+The concrete CP1 engine — verdict aggregation over criterion findings and
+``CP1Result`` assembly — is a **future milestone** (CAP-064+) and belongs to the CP1
+subsystem (:mod:`requirement_intelligence.cp1.engine`), **not** here.  The CAP-063A
+report recommends retiring this placeholder in favour of ``cp1/engine/`` once an
+ADR-0011 §D9 amendment authorises relocating the retained ``validators/`` location.
 """
 
 from __future__ import annotations
 
-from pydantic import Field
-
-from requirement_intelligence.models.canonical_requirement import CanonicalRequirement
-from shared.contracts.base import Schema
-from shared.enums.base import ValidationVerdict
-
-
-class CP1Finding(Schema):
-    """A single issue raised by the CP1 gate."""
-
-    requirement_id: str
-    rule: str
-    message: str
-    verdict: ValidationVerdict
-
-
-class CP1Result(Schema):
-    """Aggregate outcome of a CP1 validation run."""
-
-    verdict: ValidationVerdict
-    findings: list[CP1Finding] = Field(default_factory=list)
+from requirement_intelligence.cp1.models import CP1Input, CP1Result
 
 
 class CP1Validator:
-    """Evaluates the CP1 quality gate over a requirement set."""
+    """Legacy placeholder for the future CP1 engine entry point (ADR-0011 §D9).
 
-    def validate(self, requirements: list[CanonicalRequirement]) -> CP1Result:
-        """Run the CP1 rule set and return the verdict + findings."""
+    Owns no models and no logic.  The reconciled input is the canonical
+    :class:`~requirement_intelligence.cp1.models.cp1_input.CP1Input` (ADR-0011 §D3),
+    superseding the obsolete ``list[CanonicalRequirement]`` signature; the output is
+    the canonical
+    :class:`~requirement_intelligence.cp1.models.cp1_result.CP1Result`.  The concrete
+    implementation (verdict aggregation + result assembly) is deferred to the CP1
+    engine milestone and lives in :mod:`requirement_intelligence.cp1.engine`.
+    """
+
+    def validate(self, cp1_input: CP1Input) -> CP1Result:
+        """Evaluate the CP1 gate over *cp1_input* and return the ``CP1Result``.
+
+        Not implemented — the concrete CP1 engine is a future milestone (CAP-064+).
+        """
         raise NotImplementedError

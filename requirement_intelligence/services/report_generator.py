@@ -7,8 +7,8 @@ the CP1 validation result) into human-readable reports using templates in
 
 from __future__ import annotations
 
+from requirement_intelligence.cp1.models import CP1Result
 from requirement_intelligence.models.canonical_requirement import CanonicalRequirement
-from requirement_intelligence.validators.cp1 import CP1Result
 
 
 class ReportGenerator:
