@@ -235,12 +235,14 @@ not applicable.
 | ID | Capability | Architecture | Framework | Canonical Models | Implementation | Testing | Frozen |
 | -- | ---------- | :----------: | :-------: | :--------------: | :------------: | :-----: | :----: |
 | CAP-060 | CP1 Validator | ◑ | n/a | ✓ | ◑ | ✗ | ✗ |
+| CAP-062 | CP1 Canonical Models | ✓ | n/a | ✓ | ✓ | ✓ | ✗ |
 
 **Governance**
 
 | ID | Capability | Purpose | Current Version | Introduced In | Owner | Dependencies | Next Planned Milestone | Maturity | Status | Notes |
 | -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
 | CAP-060 | CP1 Validator | Downstream quality gate consuming validated output | `n/a` (not built) | 1.0.0 | Implementation | Response Validator | None recorded | Implementation In Progress | Planned | `validators/cp1.py` present; platform catalogue lists CP1 Validator `Planned` — see consistency note. |
+| CAP-062 | CP1 Canonical Models | The immutable CP1 information models (`CP1Input`, `CP1Result`, `CP1Finding`) | `CP1_INPUT_VERSION` 1.0 · `CP1_RESULT_VERSION` 1.0 · `CP1_FINDING_VERSION` 1.0 | 1.0.0 | Shared | ValidationResult · NormalizationResult (CP1Input); `shared` ValidationVerdict | CP1 engine (later milestone) | Production Ready | Complete | `requirement_intelligence/validators/models/`; governed by ADR-0011; `CP1Input` mirrors `ValidationInput` (references both artifacts, same-execution integrity). Flat `CP1-NNNN` finding identity (ADR-0012). 100% unit-tested (`tests/unit/test_cp1_models.py`). `CAP-061` (Criteria Catalog) pending ADR-0012 acceptance. |
 
 ## 6. Overall Platform Health
 
