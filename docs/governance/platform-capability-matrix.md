@@ -76,7 +76,7 @@ renumbering existing ones:
 | `CAP-020…029` | Execution & Platform | `CAP-020…024` | `CAP-025…029` |
 | `CAP-030…039` | Response Normalization | `CAP-030…032` | `CAP-033…039` |
 | `CAP-040…059` | Validation | `CAP-040…052` | `CAP-053…059` |
-| `CAP-060…` | Downstream / Future | `CAP-060…066` | `CAP-067…` |
+| `CAP-060…` | Downstream / Future | `CAP-060…070` | `CAP-071…` |
 
 > An ID, once assigned, is **permanent**. A renamed capability keeps its ID; a
 > removed capability's ID is **retired, never reused**. Allocating the next ID for
@@ -258,6 +258,20 @@ not applicable.
 | CAP-067B | CP1 PlatformContext & CLI Wiring | Integrate the assembled CP1 subsystem into the application pipeline: `Analysis → Normalization → Validation → ValidationToCP1Handoff → CP1Service.run() → Execution Package` | `n/a` (integration) | 1.0.0 | Implementation | CP1 Composition Root (CAP-066); Validation → CP1 Seam (CAP-064); PlatformContext; CLI | Downstream consumption of `CP1Result` (reporting/persistence — future) | Production Ready | Complete | `PlatformContext.cp1_service` owns the **single** `CP1Service`, built exclusively via `build_cp1_service()` (CAP-066); `PlatformContext.create_validation_to_cp1_handoff()` constructs the seam (CAP-064). The CLI (`scripts/run_requirement_analysis.py::run_cp1_phase`) executes validation, invokes `ValidationToCP1Handoff`, calls `CP1Service.run()` **only** when a `CP1Input` is returned (gate open, ADR-0011 §D5), and places the `CP1Result` into the execution flow. The CLI constructs **no** registry/pipeline/criteria/engine/`CP1Input` and invents no gating/aggregation. `ExecutionData` **transports** the `CP1Result` only — no persistence/reporting/rendering added this milestone. Covered by `tests/unit/test_run_requirement_analysis.py` (PlatformContext single-service ownership, CLI orchestration, PASS→runs / FAIL·BLOCKED→skipped, end-to-end, determinism, thread safety). |
 | CAP-068 | CP1 Reporting & Execution Package Integration | Expose the transported `CP1Result` through the execution package as a presentation-only report | `n/a` (reporting) | 1.0.0 | Implementation | CP1 PlatformContext/CLI Wiring (CAP-067B); Execution Package | Downstream analytics/aggregation (future) | Production Ready | Complete | `requirement_intelligence/execution/cp1_report_builder.py` (`CP1ReportBuilder` → `cp1_report.md`), mirroring `ValidationReportBuilder`. **Pure presentation** read straight from `CP1Result` — no criteria evaluation, aggregation, verdict derivation, scoring, or readiness logic. `ExecutionWriter` emits `cp1_report.md` **only** when `ExecutionData.cp1_result` is present; `ManifestBuilder` adds `cp1Report`/`cp1Executed`/`cp1Verdict` **only when applicable**; `ExecutionSummaryBuilder` adds a concise **Engineering Readiness** section (verdict + finding count); `ReviewBuilder` adds a **reference-only** section (`See cp1_report.md`, no duplication); `BaselineMetricsBuilder` deliberately adds **nothing** (execution performance ≠ engineering assessment). When CP1 did not run, every existing artifact/manifest is byte-identical. 100% covered (`tests/unit/test_cp1_report_builder.py`, `tests/unit/test_run_requirement_analysis.py`). |
 
+### 5.7 Productization (verification)
+
+**Lifecycle**
+
+| ID | Capability | Architecture | Framework | Canonical Models | Implementation | Testing | Frozen |
+| -- | ---------- | :----------: | :-------: | :--------------: | :------------: | :-----: | :----: |
+| CAP-070 | Productization | ✓ | n/a | n/a | ✓ | ✓ | ◑ |
+
+**Governance**
+
+| ID | Capability | Purpose | Current Version | Introduced In | Owner | Dependencies | Next Planned Milestone | Maturity | Status | Notes |
+| -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
+| CAP-070 | Productization | Verify the completed Requirement Intelligence architecture end-to-end against a deterministic golden **Release Regression Baseline** | Governance contract 1.0 · Golden Dataset `GOLDEN_DATASET_VERSION` 1.0.0 (versioned independently) | 1.1.0 | Implementation | Completed pipeline it verifies — Consolidation (CAP-003), Requirement Analysis (CAP-014), Normalization (CAP-032), Response Validator (CAP-041), CP1 subsystem (CAP-060), Execution Package (CAP-020) | Governed regression datasets — `Golden Validation FAIL`, `Golden CP1 FAIL` (Planned) | Production Ready | Complete | `docs/productization/golden-baseline.md` (governing document; governance contract **frozen**, §13); `tests/productization/` — **70 productization tests** (Phase 3–6: 14 / 30 / 12 / 14) executing the full pipeline via a deterministic `GoldenStubProvider`, all passing. **Owns verification only**: it consumes the completed architecture and asserts pipeline execution, artifact generation, manifest integrity, deterministic execution, and the Validation/CP1 verdicts — it **does not own** Validation, CP1, Normalization, Analysis, Connectors, Prompt Engineering, or reporting. **Frozen ◑**: the governance contract is frozen; the golden dataset stays independently versioned (not frozen). |
+
 ## 6. Overall Platform Health
 
 Objective counts, derived directly from the repository (no estimation):
@@ -273,7 +287,7 @@ Objective counts, derived directly from the repository (no estimation):
 | Bucket | Capabilities |
 | ------ | ------------ |
 | **Frozen** | Response Normalization subsystem (CAP-030), ResponseNormalizer (CAP-032), Transport Layer (CAP-042), Validation Framework (CAP-040). |
-| **Completed (Production Ready)** | Ingestion & Core (CAP-001…003), AI Generation implementation (CAP-011…014), Execution & Platform (CAP-020…024), Response Normalization subsystem (CAP-030), ParsedResponse (CAP-031), ResponseNormalizer (CAP-032), **Response Validator (CAP-041, wired end-to-end incl. persistence + reporting)**, Syntax Layer (CAP-043), ValidationInput (CAP-051), **Validation Profiles (CAP-052)**, **CP1 Canonical Models (CAP-062)**, **CP1 Framework (CAP-063)**, **Validation → CP1 Seam (CAP-064)**, **CP1 Engine (CAP-065)**, **CP1 Composition Root (CAP-066)**, **CP1 PlatformContext & CLI Wiring (CAP-067B)**, **CP1 Reporting & Execution Package Integration (CAP-068)**, **CP1 Validator / Engineering Readiness subsystem (CAP-060 — umbrella complete)**. |
+| **Completed (Production Ready)** | Ingestion & Core (CAP-001…003), AI Generation implementation (CAP-011…014), Execution & Platform (CAP-020…024), Response Normalization subsystem (CAP-030), ParsedResponse (CAP-031), ResponseNormalizer (CAP-032), **Response Validator (CAP-041, wired end-to-end incl. persistence + reporting)**, Syntax Layer (CAP-043), ValidationInput (CAP-051), **Validation Profiles (CAP-052)**, **CP1 Canonical Models (CAP-062)**, **CP1 Framework (CAP-063)**, **Validation → CP1 Seam (CAP-064)**, **CP1 Engine (CAP-065)**, **CP1 Composition Root (CAP-066)**, **CP1 PlatformContext & CLI Wiring (CAP-067B)**, **CP1 Reporting & Execution Package Integration (CAP-068)**, **CP1 Validator / Engineering Readiness subsystem (CAP-060 — umbrella complete)**, **Productization (CAP-070 — Release Regression Baseline; verification only)**. |
 | **Governed (complete)** | Engineering Readiness Criteria Catalog (CAP-061) — one criterion **implemented** (`CP1-0001`, ADR-0013 Accepted). |
 | **Partially implemented** | Schema Layer (CAP-044: `SCHEMA-0001/0002/0004`; `0003` deferred), Content Layer (CAP-046: `CONTENT-0001/0002`), Reasoning Layer (CAP-049: `REASONING-0002`). |
 | **In Progress** | _None._ (The CP1 Validator umbrella (CAP-060) is **Complete** — see *Completed (Production Ready)*. Growth of individual engineering-readiness criteria is governed independently by CAP-061.) |
@@ -313,6 +327,12 @@ schema-enrichment / semantic-reasoning ADR** (no dates; grounded in ADR-0005/000
    governed deterministic contradiction/circular-logic mechanism.
 4. **Structural, Evidence, Traceability, Business Rule layers (CAP-045/047/048/050)** —
    Deferred: await a governed composable/enriched response and a cataloguing ADR.
+
+**Productization (CAP-070)** is **complete** for the current release (`Golden PASS`
+baseline). Its roadmap is **additive governed datasets** — `Golden Validation FAIL`
+and `Golden CP1 FAIL` (both **Planned**), documented in
+[`docs/productization/golden-baseline.md`](../productization/golden-baseline.md) §9.
+No new datasets are invented here; the two named datasets are the only planned additions.
 
 > The roadmap lists only work with an existing architectural mandate. Downstream
 > layers named in the Architecture Overview (Feature/Test Generation, Execution,

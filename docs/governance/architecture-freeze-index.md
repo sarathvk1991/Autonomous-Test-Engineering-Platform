@@ -84,6 +84,7 @@ date is invented.
 | **Execution Package** | `EXECUTION_PACKAGE_VERSION` 1.0.0 (`MANIFEST_SCHEMA_VERSION` 1.0.0) | Implemented | Not Frozen (stable) | Not Recorded | `platform_metadata.py` (`execution/`) | — | `execution/` implemented + tested | No dedicated architecture document. |
 | **CLI Architecture** | `CLI_VERSION` 1.0.0 | Implemented | Not Frozen (stable) | Not Recorded | `platform_metadata.py` (`scripts/run_requirement_analysis.py`) | — | `scripts/run_requirement_analysis.py` implemented + tested | Command catalogue in `platform_metadata.CLI_COMMANDS`. |
 | **Prompt Framework** | `PROMPT_FRAMEWORK_VERSION` 1.0.0 (`PROMPT_VERSION` 1.0.0) | Implemented | Not Frozen (stable) | Not Recorded | `requirement-analysis-service.md` (partial) · `prompts/` | Reasoning Contract | `prompts/` implemented + tested | No dedicated architecture document. |
+| **Productization Governance Contract** (CAP-070) | Governance contract 1.0 · Golden Dataset `GOLDEN_DATASET_VERSION` 1.0.0 (**versioned independently**) | Approved — foundational — **FROZEN** | **Frozen** — **governance contract only** (has a Governance Contract Freeze section §13); the **golden dataset is NOT frozen** | Not Recorded | `docs/productization/golden-baseline.md` §13 | Platform Capability Matrix (§5.7 CAP-070) · Architecture Coverage Dashboard (§4 CAP-070) | Productization suite (70 tests, Phase 3–6) + golden dataset implemented + passing | Freezes the **governance contract** — the baseline's role (Release Regression Baseline), validation scope, determinism contract, ownership boundaries, and regression procedure. The **golden dataset contents are explicitly NOT frozen**: they stay independently versioned via `GOLDEN_DATASET_VERSION` and evolve additively under the doc's §7.3 re-baselining procedure, with **no ADR and no governance-contract change**. Governance registration only (CAP-070B) — no architecture, no ADR, no code change. |
 
 ### 4.1 Freeze History
 
@@ -118,6 +119,7 @@ reached.
 | Normalization Stage Implementation Contract | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Architecture Freeze section §14 |
 | Validation Rule Implementation Contract | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Architecture Freeze section §14 |
 | Schema Validation Implementation Contract | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Architecture Freeze section §19 |
+| Productization Governance Contract (CAP-070) | Not Recorded | Not Recorded | Reached · date Not Recorded | Reached · date Not Recorded | No | Governance Contract Freeze section §13 (governance contract only; golden dataset independently versioned, not frozen) |
 
 ## 5. Architecture Governance Principles
 

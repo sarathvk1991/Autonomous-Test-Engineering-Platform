@@ -365,3 +365,60 @@ Architecture v1.1.0 has been validated against this golden baseline.
 | PlatformContext | ✓ VALIDATED | Correct construction and wiring confirmed |
 
 **Repository status: ARCHITECTURE VALIDATED — RELEASE REGRESSION BASELINE ESTABLISHED**
+
+---
+
+## 11. Governance Registration (CAP-070B)
+
+Productization is a **governed platform capability**, registered as **CAP-070** in the
+governance layer:
+
+| Governance record | Location |
+|---|---|
+| Capability registration | [Platform Capability Matrix](../governance/platform-capability-matrix.md) §5.7 (CAP-070) |
+| Coverage | [Architecture Coverage Dashboard](../governance/architecture-coverage-dashboard.md) §4 (CAP-070) |
+| Freeze register | [Architecture Freeze Index](../governance/architecture-freeze-index.md) §4 (Productization Governance Contract) |
+| Governing document | This document (`docs/productization/golden-baseline.md`) |
+
+CAP-070B is a **governance-only** registration: it records an existing repository asset
+as an official architectural capability. It introduces no code, no ADR, and no
+architecture change.
+
+## 12. Ownership Boundaries
+
+Productization has a single, narrow responsibility — **verification of the completed
+architecture** — and deliberately owns nothing else. The boundaries below are frozen as
+part of the governance contract (§13):
+
+| Concern | Owner | Productization's relationship |
+|---|---|---|
+| Implementation of the pipeline | Architecture (the pipeline subsystems) | **Consumes** — never modifies |
+| Correctness of the response | Validation (CAP-041) | **Consumes the verdict** — does not judge correctness |
+| Engineering readiness | CP1 (CAP-060) | **Consumes the verdict** — does not judge readiness |
+| Normalization / Analysis / Connectors / Prompt Engineering | Their respective capabilities | **Consumes outputs** — owns none of them |
+| Artifact reporting | Execution Package (CAP-020) | **Consumes artifacts** — does not produce reports |
+| **End-to-end verification** | **Productization (CAP-070)** | **Owns** — the golden regression baseline, the productization test suite, the release regression datasets, and the deterministic end-to-end contract |
+
+> **Productization consumes the completed architecture; it owns verification of that
+> architecture.** It does not own — and must never absorb — Validation, CP1,
+> Normalization, Analysis, Connectors, or Prompt Engineering.
+
+## 13. Governance Contract Freeze
+
+The **governance contract** described by this document is **frozen**:
+
+- The baseline's *role* (Release Regression Baseline for Requirement Intelligence
+  v1.1.0), its *validation scope* (§Overview), its *determinism contract* (§6), its
+  *ownership boundaries* (§12), and its *regression procedure* (§7.3) are immutable
+  and change only through a deliberate governance decision.
+
+The **golden dataset contents are explicitly NOT frozen**:
+
+- The dataset (`tests/productization/fixtures/golden_dataset.py`) remains **versioned
+  independently** via `GOLDEN_DATASET_VERSION` (currently `1.0.0`) and evolves
+  additively under the §7.3 re-baselining procedure — **no ADR and no governance-contract
+  change is required** to advance the dataset version.
+
+This distinction is deliberate: the *contract* for how regression is governed is stable,
+while the *data* the contract operates on is free to grow as the pipeline legitimately
+evolves.
