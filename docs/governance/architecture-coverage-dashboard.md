@@ -100,22 +100,23 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-064 | Validation → CP1 Seam | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-065 | CP1 Engine | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-066 | CP1 Composition Root | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-067B | CP1 PlatformContext & CLI Wiring | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 
 ## 5. Overall coverage summary
 
-Objective counts across all **36** capabilities (no percentages estimated). For
+Objective counts across all **37** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 36 | 0 | 0 | — (CAP-060 now governed by ADR-0011/0012). |
-| **Framework** | 36 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 36 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 28 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
-| **Testing** | 28 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 1 | 31 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
+| **Architecture** | 37 | 0 | 0 | — (CAP-060 now governed by ADR-0011/0012). |
+| **Framework** | 37 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 37 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 29 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
+| **Testing** | 29 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 1 | 32 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
 
-**Implementation Readiness distribution** (36 total): **Ready 28** · **In Progress
+**Implementation Readiness distribution** (37 total): **Ready 29** · **In Progress
 4** (CAP-044, CAP-046, CAP-049, CAP-060) · **Blocked 0** · **Planned 4** (CAP-045,
 CAP-047, CAP-048, CAP-050).
 
@@ -126,9 +127,11 @@ repository-evidenced:
 
 - **CAP-060 CP1 Validator** — architecture is now **complete** (`✓`): governed by
   **ADR-0011 (Accepted)** and **ADR-0012 (Accepted)**, and decomposed into CAP-061
-  (Criteria Catalog), CAP-062 (models), CAP-063 (framework). Remaining work is
-  **implementation** (the CP1 engine, the Validation → CP1 seam, and concrete
-  criteria), not architecture.
+  (Criteria Catalog), CAP-062 (models), CAP-063 (framework), CAP-064 (seam), CAP-065
+  (engine), CAP-066 (composition root), the first criterion `CP1-0001` (CAP-067A),
+  and **PlatformContext/CLI wiring (CAP-067B)** — CP1 now runs end-to-end in the
+  pipeline. Remaining work is **further governed criteria** (via the catalog's §11
+  process), not architecture or wiring.
 - **Documentation gap (not a capability gap)** — CAP-020 Execution Package,
   CAP-024 Platform CLI, and CAP-011 Prompt Framework are implemented and marked
   architected, but have **no dedicated architecture document** (governed by
@@ -221,10 +224,14 @@ No other capability is missing architecture: every remaining `✗` is an
   with a single `run(cp1_input)` entry point; assembly only). **First criterion
   implemented (CAP-067A):** `CP1-0001` (EngineeringInputAvailabilityCriterion, ADR-0013
   Accepted) — deterministic pooled-requirement-count ≥ 1, `CP1Input`-only; registered in
-  the composition root and 100% unit-tested. A composed `CP1Service` now runs
-  `Validation → CP1 → CP1Result` end-to-end: **PASS** when engineering input exists,
-  **FAIL** when it does not. **Next (CAP-067B+):** PlatformContext/CLI wiring, then
-  further governed criteria (via the catalog's §11 process).
+  the composition root and 100% unit-tested. **Wired into the application pipeline
+  (CAP-067B):** `PlatformContext` owns the single `CP1Service` (built via
+  `build_cp1_service()`) and constructs the seam; the CLI runs
+  `Analysis → Normalization → Validation → ValidationToCP1Handoff → CP1Service.run() →
+  Execution Package`, invoking CP1 **only** when the handoff returns a `CP1Input`
+  (gate open, ADR-0011 §D5) and transporting the `CP1Result` on `ExecutionData`
+  (no persistence/reporting added). **Next:** downstream consumption of `CP1Result`
+  and further governed criteria (via the catalog's §11 process).
 
 > Readiness confirms the deterministic validation initiative is **feature-complete
 > for the currently governed response schema**: Response Normalization, the Validation

@@ -11,6 +11,8 @@ and returns a platform object.
 
 from __future__ import annotations
 
+from functools import cached_property
+
 from requirement_intelligence.analysis.analysis_configuration import (
     AnalysisConfiguration,
 )
@@ -19,6 +21,11 @@ from requirement_intelligence.analysis.requirement_analysis_service import (
 )
 from requirement_intelligence.consolidation.consolidation_engine import (
     ConsolidationEngine,
+)
+from requirement_intelligence.cp1.response import (
+    CP1Service,
+    ValidationToCP1Handoff,
+    build_cp1_service,
 )
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
@@ -52,9 +59,7 @@ class PlatformContext:
         """Return a new requirement prompt builder."""
         return RequirementPromptBuilder()
 
-    def create_provider(
-        self, provider_name: str, model: str | None = None
-    ) -> LLMProvider:
+    def create_provider(self, provider_name: str, model: str | None = None) -> LLMProvider:
         """Return a provider instance via the platform factory.
 
         Parameters
@@ -99,9 +104,7 @@ class PlatformContext:
         """
         return build_response_validator()
 
-    def get_validation_profile(
-        self, name: str | None = None
-    ) -> ValidationProfileDefinition:
+    def get_validation_profile(self, name: str | None = None) -> ValidationProfileDefinition:
         """Return the governed Validation Profile for *name* (default when ``None``).
 
         Delegates to the :class:`ValidationProfileRegistry`, the sole owner of the
@@ -122,3 +125,28 @@ class PlatformContext:
         the profile only narrows the rule set. This method owns only composition.
         """
         return build_response_validator_for_profile(profile)
+
+    @cached_property
+    def cp1_service(self) -> CP1Service:
+        """The single :class:`CP1Service` owned by this context (CAP-067B).
+
+        Built **once**, exclusively through the CP1 composition root
+        :func:`~requirement_intelligence.cp1.response.build_cp1_service`, and reused for
+        every CP1 run. This context constructs **no** registry, pipeline, criterion, or
+        engine of its own — the composition root owns that assembly (CAP-066); this
+        property owns only the single-instance ownership. ``CP1Service`` holds only
+        immutable wiring (a sealed registry + the stateless engine) and builds a fresh
+        pipeline per :meth:`~CP1Service.run` call, so a single shared instance is
+        deterministic and safe to reuse across runs.
+        """
+        return build_cp1_service()
+
+    def create_validation_to_cp1_handoff(self) -> ValidationToCP1Handoff:
+        """Return the Validation → CP1 handoff seam (CAP-064, ADR-0011 §D4/§D5).
+
+        Pure construction of the stateless seam that gates on the Validation verdict
+        and binds a single ``CP1Input``. This method owns only construction — the seam
+        owns the gate/bind orchestration; this context invents no gating policy and
+        builds no ``CP1Input`` itself.
+        """
+        return ValidationToCP1Handoff()

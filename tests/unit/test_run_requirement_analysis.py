@@ -25,6 +25,8 @@ from requirement_intelligence.analysis.requirement_analysis_service import (
 from requirement_intelligence.consolidation.consolidation_engine import (
     ConsolidationEngine,
 )
+from requirement_intelligence.cp1.models import CP1Result
+from requirement_intelligence.cp1.response import CP1Service, ValidationToCP1Handoff
 from requirement_intelligence.execution import (
     BaselineMetricsBuilder,
     ExecutionData,
@@ -44,6 +46,7 @@ from requirement_intelligence.platform import PlatformCapabilities, PlatformCont
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
+from shared.enums.base import ValidationVerdict as CP1Verdict
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / "scripts" / "run_requirement_analysis.py"
@@ -63,6 +66,7 @@ cli = _load_cli()
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------
+
 
 class FakeArtifact:
     def __init__(
@@ -186,10 +190,19 @@ class FakeContext:
     def create_response_validator_for_profile(self, profile: Any) -> Any:
         return PlatformContext().create_response_validator_for_profile(profile)
 
+    @property
+    def cp1_service(self) -> Any:
+        # Faithful drop-in: the single CP1Service the real hub owns (CAP-067B).
+        return PlatformContext().cp1_service
+
+    def create_validation_to_cp1_handoff(self) -> Any:
+        return PlatformContext().create_validation_to_cp1_handoff()
+
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -243,6 +256,7 @@ def _live_data(validation_result: Any = None) -> ExecutionData:
 # PlatformContext
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_platform_context_constructs_components() -> None:
     ctx = PlatformContext()
@@ -255,9 +269,7 @@ def test_platform_context_constructs_components() -> None:
     provider = ctx.create_provider("gemini")
     assert provider.provider_name == "gemini"
 
-    service = ctx.create_requirement_analysis_service(
-        ctx.create_prompt_builder(), provider, config
-    )
+    service = ctx.create_requirement_analysis_service(ctx.create_prompt_builder(), provider, config)
     assert isinstance(service, RequirementAnalysisService)
 
     # PlatformContext is the single construction hub for the Response Validator too.
@@ -269,6 +281,7 @@ def test_platform_context_constructs_components() -> None:
 # ===========================================================================
 # ExecutionHistory
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_history_latest_when_not_saved(tmp_path: Path) -> None:
@@ -315,6 +328,7 @@ def test_history_finalize_copies_to_latest(tmp_path: Path) -> None:
 # ===========================================================================
 # ExecutionWriter / ManifestBuilder
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_writer_dry_run_writes_core_only(tmp_path: Path) -> None:
@@ -391,6 +405,7 @@ def test_manifest_includes_schema_and_component_versions() -> None:
 # PlatformCapabilities
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_platform_capabilities_versions_and_groups() -> None:
     caps = PlatformCapabilities()
@@ -406,9 +421,7 @@ def test_platform_capabilities_versions_and_groups() -> None:
     } <= set(versions)
 
     components = caps.architecture_components()
-    assert len(components) == len(caps.implemented_components()) + len(
-        caps.planned_components()
-    )
+    assert len(components) == len(caps.implemented_components()) + len(caps.planned_components())
     assert [title for title, _ in caps.component_groups()] == [
         "Core Platform",
         "AI Platform",
@@ -431,6 +444,7 @@ def test_platform_capabilities_providers_commands_identity() -> None:
 # ===========================================================================
 # Engineering metrics + execution package identity
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_engineering_metrics_from_pipeline_only() -> None:
@@ -501,6 +515,7 @@ def test_summary_and_review_include_package_identity() -> None:
 # Argument parsing
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_parser_analyze_defaults() -> None:
     args = cli.build_parser().parse_args(["analyze"])
@@ -519,11 +534,16 @@ def test_parser_analyze_all_options() -> None:
     args = cli.build_parser().parse_args(
         [
             "analyze",
-            "--artifact-id", "cons-x",
-            "--provider", "gemini",
-            "--model", "gemini-2.5-flash",
-            "--output-dir", "/tmp/out",
-            "--execution-name", "run-1",
+            "--artifact-id",
+            "cons-x",
+            "--provider",
+            "gemini",
+            "--model",
+            "gemini-2.5-flash",
+            "--output-dir",
+            "/tmp/out",
+            "--execution-name",
+            "run-1",
             "--dry-run",
             "--save-execution",
             "--verbose",
@@ -553,6 +573,7 @@ def test_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
 # ===========================================================================
 # Reserved + help + version subcommands
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_validate_placeholder(capsys: pytest.CaptureFixture[str]) -> None:
@@ -627,6 +648,7 @@ def test_version_shows_commands_and_system_info(
 # list-artifacts
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_list_artifacts_displays_all(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -649,6 +671,7 @@ def test_list_artifacts_displays_all(
 # analyze — validation, dry-run, live, selection
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_invalid_provider_rejected(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["analyze", "--provider", "nope", "--dry-run"]) == 2
@@ -665,13 +688,9 @@ def test_live_without_api_key_fails(
 
 
 @pytest.mark.unit
-def test_dry_run_writes_only_core(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_dry_run_writes_only_core(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)])
-    assert cli.main(
-        ["analyze", "--dry-run", "--output-dir", str(tmp_path / "executions")]
-    ) == 0
+    assert cli.main(["analyze", "--dry-run", "--output-dir", str(tmp_path / "executions")]) == 0
     latest = tmp_path / "latest"
     assert not (latest / "analysis_result.json").exists()
     manifest = _read_manifest(latest)
@@ -680,9 +699,7 @@ def test_dry_run_writes_only_core(
 
 
 @pytest.mark.unit
-def test_live_writes_full_package(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_live_writes_full_package(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=FakeResult())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert cli.main(["analyze", "--output-dir", str(tmp_path / "executions")]) == 0
@@ -695,9 +712,7 @@ def test_live_writes_full_package(
 
 
 @pytest.mark.unit
-def test_default_selection_is_largest(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_default_selection_is_largest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _use_context(
         monkeypatch,
         [
@@ -718,8 +733,12 @@ def test_explicit_artifact_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     )
     cli.main(
         [
-            "analyze", "--dry-run", "--artifact-id", "cons-b",
-            "--output-dir", str(tmp_path / "executions"),
+            "analyze",
+            "--dry-run",
+            "--artifact-id",
+            "cons-b",
+            "--output-dir",
+            str(tmp_path / "executions"),
         ]
     )
     assert _read_manifest(tmp_path / "latest")["selectedArtifactId"] == "cons-b"
@@ -732,8 +751,12 @@ def test_unknown_artifact_id_errors(
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=1)])
     rc = cli.main(
         [
-            "analyze", "--dry-run", "--artifact-id", "missing",
-            "--output-dir", str(tmp_path / "executions"),
+            "analyze",
+            "--dry-run",
+            "--artifact-id",
+            "missing",
+            "--output-dir",
+            str(tmp_path / "executions"),
         ]
     )
     assert rc == 1
@@ -743,6 +766,7 @@ def test_unknown_artifact_id_errors(
 # ===========================================================================
 # Execution history via the CLI / named executions
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_save_execution_creates_history_and_latest(
@@ -763,9 +787,7 @@ def test_named_execution_persisted_with_manifest_entry(
 ) -> None:
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=2)])
     base = tmp_path / "executions"
-    cli.main(
-        ["analyze", "--dry-run", "--execution-name", "prompt-v1.1", "--output-dir", str(base)]
-    )
+    cli.main(["analyze", "--dry-run", "--execution-name", "prompt-v1.1", "--output-dir", str(base)])
     target = base / "prompt-v1.1"
     assert (target / "manifest.json").exists()
     assert (tmp_path / "latest" / "manifest.json").exists()
@@ -780,9 +802,7 @@ def test_named_execution_collision_never_overwrites(
     (base / "prompt-v1.1").mkdir(parents=True)
     (base / "prompt-v1.1" / "sentinel.txt").write_text("keep", encoding="utf-8")
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=2)])
-    cli.main(
-        ["analyze", "--dry-run", "--execution-name", "prompt-v1.1", "--output-dir", str(base)]
-    )
+    cli.main(["analyze", "--dry-run", "--execution-name", "prompt-v1.1", "--output-dir", str(base)])
     assert (base / "prompt-v1.1" / "sentinel.txt").read_text() == "keep"
     assert (base / "prompt-v1.1-1" / "manifest.json").exists()
 
@@ -920,11 +940,13 @@ def test_validate_flag_invokes_validation_phase_with_context(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     calls: list[tuple[Any, Any, Any]] = []
-    monkeypatch.setattr(
-        cli,
-        "run_validation_phase",
-        lambda ctx, result, console, profile: calls.append((ctx, result, profile)),
-    )
+
+    def _fake_validation_phase(ctx: Any, result: Any, console: Any, profile: Any) -> Any:
+        calls.append((ctx, result, profile))
+        return (None, None)  # content irrelevant here; writer skips a None result
+
+    monkeypatch.setattr(cli, "run_validation_phase", _fake_validation_phase)
+    monkeypatch.setattr(cli, "run_cp1_phase", lambda *a: None)
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=FakeResult())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
@@ -936,9 +958,7 @@ def test_validate_flag_invokes_validation_phase_with_context(
 
 
 @pytest.mark.unit
-def test_default_run_does_not_validate(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_default_run_does_not_validate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[Any] = []
     monkeypatch.setattr(cli, "run_validation_phase", lambda *a: calls.append(a))
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=FakeResult())
@@ -961,6 +981,260 @@ def test_dry_run_with_validate_does_not_validate(
         == 0
     )
     assert calls == []  # no response to validate on a dry run
+
+
+# ===========================================================================
+# CP1 integration (CAP-067B) — PlatformContext ownership + CLI orchestration
+# ===========================================================================
+#
+# The already-implemented CP1 subsystem is wired into the pipeline:
+#   Analysis -> Normalization -> Validation -> ValidationToCP1Handoff
+#     -> CP1Service.run() -> Execution Package (transport only).
+# PlatformContext owns the single CP1Service (built via build_cp1_service); the CLI
+# constructs no registry/pipeline/criteria/engine/CP1Input and invents no gating.
+
+
+class _GateOpenHandoff:
+    """A fake seam whose gate is open: returns a sentinel CP1Input."""
+
+    def __init__(self, cp1_input: Any) -> None:
+        self._cp1_input = cp1_input
+
+    def hand_off(self, validation_result: Any, normalization_result: Any) -> Any:
+        return self._cp1_input
+
+
+class _GateClosedHandoff:
+    """A fake seam whose gate is closed (FAILED/BLOCKED): returns None."""
+
+    def hand_off(self, validation_result: Any, normalization_result: Any) -> Any:
+        return None
+
+
+class _FakeCP1Result:
+    """A stand-in CP1Result exposing only what run_cp1_phase reads."""
+
+    def __init__(self, verdict: str = "pass") -> None:
+        self.overall_verdict = verdict
+        self.findings: tuple[Any, ...] = ()
+
+
+class _RecordingCP1Service:
+    """A fake CP1Service recording each run and returning a sentinel CP1Result."""
+
+    def __init__(self, result: Any | None = None) -> None:
+        self.runs: list[Any] = []
+        self._result = result if result is not None else _FakeCP1Result()
+
+    def run(self, cp1_input: Any) -> Any:
+        self.runs.append(cp1_input)
+        return self._result
+
+
+class _CP1Ctx:
+    """A minimal context exposing only what run_cp1_phase consumes."""
+
+    def __init__(self, handoff: Any, service: Any) -> None:
+        self._handoff = handoff
+        self.cp1_service = service
+
+    def create_validation_to_cp1_handoff(self) -> Any:
+        return self._handoff
+
+
+class _Verdict:
+    """A stand-in ValidationResult carrying only the gated attribute."""
+
+    def __init__(self, verdict: str) -> None:
+        self.overall_verdict = verdict
+
+
+def _real_validation_and_normalization() -> tuple[Any, Any]:
+    """A genuine (ValidationResult, NormalizationResult) pair from one execution.
+
+    Reuses the CLI's own validation seam so the pair is same-execution-consistent and
+    thus eligible to construct a real ``CP1Input`` through the real handoff.
+    """
+    ctx = PlatformContext()
+    profile = ctx.get_validation_profile("default")
+    return cli.run_validation_phase(ctx, _real_analysis_result(), cli.Console(), profile)
+
+
+# --- PlatformContext ownership ---------------------------------------------
+
+
+@pytest.mark.unit
+def test_platform_context_owns_single_cp1_service() -> None:
+    ctx = PlatformContext()
+    assert isinstance(ctx.cp1_service, CP1Service)
+    # Single ownership: the same instance is reused for every access.
+    assert ctx.cp1_service is ctx.cp1_service
+
+
+@pytest.mark.unit
+def test_cp1_service_built_only_via_composition_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    import requirement_intelligence.platform.platform_context as pc
+
+    calls: list[int] = []
+    real = pc.build_cp1_service
+
+    def _spy() -> Any:
+        calls.append(1)
+        return real()
+
+    monkeypatch.setattr(pc, "build_cp1_service", _spy)
+    ctx = pc.PlatformContext()
+    first = ctx.cp1_service
+    second = ctx.cp1_service
+    # Constructed exactly once, exclusively through build_cp1_service.
+    assert calls == [1]
+    assert first is second
+
+
+@pytest.mark.unit
+def test_platform_context_creates_handoff_seam() -> None:
+    handoff = PlatformContext().create_validation_to_cp1_handoff()
+    assert isinstance(handoff, ValidationToCP1Handoff)
+
+
+# --- run_cp1_phase orchestration -------------------------------------------
+
+
+@pytest.mark.unit
+def test_cp1_phase_runs_service_when_gate_open() -> None:
+    sentinel_result = _FakeCP1Result()
+    service = _RecordingCP1Service(result=sentinel_result)
+    sentinel_input = object()
+    ctx = _CP1Ctx(_GateOpenHandoff(sentinel_input), service)
+
+    result = cli.run_cp1_phase(ctx, _Verdict("passed"), object(), cli.Console())
+
+    assert result is sentinel_result
+    assert service.runs == [sentinel_input]  # exactly one run, on the seam's CP1Input
+
+
+@pytest.mark.unit
+def test_cp1_phase_skipped_when_gate_closed() -> None:
+    service = _RecordingCP1Service()
+    ctx = _CP1Ctx(_GateClosedHandoff(), service)
+
+    result = cli.run_cp1_phase(ctx, _Verdict("failed"), object(), cli.Console())
+
+    assert result is None
+    assert service.runs == []  # FAILED/BLOCKED never reaches CP1 (ADR-0011 §D5)
+
+
+@pytest.mark.unit
+def test_cp1_phase_reports_skip_for_blocked(capsys: pytest.CaptureFixture[str]) -> None:
+    ctx = _CP1Ctx(_GateClosedHandoff(), _RecordingCP1Service())
+    cli.run_cp1_phase(ctx, _Verdict("blocked"), object(), cli.Console())
+    out = capsys.readouterr().out
+    assert "Running CP1 Engineering-Readiness Evaluation" in out
+    assert "Skipped" in out
+
+
+# --- Real end-to-end orchestration through the CLI --------------------------
+
+
+@pytest.mark.unit
+def test_cli_end_to_end_runs_cp1_and_places_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A live --validate run threads a real ValidationResult + NormalizationResult
+    # through the real seam and the real single CP1Service, placing the CP1Result
+    # onto ExecutionData. The governed response carries requirements, so validation
+    # passes the gate and CP1 returns PASS.
+    captured: dict[str, Any] = {}
+    real_writer_cls = cli.ExecutionWriter
+
+    class _RecordingWriter:
+        def write(self, target_dir: Path, data: Any) -> Any:
+            captured["data"] = data
+            return real_writer_cls().write(target_dir, data)
+
+    monkeypatch.setattr(cli, "ExecutionWriter", _RecordingWriter)
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "ex")]) == 0
+
+    data = captured["data"]
+    assert isinstance(data.cp1_result, CP1Result)
+    assert data.cp1_result.overall_verdict == CP1Verdict.PASS
+
+
+@pytest.mark.unit
+def test_cli_default_run_carries_no_cp1_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, Any] = {}
+    real_writer_cls = cli.ExecutionWriter
+
+    class _RecordingWriter:
+        def write(self, target_dir: Path, data: Any) -> Any:
+            captured["data"] = data
+            return real_writer_cls().write(target_dir, data)
+
+    monkeypatch.setattr(cli, "ExecutionWriter", _RecordingWriter)
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=FakeResult())
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    # No --validate → no validation → CP1 never runs.
+    assert cli.main(["analyze", "--output-dir", str(tmp_path / "ex")]) == 0
+    assert captured["data"].cp1_result is None
+
+
+@pytest.mark.unit
+def test_execution_package_transports_cp1_result_without_new_artifacts(tmp_path: Path) -> None:
+    # The Execution Package only *transports* the CP1Result at this milestone: the
+    # writer serialises no cp1 artifact and produces the identical file set with or
+    # without a cp1_result present.
+    without = tmp_path / "without"
+    with_cp1 = tmp_path / "with"
+    without.mkdir()
+    with_cp1.mkdir()
+
+    ExecutionWriter().write(without, _live_data())
+    from dataclasses import replace
+
+    ExecutionWriter().write(with_cp1, replace(_live_data(), cp1_result="ANY-CP1-RESULT"))
+
+    assert {p.name for p in without.iterdir()} == {p.name for p in with_cp1.iterdir()}
+    assert not (with_cp1 / "cp1_result.json").exists()
+
+
+# --- Determinism & thread safety of the owned service -----------------------
+
+
+@pytest.mark.unit
+def test_cp1_phase_deterministic_across_repeated_runs() -> None:
+    stable = _FakeCP1Result()
+    service = _RecordingCP1Service(result=stable)
+    ctx = _CP1Ctx(_GateOpenHandoff(object()), service)
+    a = cli.run_cp1_phase(ctx, _Verdict("passed"), object(), cli.Console())
+    b = cli.run_cp1_phase(ctx, _Verdict("passed"), object(), cli.Console())
+    assert a is b is stable
+
+
+@pytest.mark.unit
+def test_single_cp1_service_is_thread_safe_across_concurrent_runs() -> None:
+    # The single owned CP1Service holds only immutable wiring and builds a fresh
+    # pipeline per run, so concurrent runs off one PlatformContext are consistent.
+    from concurrent.futures import ThreadPoolExecutor
+
+    ctx = PlatformContext()
+    service = ctx.cp1_service
+    handoff = ctx.create_validation_to_cp1_handoff()
+
+    # Build a real eligible CP1Input via the real seam.
+    validation, normalization = _real_validation_and_normalization()
+    cp1_input = handoff.hand_off(validation, normalization)
+    assert cp1_input is not None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        verdicts = list(pool.map(lambda _: service.run(cp1_input).overall_verdict, range(24)))
+
+    assert all(v == CP1Verdict.PASS for v in verdicts)
 
 
 # ===========================================================================
@@ -1104,9 +1378,7 @@ def test_writer_does_not_mutate_validation_result(tmp_path: Path) -> None:
 def test_cli_validate_persists_validation_result(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
 
@@ -1124,9 +1396,7 @@ def test_cli_validate_persists_validation_result(
 def test_cli_live_without_validate_writes_no_validation_artifact(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert cli.main(["analyze", "--output-dir", str(tmp_path / "executions")]) == 0
 
@@ -1155,14 +1425,10 @@ def test_cli_validate_persists_into_saved_history(
 ) -> None:
     # Execution history behaviour is unchanged: the artifact is persisted in the
     # timestamped history copy and mirrored to latest/.
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     base = tmp_path / "executions"
-    assert (
-        cli.main(["analyze", "--validate", "--save-execution", "--output-dir", str(base)]) == 0
-    )
+    assert cli.main(["analyze", "--validate", "--save-execution", "--output-dir", str(base)]) == 0
 
     history_dirs = [p for p in base.iterdir() if p.is_dir()]
     assert len(history_dirs) == 1
@@ -1314,12 +1580,8 @@ def test_report_does_not_mutate_validation_result(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_cli_validate_emits_report(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+def test_cli_validate_emits_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
 
@@ -1335,9 +1597,7 @@ def test_cli_live_without_validate_emits_no_report(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # Backward compatible: an ordinary live run is byte-for-byte as before.
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert cli.main(["analyze", "--output-dir", str(tmp_path / "executions")]) == 0
     assert not (tmp_path / "latest" / _VALIDATION_REPORT).exists()
@@ -1347,14 +1607,10 @@ def test_cli_live_without_validate_emits_no_report(
 def test_cli_validate_report_persists_into_saved_history(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     base = tmp_path / "executions"
-    assert (
-        cli.main(["analyze", "--validate", "--save-execution", "--output-dir", str(base)]) == 0
-    )
+    assert cli.main(["analyze", "--validate", "--save-execution", "--output-dir", str(base)]) == 0
     history_dirs = [p for p in base.iterdir() if p.is_dir()]
     assert len(history_dirs) == 1
     assert (history_dirs[0] / _VALIDATION_REPORT).exists()
@@ -1377,13 +1633,25 @@ _PROFILE_RULE_IDS = {
     "content-review": _EXPECTED_RULE_IDS,
     "transport-only": ["TRANSPORT-0001", "TRANSPORT-0002", "TRANSPORT-0003", "TRANSPORT-0004"],
     "syntax-only": [
-        "TRANSPORT-0001", "TRANSPORT-0002", "TRANSPORT-0003", "TRANSPORT-0004",
-        "SYNTAX-0001", "SYNTAX-0002", "SYNTAX-0003",
+        "TRANSPORT-0001",
+        "TRANSPORT-0002",
+        "TRANSPORT-0003",
+        "TRANSPORT-0004",
+        "SYNTAX-0001",
+        "SYNTAX-0002",
+        "SYNTAX-0003",
     ],
     "schema-only": [
-        "TRANSPORT-0001", "TRANSPORT-0002", "TRANSPORT-0003", "TRANSPORT-0004",
-        "SYNTAX-0001", "SYNTAX-0002", "SYNTAX-0003",
-        "SCHEMA-0001", "SCHEMA-0002", "SCHEMA-0004",
+        "TRANSPORT-0001",
+        "TRANSPORT-0002",
+        "TRANSPORT-0003",
+        "TRANSPORT-0004",
+        "SYNTAX-0001",
+        "SYNTAX-0002",
+        "SYNTAX-0003",
+        "SCHEMA-0001",
+        "SCHEMA-0002",
+        "SCHEMA-0004",
     ],
 }
 
@@ -1527,9 +1795,7 @@ def test_cli_parser_validation_profile_default_and_override() -> None:
 def test_cli_unknown_profile_rejected(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     rc = cli.main(
         ["analyze", "--validate", "--validation-profile", "nope", "--output-dir", str(tmp_path)]
@@ -1542,15 +1808,17 @@ def test_cli_unknown_profile_rejected(
 def test_cli_profile_selects_rule_subset_end_to_end(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert (
         cli.main(
             [
-                "analyze", "--validate", "--validation-profile", "transport-only",
-                "--output-dir", str(tmp_path / "executions"),
+                "analyze",
+                "--validate",
+                "--validation-profile",
+                "transport-only",
+                "--output-dir",
+                str(tmp_path / "executions"),
             ]
         )
         == 0
@@ -1572,9 +1840,7 @@ def test_cli_default_profile_runs_all_rules(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # Backward compatible: omitting --validation-profile runs the full set.
-    _use_context(
-        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result()
-    )
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "executions")]) == 0
     on_disk = json.loads((tmp_path / "latest" / _VALIDATION_ARTIFACT).read_text())

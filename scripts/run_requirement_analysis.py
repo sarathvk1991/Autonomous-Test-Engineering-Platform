@@ -205,7 +205,7 @@ def _resolve_output_base(output_dir: str) -> Path:
 
 def run_validation_phase(
     context: PlatformContext, result: Any, console: Console, profile: Any
-) -> Any:
+) -> tuple[Any, Any]:
     """Optional Response Validation phase (additive; default behaviour unchanged).
 
     Flow: Requirement Analysis -> Response Normalization -> Response Validator ->
@@ -221,9 +221,11 @@ def run_validation_phase(
     governed by ``LAYER_ORDER``. The CLI performs no validator wiring of its own and
     chooses no rules itself.
 
-    Returns the complete ``ValidationResult`` so the caller can hand it to the
-    execution package for persistence (CAP-042). The CLI neither inspects nor mutates
-    it; persistence is owned by the execution package.
+    Returns ``(validation_result, normalization_result)``. The ``ValidationResult`` is
+    handed to the execution package for persistence (CAP-042); the same-execution
+    ``NormalizationResult`` is returned so the downstream Validation → CP1 handoff
+    (CAP-067B) can bind its ``CP1Input`` **without re-normalizing** (normalize-once,
+    ADR-0011). The CLI neither inspects nor mutates either object.
     """
     # Imported lazily so the default analysis path never pays for the normalization
     # subsystem, and so this phase is wholly opt-in.
@@ -265,7 +267,48 @@ def run_validation_phase(
     console.note(f"  Rules Executed      : {statistics.rules_executed}")
     console.note(f"  Issues Found        : {summary.total_issues}")
     console.note(f"  Validation Duration : {statistics.validation_duration_ms:.2f} ms")
-    return validation
+    return validation, normalization_result
+
+
+def run_cp1_phase(
+    context: PlatformContext,
+    validation_result: Any,
+    normalization_result: Any,
+    console: Console,
+) -> Any:
+    """CP1 engineering-readiness phase — Validation → CP1 handoff → CP1Service.run (CAP-067B).
+
+    Flow: ValidationResult + NormalizationResult -> ValidationToCP1Handoff ->
+    CP1Input (only when the verdict gate is open) -> CP1Service.run -> CP1Result.
+
+    This CLI is *pure orchestration glue*: it obtains the governed seam and the single
+    ``CP1Service`` **only** from :class:`PlatformContext` (the construction hub) and
+    invokes them. It constructs **no** registry, pipeline, criterion, engine, or
+    ``CP1Input``, aggregates nothing, and invents no gating policy — the seam owns the
+    gate/bind (ADR-0011 §D4/§D5) and the engine owns execution/aggregation.
+
+    Gate semantics (ADR-0011 §D5): the seam returns a ``CP1Input`` only for
+    ``PASSED`` / ``PASSED_WITH_WARNINGS``; a ``FAILED`` / ``BLOCKED`` verdict returns
+    ``None`` and CP1 is **skipped** — a ``FAILED``/``BLOCKED`` response never reaches CP1.
+
+    Returns the ``CP1Result`` when CP1 executed, or ``None`` when the gate was closed.
+    """
+    console.action("\nRunning CP1 Engineering-Readiness Evaluation")
+
+    handoff = context.create_validation_to_cp1_handoff()
+    cp1_input = handoff.hand_off(validation_result, normalization_result)
+    if cp1_input is None:
+        console.note(
+            f"  Skipped — validation verdict '{validation_result.overall_verdict}' "
+            "does not open the CP1 gate (ADR-0011 §D5)."
+        )
+        return None
+
+    cp1_result = context.cp1_service.run(cp1_input)
+
+    console.ok(f"Overall Verdict : {cp1_result.overall_verdict}")
+    console.note(f"  Findings            : {len(cp1_result.findings)}")
+    return cp1_result
 
 
 # ===========================================================================
@@ -352,14 +395,26 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # before the package is written so its complete ValidationResult is persisted
     # into the execution package (CAP-042); the package owns persistence, the CLI
     # only orchestrates.
+    # After validation, the Validation → CP1 handoff gates on the verdict and, when
+    # open, CP1Service.run produces a CP1Result (CAP-067B). Both the seam and the
+    # single CP1Service come solely from PlatformContext; the CLI wires nothing itself
+    # and re-normalizes nothing (the NormalizationResult is threaded through).
     validation_result: Any = None
+    cp1_result: Any = None
     if getattr(args, "validate", False) and result is not None:
         try:
-            validation_result = run_validation_phase(
+            validation_result, normalization_result = run_validation_phase(
                 context, result, console, validation_profile
             )
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Response validation failed: {exc}")
+        else:
+            try:
+                cp1_result = run_cp1_phase(
+                    context, validation_result, normalization_result, console
+                )
+            except Exception as exc:  # surface but never fail the analysis run
+                console.error(f"CP1 engineering-readiness evaluation failed: {exc}")
 
     data = ExecutionData(
         selected=selected,
@@ -376,6 +431,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         consolidated_artifacts=consolidated,
         validation_result=validation_result,
         validation_profile=validation_profile if validation_result is not None else None,
+        cp1_result=cp1_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

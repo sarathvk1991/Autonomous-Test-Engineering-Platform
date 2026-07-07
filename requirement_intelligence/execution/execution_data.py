@@ -56,6 +56,14 @@ class ExecutionData:
         executed. Recorded alongside the result so the report can display it; the
         profile identity also rides inside the ``ValidationResult`` (its
         configuration metadata), so persistence needs no separate field.
+    cp1_result:
+        The complete ``CP1Result`` produced by ``CP1Service.run`` when the
+        Validation → CP1 handoff opened the gate (validation ``PASSED`` /
+        ``PASSED_WITH_WARNINGS``) for a live analysis (CAP-067B). ``None`` when CP1 did
+        not execute — no ``--validate``, a dry run, or a closed gate
+        (``FAILED`` / ``BLOCKED``). At this milestone the field only **transports** the
+        result through the execution flow; no persistence, reporting, or rendering is
+        introduced here.
     """
 
     selected: Any
@@ -73,6 +81,7 @@ class ExecutionData:
     consolidated_artifacts: list[Any] = field(default_factory=list)
     validation_result: Any | None = None
     validation_profile: Any | None = None
+    cp1_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:
