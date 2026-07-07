@@ -93,7 +93,7 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-050 | Business Rule Layer | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | Planned |
 | CAP-051 | ValidationInput (canonical input) | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-052 | Validation Profiles | ✓ | ✓ | n/a | ✓ | ✓ | ✗ | Ready |
-| CAP-060 | CP1 Validator | ✓ | ✓ | ✓ | ◑ | ✗ | ✗ | In Progress |
+| CAP-060 | CP1 Validator (subsystem) | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-061 | Engineering Readiness Criteria Catalog | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-062 | CP1 Canonical Models | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-063 | CP1 Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
@@ -113,12 +113,12 @@ each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 | **Architecture** | 38 | 0 | 0 | — (CAP-060 now governed by ADR-0011/0012). |
 | **Framework** | 38 | 0 | 0 | — (includes not-applicable as satisfied). |
 | **Canonical Models** | 38 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 30 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
-| **Testing** | 30 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
+| **Implementation** | 31 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049. |
+| **Testing** | 31 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
 | **Frozen** | 4 | 1 | 33 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
 
-**Implementation Readiness distribution** (38 total): **Ready 30** · **In Progress
-4** (CAP-044, CAP-046, CAP-049, CAP-060) · **Blocked 0** · **Planned 4** (CAP-045,
+**Implementation Readiness distribution** (38 total): **Ready 31** · **In Progress
+3** (CAP-044, CAP-046, CAP-049) · **Blocked 0** · **Planned 4** (CAP-045,
 CAP-047, CAP-048, CAP-050).
 
 ## 6. Remaining architecture work
@@ -126,16 +126,19 @@ CAP-047, CAP-048, CAP-050).
 Architecture coverage is complete; the outstanding items are narrow and
 repository-evidenced:
 
-- **CAP-060 CP1 Validator** — architecture is now **complete** (`✓`): governed by
-  **ADR-0011 (Accepted)** and **ADR-0012 (Accepted)**, and decomposed into CAP-061
-  (Criteria Catalog), CAP-062 (models), CAP-063 (framework), CAP-064 (seam), CAP-065
-  (engine), CAP-066 (composition root), the first criterion `CP1-0001` (CAP-067A),
-  **PlatformContext/CLI wiring (CAP-067B)**, and **reporting/execution-package
-  integration (CAP-068)** — CP1 runs end-to-end and is surfaced as `cp1_report.md`.
-  The temporary `validators/cp1.py` placeholder has been **retired (CAP-069)**; CP1 is
-  a first-class subsystem under `requirement_intelligence.cp1` with a single canonical
-  entry point (`CP1Service`). Remaining work is **further governed criteria** (via the
-  catalog's §11 process), not architecture, wiring, or reporting.
+- **CAP-060 CP1 Validator (Engineering Readiness subsystem)** — **Complete / Ready.**
+  Governed by **ADR-0011 (Accepted)** and **ADR-0012 (Accepted)**, and fully realised
+  through CAP-062 (models), CAP-063 (framework), CAP-064 (seam), CAP-065 (engine),
+  CAP-066 (composition root), CAP-067A (first criterion `CP1-0001`), **CAP-067B**
+  (PlatformContext/CLI wiring), and **CAP-068** (reporting/execution-package
+  integration) — CP1 runs end-to-end and is surfaced as `cp1_report.md`. The temporary
+  `validators/cp1.py` placeholder has been **retired (CAP-069)**; CP1 is a first-class
+  subsystem under `requirement_intelligence.cp1` with a single canonical entry point
+  (`CP1Service`). **CAP-060 has no remaining architecture, wiring, or reporting work.**
+  The growth of individual engineering-readiness criteria (`CP1-0002`, `CP1-0003`, …) is
+  governed **independently by CAP-061** (Engineering Readiness Criteria Catalog, via the
+  catalog's §11 process) and does not affect CAP-060 — mirroring how the frozen
+  Validation Framework's maturity is independent of new rules added via the Rule Catalog.
 - **Documentation gap (not a capability gap)** — CAP-020 Execution Package,
   CAP-024 Platform CLI, and CAP-011 Prompt Framework are implemented and marked
   architected, but have **no dedicated architecture document** (governed by
@@ -169,9 +172,11 @@ No other capability is missing architecture: every remaining `✗` is an
 - **Partially implemented: CAP-044 Schema** (`SCHEMA-0001/0002/0004`; `0003`
   deferred), **CAP-046 Content** (`CONTENT-0001/0002`), **CAP-049 Reasoning**
   (`REASONING-0002`).
-- **In Progress: CAP-060 CP1 Validator** (umbrella) — the subsystem is fully
-  implemented and reconciled (the `validators/cp1.py` placeholder retired, CAP-069);
-  "In Progress" tracks only **further governed criteria**, not code.
+- **Ready / Complete: CAP-060 CP1 Validator** (Engineering Readiness subsystem) — the
+  subsystem is fully implemented and reconciled (the `validators/cp1.py` placeholder
+  retired, CAP-069). CAP-060 tracks **subsystem maturity only**; the growth of
+  individual engineering-readiness criteria is governed **independently by CAP-061** and
+  does not change CAP-060.
 - **Planned / Deferred: CAP-045 Structural, CAP-047 Evidence, CAP-048
   Traceability, CAP-050 Business Rule** — awaiting governed schema enrichment and
   cataloguing ADRs.
