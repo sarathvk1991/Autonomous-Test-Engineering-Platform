@@ -18,14 +18,20 @@ class ReviewBuilder:
     """Render the qualitative review scaffold (live runs)."""
 
     def build(self, data: ExecutionData) -> str:
-        """Return the markdown content of ``review.md``."""
+        """Return the markdown content of ``review.md``.
+
+        When CP1 was executed a brief **Engineering Readiness** section (overall
+        verdict + a reference to ``cp1_report.md``) is appended. It deliberately does
+        **not** duplicate the full CP1 report. When CP1 did not run the review is
+        byte-identical to before.
+        """
         selected = data.selected
         result = data.result
         counts = observe_response_counts(data.generated_text)
         json_valid = "valid" if counts["json_valid"] else "INVALID"
         package_id = execution_package_identifier(result)
 
-        return f"""# AI Review — Version {meta.BASELINE_VERSION}
+        review = f"""# AI Review — Version {meta.BASELINE_VERSION}
 
 > Observation only. Nothing was modified, repaired, or tuned.
 > Selected consolidated artifact: `{selected.consolidated_id}`
@@ -86,3 +92,15 @@ _TBD_
 
 _TBD_
 """
+
+        cp1_result = data.cp1_result
+        if cp1_result is not None:
+            verdict = str(getattr(cp1_result.overall_verdict, "value", cp1_result.overall_verdict))
+            review += f"""
+## Engineering Readiness
+
+- Overall Verdict: {verdict.upper()}
+- See cp1_report.md
+"""
+
+        return review

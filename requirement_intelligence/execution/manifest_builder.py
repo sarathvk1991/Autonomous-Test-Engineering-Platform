@@ -25,7 +25,7 @@ class ManifestBuilder:
         full_prompt = data.full_prompt
         generated_text = data.generated_text
 
-        return {
+        manifest: dict[str, Any] = {
             "manifestSchemaVersion": meta.MANIFEST_SCHEMA_VERSION,
             "platformVersion": meta.PLATFORM_VERSION,
             "baselineVersion": meta.BASELINE_VERSION,
@@ -60,3 +60,15 @@ class ManifestBuilder:
             "commandLineArguments": data.command_line_arguments,
             "generatedArtifacts": generated_artifacts,
         }
+
+        # CP1 references (CAP-068): additive, and only when CP1 was executed. When CP1
+        # did not run, the manifest is byte-identical to before — no key is added.
+        # Presentation only: the verdict is read from the CP1Result, never computed.
+        if data.cp1_result is not None:
+            manifest["cp1Executed"] = True
+            manifest["cp1Report"] = "cp1_report.md"
+            manifest["cp1Verdict"] = str(
+                getattr(data.cp1_result.overall_verdict, "value", data.cp1_result.overall_verdict)
+            )
+
+        return manifest

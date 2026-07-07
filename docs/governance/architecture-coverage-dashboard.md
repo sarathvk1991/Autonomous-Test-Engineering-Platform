@@ -101,22 +101,23 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-065 | CP1 Engine | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-066 | CP1 Composition Root | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-067B | CP1 PlatformContext & CLI Wiring | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-068 | CP1 Reporting & Execution Package Integration | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 
 ## 5. Overall coverage summary
 
-Objective counts across all **37** capabilities (no percentages estimated). For
+Objective counts across all **38** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 37 | 0 | 0 | — (CAP-060 now governed by ADR-0011/0012). |
-| **Framework** | 37 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 37 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 29 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
-| **Testing** | 29 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 1 | 32 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
+| **Architecture** | 38 | 0 | 0 | — (CAP-060 now governed by ADR-0011/0012). |
+| **Framework** | 38 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 38 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 30 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-060. |
+| **Testing** | 30 | 3 | 5 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050, CAP-060. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 1 | 33 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031. |
 
-**Implementation Readiness distribution** (37 total): **Ready 29** · **In Progress
+**Implementation Readiness distribution** (38 total): **Ready 30** · **In Progress
 4** (CAP-044, CAP-046, CAP-049, CAP-060) · **Blocked 0** · **Planned 4** (CAP-045,
 CAP-047, CAP-048, CAP-050).
 
@@ -129,9 +130,10 @@ repository-evidenced:
   **ADR-0011 (Accepted)** and **ADR-0012 (Accepted)**, and decomposed into CAP-061
   (Criteria Catalog), CAP-062 (models), CAP-063 (framework), CAP-064 (seam), CAP-065
   (engine), CAP-066 (composition root), the first criterion `CP1-0001` (CAP-067A),
-  and **PlatformContext/CLI wiring (CAP-067B)** — CP1 now runs end-to-end in the
-  pipeline. Remaining work is **further governed criteria** (via the catalog's §11
-  process), not architecture or wiring.
+  **PlatformContext/CLI wiring (CAP-067B)**, and **reporting/execution-package
+  integration (CAP-068)** — CP1 runs end-to-end and is surfaced as `cp1_report.md`.
+  Remaining work is **further governed criteria** (via the catalog's §11 process), not
+  architecture, wiring, or reporting.
 - **Documentation gap (not a capability gap)** — CAP-020 Execution Package,
   CAP-024 Platform CLI, and CAP-011 Prompt Framework are implemented and marked
   architected, but have **no dedicated architecture document** (governed by
@@ -229,9 +231,15 @@ No other capability is missing architecture: every remaining `✗` is an
   `build_cp1_service()`) and constructs the seam; the CLI runs
   `Analysis → Normalization → Validation → ValidationToCP1Handoff → CP1Service.run() →
   Execution Package`, invoking CP1 **only** when the handoff returns a `CP1Input`
-  (gate open, ADR-0011 §D5) and transporting the `CP1Result` on `ExecutionData`
-  (no persistence/reporting added). **Next:** downstream consumption of `CP1Result`
-  and further governed criteria (via the catalog's §11 process).
+  (gate open, ADR-0011 §D5) and transporting the `CP1Result` on `ExecutionData`.
+  **Surfaced through the execution package (CAP-068):** a presentation-only
+  `CP1ReportBuilder` renders `cp1_report.md` from the `CP1Result` (verdict, framework,
+  criteria reporting, findings, recommendations, execution metadata); the writer emits
+  it only when CP1 ran; the manifest/summary/review gain additive, presentation-only
+  references; baseline metrics gain none (execution performance ≠ engineering
+  assessment). No CP1 evaluation/aggregation/scoring is added — reporting only.
+  **Next:** downstream analytics and further governed criteria (via the catalog's §11
+  process).
 
 > Readiness confirms the deterministic validation initiative is **feature-complete
 > for the currently governed response schema**: Response Normalization, the Validation

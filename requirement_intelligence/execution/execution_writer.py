@@ -18,6 +18,7 @@ from typing import Any
 from requirement_intelligence.execution.baseline_metrics_builder import (
     BaselineMetricsBuilder,
 )
+from requirement_intelligence.execution.cp1_report_builder import CP1ReportBuilder
 from requirement_intelligence.execution.execution_data import ExecutionData
 from requirement_intelligence.execution.execution_metrics import observe_response_counts
 from requirement_intelligence.execution.execution_summary_builder import (
@@ -77,6 +78,7 @@ class ExecutionWriter:
         self._metrics = BaselineMetricsBuilder()
         self._review = ReviewBuilder()
         self._validation_report = ValidationReportBuilder()
+        self._cp1_report = CP1ReportBuilder()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -128,10 +130,12 @@ class ExecutionWriter:
 
         The optional ``validation_result.json`` (canonical persistence) and its
         human-readable twin ``validation_report.md`` are appended only when a
-        ``ValidationResult`` was supplied (i.e. validation was executed). The writer
-        performs no validation and no judgment — it serialises the result as-is and
-        renders a presentation-only report from it, so the execution package owns
-        persistence and reporting while validation stays read-only.
+        ``ValidationResult`` was supplied (i.e. validation was executed). The optional
+        ``cp1_report.md`` is appended only when a ``CP1Result`` was supplied (i.e. CP1
+        was executed; the Validation → CP1 gate opened). The writer performs no
+        validation, no CP1 evaluation, and no judgment — it serialises/renders the
+        results as-is, so the execution package owns persistence and reporting while
+        validation and CP1 stay read-only.
         """
         result = data.result
         _write_json(
@@ -145,20 +149,27 @@ class ExecutionWriter:
         (target_dir / "execution_summary.md").write_text(
             self._summary.build(data), encoding="utf-8"
         )
-        (target_dir / "baseline_metrics.md").write_text(
-            self._metrics.build(data), encoding="utf-8"
-        )
+        (target_dir / "baseline_metrics.md").write_text(self._metrics.build(data), encoding="utf-8")
         (target_dir / "review.md").write_text(self._review.build(data), encoding="utf-8")
-        if data.validation_result is None:
-            return _RESULT_ARTIFACTS
-        _write_json(
-            target_dir / "validation_result.json",
-            data.validation_result.model_dump(mode="json", by_alias=True),
-        )
-        (target_dir / "validation_report.md").write_text(
-            self._validation_report.build(data), encoding="utf-8"
-        )
-        return (*_RESULT_ARTIFACTS, "validation_result.json", "validation_report.md")
+
+        names: list[str] = list(_RESULT_ARTIFACTS)
+        if data.validation_result is not None:
+            _write_json(
+                target_dir / "validation_result.json",
+                data.validation_result.model_dump(mode="json", by_alias=True),
+            )
+            (target_dir / "validation_report.md").write_text(
+                self._validation_report.build(data), encoding="utf-8"
+            )
+            names += ["validation_result.json", "validation_report.md"]
+        # CP1 report (CAP-068): rendered only when CP1 was executed. Presentation only —
+        # the CP1Result is transported, never re-evaluated or transformed here.
+        if data.cp1_result is not None:
+            (target_dir / "cp1_report.md").write_text(
+                self._cp1_report.build(data), encoding="utf-8"
+            )
+            names.append("cp1_report.md")
+        return tuple(names)
 
     @staticmethod
     def _timestamps(data: ExecutionData) -> tuple[str, str]:

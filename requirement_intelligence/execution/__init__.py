@@ -9,11 +9,13 @@ ExecutionSummaryBuilder— execution_summary.md.
 BaselineMetricsBuilder — baseline_metrics.md.
 ReviewBuilder          — review.md.
 ValidationReportBuilder— validation_report.md.
+CP1ReportBuilder       — cp1_report.md.
 """
 
 from requirement_intelligence.execution.baseline_metrics_builder import (
     BaselineMetricsBuilder,
 )
+from requirement_intelligence.execution.cp1_report_builder import CP1ReportBuilder
 from requirement_intelligence.execution.execution_data import ExecutionData
 from requirement_intelligence.execution.execution_history import ExecutionHistory
 from requirement_intelligence.execution.execution_summary_builder import (
@@ -31,6 +33,7 @@ from requirement_intelligence.execution.validation_report_builder import (
 
 __all__ = [
     "BaselineMetricsBuilder",
+    "CP1ReportBuilder",
     "ExecutionData",
     "ExecutionHistory",
     "ExecutionSummaryBuilder",

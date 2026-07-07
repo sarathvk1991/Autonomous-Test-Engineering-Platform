@@ -236,7 +236,7 @@ def _dry_run_data(execution_name: str | None = None) -> ExecutionData:
     )
 
 
-def _live_data(validation_result: Any = None) -> ExecutionData:
+def _live_data(validation_result: Any = None, cp1_result: Any = None) -> ExecutionData:
     return ExecutionData(
         selected=FakeArtifact("cons-a", quality=2),
         prompt_request=FakePromptRequest(),
@@ -249,6 +249,7 @@ def _live_data(validation_result: Any = None) -> ExecutionData:
         execution_name=None,
         command_line_arguments={},
         validation_result=validation_result,
+        cp1_result=cp1_result,
     )
 
 
@@ -1060,6 +1061,58 @@ def _real_validation_and_normalization() -> tuple[Any, Any]:
     return cli.run_validation_phase(ctx, _real_analysis_result(), cli.Console(), profile)
 
 
+def _real_cp1_input() -> Any:
+    """A real ``CP1Input`` built through the real Validation → CP1 handoff (gate open)."""
+    ctx = PlatformContext()
+    validation, normalization = _real_validation_and_normalization()
+    return ctx.create_validation_to_cp1_handoff().hand_off(validation, normalization)
+
+
+def _cp1_result(
+    *,
+    findings: tuple[Any, ...] = (),
+    verdict: Any = CP1Verdict.PASS,
+) -> Any:
+    """A real, controllable ``CP1Result`` (real ``CP1Input``; chosen findings/verdict)."""
+    from requirement_intelligence.cp1.models import CP1FrameworkMetadata, CP1Result
+
+    return CP1Result(
+        cp1_id="CP1-RUN-1",
+        validation_id="VAL-1",
+        execution_id="EX-1",
+        analysis_id="AN-1",
+        cp1_input=_real_cp1_input(),
+        findings=findings,
+        framework_metadata=CP1FrameworkMetadata(
+            framework_version="1.0.0",
+            criteria_contract_version="1.0",
+            pipeline_version="1.0.0",
+            registry_version="1.0.0",
+        ),
+        overall_verdict=verdict,
+        started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        completed_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+def _cp1_finding() -> Any:
+    """A real FAIL ``CP1Finding`` for rendering/manifest assertions."""
+    from requirement_intelligence.cp1.models import CP1Finding
+
+    return CP1Finding(
+        finding_id="F-1",
+        criterion_id="CP1-0001",
+        criterion_version="1.0.0",
+        verdict_contribution=CP1Verdict.FAIL,
+        message="No engineering input exists.",
+        location="functional_requirements+security_requirements+quality_requirements",
+        evidence="pooled requirement count: 0",
+        recommendation="Add at least one functional, security, or quality requirement.",
+        correlation_id="EX-1",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
 # --- PlatformContext ownership ---------------------------------------------
 
 
@@ -1185,22 +1238,161 @@ def test_cli_default_run_carries_no_cp1_result(
 
 
 @pytest.mark.unit
-def test_execution_package_transports_cp1_result_without_new_artifacts(tmp_path: Path) -> None:
-    # The Execution Package only *transports* the CP1Result at this milestone: the
-    # writer serialises no cp1 artifact and produces the identical file set with or
-    # without a cp1_result present.
+def test_execution_package_transports_cp1_result_object(tmp_path: Path) -> None:
+    # The Execution Package still only *transports* the CP1Result object (no
+    # cp1_result.json is ever serialised); CAP-068 renders a presentation-only
+    # cp1_report.md from it. Superseded the CAP-067B "no new artifacts" assertion.
+    ExecutionWriter().write(tmp_path, _live_data(cp1_result=_cp1_result()))
+    assert not (tmp_path / "cp1_result.json").exists()  # transported, never serialised
+    assert (tmp_path / "cp1_report.md").exists()  # rendered presentation (CAP-068)
+
+
+# ===========================================================================
+# CP1 reporting & execution-package integration (CAP-068)
+# ===========================================================================
+#
+# cp1_report.md is emitted only when ExecutionData.cp1_result is present. The
+# manifest/summary/review gain additive, presentation-only references; baseline
+# metrics gain none. No existing artifact changes when CP1 did not run.
+
+_CP1_REPORT = "cp1_report.md"
+
+
+# --- No CP1 result → nothing added -----------------------------------------
+
+
+@pytest.mark.unit
+def test_no_cp1_result_emits_no_report(tmp_path: Path) -> None:
+    result = ExecutionWriter().write(tmp_path, _live_data())
+    assert not (tmp_path / _CP1_REPORT).exists()
+    assert _CP1_REPORT not in result.generated_artifacts
+
+
+@pytest.mark.unit
+def test_no_cp1_result_manifest_has_no_cp1_keys(tmp_path: Path) -> None:
+    result = ExecutionWriter().write(tmp_path, _live_data())
+    for key in ("cp1Report", "cp1Executed", "cp1Verdict"):
+        assert key not in result.manifest
+
+
+@pytest.mark.unit
+def test_no_cp1_result_summary_unchanged() -> None:
+    # Byte-identical to a run with no cp1_result: no Engineering Readiness section.
+    summary = ExecutionSummaryBuilder().build(_live_data())
+    assert "Engineering Readiness" not in summary
+
+
+@pytest.mark.unit
+def test_no_cp1_result_review_unchanged() -> None:
+    review = ReviewBuilder().build(_live_data())
+    assert "Engineering Readiness" not in review
+
+
+@pytest.mark.unit
+def test_dry_run_never_emits_cp1_report(tmp_path: Path) -> None:
+    ExecutionWriter().write(tmp_path, _dry_run_data())
+    assert not (tmp_path / _CP1_REPORT).exists()
+
+
+# --- CP1 PASS → report + additive references -------------------------------
+
+
+@pytest.mark.unit
+def test_cp1_pass_emits_report(tmp_path: Path) -> None:
+    result = ExecutionWriter().write(tmp_path, _live_data(cp1_result=_cp1_result()))
+    report = tmp_path / _CP1_REPORT
+    assert report.exists()
+    assert _CP1_REPORT in result.generated_artifacts
+    text = report.read_text()
+    assert "# CP1 Engineering Readiness Report" in text
+    assert "**PASS**" in text
+    assert "No engineering readiness findings." in text
+
+
+@pytest.mark.unit
+def test_cp1_pass_manifest_updated(tmp_path: Path) -> None:
+    result = ExecutionWriter().write(tmp_path, _live_data(cp1_result=_cp1_result()))
+    assert result.manifest["cp1Executed"] is True
+    assert result.manifest["cp1Report"] == _CP1_REPORT
+    assert result.manifest["cp1Verdict"] == "pass"
+    # The report artifact is recorded (name/bytes/sha256) in generatedArtifacts.
+    entries = {a["name"] for a in result.manifest["generatedArtifacts"]}
+    assert _CP1_REPORT in entries
+
+
+@pytest.mark.unit
+def test_cp1_pass_summary_updated() -> None:
+    summary = ExecutionSummaryBuilder().build(_live_data(cp1_result=_cp1_result()))
+    assert "## Engineering Readiness" in summary
+    assert "PASS" in summary
+    assert "| Number of Findings | 0 |" in summary
+
+
+@pytest.mark.unit
+def test_cp1_pass_review_updated_reference_only() -> None:
+    review = ReviewBuilder().build(_live_data(cp1_result=_cp1_result()))
+    assert "## Engineering Readiness" in review
+    assert "See cp1_report.md" in review
+    # Reference only — the full report is not duplicated into review.md.
+    assert "# CP1 Engineering Readiness Report" not in review
+    assert "## Findings" not in review
+
+
+# --- CP1 FAIL → finding & recommendation rendered --------------------------
+
+
+@pytest.mark.unit
+def test_cp1_fail_renders_finding_and_recommendation(tmp_path: Path) -> None:
+    data = _live_data(cp1_result=_cp1_result(findings=(_cp1_finding(),), verdict=CP1Verdict.FAIL))
+    result = ExecutionWriter().write(tmp_path, data)
+    text = (tmp_path / _CP1_REPORT).read_text()
+    assert "**FAIL**" in text
+    assert "No engineering input exists." in text
+    assert "Add at least one functional, security, or quality requirement." in text
+    assert result.manifest["cp1Verdict"] == "fail"
+
+
+# --- Baseline metrics never mention CP1 ------------------------------------
+
+
+@pytest.mark.unit
+def test_baseline_metrics_never_mention_cp1() -> None:
+    metrics = BaselineMetricsBuilder().build(_live_data(cp1_result=_cp1_result()))
+    assert "CP1" not in metrics
+    assert "Engineering Readiness" not in metrics
+
+
+# --- Round-trip: existing artifacts unchanged when CP1 present --------------
+
+
+@pytest.mark.unit
+def test_existing_artifacts_unchanged_when_cp1_present(tmp_path: Path) -> None:
     without = tmp_path / "without"
     with_cp1 = tmp_path / "with"
     without.mkdir()
     with_cp1.mkdir()
-
     ExecutionWriter().write(without, _live_data())
-    from dataclasses import replace
+    ExecutionWriter().write(with_cp1, _live_data(cp1_result=_cp1_result()))
 
-    ExecutionWriter().write(with_cp1, replace(_live_data(), cp1_result="ANY-CP1-RESULT"))
+    # The core analysis artifacts and baseline metrics are byte-identical; the summary
+    # and review gain an additive reference section (by design), and cp1_report.md is
+    # the only new file.
+    for name in ("analysis_result.json", "raw_llm_response.json", "baseline_metrics.md"):
+        assert (without / name).read_text() == (with_cp1 / name).read_text()
+    added = {p.name for p in with_cp1.iterdir()} - {p.name for p in without.iterdir()}
+    assert added == {_CP1_REPORT}
 
-    assert {p.name for p in without.iterdir()} == {p.name for p in with_cp1.iterdir()}
-    assert not (with_cp1 / "cp1_result.json").exists()
+
+@pytest.mark.unit
+def test_writer_cp1_report_deterministic(tmp_path: Path) -> None:
+    first = tmp_path / "a"
+    second = tmp_path / "b"
+    first.mkdir()
+    second.mkdir()
+    data = _live_data(cp1_result=_cp1_result(findings=(_cp1_finding(),), verdict=CP1Verdict.FAIL))
+    ExecutionWriter().write(first, data)
+    ExecutionWriter().write(second, data)
+    assert (first / _CP1_REPORT).read_text() == (second / _CP1_REPORT).read_text()
 
 
 # --- Determinism & thread safety of the owned service -----------------------

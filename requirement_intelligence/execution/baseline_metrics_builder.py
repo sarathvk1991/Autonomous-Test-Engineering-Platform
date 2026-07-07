@@ -1,4 +1,12 @@
-"""Baseline metrics builder — responsible only for ``baseline_metrics.md``."""
+"""Baseline metrics builder — responsible only for ``baseline_metrics.md``.
+
+CP1 is deliberately **absent** here (CAP-068). Baseline metrics measure *execution
+performance* of the platform pipeline (artifact counts, token/character counts,
+duration) — they "do not inspect AI output". CP1 is an *engineering-readiness
+assessment* of the validated requirements, not an execution-performance metric, so
+its verdict/findings belong to ``cp1_report.md`` (and the summary/review references),
+never to this performance table. Mixing them would conflate two different concerns.
+"""
 
 from __future__ import annotations
 
@@ -22,10 +30,7 @@ class BaselineMetricsBuilder:
         counts = observe_response_counts(generated_text)
         prompt_tokens, response_tokens = usage_tokens(result)
         eng = engineering_metrics(data)
-        notes = (
-            "Live execution; selected consolidated artifact "
-            f"`{data.selected.consolidated_id}`."
-        )
+        notes = f"Live execution; selected consolidated artifact `{data.selected.consolidated_id}`."
 
         return f"""# AI Metrics
 
