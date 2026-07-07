@@ -1,22 +1,47 @@
 # Golden End-to-End Validation Baseline
 
 **CAP-070 — Productization Milestone 1**  
+Baseline Role: Release Regression Baseline (Requirement Intelligence v1.1.0)  
 Architecture Version: 1.1.0 (frozen)  
 Dataset Version: 1.0.0  
-Status: BASELINE ESTABLISHED
+Status: RELEASE REGRESSION BASELINE ESTABLISHED
 
 ---
 
 ## Overview
+
+> **The Golden Baseline is the Release Regression Baseline for Requirement
+> Intelligence v1.1.0.**
 
 This document is the permanent reference for the Requirement Intelligence pipeline's
 golden execution baseline. It records the dataset, the execution flow, the expected
 artifacts, the determinism contract, and the procedure future regression testing must
 follow to compare any run against this baseline.
 
-The golden baseline validates **architecture**, not performance or prompt quality. Its
-purpose is to confirm that every subsystem in the governed pipeline executes, produces
-the correct artifacts, and behaves deterministically on stable inputs.
+The Release Regression Baseline validates the **architecture and its runtime
+behaviour**, not performance or prompt quality. Concretely, it confirms that a run
+against the golden dataset satisfies each of the following:
+
+- **Architecture** — every governed subsystem is present and wired correctly.
+- **Execution flow** — the subsystems execute in the governed pipeline order
+  (Consolidation → Analysis → Normalization → Validation → CP1 → Execution Package).
+- **Execution artifacts** — every governed artifact is generated.
+- **Manifest integrity** — the manifest's checksums, byte counts, cross-references,
+  and version fields agree with the on-disk artifacts.
+- **Validation** — the Response Validator executes and the golden response passes.
+- **CP1** — the Validation → CP1 gate opens and CP1 (`CP1-0001`) evaluates to PASS.
+- **Deterministic execution** — two consecutive runs on the same input produce
+  identical findings and verdicts (excluding per-run provenance).
+
+It deliberately does **not** validate prompt quality: the LLM response is a fixed,
+deterministic stub, so this baseline asserts nothing about how good a real model's
+answer would be.
+
+Because it is a **release regression baseline**, every future release of Requirement
+Intelligence is compared against it: a future run that diverges from the expected
+architecture, flow, artifacts, manifest integrity, validation outcome, CP1 outcome, or
+determinism contract recorded here is a regression until it is explicitly re-baselined
+(see §7.3).
 
 ---
 
@@ -290,14 +315,41 @@ the following test classes and coverage targets:
 | Class | Tests | Coverage area |
 |---|---|---|
 | `TestPhase3PipelineExecution` | 14 | Every subsystem executes and produces output |
-| `TestPhase4OutputVerification` | 22 | Artifacts present, content correct, manifest integrity |
+| `TestPhase4OutputVerification` | 30 | Artifacts present, content correct, manifest integrity |
 | `TestPhase5Determinism` | 12 | Two runs produce identical findings and verdicts |
 | `TestPhase6ProductizationAssertions` | 14 | Per-layer contracts, version fields, cross-references |
-| **Total** | **62** | |
+| **Total** | **70** | |
 
 ---
 
-## 9. Repository Readiness Assessment
+## 9. Future Golden Regression Datasets
+
+This section is **informational only**. It records the planned evolution of the
+Release Regression Baseline into a governed family of golden datasets. None of the
+datasets below beyond *Golden PASS* is implemented; no placeholders exist in the
+repository for them. They are documented here so the intended direction is explicit.
+
+The baseline is planned to grow to exactly **three** governed datasets:
+
+| # | Dataset | Purpose | Status |
+|---|---|---|---|
+| 1 | `Golden PASS` | Complete successful execution. | Implemented |
+| 2 | `Golden Validation FAIL` | Exercise Validation failures. | Planned |
+| 3 | `Golden CP1 FAIL` | Exercise Engineering Readiness failures. | Planned |
+
+- **Dataset 1 — `Golden PASS`.** The dataset documented throughout this file: a
+  clean, fully successful end-to-end run in which Validation passes, the CP1 gate
+  opens, and CP1 evaluates to PASS. **Implemented.**
+- **Dataset 2 — `Golden Validation FAIL`.** A future dataset whose input drives the
+  Response Validator to a failing verdict, exercising the Validation-failure path and
+  the resulting closed CP1 gate. **Planned** — not yet implemented.
+- **Dataset 3 — `Golden CP1 FAIL`.** A future dataset that passes Validation but fails
+  an Engineering Readiness criterion, exercising the CP1 FAIL path. **Planned** — not
+  yet implemented.
+
+---
+
+## 10. Repository Readiness Assessment
 
 Architecture v1.1.0 has been validated against this golden baseline.
 
@@ -312,4 +364,4 @@ Architecture v1.1.0 has been validated against this golden baseline.
 | ExecutionWriter | ✓ VALIDATED | All 12 artifacts generated; manifest integrity verified |
 | PlatformContext | ✓ VALIDATED | Correct construction and wiring confirmed |
 
-**Repository status: ARCHITECTURE VALIDATED — GOLDEN BASELINE ESTABLISHED**
+**Repository status: ARCHITECTURE VALIDATED — RELEASE REGRESSION BASELINE ESTABLISHED**
