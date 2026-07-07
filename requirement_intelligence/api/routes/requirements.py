@@ -1,7 +1,10 @@
 """HTTP routes for requirement ingestion and analysis.
 
-Routes are thin: they validate input, delegate to the layer's workflow/services,
-and shape the response. No business logic lives in the route handlers.
+Routes are thin: they validate input, delegate to the layer's subsystems, and
+shape the response. No business logic lives in the route handlers.
+
+This HTTP surface is a **future integration point** and is intentionally not wired
+yet (the handler raises ``NotImplementedError``); the platform is CLI-first today.
 """
 
 from __future__ import annotations
@@ -22,7 +25,8 @@ router = APIRouter(prefix="/requirements")
 async def ingest_requirements(payload: IngestRequest) -> AnalysisJobResponse:
     """Trigger the requirement ingestion → analysis → CP1 validation pipeline.
 
-    Implementation deferred: will delegate to
-    ``requirement_intelligence.workflows.requirement_pipeline``.
+    Implementation deferred: will delegate to the layer's subsystems
+    (Consolidation → Analysis → Normalization → Validation → CP1 → Execution Package),
+    composed via :class:`~requirement_intelligence.platform.PlatformContext`.
     """
     raise NotImplementedError("Requirement ingestion pipeline not yet implemented")

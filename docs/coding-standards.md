@@ -30,8 +30,10 @@ scale across all seven layers. They are enforced in CI via `ruff` and `mypy`.
 - **Connector-based architecture:** external systems are reached only through a
   connector built on `connectors/base.py`; raw SDK/HTTP construction lives in
   `infrastructure/<system>/`.
-- **Thin routes:** API handlers validate + delegate; business logic lives in
-  `services/` and orchestration in `workflows/`.
+- **Thin routes:** API handlers validate + delegate; business logic lives in the
+  layer's subsystems (e.g. `consolidation/`, `analysis/`, `normalization/`,
+  `validation/`, `cp1/`, `execution/`), composed via
+  `requirement_intelligence.platform.PlatformContext`.
 - **Config in one place:** read configuration only via
   `app.core.settings.get_settings`. Never touch `os.environ` elsewhere.
 - **Prompts are assets:** keep prompt templates in `prompts/` (versioned text),

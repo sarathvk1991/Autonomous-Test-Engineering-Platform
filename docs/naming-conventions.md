@@ -14,19 +14,18 @@
 
 ## Component-type suffixes (consistency across layers)
 - Connectors:  `*Connector`   → `JiraConnector`, `ZapConnector`
-- Parsers:     `*Parser`      → `JiraParser`
-- Services/engines: `*Engine` / `*Analyzer` / `*Registry` →
-  `ConsolidationEngine`, `RequirementAnalyzer`, `SourceRegistry`
+- Mappers:     `*Mapper`      → `JiraMapper`, `SonarMapper`, `ZapMapper`
+- Engines / services / registries: `*Engine` / `*Service` / `*Registry` →
+  `ConsolidationEngine`, `RequirementAnalysisService`, `ConnectorRegistry`
 - Validators:  `*Validator`   → `ResponseValidator`
-- Workflows:   `*Pipeline` / `*Workflow` → `RequirementPipeline`
 - DTOs / models: noun, no suffix → `CanonicalRequirement`, `SourceRef`
 - API schemas: `*Request` / `*Response` → `IngestRequest`
 
 ## Files & folders
 - Module files are `lower_snake_case.py` named after their primary symbol's
   role (`consolidation_engine.py`, `canonical_requirement.py`).
-- One connector/parser per source under `connectors/<source>/` and
-  `parsers/<source>/`.
+- One connector per source under `connectors/<source>/`; one mapper per source as
+  `mappers/<source>_mapper.py`.
 - Test files: `test_<unit_under_test>.py`.
 
 ## API & config

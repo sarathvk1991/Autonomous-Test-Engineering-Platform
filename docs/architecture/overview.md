@@ -36,8 +36,9 @@ External systems are integrated through **connectors**:
 - `infrastructure/<system>/` — low-level client construction (auth, transport).
 - `requirement_intelligence/connectors/<system>/` — domain connector built on
   `connectors/base.py`, returning raw payloads.
-- `parsers/<system>/` — convert raw payloads → `CanonicalRequirement`.
-- `services/source_registry.py` — maps each source to its connector so sources
+- `mappers/<system>_mapper.py` — convert raw payloads → `CanonicalRequirement`.
+- `registry/connector_registry.py` (with `registry/registry_loader.py` reading
+  `config/source-registry.json`) — maps each source to its connector so sources
   are pluggable via configuration.
 
 This isolates third-party change to one place and makes new sources additive.
@@ -53,9 +54,36 @@ This isolates third-party change to one place and makes new sources additive.
 7. **Governance Dashboard** — Streamlit metrics & governance views.
 
 ## Requirement Intelligence pipeline (Phase 1)
-`Source Registry → Connectors → Parsers → Consolidation → Classification →
-Azure OpenAI Analyzer → CP1 Validator → Report Generator`
-(see `requirement_intelligence/workflows/requirement_pipeline.py`).
+
+```
+Input Sources
+        │
+        ▼
+Consolidation
+        │
+        ▼
+Analysis
+        │
+        ▼
+Normalization
+        │
+        ▼
+Validation
+        │
+        ▼
+CP1
+        │
+        ▼
+Execution Package
+```
+
+Sources are ingested via `connectors/` + `mappers/` (selected by
+`registry/connector_registry.py`), consolidated by `consolidation/`, AI-analyzed by
+`analysis/`, then normalized (`normalization/`), validated (`validation/`), gated by
+the CP1 engineering-readiness subsystem (`cp1/`), and written to the Execution
+Package (`execution/`). The pipeline is composed by
+`requirement_intelligence.platform.PlatformContext` and driven by the CLI
+(`scripts/run_requirement_analysis.py`).
 
 ## Cross-cutting
 - **Config:** one validated source — `app/core/settings.py` (pydantic-settings).

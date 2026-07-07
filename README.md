@@ -43,15 +43,20 @@ autonomous-test-engineering-platform/
 │   ├── api/                   #   aggregate API router (mounts each layer)
 │   └── core/                  #   settings / cross-cutting app config
 ├── requirement_intelligence/  # PHASE 1 — Requirement Intelligence Layer
-│   ├── api/                   #   routes + transport schemas
-│   ├── connectors/            #   connector framework + Jira/SonarQube/ZAP
-│   ├── parsers/               #   raw payload -> canonical model
-│   ├── models/                #   Canonical Requirement Model
-│   ├── services/              #   registry, consolidation, classification, analyzer, reports
-│   ├── cp1/                    #   CP1 engineering-readiness subsystem (models/framework/criteria/response/engine)
-│   ├── workflows/             #   pipeline orchestration
-│   ├── prompts/               #   layer-specific prompt templates
-│   ├── reports/               #   report templates
+│   ├── connectors/            #   source connectors (Jira/SonarQube/ZAP)
+│   ├── mappers/               #   raw payload -> canonical model
+│   ├── models/                #   canonical + shared models (Canonical Requirement, ParsedResponse)
+│   ├── registry/              #   connector registry + source loader
+│   ├── consolidation/         #   consolidation engine (multi-source -> ConsolidatedArtifact)
+│   ├── prompts/               #   prompt framework
+│   ├── llm/                   #   provider framework (Gemini; Azure OpenAI stub)
+│   ├── analysis/              #   AI requirement analysis service
+│   ├── normalization/         #   response normalization subsystem
+│   ├── validation/            #   response validation subsystem (framework + rules + profiles)
+│   ├── cp1/                   #   CP1 engineering-readiness subsystem (models/framework/criteria/response/engine)
+│   ├── execution/             #   execution package (writer + per-artifact builders)
+│   ├── platform/              #   PlatformContext (composition) + platform metadata
+│   ├── api/                   #   HTTP routes (future integration surface; not yet wired)
 │   └── tests/                 #   layer tests (unit/integration)
 ├── feature_engineering/       # Phase 2 (placeholder)
 ├── automation_engineering/    # Phase 3 (placeholder)
