@@ -19,6 +19,23 @@ Pure element counting — deterministic, stateless, idempotent, thread-safe, and
 or threshold other than ≥ 1.  It **never** aggregates (the engine does; ADR-0012 §8),
 reports, persists, accesses PlatformContext/CLI, or reads the Validation subsystem's
 logic.  It consumes only ``CP1Input`` through public attributes.
+
+Defensive robustness ≠ engineering-readiness policy
+---------------------------------------------------
+Under the governed **Validation → CP1 handoff (ADR-0011 §D5)**, CP1 runs **only** on
+responses the seam admitted (verdict ``PASSED`` / ``PASSED_WITH_WARNINGS``), which
+**guarantees a ``NORMALIZED`` structure is present** (ADR-0013 §D3).  A malformed or
+absent normalized structure is therefore **not expected to reach this criterion** — it
+is impossible under the governed handoff, not a governed input case.
+
+Where this module nonetheless copes with a non-mapping structure, an absent parsed
+response, or an absent collection (each contributing zero to the pooled count), that is
+**defensive programming only** — implementation robustness against a state the seam
+already precludes.  It is deliberately **not** an engineering-readiness policy: the
+criterion invents no readiness rule for malformed input; it simply treats engineering
+input as *absent* and lets the one governed policy — the ≥ 1 availability floor (ADR-0013
+§D2/§D4) — decide the verdict, exactly as it would for a well-formed empty response.  The
+single governed readiness policy is the availability floor and nothing else.
 """
 
 from __future__ import annotations
@@ -28,7 +45,7 @@ from typing import Any
 from requirement_intelligence.cp1.framework import CP1Criterion, CP1CriterionMetadata
 from requirement_intelligence.cp1.models import CP1Finding
 from shared.enums.base import ValidationVerdict
-from shared.utils.ids import utc_now
+from shared.utils.ids import new_id, utc_now
 
 #: The three governed **requirement** collections (Prompt Framework
 #: ``JSON_RESPONSE_REQUIREMENTS``; the set ADR-0007 fixed for ``CONTENT-0002``).
@@ -71,6 +88,12 @@ class EngineeringInputAvailabilityCriterion(CP1Criterion):
         Reads only ``cp1_input`` (the normalized structure and the correlation id),
         read-only.  It never mutates the input, never aggregates, and never reads the
         Validation subsystem's logic.
+
+        The **only** governed readiness policy applied here is the ≥ 1 availability
+        floor (ADR-0013 §D2/§D4).  Under the governed Validation → CP1 handoff
+        (ADR-0011 §D5) the normalized structure is always present, so any handling of a
+        malformed or absent structure below is **defensive robustness, not readiness
+        policy** — see the module docstring.
         """
         if self._pooled_requirement_count(self._normalized_structure(cp1_input)) >= 1:
             return []
@@ -78,7 +101,11 @@ class EngineeringInputAvailabilityCriterion(CP1Criterion):
 
     @staticmethod
     def _normalized_structure(cp1_input: Any) -> Any:
-        """The normalized structure reached through ``CP1Input`` (``None`` if absent)."""
+        """The normalized structure reached through ``CP1Input`` (``None`` if absent).
+
+        The governed handoff (ADR-0011 §D5) guarantees a present structure, so the
+        ``None`` branch is **defensive only** — never an expected readiness-policy path.
+        """
         parsed_response = cp1_input.normalization_result.parsed_response
         if parsed_response is None:
             return None
@@ -88,8 +115,12 @@ class EngineeringInputAvailabilityCriterion(CP1Criterion):
     def _pooled_requirement_count(normalized_structure: Any) -> int:
         """Total element count across the three governed requirement collections.
 
-        Deterministic and defensive: a non-mapping structure, an absent collection, or a
-        present-but-non-list value contributes zero — no policy is invented.
+        Deterministic.  A non-mapping structure, an absent collection, or a
+        present-but-non-list value contributes zero.  That tolerance is **defensive
+        robustness, not engineering-readiness policy**: such structures cannot arise
+        under the governed Validation → CP1 handoff (ADR-0011 §D5), and no readiness
+        rule is invented for them — they simply yield a pooled count of zero, which the
+        one governed policy (the ≥ 1 availability floor) then evaluates.
         """
         if not isinstance(normalized_structure, dict):
             return 0
@@ -101,9 +132,20 @@ class EngineeringInputAvailabilityCriterion(CP1Criterion):
         return total
 
     def _no_engineering_input_finding(self, cp1_input: Any) -> CP1Finding:
-        """Build the single FAIL finding (ADR-0013 §D4/§D5)."""
+        """Build the single FAIL finding (ADR-0013 §D4/§D5).
+
+        Identity ownership is kept strictly separated (no meaning is duplicated):
+
+        * ``finding_id`` — the **occurrence** identity of *this* finding, minted from
+          the repository's canonical shared generator (:func:`shared.utils.ids.new_id`,
+          the same mechanism the CP1 engine uses for ``cp1_id``).  It identifies the
+          single finding occurrence, nothing more, and is deliberately **not** derived
+          from ``CP1-0001`` — the criterion identity already lives in ``criterion_id``.
+        * ``criterion_id`` — the **criterion** identity (``CP1-0001``).
+        * ``correlation_id`` — the **execution** correlation (the validation run).
+        """
         return CP1Finding(
-            finding_id=f"{self.criterion_id}:no-engineering-input",
+            finding_id=new_id(),
             criterion_id=self.criterion_id,
             criterion_version=self.criterion_version,
             verdict_contribution=ValidationVerdict.FAIL,

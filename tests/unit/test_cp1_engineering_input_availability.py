@@ -9,7 +9,9 @@ Governed by ADR-0013.  Covers:
 * pooled counting (union of the three governed collections)
 * the exact recommendation / message / verdict on FAIL
 * criterion metadata (CP1-0001)
-* deterministic repeated execution
+* deterministic repeated execution (stable verdict/content; occurrence-unique finding_id)
+* finding_id is a fresh occurrence identity (canonical uuid4, not derived from CP1-0001)
+* serialization stable except the occurrence-provenance fields (finding_id, created_at)
 * thread safety (stateless criterion under concurrency)
 * immutability of the produced finding
 * no mutation of CP1Input
@@ -26,6 +28,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -189,9 +192,7 @@ class TestPass:
         assert findings == []
 
     def test_pass_with_multiple_mixed_requirements(self) -> None:
-        cp1_input = _cp1_input(
-            _response_json(functional=["a", "b"], security=["c"], quality=["d"])
-        )
+        cp1_input = _cp1_input(_response_json(functional=["a", "b"], security=["c"], quality=["d"]))
         assert _criterion().evaluate(cp1_input) == []
 
 
@@ -238,9 +239,7 @@ class TestFail:
         # Defensive: a NormalizationResult with no ParsedResponse → no structure → FAIL.
         base = _cp1_input(_response_json(functional=["x"]))
         broken = base.normalization_result.model_copy(update={"parsed_response": None})
-        cp1_input = CP1Input(
-            validation_result=base.validation_result, normalization_result=broken
-        )
+        cp1_input = CP1Input(validation_result=base.validation_result, normalization_result=broken)
         assert len(_criterion().evaluate(cp1_input)) == 1
 
 
@@ -288,9 +287,43 @@ class TestDeterminism:
         cp1_input = _cp1_input(_response_json())
         a = criterion.evaluate(cp1_input)
         b = criterion.evaluate(cp1_input)
-        # Same verdict, count, and stable finding identity (created_at is provenance).
-        assert [f.finding_id for f in a] == [f.finding_id for f in b]
+        # The judgement is deterministic: same count and verdict every time.
+        assert len(a) == len(b) == 1
         assert [f.verdict_contribution for f in a] == [f.verdict_contribution for f in b]
+        # Governed content (message/location/evidence/recommendation/criterion) is stable.
+        assert a[0].message == b[0].message
+        assert a[0].location == b[0].location
+        assert a[0].evidence == b[0].evidence
+        assert a[0].recommendation == b[0].recommendation
+        assert a[0].criterion_id == b[0].criterion_id == "CP1-0001"
+
+    def test_finding_id_is_a_fresh_occurrence_identity(self) -> None:
+        # finding_id identifies the finding *occurrence* — minted from the canonical
+        # shared generator (uuid4), never derived from the criterion id (CP1-0001).
+        (finding,) = _criterion().evaluate(_cp1_input(_response_json()))
+        assert "CP1-0001" not in finding.finding_id
+        assert finding.finding_id != finding.criterion_id
+        # A canonical uuid4 string.
+        UUID(finding.finding_id)
+
+    def test_multiple_executions_generate_different_finding_ids(self) -> None:
+        criterion = _criterion()
+        cp1_input = _cp1_input(_response_json())
+        ids = {criterion.evaluate(cp1_input)[0].finding_id for _ in range(5)}
+        assert len(ids) == 5  # one distinct occurrence identity per execution
+
+    def test_serialization_stable_except_finding_id(self) -> None:
+        # Serialization is unchanged except for the two occurrence-provenance fields
+        # (finding_id and created_at); every governed field serialises identically.
+        criterion = _criterion()
+        cp1_input = _cp1_input(_response_json())
+        first = criterion.evaluate(cp1_input)[0].model_dump(by_alias=True)
+        second = criterion.evaluate(cp1_input)[0].model_dump(by_alias=True)
+        assert first["findingId"] != second["findingId"]
+        volatile = {"findingId", "createdAt"}
+        assert {k: v for k, v in first.items() if k not in volatile} == {
+            k: v for k, v in second.items() if k not in volatile
+        }
 
     def test_stateless_across_pass_then_fail(self) -> None:
         criterion = _criterion()
