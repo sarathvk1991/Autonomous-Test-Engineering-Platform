@@ -1,0 +1,775 @@
+"""CAP-070 — Golden End-to-End Validation Baseline.
+
+Productization tests that validate the complete Requirement Intelligence pipeline
+against a deterministic golden dataset.  Every subsystem must execute; every
+governed artifact must be generated; manifests must be internally consistent;
+and two consecutive pipeline runs must produce identical findings and verdicts
+(excluding run-specific provenance such as IDs and timestamps).
+
+Test organisation
+-----------------
+Phase 3  — Pipeline execution  (every subsystem fires)
+Phase 4  — Output verification (artifacts, manifest, cross-references, checksums)
+Phase 5  — Determinism         (run twice; compare content, not provenance)
+Phase 6  — Productization assertions (structured per-layer contract checks)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from requirement_intelligence.models.enums import SourceCategory
+from requirement_intelligence.normalization.models.normalization_result import NormalizationResult
+from requirement_intelligence.validation.models.validation_enums import ValidationVerdict
+
+from tests.productization.conftest import PipelineResult, _run_golden_pipeline
+from tests.productization.fixtures.golden_dataset import (
+    EXPECTED_CONSOLIDATED_COUNT,
+    EXPECTED_FUNCTIONAL_REQUIREMENTS_COUNT,
+    EXPECTED_MODULE,
+    EXPECTED_QUALITY_REQUIREMENTS_COUNT,
+    EXPECTED_RECOMMENDATIONS_COUNT,
+    EXPECTED_RISKS_COUNT,
+    EXPECTED_SECURITY_REQUIREMENTS_COUNT,
+    GOLDEN_DATASET_VERSION,
+    GOLDEN_SOURCE_ARTIFACTS,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_CORE_ARTIFACTS = frozenset(
+    {"consolidated_artifact.json", "prompt.txt", "llm_request.json"}
+)
+_RESULT_ARTIFACTS = frozenset(
+    {
+        "analysis_result.json",
+        "raw_llm_response.json",
+        "execution_summary.md",
+        "baseline_metrics.md",
+        "review.md",
+    }
+)
+_VALIDATION_ARTIFACTS = frozenset({"validation_result.json", "validation_report.md"})
+_CP1_ARTIFACTS = frozenset({"cp1_report.md"})
+_ALL_ARTIFACTS = (
+    _CORE_ARTIFACTS
+    | _RESULT_ARTIFACTS
+    | _VALIDATION_ARTIFACTS
+    | _CP1_ARTIFACTS
+    | {"manifest.json"}
+)
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _parsed_response_structure(result: PipelineResult) -> dict:
+    """Extract the deterministic structure from the normalization result."""
+    pr = result.normalization_result.parsed_response
+    if pr is None:
+        return {}
+    normalized = pr.normalized_structure
+    if normalized is None:
+        return {}
+    return dict(normalized)
+
+
+# ===========================================================================
+# PHASE 3 — Pipeline Execution
+# ===========================================================================
+
+
+class TestPhase3PipelineExecution:
+    """Every subsystem in the governed pipeline must execute successfully."""
+
+    @pytest.mark.productization
+    def test_source_artifacts_loaded(self, golden_pipeline_result: PipelineResult) -> None:
+        """All nine golden source artifacts are loaded."""
+        assert golden_pipeline_result.source_artifact_count == len(GOLDEN_SOURCE_ARTIFACTS)
+        assert golden_pipeline_result.source_artifact_count == 9
+
+    @pytest.mark.productization
+    def test_consolidation_produces_single_group(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """All artifacts share component='authentication' → one ConsolidatedArtifact."""
+        assert len(golden_pipeline_result.consolidated_artifacts) == EXPECTED_CONSOLIDATED_COUNT
+
+    @pytest.mark.productization
+    def test_consolidated_artifact_module(self, golden_pipeline_result: PipelineResult) -> None:
+        """The consolidated module name matches the golden dataset's component."""
+        assert golden_pipeline_result.selected.module == EXPECTED_MODULE
+
+    @pytest.mark.productization
+    def test_consolidated_artifact_has_all_categories(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The consolidated artifact carries functional, security, and quality artifacts."""
+        selected = golden_pipeline_result.selected
+        assert len(selected.functional_artifacts) > 0, "Expected functional artifacts"
+        assert len(selected.security_artifacts) > 0, "Expected security artifacts"
+        assert len(selected.quality_artifacts) > 0, "Expected quality artifacts"
+
+    @pytest.mark.productization
+    def test_consolidated_functional_count(self, golden_pipeline_result: PipelineResult) -> None:
+        """Four JIRA functional artifacts (1 epic + 3 stories)."""
+        assert len(golden_pipeline_result.selected.functional_artifacts) == 4
+
+    @pytest.mark.productization
+    def test_consolidated_security_count(self, golden_pipeline_result: PipelineResult) -> None:
+        """Three OWASP ZAP security artifacts."""
+        assert len(golden_pipeline_result.selected.security_artifacts) == 3
+
+    @pytest.mark.productization
+    def test_consolidated_quality_count(self, golden_pipeline_result: PipelineResult) -> None:
+        """Two SonarQube quality artifacts."""
+        assert len(golden_pipeline_result.selected.quality_artifacts) == 2
+
+    @pytest.mark.productization
+    def test_analysis_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
+        """RequirementAnalysisService produced an AnalysisResult."""
+        assert golden_pipeline_result.analysis_result is not None
+
+    @pytest.mark.productization
+    def test_analysis_result_has_llm_response(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """AnalysisResult carries the stub provider's LLMResponse."""
+        assert golden_pipeline_result.analysis_result.llm_response is not None
+        assert golden_pipeline_result.analysis_result.llm_response.generated_text != ""
+
+    @pytest.mark.productization
+    def test_normalization_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
+        """ResponseNormalizer produced a NormalizationResult."""
+        assert isinstance(golden_pipeline_result.normalization_result, NormalizationResult)
+
+    @pytest.mark.productization
+    def test_normalization_produced_parsed_response(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """NormalizationResult carries a populated ParsedResponse."""
+        assert golden_pipeline_result.normalization_result.parsed_response is not None
+
+    @pytest.mark.productization
+    def test_validation_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
+        """ResponseValidator produced a ValidationResult."""
+        assert golden_pipeline_result.validation_result is not None
+
+    @pytest.mark.productization
+    def test_cp1_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
+        """CP1 Service produced a CP1Result (gate must be open for golden response)."""
+        assert golden_pipeline_result.cp1_result is not None, (
+            "CP1Result is None — the Validation → CP1 gate was closed. "
+            f"Validation verdict: {golden_pipeline_result.validation_result.overall_verdict}"
+        )
+
+    @pytest.mark.productization
+    def test_execution_package_written(self, golden_pipeline_result: PipelineResult) -> None:
+        """ExecutionWriter completed without raising."""
+        assert golden_pipeline_result.write_result is not None
+        assert golden_pipeline_result.output_dir.is_dir()
+
+
+# ===========================================================================
+# PHASE 4 — Output Verification
+# ===========================================================================
+
+
+class TestPhase4OutputVerification:
+    """Every governed artifact must be present, internally consistent, and checksummed."""
+
+    # --- Artifact presence -------------------------------------------------
+
+    @pytest.mark.productization
+    def test_all_core_artifacts_present(self, golden_pipeline_result: PipelineResult) -> None:
+        for name in _CORE_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Core artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Core artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_all_result_artifacts_present(self, golden_pipeline_result: PipelineResult) -> None:
+        for name in _RESULT_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Result artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Result artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_validation_artifacts_present(self, golden_pipeline_result: PipelineResult) -> None:
+        for name in _VALIDATION_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Validation artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Validation artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_cp1_report_present(self, golden_pipeline_result: PipelineResult) -> None:
+        path = golden_pipeline_result.output_dir / "cp1_report.md"
+        assert path.exists(), "cp1_report.md missing"
+        assert path.stat().st_size > 0, "cp1_report.md is empty"
+
+    @pytest.mark.productization
+    def test_manifest_present(self, golden_pipeline_result: PipelineResult) -> None:
+        path = golden_pipeline_result.output_dir / "manifest.json"
+        assert path.exists(), "manifest.json missing"
+        assert path.stat().st_size > 0, "manifest.json is empty"
+
+    # --- AnalysisResult verification ---------------------------------------
+
+    @pytest.mark.productization
+    def test_analysis_result_json_parseable(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        data = _load_json(golden_pipeline_result.output_dir / "analysis_result.json")
+        assert "analysisId" in data
+        assert "executionId" in data
+        assert "provider" in data
+        assert "llmResponse" in data
+
+    @pytest.mark.productization
+    def test_raw_llm_response_json_parseable(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        data = _load_json(golden_pipeline_result.output_dir / "raw_llm_response.json")
+        assert "generatedText" in data or "generated_text" in data
+
+    # --- NormalizationResult verification ----------------------------------
+
+    @pytest.mark.productization
+    def test_parsed_response_has_required_keys(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """ParsedResponse normalized_structure carries all required JSON contract keys."""
+        structure = _parsed_response_structure(golden_pipeline_result)
+        for key in (
+            "summary",
+            "functional_requirements",
+            "security_requirements",
+            "quality_requirements",
+            "risks",
+            "recommendations",
+        ):
+            assert key in structure, f"ParsedResponse is missing key: {key}"
+
+    @pytest.mark.productization
+    def test_functional_requirements_count(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        structure = _parsed_response_structure(golden_pipeline_result)
+        assert len(structure["functional_requirements"]) == EXPECTED_FUNCTIONAL_REQUIREMENTS_COUNT
+
+    @pytest.mark.productization
+    def test_security_requirements_count(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        structure = _parsed_response_structure(golden_pipeline_result)
+        assert len(structure["security_requirements"]) == EXPECTED_SECURITY_REQUIREMENTS_COUNT
+
+    @pytest.mark.productization
+    def test_quality_requirements_count(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        structure = _parsed_response_structure(golden_pipeline_result)
+        assert len(structure["quality_requirements"]) == EXPECTED_QUALITY_REQUIREMENTS_COUNT
+
+    @pytest.mark.productization
+    def test_risks_count(self, golden_pipeline_result: PipelineResult) -> None:
+        structure = _parsed_response_structure(golden_pipeline_result)
+        assert len(structure["risks"]) == EXPECTED_RISKS_COUNT
+
+    @pytest.mark.productization
+    def test_recommendations_count(self, golden_pipeline_result: PipelineResult) -> None:
+        structure = _parsed_response_structure(golden_pipeline_result)
+        assert len(structure["recommendations"]) == EXPECTED_RECOMMENDATIONS_COUNT
+
+    # --- ValidationResult verification -------------------------------------
+
+    @pytest.mark.productization
+    def test_validation_result_json_parseable(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        data = _load_json(golden_pipeline_result.output_dir / "validation_result.json")
+        assert "overallVerdict" in data
+        assert "validationSummary" in data
+
+    @pytest.mark.productization
+    def test_validation_verdict_is_passing(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Golden response must pass validation (prerequisite for CP1 gate opening)."""
+        verdict = golden_pipeline_result.validation_result.overall_verdict
+        assert verdict in (ValidationVerdict.PASSED, ValidationVerdict.PASSED_WITH_WARNINGS), (
+            f"Expected PASSED or PASSED_WITH_WARNINGS; got {verdict}. "
+            "The golden response did not satisfy the validation rules."
+        )
+
+    # --- CP1Result verification --------------------------------------------
+
+    @pytest.mark.productization
+    def test_cp1_verdict_is_pass(self, golden_pipeline_result: PipelineResult) -> None:
+        """CP1-0001 must PASS: the golden response contains ≥1 requirement in all categories."""
+        result = golden_pipeline_result.cp1_result
+        assert result is not None
+        verdict_value = str(getattr(result.overall_verdict, "value", result.overall_verdict))
+        assert verdict_value.upper() == "PASS", (
+            f"Expected CP1 verdict PASS; got {verdict_value}. "
+            "CP1-0001 failed: the golden response must contain at least one requirement."
+        )
+
+    @pytest.mark.productization
+    def test_cp1_no_fail_findings(self, golden_pipeline_result: PipelineResult) -> None:
+        """No CP1 findings with FAIL contribution (golden response is engineering-ready)."""
+        result = golden_pipeline_result.cp1_result
+        assert result is not None
+        fail_findings = [
+            f for f in result.findings
+            if str(getattr(f.verdict_contribution, "value", f.verdict_contribution)).upper()
+            == "FAIL"
+        ]
+        assert len(fail_findings) == 0, (
+            f"Found {len(fail_findings)} FAIL finding(s) in the golden CP1 result: "
+            + str([f.criterion_id for f in fail_findings])
+        )
+
+    # --- Manifest verification ---------------------------------------------
+
+    @pytest.mark.productization
+    def test_manifest_schema_version(self, golden_pipeline_result: PipelineResult) -> None:
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        assert manifest["manifestSchemaVersion"] == "1.0.0"
+
+    @pytest.mark.productization
+    def test_manifest_platform_version(self, golden_pipeline_result: PipelineResult) -> None:
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        assert manifest["platformVersion"] == "1.0.0"
+
+    @pytest.mark.productization
+    def test_manifest_execution_mode(self, golden_pipeline_result: PipelineResult) -> None:
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        assert manifest["executionMode"] == "live"
+        assert manifest["dryRun"] is False
+
+    @pytest.mark.productization
+    def test_manifest_cp1_executed(self, golden_pipeline_result: PipelineResult) -> None:
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        assert manifest.get("cp1Executed") is True
+        assert manifest.get("cp1Verdict") is not None
+        assert manifest.get("cp1Report") == "cp1_report.md"
+
+    @pytest.mark.productization
+    def test_manifest_generated_artifacts_list(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        names = {a["name"] for a in manifest["generatedArtifacts"]}
+        # Every governed artifact must appear in the manifest listing.
+        for expected in _ALL_ARTIFACTS - {"manifest.json"}:
+            assert expected in names, f"Artifact missing from manifest listing: {expected}"
+
+    @pytest.mark.productization
+    def test_manifest_checksums_match_files(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """sha256 in manifest.generatedArtifacts must match on-disk content."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        for entry in manifest["generatedArtifacts"]:
+            name = entry["name"]
+            expected_sha = entry["sha256"]
+            actual_sha = _sha256(golden_pipeline_result.output_dir / name)
+            assert actual_sha == expected_sha, (
+                f"Checksum mismatch for {name}: "
+                f"manifest={expected_sha!r} file={actual_sha!r}"
+            )
+
+    @pytest.mark.productization
+    def test_manifest_byte_counts_match_files(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """bytes in manifest.generatedArtifacts must match on-disk file size."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        for entry in manifest["generatedArtifacts"]:
+            name = entry["name"]
+            expected_bytes = entry["bytes"]
+            actual_bytes = (golden_pipeline_result.output_dir / name).stat().st_size
+            assert actual_bytes == expected_bytes, (
+                f"Byte count mismatch for {name}: "
+                f"manifest={expected_bytes} file={actual_bytes}"
+            )
+
+    @pytest.mark.productization
+    def test_manifest_analysis_id_cross_reference(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.analysisId matches the AnalysisResult written to disk."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        analysis_data = _load_json(golden_pipeline_result.output_dir / "analysis_result.json")
+        assert manifest["analysisId"] == analysis_data["analysisId"]
+
+    @pytest.mark.productization
+    def test_manifest_execution_id_cross_reference(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.executionId matches the AnalysisResult written to disk."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        analysis_data = _load_json(golden_pipeline_result.output_dir / "analysis_result.json")
+        assert manifest["executionId"] == analysis_data["executionId"]
+
+    @pytest.mark.productization
+    def test_manifest_prompt_sha256_matches_prompt_txt(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.promptSha256 is the SHA-256 of the full prompt (system + user)."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        full_prompt = golden_pipeline_result.execution_data.full_prompt
+        import hashlib
+        expected = hashlib.sha256(full_prompt.encode("utf-8")).hexdigest()
+        assert manifest["promptSha256"] == expected
+
+    @pytest.mark.productization
+    def test_manifest_response_sha256_matches_generated_text(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.responseSha256 is the SHA-256 of the raw LLM response text."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        generated_text = golden_pipeline_result.execution_data.generated_text
+        import hashlib
+        expected = hashlib.sha256(generated_text.encode("utf-8")).hexdigest()
+        assert manifest["responseSha256"] == expected
+
+    # --- Execution summary verification ------------------------------------
+
+    @pytest.mark.productization
+    def test_execution_summary_contains_cp1_section(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        content = (golden_pipeline_result.output_dir / "execution_summary.md").read_text()
+        assert "Engineering Readiness" in content
+        assert "cp1_report.md" in content
+
+    # --- Baseline metrics verification -------------------------------------
+
+    @pytest.mark.productization
+    def test_baseline_metrics_source_artifact_count(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        content = (golden_pipeline_result.output_dir / "baseline_metrics.md").read_text()
+        assert "9" in content  # Source Artifacts Processed = 9
+
+
+# ===========================================================================
+# PHASE 5 — Determinism
+# ===========================================================================
+
+
+class TestPhase5Determinism:
+    """Two consecutive identical pipeline runs must produce the same findings and verdicts."""
+
+    @pytest.mark.productization
+    def test_determinism_validation_verdict(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce identical Validation verdicts."""
+        run2 = _run_golden_pipeline(tmp_path)
+        v1 = str(golden_pipeline_result.validation_result.overall_verdict)
+        v2 = str(run2.validation_result.overall_verdict)
+        assert v1 == v2, f"Validation verdict differs: run1={v1!r} run2={v2!r}"
+
+    @pytest.mark.productization
+    def test_determinism_validation_issue_count(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same number of validation issues."""
+        run2 = _run_golden_pipeline(tmp_path)
+        n1 = len(golden_pipeline_result.validation_result.validation_issues)
+        n2 = len(run2.validation_result.validation_issues)
+        assert n1 == n2, f"Validation issue count differs: run1={n1} run2={n2}"
+
+    @pytest.mark.productization
+    def test_determinism_validation_issue_rules(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs report the same rule IDs (order-independent)."""
+        run2 = _run_golden_pipeline(tmp_path)
+        rules1 = sorted(
+            i.rule_id for i in golden_pipeline_result.validation_result.validation_issues
+        )
+        rules2 = sorted(i.rule_id for i in run2.validation_result.validation_issues)
+        assert rules1 == rules2, f"Rule IDs differ: run1={rules1} run2={rules2}"
+
+    @pytest.mark.productization
+    def test_determinism_cp1_verdict(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce identical CP1 verdicts."""
+        run2 = _run_golden_pipeline(tmp_path)
+        r1 = golden_pipeline_result.cp1_result
+        r2 = run2.cp1_result
+        assert (r1 is None) == (r2 is None), "CP1 gate open/closed differs between runs"
+        if r1 is not None and r2 is not None:
+            v1 = str(getattr(r1.overall_verdict, "value", r1.overall_verdict))
+            v2 = str(getattr(r2.overall_verdict, "value", r2.overall_verdict))
+            assert v1 == v2, f"CP1 verdict differs: run1={v1!r} run2={v2!r}"
+
+    @pytest.mark.productization
+    def test_determinism_cp1_finding_count(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same number of CP1 findings."""
+        run2 = _run_golden_pipeline(tmp_path)
+        r1 = golden_pipeline_result.cp1_result
+        r2 = run2.cp1_result
+        if r1 is None and r2 is None:
+            return  # both skipped — consistent
+        assert r1 is not None and r2 is not None
+        assert len(r1.findings) == len(r2.findings), (
+            f"CP1 finding count differs: run1={len(r1.findings)} run2={len(r2.findings)}"
+        )
+
+    @pytest.mark.productization
+    def test_determinism_cp1_criterion_ids(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs report the same CP1 criterion IDs (order-independent)."""
+        run2 = _run_golden_pipeline(tmp_path)
+        r1 = golden_pipeline_result.cp1_result
+        r2 = run2.cp1_result
+        if r1 is None and r2 is None:
+            return
+        assert r1 is not None and r2 is not None
+        cids1 = sorted(f.criterion_id for f in r1.findings)
+        cids2 = sorted(f.criterion_id for f in r2.findings)
+        assert cids1 == cids2, f"CP1 criterion IDs differ: run1={cids1} run2={cids2}"
+
+    @pytest.mark.productization
+    def test_determinism_normalization_outcome(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce identical normalization outcomes."""
+        run2 = _run_golden_pipeline(tmp_path)
+        pr1 = golden_pipeline_result.normalization_result.parsed_response
+        pr2 = run2.normalization_result.parsed_response
+        assert (pr1 is None) == (pr2 is None), "ParsedResponse presence differs"
+        if pr1 is not None and pr2 is not None:
+            outcome1 = str(getattr(pr1.normalization_outcome, "value", pr1.normalization_outcome))
+            outcome2 = str(getattr(pr2.normalization_outcome, "value", pr2.normalization_outcome))
+            assert outcome1 == outcome2, (
+                f"Normalization outcome differs: run1={outcome1!r} run2={outcome2!r}"
+            )
+
+    @pytest.mark.productization
+    def test_determinism_parsed_response_structure(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce identical ParsedResponse normalized structures."""
+        run2 = _run_golden_pipeline(tmp_path)
+        s1 = _parsed_response_structure(golden_pipeline_result)
+        s2 = _parsed_response_structure(run2)
+        assert s1 == s2, "ParsedResponse.normalized_structure differs between runs"
+
+    @pytest.mark.productization
+    def test_determinism_consolidated_artifact_count(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same number of consolidated artifacts."""
+        run2 = _run_golden_pipeline(tmp_path)
+        n1 = len(golden_pipeline_result.consolidated_artifacts)
+        n2 = len(run2.consolidated_artifacts)
+        assert n1 == n2, f"Consolidated artifact count differs: run1={n1} run2={n2}"
+
+    @pytest.mark.productization
+    def test_determinism_consolidated_module_name(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs select the identical consolidated module."""
+        run2 = _run_golden_pipeline(tmp_path)
+        assert golden_pipeline_result.selected.module == run2.selected.module
+
+    @pytest.mark.productization
+    def test_determinism_manifest_cp1_verdict_field(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """manifest.cp1Verdict is identical across two runs."""
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1.get("cp1Verdict") == m2.get("cp1Verdict"), (
+            f"manifest.cp1Verdict differs: run1={m1.get('cp1Verdict')!r} "
+            f"run2={m2.get('cp1Verdict')!r}"
+        )
+
+    @pytest.mark.productization
+    def test_determinism_response_sha256(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """The raw LLM response text (and its SHA-256) is identical across runs."""
+        run2 = _run_golden_pipeline(tmp_path)
+        text1 = golden_pipeline_result.execution_data.generated_text
+        text2 = run2.execution_data.generated_text
+        assert text1 == text2, "Generated text differs between runs"
+
+
+# ===========================================================================
+# PHASE 6 — Productization Assertions
+# ===========================================================================
+
+
+class TestPhase6ProductizationAssertions:
+    """Structured per-layer contract checks that serve as long-term regression guards."""
+
+    # --- Dataset integrity -------------------------------------------------
+
+    @pytest.mark.productization
+    def test_dataset_version(self) -> None:
+        """The golden dataset declares a version."""
+        assert GOLDEN_DATASET_VERSION == "1.0.0"
+
+    @pytest.mark.productization
+    def test_dataset_covers_all_categories(self) -> None:
+        """Dataset includes at least one artifact in each governed category."""
+        categories = {a.source_category for a in GOLDEN_SOURCE_ARTIFACTS}
+        assert SourceCategory.FUNCTIONAL in categories
+        assert SourceCategory.SECURITY in categories
+        assert SourceCategory.QUALITY in categories
+
+    @pytest.mark.productization
+    def test_dataset_artifact_ids_unique(self) -> None:
+        """All artifact IDs in the golden dataset are unique."""
+        ids = [a.artifact_id for a in GOLDEN_SOURCE_ARTIFACTS]
+        assert len(ids) == len(set(ids)), "Duplicate artifact IDs in golden dataset"
+
+    # --- Pipeline contract -------------------------------------------------
+
+    @pytest.mark.productization
+    def test_analysis_result_prompt_version(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """AnalysisResult carries the governed prompt version."""
+        assert golden_pipeline_result.analysis_result.prompt_version == "1.0.0"
+
+    @pytest.mark.productization
+    def test_analysis_result_reasoning_contract_version(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """AnalysisResult carries the governed reasoning contract version."""
+        assert golden_pipeline_result.analysis_result.reasoning_contract_version == "1.0.0"
+
+    @pytest.mark.productization
+    def test_normalization_statistics_populated(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """NormalizationResult statistics are populated."""
+        stats = golden_pipeline_result.normalization_result.normalization_statistics
+        assert stats is not None
+        assert stats.responsibilities_executed >= 0
+
+    @pytest.mark.productization
+    def test_validation_statistics_rules_executed(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """ValidationResult statistics show at least one rule was executed."""
+        stats = golden_pipeline_result.validation_result.validation_statistics
+        assert stats.rules_executed > 0, "No validation rules were executed"
+
+    @pytest.mark.productization
+    def test_cp1_framework_metadata_present(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """CP1Result carries framework metadata."""
+        result = golden_pipeline_result.cp1_result
+        assert result is not None
+        assert result.framework_metadata is not None
+
+    @pytest.mark.productization
+    def test_cp1_input_cross_references_validation(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """CP1Input.validation_id matches the ValidationResult.validation_id."""
+        cp1_result = golden_pipeline_result.cp1_result
+        validation_result = golden_pipeline_result.validation_result
+        assert cp1_result is not None
+        assert cp1_result.validation_id == validation_result.validation_id
+
+    @pytest.mark.productization
+    def test_execution_data_no_dry_run(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Execution data records a live (non-dry-run) execution."""
+        assert golden_pipeline_result.execution_data.dry_run is False
+
+    @pytest.mark.productization
+    def test_write_result_json_valid(self, golden_pipeline_result: PipelineResult) -> None:
+        """ExecutionWriter confirms the LLM response is valid JSON."""
+        assert golden_pipeline_result.write_result.json_valid is True
+
+    @pytest.mark.productization
+    def test_manifest_all_version_fields_present(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json contains every governed version field."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        for key in (
+            "manifestSchemaVersion",
+            "platformVersion",
+            "baselineVersion",
+            "executionPackageVersion",
+            "connectorRegistryVersion",
+            "mapperVersion",
+            "consolidationEngineVersion",
+            "promptFrameworkVersion",
+            "llmFrameworkVersion",
+            "analysisServiceVersion",
+            "executionWriterVersion",
+            "platformCapabilitiesVersion",
+        ):
+            assert key in manifest, f"Version field missing from manifest: {key}"
+            assert manifest[key], f"Version field is empty in manifest: {key}"
+
+    @pytest.mark.productization
+    def test_validation_report_contains_verdict(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """validation_report.md renders the overall verdict."""
+        content = (golden_pipeline_result.output_dir / "validation_report.md").read_text()
+        assert "PASSED" in content.upper()
+
+    @pytest.mark.productization
+    def test_cp1_report_contains_verdict(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """cp1_report.md renders the CP1 overall verdict."""
+        content = (golden_pipeline_result.output_dir / "cp1_report.md").read_text()
+        assert "PASS" in content.upper()

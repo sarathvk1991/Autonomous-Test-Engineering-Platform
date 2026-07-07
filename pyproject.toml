@@ -55,4 +55,5 @@ markers = [
     "unit: fast, isolated tests with no external I/O",
     "integration: tests that exercise a connector or external boundary",
     "e2e: full end-to-end workflow tests",
+    "productization: CAP-070 golden end-to-end validation baseline tests",
 ]
