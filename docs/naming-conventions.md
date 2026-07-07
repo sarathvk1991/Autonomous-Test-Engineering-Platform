@@ -17,7 +17,7 @@
 - Parsers:     `*Parser`      → `JiraParser`
 - Services/engines: `*Engine` / `*Analyzer` / `*Registry` →
   `ConsolidationEngine`, `RequirementAnalyzer`, `SourceRegistry`
-- Validators:  `*Validator`   → `CP1Validator`
+- Validators:  `*Validator`   → `ResponseValidator`
 - Workflows:   `*Pipeline` / `*Workflow` → `RequirementPipeline`
 - DTOs / models: noun, no suffix → `CanonicalRequirement`, `SourceRef`
 - API schemas: `*Request` / `*Response` → `IngestRequest`

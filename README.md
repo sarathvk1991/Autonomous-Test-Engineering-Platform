@@ -48,7 +48,7 @@ autonomous-test-engineering-platform/
 │   ├── parsers/               #   raw payload -> canonical model
 │   ├── models/                #   Canonical Requirement Model
 │   ├── services/              #   registry, consolidation, classification, analyzer, reports
-│   ├── validators/            #   CP1 validation engine
+│   ├── cp1/                    #   CP1 engineering-readiness subsystem (models/framework/criteria/response/engine)
 │   ├── workflows/             #   pipeline orchestration
 │   ├── prompts/               #   layer-specific prompt templates
 │   ├── reports/               #   report templates

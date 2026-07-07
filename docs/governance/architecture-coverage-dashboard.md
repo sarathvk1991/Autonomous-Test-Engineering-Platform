@@ -132,8 +132,10 @@ repository-evidenced:
   (engine), CAP-066 (composition root), the first criterion `CP1-0001` (CAP-067A),
   **PlatformContext/CLI wiring (CAP-067B)**, and **reporting/execution-package
   integration (CAP-068)** — CP1 runs end-to-end and is surfaced as `cp1_report.md`.
-  Remaining work is **further governed criteria** (via the catalog's §11 process), not
-  architecture, wiring, or reporting.
+  The temporary `validators/cp1.py` placeholder has been **retired (CAP-069)**; CP1 is
+  a first-class subsystem under `requirement_intelligence.cp1` with a single canonical
+  entry point (`CP1Service`). Remaining work is **further governed criteria** (via the
+  catalog's §11 process), not architecture, wiring, or reporting.
 - **Documentation gap (not a capability gap)** — CAP-020 Execution Package,
   CAP-024 Platform CLI, and CAP-011 Prompt Framework are implemented and marked
   architected, but have **no dedicated architecture document** (governed by
@@ -167,7 +169,9 @@ No other capability is missing architecture: every remaining `✗` is an
 - **Partially implemented: CAP-044 Schema** (`SCHEMA-0001/0002/0004`; `0003`
   deferred), **CAP-046 Content** (`CONTENT-0001/0002`), **CAP-049 Reasoning**
   (`REASONING-0002`).
-- **In Progress: CAP-060 CP1 Validator** (partial code).
+- **In Progress: CAP-060 CP1 Validator** (umbrella) — the subsystem is fully
+  implemented and reconciled (the `validators/cp1.py` placeholder retired, CAP-069);
+  "In Progress" tracks only **further governed criteria**, not code.
 - **Planned / Deferred: CAP-045 Structural, CAP-047 Evidence, CAP-048
   Traceability, CAP-050 Business Rule** — awaiting governed schema enrichment and
   cataloguing ADRs.
@@ -238,8 +242,11 @@ No other capability is missing architecture: every remaining `✗` is an
   it only when CP1 ran; the manifest/summary/review gain additive, presentation-only
   references; baseline metrics gain none (execution performance ≠ engineering
   assessment). No CP1 evaluation/aggregation/scoring is added — reporting only.
-  **Next:** downstream analytics and further governed criteria (via the catalog's §11
-  process).
+  **Finalized (CAP-069):** the temporary `validators/cp1.py` (`CP1Validator`)
+  placeholder is retired; CP1 is a first-class subsystem under
+  `requirement_intelligence.cp1` with a single canonical entry point (`CP1Service`),
+  reconciling ADR-0011 §D9 with the implemented architecture. **Next:** downstream
+  analytics and further governed criteria (via the catalog's §11 process).
 
 > Readiness confirms the deterministic validation initiative is **feature-complete
 > for the currently governed response schema**: Response Normalization, the Validation

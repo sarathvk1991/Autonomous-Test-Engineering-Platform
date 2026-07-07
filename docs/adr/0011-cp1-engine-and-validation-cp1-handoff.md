@@ -263,6 +263,28 @@ the same additive-via-ADR discipline as the Validation Rule Catalog (ADR-0004…
   vocabulary (force 5).
 - Its **location** (`validators/`) and **`CAP-060`** allocation are **retained**.
 
+> **Reconciliation (CAP-069 — 2026-07-07).** The disposition above described a
+> *transitional* state: the `validators/cp1.py` entry point was retained as a
+> placeholder while the CP1 subsystem was being built out. That build-out is now
+> complete, so this note reconciles §D9 with the implemented architecture (it
+> changes **no** architectural decision of this ADR — the input shape (D3), flow
+> position (D4), gating (D5), engine pattern (D7), and vocabulary (force 5) all
+> stand):
+>
+> - **CP1 is a first-class subsystem.** All CP1 responsibilities live under
+>   `requirement_intelligence.cp1` — models (`cp1/models`), framework
+>   (`cp1/framework`), criteria (`cp1/criteria`), seam + composition root
+>   (`cp1/response`), engine (`cp1/engine`) — surfaced through the execution package
+>   as `cp1_report.md`.
+> - **The temporary validator entry point has been retired.** `validators/cp1.py`
+>   (the `CP1Validator` placeholder) is **deleted**; it held no models, no logic, and
+>   nothing imported it. The retained-`validators/`-location clause is therefore
+>   **superseded** — CP1's canonical entry point is `CP1Service`
+>   (`cp1/response/cp1_composition.py`). The `CAP-060` capability lineage is
+>   unaffected (it is now realised entirely within the CP1 subsystem).
+> - **Future CP1 evolution occurs exclusively inside the CP1 subsystem**
+>   (`requirement_intelligence.cp1`), never under `validators/`.
+
 ## Alternatives Considered
 
 - **A1 — CP1 consumes `ValidationResult` directly.** **Rejected:** the
