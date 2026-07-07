@@ -9,7 +9,6 @@ Provides:
 
 from __future__ import annotations
 
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,12 +16,19 @@ from typing import Any
 import pytest
 
 from requirement_intelligence.analysis.analysis_configuration import AnalysisConfiguration
-from requirement_intelligence.cp1.response import CP1Service, build_cp1_service
-from requirement_intelligence.cp1.response.cp1_handoff import ValidationToCP1Handoff
+from requirement_intelligence.analysis.requirement_analysis_service import (
+    RequirementAnalysisService,
+)
+from requirement_intelligence.consolidation.consolidation_engine import ConsolidationEngine
+from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from requirement_intelligence.execution.execution_data import ExecutionData
-from requirement_intelligence.execution.execution_writer import ExecutionWriter, ExecutionWriteResult
+from requirement_intelligence.execution.execution_writer import (
+    ExecutionWriter,
+    ExecutionWriteResult,
+)
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
 from requirement_intelligence.normalization.framework.normalization_pipeline import (
     NormalizationPipeline,
 )
@@ -37,16 +43,9 @@ from requirement_intelligence.normalization.response import ResponseNormalizer
 from requirement_intelligence.platform import platform_metadata as meta
 from requirement_intelligence.platform.platform_context import PlatformContext
 from requirement_intelligence.prompts.requirement_prompt_builder import RequirementPromptBuilder
-from requirement_intelligence.consolidation.consolidation_engine import ConsolidationEngine
-from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
-from requirement_intelligence.analysis.requirement_analysis_service import (
-    RequirementAnalysisService,
-)
 from requirement_intelligence.validation import ValidationInput
 from requirement_intelligence.validation.models.validation_result import ValidationResult
-from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from shared.enums.base import ExecutionStatus, ProviderType
-
 from tests.productization.fixtures.golden_dataset import (
     GOLDEN_LLM_RESPONSE_TEXT,
     GOLDEN_SOURCE_ARTIFACTS,
@@ -72,10 +71,10 @@ class GoldenStubProvider(LLMProvider):
     def provider_name(self) -> str:
         return _GOLDEN_PROVIDER_NAME
 
-    def validate_connection(self) -> bool:  # noqa: D102
+    def validate_connection(self) -> bool:
         return True
 
-    def generate(self, request: LLMRequest) -> LLMResponse:  # noqa: D102
+    def generate(self, request: LLMRequest) -> LLMResponse:
         return LLMResponse(
             provider=ProviderType.GEMINI,  # use existing enum; stub, not live
             model=_GOLDEN_MODEL,
@@ -160,11 +159,7 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
 
     # Select deterministically (most artifacts first, then by id).
     def _key(c: ConsolidatedArtifact) -> tuple[int, str]:
-        total = (
-            len(c.functional_artifacts)
-            + len(c.security_artifacts)
-            + len(c.quality_artifacts)
-        )
+        total = len(c.functional_artifacts) + len(c.security_artifacts) + len(c.quality_artifacts)
         return (-total, c.consolidated_id)
 
     selected = sorted(consolidated, key=_key)[0]

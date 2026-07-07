@@ -25,7 +25,6 @@ import pytest
 from requirement_intelligence.models.enums import SourceCategory
 from requirement_intelligence.normalization.models.normalization_result import NormalizationResult
 from requirement_intelligence.validation.models.validation_enums import ValidationVerdict
-
 from tests.productization.conftest import PipelineResult, _run_golden_pipeline
 from tests.productization.fixtures.golden_dataset import (
     EXPECTED_CONSOLIDATED_COUNT,
@@ -43,9 +42,7 @@ from tests.productization.fixtures.golden_dataset import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_CORE_ARTIFACTS = frozenset(
-    {"consolidated_artifact.json", "prompt.txt", "llm_request.json"}
-)
+_CORE_ARTIFACTS = frozenset({"consolidated_artifact.json", "prompt.txt", "llm_request.json"})
 _RESULT_ARTIFACTS = frozenset(
     {
         "analysis_result.json",
@@ -58,11 +55,7 @@ _RESULT_ARTIFACTS = frozenset(
 _VALIDATION_ARTIFACTS = frozenset({"validation_result.json", "validation_report.md"})
 _CP1_ARTIFACTS = frozenset({"cp1_report.md"})
 _ALL_ARTIFACTS = (
-    _CORE_ARTIFACTS
-    | _RESULT_ARTIFACTS
-    | _VALIDATION_ARTIFACTS
-    | _CP1_ARTIFACTS
-    | {"manifest.json"}
+    _CORE_ARTIFACTS | _RESULT_ARTIFACTS | _VALIDATION_ARTIFACTS | _CP1_ARTIFACTS | {"manifest.json"}
 )
 
 
@@ -142,9 +135,7 @@ class TestPhase3PipelineExecution:
         assert golden_pipeline_result.analysis_result is not None
 
     @pytest.mark.productization
-    def test_analysis_result_has_llm_response(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_analysis_result_has_llm_response(self, golden_pipeline_result: PipelineResult) -> None:
         """AnalysisResult carries the stub provider's LLMResponse."""
         assert golden_pipeline_result.analysis_result.llm_response is not None
         assert golden_pipeline_result.analysis_result.llm_response.generated_text != ""
@@ -227,9 +218,7 @@ class TestPhase4OutputVerification:
     # --- AnalysisResult verification ---------------------------------------
 
     @pytest.mark.productization
-    def test_analysis_result_json_parseable(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_analysis_result_json_parseable(self, golden_pipeline_result: PipelineResult) -> None:
         data = _load_json(golden_pipeline_result.output_dir / "analysis_result.json")
         assert "analysisId" in data
         assert "executionId" in data
@@ -237,9 +226,7 @@ class TestPhase4OutputVerification:
         assert "llmResponse" in data
 
     @pytest.mark.productization
-    def test_raw_llm_response_json_parseable(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_raw_llm_response_json_parseable(self, golden_pipeline_result: PipelineResult) -> None:
         data = _load_json(golden_pipeline_result.output_dir / "raw_llm_response.json")
         assert "generatedText" in data or "generated_text" in data
 
@@ -262,23 +249,17 @@ class TestPhase4OutputVerification:
             assert key in structure, f"ParsedResponse is missing key: {key}"
 
     @pytest.mark.productization
-    def test_functional_requirements_count(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_functional_requirements_count(self, golden_pipeline_result: PipelineResult) -> None:
         structure = _parsed_response_structure(golden_pipeline_result)
         assert len(structure["functional_requirements"]) == EXPECTED_FUNCTIONAL_REQUIREMENTS_COUNT
 
     @pytest.mark.productization
-    def test_security_requirements_count(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_security_requirements_count(self, golden_pipeline_result: PipelineResult) -> None:
         structure = _parsed_response_structure(golden_pipeline_result)
         assert len(structure["security_requirements"]) == EXPECTED_SECURITY_REQUIREMENTS_COUNT
 
     @pytest.mark.productization
-    def test_quality_requirements_count(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_quality_requirements_count(self, golden_pipeline_result: PipelineResult) -> None:
         structure = _parsed_response_structure(golden_pipeline_result)
         assert len(structure["quality_requirements"]) == EXPECTED_QUALITY_REQUIREMENTS_COUNT
 
@@ -295,17 +276,13 @@ class TestPhase4OutputVerification:
     # --- ValidationResult verification -------------------------------------
 
     @pytest.mark.productization
-    def test_validation_result_json_parseable(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_validation_result_json_parseable(self, golden_pipeline_result: PipelineResult) -> None:
         data = _load_json(golden_pipeline_result.output_dir / "validation_result.json")
         assert "overallVerdict" in data
         assert "validationSummary" in data
 
     @pytest.mark.productization
-    def test_validation_verdict_is_passing(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_validation_verdict_is_passing(self, golden_pipeline_result: PipelineResult) -> None:
         """Golden response must pass validation (prerequisite for CP1 gate opening)."""
         verdict = golden_pipeline_result.validation_result.overall_verdict
         assert verdict in (ValidationVerdict.PASSED, ValidationVerdict.PASSED_WITH_WARNINGS), (
@@ -332,7 +309,8 @@ class TestPhase4OutputVerification:
         result = golden_pipeline_result.cp1_result
         assert result is not None
         fail_findings = [
-            f for f in result.findings
+            f
+            for f in result.findings
             if str(getattr(f.verdict_contribution, "value", f.verdict_contribution)).upper()
             == "FAIL"
         ]
@@ -377,9 +355,7 @@ class TestPhase4OutputVerification:
             assert expected in names, f"Artifact missing from manifest listing: {expected}"
 
     @pytest.mark.productization
-    def test_manifest_checksums_match_files(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_manifest_checksums_match_files(self, golden_pipeline_result: PipelineResult) -> None:
         """sha256 in manifest.generatedArtifacts must match on-disk content."""
         manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
         for entry in manifest["generatedArtifacts"]:
@@ -387,14 +363,11 @@ class TestPhase4OutputVerification:
             expected_sha = entry["sha256"]
             actual_sha = _sha256(golden_pipeline_result.output_dir / name)
             assert actual_sha == expected_sha, (
-                f"Checksum mismatch for {name}: "
-                f"manifest={expected_sha!r} file={actual_sha!r}"
+                f"Checksum mismatch for {name}: manifest={expected_sha!r} file={actual_sha!r}"
             )
 
     @pytest.mark.productization
-    def test_manifest_byte_counts_match_files(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_manifest_byte_counts_match_files(self, golden_pipeline_result: PipelineResult) -> None:
         """bytes in manifest.generatedArtifacts must match on-disk file size."""
         manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
         for entry in manifest["generatedArtifacts"]:
@@ -402,8 +375,7 @@ class TestPhase4OutputVerification:
             expected_bytes = entry["bytes"]
             actual_bytes = (golden_pipeline_result.output_dir / name).stat().st_size
             assert actual_bytes == expected_bytes, (
-                f"Byte count mismatch for {name}: "
-                f"manifest={expected_bytes} file={actual_bytes}"
+                f"Byte count mismatch for {name}: manifest={expected_bytes} file={actual_bytes}"
             )
 
     @pytest.mark.productization
@@ -432,6 +404,7 @@ class TestPhase4OutputVerification:
         manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
         full_prompt = golden_pipeline_result.execution_data.full_prompt
         import hashlib
+
         expected = hashlib.sha256(full_prompt.encode("utf-8")).hexdigest()
         assert manifest["promptSha256"] == expected
 
@@ -443,6 +416,7 @@ class TestPhase4OutputVerification:
         manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
         generated_text = golden_pipeline_result.execution_data.generated_text
         import hashlib
+
         expected = hashlib.sha256(generated_text.encode("utf-8")).hexdigest()
         assert manifest["responseSha256"] == expected
 
@@ -674,9 +648,7 @@ class TestPhase6ProductizationAssertions:
     # --- Pipeline contract -------------------------------------------------
 
     @pytest.mark.productization
-    def test_analysis_result_prompt_version(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_analysis_result_prompt_version(self, golden_pipeline_result: PipelineResult) -> None:
         """AnalysisResult carries the governed prompt version."""
         assert golden_pipeline_result.analysis_result.prompt_version == "1.0.0"
 
@@ -705,9 +677,7 @@ class TestPhase6ProductizationAssertions:
         assert stats.rules_executed > 0, "No validation rules were executed"
 
     @pytest.mark.productization
-    def test_cp1_framework_metadata_present(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_cp1_framework_metadata_present(self, golden_pipeline_result: PipelineResult) -> None:
         """CP1Result carries framework metadata."""
         result = golden_pipeline_result.cp1_result
         assert result is not None
@@ -724,9 +694,7 @@ class TestPhase6ProductizationAssertions:
         assert cp1_result.validation_id == validation_result.validation_id
 
     @pytest.mark.productization
-    def test_execution_data_no_dry_run(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_execution_data_no_dry_run(self, golden_pipeline_result: PipelineResult) -> None:
         """Execution data records a live (non-dry-run) execution."""
         assert golden_pipeline_result.execution_data.dry_run is False
 
@@ -767,9 +735,7 @@ class TestPhase6ProductizationAssertions:
         assert "PASSED" in content.upper()
 
     @pytest.mark.productization
-    def test_cp1_report_contains_verdict(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_cp1_report_contains_verdict(self, golden_pipeline_result: PipelineResult) -> None:
         """cp1_report.md renders the CP1 overall verdict."""
         content = (golden_pipeline_result.output_dir / "cp1_report.md").read_text()
         assert "PASS" in content.upper()

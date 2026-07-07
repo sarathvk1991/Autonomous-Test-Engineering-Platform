@@ -19,10 +19,9 @@ generates per-invocation are expected to differ.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from requirement_intelligence.models.enums import (
-    RiskLevel,
     SourceCategory,
     SourceSystem,
     SourceType,
@@ -37,8 +36,8 @@ GOLDEN_DATASET_VERSION = "1.0.0"
 # ---------------------------------------------------------------------------
 # Fixed timestamps (deterministic provenance)
 # ---------------------------------------------------------------------------
-_CREATED_AT = datetime(2026, 1, 10, 9, 0, 0, tzinfo=timezone.utc)
-_UPDATED_AT = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+_CREATED_AT = datetime(2026, 1, 10, 9, 0, 0, tzinfo=UTC)
+_UPDATED_AT = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
 # ---------------------------------------------------------------------------
 # Source artifacts
