@@ -103,6 +103,9 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-067B | CP1 PlatformContext & CLI Wiring | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-068 | CP1 Reporting & Execution Package Integration | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-070 | Productization | ✓ | ✓ | ✓ | ✓ | ✓ | ◑ | Ready |
+| CAP-071 | Prompt Governance Subsystem | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-072 | Prompt Canonical Models | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-073 | Prompt Governance Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 
 > **CAP-070 Productization** verifies the completed architecture end-to-end against the
 > golden **Release Regression Baseline** (`docs/productization/golden-baseline.md`). Its
@@ -117,17 +120,17 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 
 ## 5. Overall coverage summary
 
-Objective counts across all **39** capabilities (no percentages estimated). For
+Objective counts across all **42** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 39 | 0 | 0 | — (CAP-060 governed by ADR-0011/0012; CAP-070 governed by the Productization Governance Contract). |
-| **Framework** | 39 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 39 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 32 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049. |
-| **Testing** | 32 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 2 | 33 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031, CAP-070 (governance contract frozen; dataset independently versioned). |
+| **Architecture** | 42 | 0 | 0 | — (CAP-060 governed by ADR-0011/0012; CAP-070 governed by the Productization Governance Contract; CAP-071 governed by ADR-0014). |
+| **Framework** | 42 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 42 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 35 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049. |
+| **Testing** | 35 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 2 | 36 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031, CAP-070 (governance contract frozen; dataset independently versioned). |
 
 **Implementation Readiness distribution** (39 total): **Ready 32** · **In Progress
 3** (CAP-044, CAP-046, CAP-049) · **Blocked 0** · **Planned 4** (CAP-045,

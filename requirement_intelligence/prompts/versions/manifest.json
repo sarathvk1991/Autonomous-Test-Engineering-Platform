@@ -1,0 +1,14 @@
+{
+    "schema_version": "1.0",
+    "description": "Prompt Governance Version Manifest — authoritative index of all versioned prompt template files and their SHA-256 fingerprints.",
+    "prompts": [
+        {
+            "prompt_id": "requirement_analysis",
+            "version": "1.0.0",
+            "file": "requirement_analysis_v1.0.0.txt",
+            "sha256": "5f7fb574c81b435a80d2ae444be640d6002a1525250ac1413dea71bc7f56b070",
+            "lifecycle": "Production",
+            "introduced_in_release": "1.0.0"
+        }
+    ]
+}
