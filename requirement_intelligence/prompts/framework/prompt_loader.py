@@ -181,9 +181,7 @@ class PromptLoader:
     def _load_file(self, file_path: Path, expected_sha256: str) -> LoadedPrompt:
         """Read a file, verify its SHA-256, and return a :class:`LoadedPrompt`."""
         if not file_path.exists():
-            raise PromptLoaderError(
-                f"Versioned prompt file not found: {file_path}."
-            )
+            raise PromptLoaderError(f"Versioned prompt file not found: {file_path}.")
         try:
             raw_bytes = file_path.read_bytes()
         except OSError as exc:

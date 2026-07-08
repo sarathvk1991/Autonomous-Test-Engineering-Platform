@@ -228,8 +228,12 @@ class TestPromptLifecycle:
     def test_all_states_present(self) -> None:
         states = {lc.value for lc in PromptLifecycle}
         assert states == {
-            "draft", "experimental", "approved", "production",
-            "deprecated", "archived",
+            "draft",
+            "experimental",
+            "approved",
+            "production",
+            "deprecated",
+            "archived",
         }
 
     @pytest.mark.unit

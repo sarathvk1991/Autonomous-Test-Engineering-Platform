@@ -186,17 +186,14 @@ class PromptRegistry:
             definition = self._index.get(key)
             if definition is None:
                 raise PromptNotFoundError(
-                    f"No prompt registered for prompt_id={prompt_id!r} "
-                    f"version={version!r}."
+                    f"No prompt registered for prompt_id={prompt_id!r} version={version!r}."
                 )
             return definition
 
         # Version not specified — find all versions of this prompt_id.
         matches = [d for d in self._definitions if d.metadata.prompt_id == prompt_id]
         if not matches:
-            raise PromptNotFoundError(
-                f"No prompt registered for prompt_id={prompt_id!r}."
-            )
+            raise PromptNotFoundError(f"No prompt registered for prompt_id={prompt_id!r}.")
         if len(matches) > 1:
             versions = [d.metadata.version for d in matches]
             raise PromptRegistryError(

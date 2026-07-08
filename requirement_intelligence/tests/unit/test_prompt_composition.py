@@ -309,9 +309,7 @@ class TestCustomVersionsDir:
                 }
             ],
         }
-        (tmp_path / "manifest.json").write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
+        (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         r = build_prompt_registry(versions_dir=tmp_path)
         assert r.is_sealed
         assert r.is_registered("requirement_analysis", "1.0.0")
