@@ -77,6 +77,11 @@ _REQUIREMENT_ANALYSIS_COMPATIBILITY = PromptCompatibility(
     output_schema_version="1.0.0",
 )
 
+# v1.1.0 is an additive, wording-only clarification of v1.0.0 (CAP-073 Prompt
+# Evaluation & Tuning).  The output schema is byte-for-byte identical, so every
+# compatibility dimension — including output_schema_version — is preserved.
+_REQUIREMENT_ANALYSIS_V110_COMPATIBILITY = _REQUIREMENT_ANALYSIS_COMPATIBILITY
+
 # ---------------------------------------------------------------------------
 # Canonical composition entry point
 # ---------------------------------------------------------------------------
@@ -138,6 +143,38 @@ def build_prompt_registry(
         release_introduced="1.0.0",
     )
     registry.register(PromptDefinition(metadata=metadata, content=loaded.content))
+
+    # --- requirement_analysis v1.1.0 -----------------------------------
+    # Governed candidate produced by CAP-073 (Prompt Evaluation & Tuning).
+    # Evidence-driven, conservative wording clarification of v1.0.0 with an
+    # identical output schema.  Registered as APPROVED — approved for
+    # production but not yet the live runtime prompt (the runtime prompt is
+    # still assembled from prompt_constants.py; wiring the runtime to the
+    # governed registry is a separate future capability and is intentionally
+    # out of scope for CAP-073).  v1.0.0 remains PRODUCTION.
+    loaded_v110 = loader.load(
+        prompt_id="requirement_analysis",
+        version="1.1.0",
+        versions_dir=resolved_dir,
+    )
+    metadata_v110 = PromptMetadata(
+        prompt_id="requirement_analysis",
+        name="Requirement Analysis Prompt",
+        version="1.1.0",
+        owner="Prompt Framework",
+        lifecycle=PromptLifecycle.APPROVED,
+        description=(
+            "Conservative wording clarification of the v1.0.0 requirement "
+            "analysis prompt (CAP-073).  Adds a coverage objective, normative "
+            "MUST/MUST NOT phrasing, an explicit no-duplication rule, "
+            "deterministic array ordering, measurability guidance, and inline "
+            "evidence citation.  The output schema is unchanged from v1.0.0."
+        ),
+        sha256=loaded_v110.sha256,
+        compatibility=_REQUIREMENT_ANALYSIS_V110_COMPATIBILITY,
+        release_introduced="1.1.0",
+    )
+    registry.register(PromptDefinition(metadata=metadata_v110, content=loaded_v110.content))
 
     # Seal to prevent any future modification.
     registry.seal()
