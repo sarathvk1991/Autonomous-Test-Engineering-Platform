@@ -1,8 +1,7 @@
 {
-  "$schema": "./source-registry.schema.json",
   "registryVersion": "1.0.0",
   "phase": "PHASE_1_REQUIREMENT_INTELLIGENCE",
-  "description": "Declarative registry of ingestion sources for the Requirement Intelligence Layer. Each entry maps a source to its connector and parser. The registry is configuration only and intentionally contains no business logic.",
+  "description": "Declarative registry of ingestion sources for the Requirement Intelligence Layer. Each entry maps a source to its connector and mapper. The registry is configuration only and intentionally contains no business logic. API-mode base URLs and credentials are never stored here: the connection block names the environment variables that hold them (see .env.example).",
   "defaults": {
     "inputMode": "FILE",
     "enabled": false
@@ -21,18 +20,34 @@
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.jira.connector.JiraConnector",
       "mapperClass": "requirement_intelligence.mappers.jira_mapper.JiraMapper",
-      "parserClass": "requirement_intelligence.parsers.jira.parser.JiraParser",
       "inputMode": "FILE",
       "inputPath": "input/jira/jira-issues.json",
       "outputCategory": "FUNCTIONAL_REQUIREMENT",
       "priority": 1,
       "requiredForPhase": true,
       "connection": {
-        "mode": "FILE",
-        "baseUrl": "",
-        "authType": ""
+        "authType": "basic",
+        "baseUrlEnv": "JIRA_BASE_URL",
+        "authUserEnv": "JIRA_EMAIL",
+        "authTokenEnv": "JIRA_API_TOKEN",
+        "projectKeyEnv": "JIRA_PROJECT_KEY"
       },
-      "description": "Functional requirements, epics, stories, and defects sourced from JIRA. Phase 1 ingests an exported issue dump in FILE mode."
+      "api": {
+        "timeoutSeconds": 30,
+        "retry": {
+          "maxAttempts": 3,
+          "backoffSeconds": 1.0,
+          "maxBackoffSeconds": 30.0
+        },
+        "pagination": {
+          "pageSize": 50
+        },
+        "incremental": {
+          "enabled": false,
+          "jql": "updated >= -30d"
+        }
+      },
+      "description": "Functional requirements, epics, stories, and defects sourced from JIRA. FILE mode ingests an exported issue dump; API mode fetches live via the JIRA REST API using credentials from the environment."
     },
     {
       "sourceId": "owasp_zap",
@@ -43,18 +58,29 @@
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.zap.connector.ZapConnector",
       "mapperClass": "requirement_intelligence.mappers.zap_mapper.ZapMapper",
-      "parserClass": "requirement_intelligence.parsers.zap.parser.ZapParser",
       "inputMode": "FILE",
       "inputPath": "input/zap/zap-alerts.json",
       "outputCategory": "SECURITY_FINDING",
       "priority": 2,
       "requiredForPhase": true,
       "connection": {
-        "mode": "FILE",
-        "baseUrl": "",
-        "authType": ""
+        "authType": "apiKey",
+        "baseUrlEnv": "ZAP_BASE_URL",
+        "apiKeyEnv": "ZAP_API_KEY",
+        "targetUrlEnv": "ZAP_TARGET_URL"
       },
-      "description": "Dynamic application security testing (DAST) alerts from OWASP ZAP. Phase 1 ingests an exported alert report in FILE mode."
+      "api": {
+        "timeoutSeconds": 30,
+        "retry": {
+          "maxAttempts": 3,
+          "backoffSeconds": 1.0,
+          "maxBackoffSeconds": 30.0
+        },
+        "pagination": {
+          "pageSize": 100
+        }
+      },
+      "description": "Dynamic application security testing (DAST) alerts from OWASP ZAP. FILE mode ingests an exported alert report; API mode fetches live via the ZAP daemon REST API using the API key from the environment."
     },
     {
       "sourceId": "sonarqube",
@@ -65,18 +91,34 @@
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.sonarqube.connector.SonarQubeConnector",
       "mapperClass": "requirement_intelligence.mappers.sonar_mapper.SonarMapper",
-      "parserClass": "requirement_intelligence.parsers.sonarqube.parser.SonarQubeParser",
       "inputMode": "FILE",
       "inputPath": "input/sonar/sonar-issues.json",
       "outputCategory": "QUALITY_FINDING",
       "priority": 3,
       "requiredForPhase": true,
       "connection": {
-        "mode": "FILE",
-        "baseUrl": "",
-        "authType": ""
+        "authType": "token",
+        "baseUrlEnv": "SONAR_BASE_URL",
+        "authTokenEnv": "SONAR_TOKEN",
+        "projectKeyEnv": "SONAR_PROJECT_KEY",
+        "branchEnv": "SONAR_BRANCH"
       },
-      "description": "Static analysis (SAST) and code quality issues from SonarQube. Phase 1 ingests an exported issues report in FILE mode."
+      "api": {
+        "timeoutSeconds": 30,
+        "retry": {
+          "maxAttempts": 3,
+          "backoffSeconds": 1.0,
+          "maxBackoffSeconds": 30.0
+        },
+        "pagination": {
+          "pageSize": 100
+        },
+        "incremental": {
+          "enabled": false,
+          "createdAfter": ""
+        }
+      },
+      "description": "Static analysis (SAST) and code quality issues from SonarQube. FILE mode ingests an exported issues report; API mode fetches live via the SonarQube Web API using the token from the environment."
     }
   ]
 }

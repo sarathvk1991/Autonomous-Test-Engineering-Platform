@@ -42,9 +42,19 @@ def _file_config(path: Path) -> dict[str, Any]:
 
 
 def _api_config() -> dict[str, Any]:
+    # Superset connection block: each connector reads only the fields it needs.
+    # Direct literal values are accepted so these tests need no environment.
     return {
         "inputMode": "API",
-        "connection": {"baseUrl": "https://example.test", "authType": "token"},
+        "connection": {
+            "authType": "basic",
+            "baseUrl": "https://example.test",
+            "authUser": "user@example.test",
+            "authToken": "secret-token",
+            "projectKey": "PROJ",
+            "apiKey": "zap-api-key",
+        },
+        "api": {"pagination": {"pageSize": 50}},
     }
 
 
@@ -80,15 +90,6 @@ def test_fetch_file_mode_reads_records(
     f = tmp_path / "records.json"
     f.write_text(json.dumps([{"id": "A"}, {"id": "B"}]), encoding="utf-8")
     assert cls(_file_config(f)).fetch_raw_records() == [{"id": "A"}, {"id": "B"}]
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize(("cls", "source_id", "source_name"), CONNECTOR_CASES)
-def test_fetch_api_mode_not_implemented(
-    cls: type[SourceConnector], source_id: str, source_name: str
-) -> None:
-    with pytest.raises(NotImplementedError, match="API-mode ingestion"):
-        cls(_api_config()).fetch_raw_records()
 
 
 @pytest.mark.unit
@@ -142,9 +143,7 @@ def test_validate_file_mode_missing_file_raises(
 
 @pytest.mark.unit
 @pytest.mark.parametrize(("cls", "source_id", "source_name"), CONNECTOR_CASES)
-def test_validate_api_mode_ok(
-    cls: type[SourceConnector], source_id: str, source_name: str
-) -> None:
+def test_validate_api_mode_ok(cls: type[SourceConnector], source_id: str, source_name: str) -> None:
     assert cls(_api_config()).validate_connection() is True
 
 
@@ -199,9 +198,7 @@ def test_jira_file_mode_reads_bundled_sample_raw() -> None:
     # Raw JIRA field names are present and unmodified (not canonical names).
     for field in ("summary", "issuetype"):
         assert field in first_issue["fields"]
-    assert (
-        JiraConnector(_file_config(JIRA_SAMPLE_ISSUES)).validate_connection() is True
-    )
+    assert JiraConnector(_file_config(JIRA_SAMPLE_ISSUES)).validate_connection() is True
 
 
 # --------------------------------------------------------------------------- #
@@ -244,9 +241,7 @@ def test_sonarqube_file_mode_reads_bundled_sample_raw() -> None:
     """
     expected = json.loads(SONAR_SAMPLE_ISSUES.read_text(encoding="utf-8"))
 
-    records = SonarQubeConnector(
-        _file_config(SONAR_SAMPLE_ISSUES)
-    ).fetch_raw_records()
+    records = SonarQubeConnector(_file_config(SONAR_SAMPLE_ISSUES)).fetch_raw_records()
 
     # A top-level object is fetched as a single raw payload record, untouched.
     assert records == [expected]
@@ -271,7 +266,4 @@ def test_sonarqube_file_mode_reads_bundled_sample_raw() -> None:
         "status",
     ):
         assert field in first_issue
-    assert (
-        SonarQubeConnector(_file_config(SONAR_SAMPLE_ISSUES)).validate_connection()
-        is True
-    )
+    assert SonarQubeConnector(_file_config(SONAR_SAMPLE_ISSUES)).validate_connection() is True

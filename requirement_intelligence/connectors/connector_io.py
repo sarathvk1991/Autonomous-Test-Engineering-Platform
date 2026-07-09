@@ -1,22 +1,24 @@
 """Shared input-mode helpers for source connectors.
 
 This module implements the reusable, source-agnostic plumbing behind the
-Phase 1 connector framework:
+connector framework's **FILE** ingestion path:
 
 - Resolving the active ``inputMode`` from the source-registry entry.
 - The FILE-mode ingestion path: resolving ``inputPath``, validating
   readability, and loading raw JSON records.
-- API-mode configuration validation (the actual API call remains a stub for
-  later in Phase 1).
+
+API-mode transport (resilient HTTP, retry/backoff, and env-driven credential
+resolution) lives in :mod:`requirement_intelligence.connectors.api_client`;
+each concrete connector owns its own endpoint/pagination/auth details.
 
 These helpers deliberately perform **no** canonical mapping or parsing. They
-only fetch raw source records as ``list[dict]`` so the parser layer,
+only fetch raw source records as ``list[dict]`` so the mapper layer,
 consolidation engine, CP1 validation engine, and output writer remain agnostic
 to whether records originated from FILE or API mode.
 
 Concrete connectors keep their own ``fetch_raw_records()`` dispatch and the
 ``_fetch_from_file()`` / ``_fetch_from_api()`` helpers; those delegate to the
-functions here to avoid duplicating I/O and validation logic.
+functions here (FILE) and to ``api_client`` (API) to avoid duplicating I/O.
 """
 
 from __future__ import annotations
@@ -129,49 +131,8 @@ def read_json_records(source_config: dict[str, Any]) -> list[dict[str, Any]]:
         with path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
-        raise ConnectorFetchError(
-            f"Failed to read raw records from {path}: {exc}"
-        ) from exc
+        raise ConnectorFetchError(f"Failed to read raw records from {path}: {exc}") from exc
     return _coerce_to_records(data, path)
-
-
-def validate_api_config(
-    source_config: dict[str, Any],
-    required_connection_fields: tuple[str, ...] = ("baseUrl", "authType"),
-) -> bool:
-    """Validates that required API-mode connection fields are present.
-
-    The actual API reachability/auth check is intentionally left as a stub to
-    be implemented later in Phase 1.
-
-    Args:
-        source_config: Configuration entry from source-registry.json.
-        required_connection_fields: Connection keys that must be non-empty.
-
-    Returns:
-        bool: True if required connection fields are present.
-
-    Raises:
-        ConnectorConfigurationError: If required connection fields are missing.
-    """
-    connection = source_config.get("connection")
-    if not isinstance(connection, dict):
-        raise ConnectorConfigurationError(
-            "API mode requires a 'connection' block in source configuration."
-        )
-    missing = [
-        field
-        for field in required_connection_fields
-        if not str(connection.get(field, "")).strip()
-    ]
-    if missing:
-        raise ConnectorConfigurationError(
-            "API mode is missing required connection fields: "
-            f"{', '.join(missing)}."
-        )
-    # TODO(phase-1): Perform an actual API reachability/auth ping once API-mode
-    # ingestion is implemented.
-    return True
 
 
 def _coerce_to_records(data: Any, path: Path) -> list[dict[str, Any]]:
@@ -198,8 +159,7 @@ def _coerce_to_records(data: Any, path: Path) -> list[dict[str, Any]]:
         if all(isinstance(item, dict) for item in data):
             return data
         raise ConnectorFetchError(
-            f"Expected a JSON array of objects in {path}, but found non-object "
-            "elements."
+            f"Expected a JSON array of objects in {path}, but found non-object elements."
         )
     raise ConnectorFetchError(
         f"Unsupported JSON payload in {path}: expected an object or array, "

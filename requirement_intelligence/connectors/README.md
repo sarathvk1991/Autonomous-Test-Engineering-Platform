@@ -49,30 +49,33 @@ Every concrete connector supports two input modes. The active mode is selected
 **only** from the `inputMode` field of the source's entry in
 `config/source-registry.json`. Connectors never decide the mode themselves.
 
-- **FILE** — the **current Phase 1 implementation path**. The connector reads
-  raw records from the configured `inputPath`. This is fully implemented today.
-- **API** — the **planned Phase 1 end-state**. The connector will fetch raw
-  records directly from JIRA, OWASP ZAP, and SonarQube APIs. API mode is
-  currently **stubbed**: `_fetch_from_api()` raises `NotImplementedError`, and
-  `validate_connection()` only checks that required connection fields are
-  present (the live API ping is a TODO).
+- **FILE** — the connector reads raw records from the configured `inputPath`.
+- **API** — the connector fetches raw records live from the JIRA, SonarQube, and
+  OWASP ZAP REST APIs. Base URLs and credentials are **never** stored in code or
+  configuration; the `connection` block names the environment variables that
+  hold them (see `.env.example`), and each connector resolves them at runtime.
 
 `inputMode` controls runtime behavior. Each connector dispatches as follows:
 
 ```text
 fetch_raw_records()
     ├── inputMode == "FILE" -> _fetch_from_file()   # reads inputPath
-    ├── inputMode == "API"  -> _fetch_from_api()     # stubbed for now
+    ├── inputMode == "API"  -> _fetch_from_api()     # live REST fetch
     └── otherwise           -> ConnectorConfigurationError
 
 validate_connection()
     ├── FILE mode  -> inputPath exists and is readable
-    ├── API mode   -> required connection fields exist (ping is TODO)
+    ├── API mode   -> base URL + credentials resolve (no live call here)
     └── invalid    -> ConnectorConfigurationError
 ```
 
-Shared FILE-mode I/O, mode resolution, and API-config validation live in
-`connector_io.py` so connectors stay thin and consistent.
+Shared FILE-mode I/O and mode resolution live in `connector_io.py`. Shared
+API-mode transport — a resilient HTTP client with configurable timeout, bounded
+retry/backoff on transient failures (network errors, HTTP 429/5xx), structured
+logging, and deterministic error mapping — plus env-driven settings resolution
+live in `api_client.py`. Each connector owns only its own endpoint, pagination,
+incremental strategy, and authentication; retries, timeouts, and error handling
+are owned by the connector layer, never by the mapper or any downstream layer.
 
 ## Downstream independence
 

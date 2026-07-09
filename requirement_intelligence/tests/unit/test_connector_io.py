@@ -1,7 +1,8 @@
 """Unit tests for the shared connector input-mode helpers.
 
-Covers mode resolution, FILE-mode path/readability validation, raw JSON
-fetching, and API-mode config validation in ``connector_io``.
+Covers mode resolution and the FILE-mode path/readability validation and raw
+JSON fetching in ``connector_io``. API-mode transport is covered separately in
+``test_connector_api.py``.
 """
 
 from __future__ import annotations
@@ -43,9 +44,7 @@ def test_get_input_mode_invalid_raises(config: dict) -> None:
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_resolve_input_path_returns_path() -> None:
-    assert connector_io.resolve_input_path({"inputPath": "input/x.json"}) == Path(
-        "input/x.json"
-    )
+    assert connector_io.resolve_input_path({"inputPath": "input/x.json"}) == Path("input/x.json")
 
 
 @pytest.mark.unit
@@ -106,9 +105,7 @@ def test_read_json_records_list_of_objects(tmp_path: Path) -> None:
 def test_read_json_records_single_object_is_wrapped(tmp_path: Path) -> None:
     f = tmp_path / "data.json"
     f.write_text(json.dumps({"issues": [1, 2]}), encoding="utf-8")
-    assert connector_io.read_json_records({"inputPath": str(f)}) == [
-        {"issues": [1, 2]}
-    ]
+    assert connector_io.read_json_records({"inputPath": str(f)}) == [{"issues": [1, 2]}]
 
 
 @pytest.mark.unit
@@ -139,34 +136,3 @@ def test_read_json_records_malformed_json_raises(tmp_path: Path) -> None:
 def test_read_json_records_missing_file_raises(tmp_path: Path) -> None:
     with pytest.raises(ConnectorConnectionError):
         connector_io.read_json_records({"inputPath": str(tmp_path / "missing.json")})
-
-
-# --------------------------------------------------------------------------- #
-# validate_api_config
-# --------------------------------------------------------------------------- #
-@pytest.mark.unit
-def test_validate_api_config_ok() -> None:
-    config = {"connection": {"baseUrl": "https://x", "authType": "token"}}
-    assert connector_io.validate_api_config(config) is True
-
-
-@pytest.mark.unit
-def test_validate_api_config_missing_connection_block_raises() -> None:
-    with pytest.raises(ConnectorConfigurationError, match="connection"):
-        connector_io.validate_api_config({})
-
-
-@pytest.mark.unit
-def test_validate_api_config_missing_fields_raises() -> None:
-    config = {"connection": {"baseUrl": "", "authType": "  "}}
-    with pytest.raises(ConnectorConfigurationError, match="baseUrl, authType"):
-        connector_io.validate_api_config(config)
-
-
-@pytest.mark.unit
-def test_validate_api_config_custom_required_fields() -> None:
-    config = {"connection": {"baseUrl": "https://x"}}
-    assert (
-        connector_io.validate_api_config(config, required_connection_fields=("baseUrl",))
-        is True
-    )
