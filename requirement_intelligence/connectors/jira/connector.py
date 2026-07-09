@@ -31,8 +31,12 @@ from requirement_intelligence.connectors.connector_exceptions import (
 
 logger = logging.getLogger("requirement_intelligence.connectors.api")
 
-# JIRA REST search endpoint (v2 is stable across Cloud and Server/DC).
-_SEARCH_PATH = "/rest/api/2/search"
+# JIRA REST search endpoint. The legacy ``/rest/api/2/search`` was removed from
+# JIRA Cloud (it now answers HTTP 410 Gone); ``/rest/api/2/search/jql`` is its
+# replacement. The ``/2/`` variant is used deliberately over ``/3/``: it keeps
+# v2 field semantics, so ``description`` stays plain text rather than becoming
+# an Atlassian Document Format object, and JiraMapper consumes it unchanged.
+_SEARCH_PATH = "/rest/api/2/search/jql"
 # Upper bound on total issues fetched, guarding against unbounded pagination.
 _MAX_ISSUES = 10_000
 
@@ -138,10 +142,20 @@ class JiraConnector(SourceConnector):
         )
 
     def _build_jql(self, settings: _JiraApiSettings) -> str:
-        """Build the JQL query, honouring optional incremental retrieval."""
+        """Build the JQL query from the project, an optional restriction, and incremental retrieval.
+
+        The optional ``api.jql`` restriction scopes retrieval at the source, so
+        the connector fetches only issues the platform can map. It is plain
+        configuration: the connector composes the clause and never inspects what
+        it selects.
+        """
         clauses: list[str] = []
         if settings.project_key:
             clauses.append(f'project = "{settings.project_key}"')
+
+        restriction = settings.api_config.get("jql")
+        if isinstance(restriction, str) and restriction.strip():
+            clauses.append(restriction.strip())
 
         incremental = settings.api_config.get("incremental")
         if isinstance(incremental, dict) and incremental.get("enabled"):
@@ -157,10 +171,12 @@ class JiraConnector(SourceConnector):
     def _fetch_from_api(self) -> list[dict[str, Any]]:
         """Fetches raw JIRA issues from the REST API with pagination.
 
-        Uses HTTP Basic authentication (account email + API token / PAT),
-        pages through ``/rest/api/2/search`` via ``startAt``/``maxResults``, and
-        returns each raw issue dict verbatim. Optional incremental retrieval is
-        expressed as an extra JQL clause in the ``api.incremental`` block.
+        Uses HTTP Basic authentication (account email + API token / PAT) and
+        pages through ``/rest/api/2/search/jql`` with **cursor pagination**: each
+        response carries a ``nextPageToken`` to request the following page and an
+        ``isLast`` flag marking the final one. Every raw issue dict is returned
+        verbatim. Optional incremental retrieval is expressed as an extra JQL
+        clause in the ``api.incremental`` block.
 
         Raises:
             ConnectorConfigurationError: If required configuration is missing.
@@ -173,7 +189,7 @@ class JiraConnector(SourceConnector):
         auth = httpx.BasicAuth(settings.email, settings.token)
 
         issues: list[dict[str, Any]] = []
-        start_at = 0
+        next_page_token: str | None = None
         with api_client.ApiClient(
             settings.base_url,
             source_id="jira",
@@ -181,16 +197,15 @@ class JiraConnector(SourceConnector):
             retry=api_client.resolve_retry_policy(settings.api_config),
         ) as client:
             while True:
-                payload = client.get_json(
-                    _SEARCH_PATH,
-                    params={
-                        "jql": jql,
-                        "startAt": start_at,
-                        "maxResults": page_size,
-                        "fields": "*all",
-                    },
-                    auth=auth,
-                )
+                params: dict[str, Any] = {
+                    "jql": jql,
+                    "maxResults": page_size,
+                    "fields": "*all",
+                }
+                if next_page_token:
+                    params["nextPageToken"] = next_page_token
+
+                payload = client.get_json(_SEARCH_PATH, params=params, auth=auth)
                 if not isinstance(payload, dict):
                     raise ConnectorFetchError(
                         "[jira] unexpected search response: expected an object, "
@@ -199,15 +214,15 @@ class JiraConnector(SourceConnector):
                 page = [i for i in payload.get("issues", []) if isinstance(i, dict)]
                 issues.extend(page)
 
-                total = payload.get("total")
-                fetched = start_at + len(page)
+                token = payload.get("nextPageToken")
+                next_page_token = token if isinstance(token, str) and token else None
                 if (
                     not page
-                    or (isinstance(total, int) and fetched >= total)
+                    or payload.get("isLast") is True
+                    or next_page_token is None
                     or len(issues) >= _MAX_ISSUES
                 ):
                     break
-                start_at = fetched
 
         logger.info(
             "jira api fetch complete",

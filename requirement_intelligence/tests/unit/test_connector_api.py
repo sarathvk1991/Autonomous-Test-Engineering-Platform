@@ -293,31 +293,60 @@ def _jira_issue(idx: int) -> dict[str, Any]:
 def test_jira_api_paginates_and_returns_raw_issues(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Cursor pagination: follow nextPageToken until isLast, preserving raw order."""
     all_issues = [_jira_issue(i) for i in range(5)]
     seen_auth: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/rest/api/2/search"
+        assert request.url.path == "/rest/api/2/search/jql"
         seen_auth.append(request.headers.get("authorization", ""))
-        start = int(request.url.params["startAt"])
         page_size = int(request.url.params["maxResults"])
+        start = int(request.url.params.get("nextPageToken", 0))
         page = all_issues[start : start + page_size]
-        return httpx.Response(
-            200,
-            json={
-                "issues": page,
-                "startAt": start,
-                "maxResults": page_size,
-                "total": len(all_issues),
-            },
-        )
+        nxt = start + page_size
+        is_last = nxt >= len(all_issues)
+        body: dict[str, Any] = {"issues": page, "isLast": is_last}
+        if not is_last:
+            body["nextPageToken"] = str(nxt)
+        return httpx.Response(200, json=body)
 
     _patch_transport(monkeypatch, handler)
     records = JiraConnector(_jira_config(pagination={"pageSize": 2})).fetch_raw_records()
 
     assert records == all_issues  # raw fidelity, order preserved, no mapping
     assert all(a.startswith("Basic ") for a in seen_auth)  # basic auth applied
-    assert len(seen_auth) == 3  # pages of 2,2,1 over total=5
+    assert len(seen_auth) == 3  # pages of 2,2,1 over 5 issues
+
+
+@pytest.mark.unit
+def test_jira_api_first_request_sends_no_page_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The opening request must not carry a cursor; JIRA rejects an unknown token."""
+    seen: list[bool] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append("nextPageToken" in request.url.params)
+        return httpx.Response(200, json={"issues": [_jira_issue(0)], "isLast": True})
+
+    _patch_transport(monkeypatch, handler)
+    JiraConnector(_jira_config()).fetch_raw_records()
+    assert seen == [False]
+
+
+@pytest.mark.unit
+def test_jira_api_stops_on_is_last_even_with_a_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``isLast`` ends the walk; a stale trailing token must not cause another page."""
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(
+            200, json={"issues": [_jira_issue(0)], "isLast": True, "nextPageToken": "ignored"}
+        )
+
+    _patch_transport(monkeypatch, handler)
+    records = JiraConnector(_jira_config()).fetch_raw_records()
+    assert len(calls) == 1
+    assert len(records) == 1
 
 
 @pytest.mark.unit
@@ -326,7 +355,7 @@ def test_jira_api_incremental_adds_jql_clause(monkeypatch: pytest.MonkeyPatch) -
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["jql"] = request.url.params["jql"]
-        return httpx.Response(200, json={"issues": [], "total": 0})
+        return httpx.Response(200, json={"issues": [], "isLast": True})
 
     _patch_transport(monkeypatch, handler)
     config = _jira_config(incremental={"enabled": True, "jql": "updated >= -7d"})

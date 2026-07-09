@@ -1,8 +1,8 @@
 # Autonomous Test Engineering Platform
 
 > AI-Powered Autonomous Test Engineering Platform — a **modular monolith** that
-> ingests requirements from engineering tools, reasons over them with Azure
-> OpenAI, and drives the full test-engineering lifecycle from a single
+> ingests requirements from engineering tools, reasons over them with Google
+> Gemini, and drives the full test-engineering lifecycle from a single
 > deployable unit.
 
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
@@ -14,7 +14,7 @@
 
 | Phase | Layer                                   | Status                |
 |-------|-----------------------------------------|-----------------------|
-| 1     | Requirement Intelligence                | 🟢 Structure scaffolded |
+| 1     | Requirement Intelligence                | 🟢 Complete           |
 | 2     | Feature Engineering                     | ⚪ Planned             |
 | 3     | Automation Engineering                  | ⚪ Planned             |
 | 4     | Quality Governance                      | ⚪ Planned             |
@@ -22,14 +22,17 @@
 | 6     | Failure Intelligence & Self-Healing     | ⚪ Planned             |
 | 7     | Governance Dashboard (Streamlit)        | ⚪ Planned             |
 
-> Phase 1 establishes the repository structure and contracts. Business logic is
-> implemented incrementally — current service/connector classes are typed stubs.
+> Phase 1 is implemented end to end: connectors (FILE and live API ingestion),
+> consolidation, prompt governance, Gemini analysis, normalization, response
+> validation, CP1 engineering-readiness, and the execution package.
+> See the [demo guide](docs/demo/demo-guide.md) to run it.
 
 ## Architecture at a glance
 
 - **Style:** Modular monolith, single deployable unit (one FastAPI app).
 - **Language/Framework:** Python 3.11+, FastAPI (Streamlit dashboard later).
-- **AI provider:** Azure OpenAI (one reusable client factory).
+- **AI provider:** Google Gemini (`google-genai`). Azure OpenAI is a reserved,
+  unimplemented provider stub and is out of scope.
 - **Integration:** Connector-based architecture (Jira, SonarQube, OWASP ZAP).
 - **Database:** PostgreSQL (future phase; SQLAlchemy/Alembic reserved).
 
@@ -50,12 +53,12 @@ autonomous-test-engineering-platform/
 │   ├── consolidation/         #   consolidation engine (multi-source -> ConsolidatedArtifact)
 │   ├── prompts/               #   prompt framework
 │   ├── llm/                   #   provider framework (Gemini; Azure OpenAI stub)
+│   ├── platform/              #   PlatformContext, startup validation, health check
 │   ├── analysis/              #   AI requirement analysis service
 │   ├── normalization/         #   response normalization subsystem
 │   ├── validation/            #   response validation subsystem (framework + rules + profiles)
 │   ├── cp1/                   #   CP1 engineering-readiness subsystem (models/framework/criteria/response/engine)
 │   ├── execution/             #   execution package (writer + per-artifact builders)
-│   ├── platform/              #   PlatformContext (composition) + platform metadata
 │   ├── api/                   #   HTTP routes (future integration surface; not yet wired)
 │   └── tests/                 #   layer tests (unit/integration)
 ├── feature_engineering/       # Phase 2 (placeholder)
@@ -70,8 +73,6 @@ autonomous-test-engineering-platform/
 │   ├── exceptions/            #   platform exception hierarchy
 │   └── utils/                 #   pure helpers
 ├── infrastructure/            # Reusable external integrations
-│   ├── azure_openai/          #   Azure OpenAI client factory
-│   ├── jira/ sonarqube/ zap/  #   low-level source clients
 │   ├── logging/               #   structured logging
 │   └── config/                #   infra config helpers
 ├── prompts/                   # Cross-cutting prompt assets
@@ -84,7 +85,8 @@ autonomous-test-engineering-platform/
 
 ### Prerequisites
 - Python **3.11+**
-- An Azure OpenAI resource (endpoint, key, deployment) for AI features
+- A Google AI Studio API key (`GOOGLE_API_KEY`) for AI features
+- For live API ingestion only: reachable JIRA, SonarQube, and OWASP ZAP
 
 ### Setup
 ```bash
@@ -112,13 +114,36 @@ make test        # pytest
 make check       # all of the above
 ```
 
+## Running the Requirement Intelligence pipeline
+
+The platform is CLI-first. One environment variable selects how sources are
+ingested — `EXECUTION_MODE=FILE` (default) or `EXECUTION_MODE=API`.
+
+```bash
+# Check every configured source before you run anything
+python scripts/run_requirement_analysis.py health
+
+# Full analysis with validation and CP1, from bundled sample data
+python scripts/run_requirement_analysis.py analyze --validate
+
+# The same pipeline against live JIRA / SonarQube / OWASP ZAP
+EXECUTION_MODE=API python scripts/run_requirement_analysis.py analyze --validate
+```
+
+Start with the **[demo guide](docs/demo/demo-guide.md)** — it assumes no prior
+knowledge of the repository.
+
 ## Configuration
 
-All configuration is environment-driven and validated by
-`app/core/settings.py`. See [`.env.example`](.env.example) for the full list
-(Azure OpenAI, Jira, SonarQube, OWASP ZAP, database). **Never commit `.env`.**
+All configuration is environment-driven. See [`.env.example`](.env.example) for
+the full list (Gemini, Jira, SonarQube, OWASP ZAP). Startup validation checks
+every required variable before the pipeline runs and names any that are missing.
+**Never commit `.env`.**
 
 ## Documentation
+- [Demo guide](docs/demo/demo-guide.md) — first-time walkthrough
+- [Operations runbook](docs/operations/runbook.md) — running and troubleshooting
+- [Requirement Analysis CLI](docs/user-guide/requirement-analysis-cli.md)
 - [Architecture overview](docs/architecture/overview.md)
 - [Coding standards](docs/coding-standards.md)
 - [Naming conventions](docs/naming-conventions.md)

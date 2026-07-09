@@ -21,11 +21,11 @@ class PlatformCapabilities:
     """Read-only introspection over platform metadata and host identity."""
 
     def platform_identity(self) -> dict[str, str]:
-        """Return the platform name, architecture, and execution mode."""
+        """Return the platform name, architecture, and deployment model."""
         return {
             "name": meta.PLATFORM_NAME,
             "architecture": meta.PLATFORM_ARCHITECTURE,
-            "executionMode": meta.PLATFORM_EXECUTION_MODE,
+            "deploymentModel": meta.PLATFORM_DEPLOYMENT_MODEL,
         }
 
     def platform_versions(self) -> dict[str, str]:
@@ -55,9 +55,7 @@ class PlatformCapabilities:
         """Return ordered ``(group title, components)`` pairs for display."""
         groups: list[tuple[str, tuple[meta.Capability, ...]]] = []
         for group_id, title in meta.COMPONENT_GROUPS:
-            members = tuple(
-                c for c in meta.ARCHITECTURE_COMPONENTS if c.group == group_id
-            )
+            members = tuple(c for c in meta.ARCHITECTURE_COMPONENTS if c.group == group_id)
             groups.append((title, members))
         return tuple(groups)
 

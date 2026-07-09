@@ -40,22 +40,36 @@ DEFAULT_OUTPUT_DIR = _REPO_ROOT / "output" / "executions"
 # Make the platform importable when run as a standalone script.
 sys.path.insert(0, str(_REPO_ROOT))
 
+from requirement_intelligence.connectors.connector_exceptions import ConnectorError  # noqa: E402
 from requirement_intelligence.execution import (  # noqa: E402
     ExecutionData,
     ExecutionHistory,
     ExecutionWriter,
 )
+from requirement_intelligence.mappers.base_mapper import MapperError  # noqa: E402
 from requirement_intelligence.platform import (  # noqa: E402
     PlatformCapabilities,
     PlatformContext,
+    StartupValidationError,
+    check_connector_health,
+    validate_startup,
 )
 from requirement_intelligence.platform import platform_metadata as meta  # noqa: E402
+from requirement_intelligence.platform.connector_health import STATUS_READY  # noqa: E402
+from requirement_intelligence.registry import (  # noqa: E402
+    FILE_MODE,
+    RegistryValidationError,
+    resolve_execution_mode,
+)
 
 DEFAULT_PROVIDER = "gemini"
 SUPPORTED_PROVIDERS = meta.supported_provider_ids()
 REASONING_CONTRACT_VERSION = meta.REASONING_CONTRACT_VERSION
 # Synthetic request id used for --dry-run, where no execution_id is generated.
 _DRY_RUN_REQUEST_ID = "dry-run"
+# Width of the demo banner rules and the dotted status leaders.
+_BANNER_WIDTH = 52
+_LEADER_WIDTH = 22
 
 
 class CliError(Exception):
@@ -76,12 +90,25 @@ class Console:
 
     def banner(self) -> None:
         """Print the CLI banner."""
-        line = "=" * 52
+        line = "=" * _BANNER_WIDTH
         print(line)
         print("  Autonomous Test Engineering Platform")
-        print("  Requirement Analysis CLI")
+        print("  Requirement Intelligence Layer")
         print(line)
         print()
+
+    def rule(self) -> None:
+        """Print a horizontal rule."""
+        print("=" * _BANNER_WIDTH)
+
+    def field(self, label: str, value: str) -> None:
+        """Print an aligned ``label : value`` line."""
+        print(f"  {label:<{_LEADER_WIDTH}}: {value}")
+
+    def status(self, label: str, value: str) -> None:
+        """Print a dotted-leader status line (``JIRA ......... READY``)."""
+        dots = "." * max(1, _LEADER_WIDTH - len(label))
+        print(f"  {label} {dots} {value}")
 
     def action(self, message: str) -> None:
         """Announce the start of a step (e.g. ``Running Connectors...``)."""
@@ -138,17 +165,95 @@ def _enabled_source_names(registry: Any) -> list[str]:
         return []
 
 
-def run_engineering_pipeline(context: PlatformContext, console: Console) -> tuple[int, list[Any]]:
+def _resolve_mode(console: Console) -> str | None:
+    """Resolve the canonical ingestion mode, or report the error and return None."""
+    try:
+        return resolve_execution_mode()
+    except RegistryValidationError as exc:
+        console.error(str(exc))
+        return None
+
+
+def _run_preflight(console: Console, mode: str) -> bool:
+    """Validate configuration before any source is touched.
+
+    Returns ``True`` when the platform is configured to execute. A configuration
+    problem is reported as plain, actionable text — never as a stack trace.
+    """
+    try:
+        validate_startup(mode, base_dir=_LAYER_DIR)
+    except StartupValidationError as exc:
+        console.error(f"Startup validation failed ({mode} mode):")
+        for failure in exc.failures:
+            console.error(f"  - {failure}")
+        return False
+    return True
+
+
+def _provider_display(provider: str, model: str | None) -> str:
+    """Render ``provider (model)``, falling back to the environment-configured model."""
+    effective = model or os.environ.get("GEMINI_MODEL", "")
+    return f"{provider} ({effective})" if effective else provider
+
+
+def _print_startup_banner(
+    console: Console,
+    mode: str,
+    source_names: list[str],
+    *,
+    provider: str,
+    model: str | None,
+    validate_enabled: bool,
+) -> None:
+    """Print the concise operational summary shown at the start of a run.
+
+    Reports what the run is configured to do. Never prints a credential, a
+    token, or a resolved endpoint URL.
+
+    Per-source status reflects what startup validation actually proved: in FILE
+    mode the input file was opened, so the source is ``READY``; in API mode only
+    configuration was resolved, so the source is ``CONFIGURED``. Use the
+    ``health`` command to prove a live endpoint is reachable.
+    """
+    caps = PlatformCapabilities()
+    versions = caps.platform_versions()
+    enabled = "ENABLED" if validate_enabled else "DISABLED"
+    source_status = STATUS_READY if mode == FILE_MODE else "CONFIGURED"
+
+    console.rule()
+    console.field("Version", versions["platformVersion"])
+    console.field("Execution Mode", mode)
+    console.field("Prompt Version", versions["promptVersion"])
+    console.field("LLM Provider", _provider_display(provider, model))
+    console.field("Registered Sources", ", ".join(source_names) or "none")
+    console.field("Validation", enabled)
+    console.field("CP1", enabled)
+    console.field("Execution Package", "ENABLED")
+    console.rule()
+    for name in source_names:
+        console.status(name, source_status)
+    console.rule()
+    print()
+
+
+def run_engineering_pipeline(
+    context: PlatformContext,
+    console: Console,
+    registry: Any | None = None,
+) -> tuple[int, list[Any]]:
     """Run Connectors -> Mappers -> Consolidation.
 
     Returns ``(source_artifact_count, consolidated_artifacts)``. Connectors
     resolve their ``inputPath`` relative to the current working directory, so the
     pipeline runs from the layer directory and restores the previous working
     directory afterwards.
+
+    A *registry* already built by the caller is reused; otherwise one is created.
     """
-    console.action("Loading Registry")
-    registry = context.create_connector_registry()
-    console.ok("Success")
+    if registry is None:
+        console.action("Loading Registry")
+        registry = context.create_connector_registry()
+        console.ok("Success")
 
     source_names = _enabled_source_names(registry)
     console.action("Running Connectors")
@@ -336,6 +441,12 @@ def handle_analyze(args: argparse.Namespace) -> int:
         )
         return 2
 
+    mode = _resolve_mode(console)
+    if mode is None:
+        return 2
+    if not _run_preflight(console, mode):
+        return 2
+
     context = PlatformContext()
 
     # Resolve the governed Validation Profile up-front (fail fast on an unknown
@@ -353,11 +464,29 @@ def handle_analyze(args: argparse.Namespace) -> int:
             console.error(str(exc))
             return 2
 
+    registry = context.create_connector_registry()
+    _print_startup_banner(
+        console,
+        mode,
+        _enabled_source_names(registry),
+        provider=args.provider,
+        model=args.model,
+        validate_enabled=bool(getattr(args, "validate", False)),
+    )
+    console.note("Starting execution...\n")
+
     try:
-        source_count, consolidated = run_engineering_pipeline(context, console)
+        source_count, consolidated = run_engineering_pipeline(context, console, registry)
         selected = _resolve_selected(consolidated, args.artifact_id)
     except CliError as exc:
         console.error(str(exc))
+        return 1
+    except (ConnectorError, RegistryValidationError) as exc:
+        console.error(f"Source ingestion failed ({mode} mode): {exc}")
+        console.error("Run 'health' to check every configured source.")
+        return 1
+    except MapperError as exc:
+        console.error(f"Source mapping failed ({mode} mode): {exc}")
         return 1
 
     console.note(f"\nSelected\n  {selected.consolidated_id}")
@@ -455,17 +584,68 @@ def handle_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_health(args: argparse.Namespace) -> int:
+    """Probe every enabled source and report readiness. Runs no pipeline stage.
+
+    Exercises the connector layer only — Consolidation, the LLM provider,
+    Normalization, Validation, CP1, and the Execution Package are never invoked.
+    Exit code is 0 when every source is READY, 1 otherwise, so the command is
+    usable as a deployment gate.
+    """
+    console = Console(verbose=False)
+    console.banner()
+    _load_dotenv_if_present()
+
+    mode = _resolve_mode(console)
+    if mode is None:
+        return 2
+
+    console.field("Execution Mode", mode)
+    console.rule()
+    try:
+        report = check_connector_health(mode, base_dir=_LAYER_DIR)
+    except RegistryValidationError as exc:
+        console.error(f"Source registry could not be loaded: {exc}")
+        return 2
+
+    for result in report.results:
+        console.status(result.source_name, result.status)
+        if result.detail and (args.verbose or not result.healthy):
+            console.note(f"      {result.detail}")
+    console.rule()
+
+    if report.healthy:
+        console.note(f"\nAll {len(report.results)} source(s) READY.")
+        return 0
+    unhealthy = [r.source_name for r in report.results if not r.healthy]
+    console.error(f"\n{len(unhealthy)} source(s) not ready: {', '.join(unhealthy)}")
+    return 1
+
+
 def handle_list_artifacts(args: argparse.Namespace) -> int:
     """Run the engineering pipeline and display every ConsolidatedArtifact."""
     console = Console(verbose=args.verbose)
     console.banner()
     _load_dotenv_if_present()
 
+    mode = _resolve_mode(console)
+    if mode is None:
+        return 2
+    if not _run_preflight(console, mode):
+        return 2
+
     context = PlatformContext()
     try:
         _, consolidated = run_engineering_pipeline(context, console)
     except CliError as exc:
         console.error(str(exc))
+        return 1
+    except (ConnectorError, RegistryValidationError) as exc:
+        console.error(f"Source ingestion failed ({mode} mode): {exc}")
+        console.error("Run 'health' to check every configured source.")
+        return 1
+    except MapperError as exc:
+        console.error(f"Source mapping failed ({mode} mode): {exc}")
         return 1
 
     console.note(f"\nConsolidated Artifacts ({len(consolidated)}):\n")
@@ -477,18 +657,6 @@ def handle_list_artifacts(args: argparse.Namespace) -> int:
         console.note(f"    Functional    : {len(artifact.functional_artifacts)}")
         console.note(f"    Security      : {len(artifact.security_artifacts)}")
         console.note(f"    Quality       : {len(artifact.quality_artifacts)}")
-    return 0
-
-
-def handle_validate(args: argparse.Namespace) -> int:
-    """Reserved subcommand — no validation logic exists yet."""
-    print("This capability will be implemented in a future phase.")
-    return 0
-
-
-def handle_benchmark(args: argparse.Namespace) -> int:
-    """Reserved subcommand — no benchmarking logic exists yet."""
-    print("This capability will be implemented in a future phase.")
     return 0
 
 
@@ -507,6 +675,7 @@ def _print_capability_section(title: str, capabilities: Any) -> None:
 
 def handle_version(args: argparse.Namespace) -> int:
     """Print full platform introspection sourced from PlatformCapabilities."""
+    _load_dotenv_if_present()
     caps = PlatformCapabilities()
     identity = caps.platform_identity()
     versions = caps.platform_versions()
@@ -517,9 +686,15 @@ def handle_version(args: argparse.Namespace) -> int:
     print(line)
     print()
 
+    try:
+        ingestion_mode = resolve_execution_mode()
+    except RegistryValidationError:
+        ingestion_mode = "INVALID (see EXECUTION_MODE)"
+
     print("Platform Identity")
-    print(f"  Architecture   : {identity['architecture']}")
-    print(f"  Execution Mode : {identity['executionMode']}")
+    print(f"  Architecture      : {identity['architecture']}")
+    print(f"  Deployment Model  : {identity['deploymentModel']}")
+    print(f"  Execution Mode    : {ingestion_mode} (ingestion)")
     print()
     print(f"  Platform Version           : {versions['platformVersion']}")
     print(f"  CLI Version                : {versions['cliVersion']}")
@@ -620,6 +795,15 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--verbose", action="store_true", help="Display detailed progress output.")
     analyze.set_defaults(func=handle_analyze)
 
+    health = subparsers.add_parser(
+        "health",
+        help="Check that every enabled source is reachable. Runs no pipeline stage.",
+    )
+    health.add_argument(
+        "--verbose", action="store_true", help="Show the detail line for every source."
+    )
+    health.set_defaults(func=handle_health)
+
     list_artifacts = subparsers.add_parser(
         "list-artifacts",
         help="Run the engineering pipeline and list all ConsolidatedArtifacts.",
@@ -628,12 +812,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose", action="store_true", help="Display detailed progress output."
     )
     list_artifacts.set_defaults(func=handle_list_artifacts)
-
-    validate = subparsers.add_parser("validate", help="Reserved for a future phase.")
-    validate.set_defaults(func=handle_validate)
-
-    benchmark = subparsers.add_parser("benchmark", help="Reserved for a future phase.")
-    benchmark.set_defaults(func=handle_benchmark)
 
     version = subparsers.add_parser("version", help="Show platform introspection.")
     version.set_defaults(func=handle_version)
@@ -662,11 +840,20 @@ USAGE
 
 SUBCOMMANDS
   analyze         Execute a complete AI analysis (live, or --dry-run).
+  health          Check every enabled source is reachable; runs no pipeline stage.
   list-artifacts  Run the engineering pipeline and list ConsolidatedArtifacts.
-  validate        Reserved for a future phase.
-  benchmark       Reserved for a future phase.
   version         Show platform metadata, capabilities, providers, and system info.
   help            Show this detailed help.
+
+EXECUTION MODE
+  One environment variable selects how every source is ingested:
+
+    EXECUTION_MODE=FILE   Read exported artifacts from disk (default).
+    EXECUTION_MODE=API    Fetch live from JIRA / SonarQube / OWASP ZAP.
+
+  The mode applies to all sources at once. API mode additionally requires the
+  per-source credentials listed in .env.example; startup validation checks they
+  are present before any source is contacted.
 
 analyze OPTIONS
   --artifact-id <id>     Analyse a specific ConsolidatedArtifact (default:
@@ -690,6 +877,12 @@ analyze OPTIONS
   --verbose              Detailed progress output.
 
 EXAMPLES
+  # Check every source before demonstrating anything
+  python scripts/run_requirement_analysis.py health
+
+  # Same check against the live source systems
+  EXECUTION_MODE=API python scripts/run_requirement_analysis.py health
+
   # Backward-compatible baseline run (live), writing to output/latest/
   python scripts/run_requirement_analysis.py analyze
 

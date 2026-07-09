@@ -144,10 +144,7 @@ def test_registry_loader_defaults_not_object(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "missing_field",
-    ["sourceId", "connectorClass", "mapperClass"]
-)
+@pytest.mark.parametrize("missing_field", ["sourceId", "connectorClass", "mapperClass"])
 def test_registry_loader_missing_required_fields(tmp_path: Path, missing_field: str) -> None:
     # Load actual data and delete required field from the first source
     loader = RegistryLoader()
@@ -184,8 +181,7 @@ def test_registry_loader_filtering_and_sorting(tmp_path: Path) -> None:
             {
                 "sourceId": "source_2",
                 "connectorClass": (
-                    "requirement_intelligence.connectors.sonarqube.connector"
-                    ".SonarQubeConnector"
+                    "requirement_intelligence.connectors.sonarqube.connector.SonarQubeConnector"
                 ),
                 "mapperClass": "requirement_intelligence.mappers.sonar_mapper.SonarMapper",
                 "enabled": True,
@@ -194,8 +190,7 @@ def test_registry_loader_filtering_and_sorting(tmp_path: Path) -> None:
             {
                 "sourceId": "source_1",
                 "connectorClass": (
-                    "requirement_intelligence.connectors.sonarqube.connector"
-                    ".SonarQubeConnector"
+                    "requirement_intelligence.connectors.sonarqube.connector.SonarQubeConnector"
                 ),
                 "mapperClass": "requirement_intelligence.mappers.sonar_mapper.SonarMapper",
                 "enabled": True,
@@ -204,8 +199,7 @@ def test_registry_loader_filtering_and_sorting(tmp_path: Path) -> None:
             {
                 "sourceId": "source_3",
                 "connectorClass": (
-                    "requirement_intelligence.connectors.sonarqube.connector"
-                    ".SonarQubeConnector"
+                    "requirement_intelligence.connectors.sonarqube.connector.SonarQubeConnector"
                 ),
                 "mapperClass": "requirement_intelligence.mappers.sonar_mapper.SonarMapper",
                 # Enabled defaults to False from defaults block
@@ -213,14 +207,13 @@ def test_registry_loader_filtering_and_sorting(tmp_path: Path) -> None:
             {
                 "sourceId": "source_4",
                 "connectorClass": (
-                    "requirement_intelligence.connectors.sonarqube.connector"
-                    ".SonarQubeConnector"
+                    "requirement_intelligence.connectors.sonarqube.connector.SonarQubeConnector"
                 ),
                 "mapperClass": "requirement_intelligence.mappers.sonar_mapper.SonarMapper",
                 "enabled": True,
                 # Priority defaults to 5 from defaults block
             },
-        ]
+        ],
     }
     path = _write_temp_registry(tmp_path, data)
     loader = RegistryLoader(path)
@@ -292,25 +285,20 @@ def test_connector_registry_dynamic_load_errors(tmp_path: Path) -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize("source_id", ["jira", "owasp_zap", "sonarqube"])
 def test_connector_registry_execute_source(source_id: str) -> None:
-    # 1. Load raw registry data
-    loader = RegistryLoader()
-    data = loader.load_registry()
+    # 1. Resolve fully-materialised source configurations exactly as the registry
+    #    executes them: defaults applied and the canonical inputMode stamped on.
+    loader = RegistryLoader(execution_mode="FILE")
+    enabled = {s["sourceId"]: s for s in loader.get_enabled_sources()}
 
-    # 2. Extract the configuration for the current parameterized source
-    source_config = next(s for s in data["sources"] if s["sourceId"] == source_id)
-
-    # 3. Apply defaults to check its actual operational 'enabled' state
-    defaults = data.get("defaults", {})
-    final_config = {**defaults, **source_config}
-
-    # 4. CRITICAL: Skip the test dynamically if it isn't enabled in the file!
-    if not final_config.get("enabled", False):
+    # 2. CRITICAL: Skip the test dynamically if it isn't enabled in the file!
+    source_config = enabled.get(source_id)
+    if source_config is None:
         pytest.skip(
             f"Source '{source_id}' is disabled in source-registry.json. "
             "Skipping forced execution check."
         )
 
-    # 5. Otherwise, override inputPath to absolute path and execute normally
+    # 3. Otherwise, override inputPath to absolute path and execute normally
     if source_id == "jira":
         source_config["inputPath"] = str(JIRA_SAMPLE_ISSUES)
     elif source_id == "owasp_zap":

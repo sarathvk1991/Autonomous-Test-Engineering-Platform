@@ -50,6 +50,31 @@ class ConnectorRegistry:
                 f"Failed to dynamically load class '{class_path}': {exc}"
             ) from exc
 
+    def create_connector(self, source_config: dict[str, Any]) -> Any:
+        """Loads and instantiates the connector declared by *source_config*.
+
+        The registry is the single owner of connector construction; callers that
+        need a configured connector without executing it (metadata validation,
+        health checks) obtain it here rather than importing connectors directly.
+
+        Args:
+            source_config: Configuration dict for a source.
+
+        Returns:
+            Any: The instantiated ``SourceConnector``.
+
+        Raises:
+            RegistryValidationError: If the class cannot be loaded or instantiated.
+        """
+        connector_class_path = source_config.get("connectorClass", "")
+        connector_cls = self._dynamic_load(connector_class_path)
+        try:
+            return connector_cls(source_config)
+        except Exception as exc:
+            raise RegistryValidationError(
+                f"Failed to instantiate connector '{connector_class_path}': {exc}"
+            ) from exc
+
     def _validate_enabled_sources(self) -> None:
         """Validates metadata for all enabled sources at startup.
 
@@ -61,15 +86,7 @@ class ConnectorRegistry:
         """
         for source_config in self.loader.get_enabled_sources():
             connector_class_path = source_config.get("connectorClass", "")
-            connector_cls = self._dynamic_load(connector_class_path)
-
-            # Instantiate the connector with its configuration
-            try:
-                connector = connector_cls(source_config)
-            except Exception as exc:
-                raise RegistryValidationError(
-                    f"Failed to instantiate connector '{connector_class_path}': {exc}"
-                ) from exc
+            connector = self.create_connector(source_config)
 
             # Check get_source_id matches sourceId from registry
             registry_source_id = source_config.get("sourceId")
@@ -94,20 +111,11 @@ class ConnectorRegistry:
         Returns:
             list[SourceArtifact]: Canonical SourceArtifacts resulting from execution.
         """
-        connector_class_path = source_config.get("connectorClass", "")
         mapper_class_path = source_config.get("mapperClass", "")
-
-        connector_cls = self._dynamic_load(connector_class_path)
         mapper_cls = self._dynamic_load(mapper_class_path)
 
         # Instantiate the connector and execute
-        try:
-            connector = connector_cls(source_config)
-        except Exception as exc:
-            raise RegistryValidationError(
-                f"Failed to instantiate connector '{connector_class_path}': {exc}"
-            ) from exc
-
+        connector = self.create_connector(source_config)
         connector.validate_connection()
         raw_records = connector.fetch_raw_records()
 

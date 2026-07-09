@@ -559,8 +559,7 @@ def test_parser_analyze_all_options() -> None:
 def test_parser_subcommands_wired() -> None:
     parser = cli.build_parser()
     assert parser.parse_args(["list-artifacts"]).func is cli.handle_list_artifacts
-    assert parser.parse_args(["validate"]).func is cli.handle_validate
-    assert parser.parse_args(["benchmark"]).func is cli.handle_benchmark
+    assert parser.parse_args(["health"]).func is cli.handle_health
     assert parser.parse_args(["version"]).func is cli.handle_version
     assert parser.parse_args(["help"]).func is cli.handle_help
 
@@ -572,20 +571,8 @@ def test_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 # ===========================================================================
-# Reserved + help + version subcommands
+# help + version subcommands
 # ===========================================================================
-
-
-@pytest.mark.unit
-def test_validate_placeholder(capsys: pytest.CaptureFixture[str]) -> None:
-    assert cli.main(["validate"]) == 0
-    assert "future phase" in capsys.readouterr().out
-
-
-@pytest.mark.unit
-def test_benchmark_placeholder(capsys: pytest.CaptureFixture[str]) -> None:
-    assert cli.main(["benchmark"]) == 0
-    assert "future phase" in capsys.readouterr().out
 
 
 @pytest.mark.unit
@@ -609,7 +596,9 @@ def test_version_outputs_all_sections(capsys: pytest.CaptureFixture[str]) -> Non
     ):
         assert section in out
     # Platform identity + new manifest schema version line.
-    assert "Architecture   : Modular Monolith" in out
+    assert "Architecture      : Modular Monolith" in out
+    assert "Deployment Model  : Single Deployable Unit" in out
+    assert "Execution Mode    : FILE (ingestion)" in out
     assert "Manifest Schema Version" in out
 
 

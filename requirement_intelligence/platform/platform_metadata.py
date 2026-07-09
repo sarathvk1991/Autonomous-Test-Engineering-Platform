@@ -46,7 +46,10 @@ PLATFORM_CAPABILITIES_VERSION = "1.0.0"
 # --- Platform identity ------------------------------------------------------
 PLATFORM_NAME = "Autonomous Test Engineering Platform"
 PLATFORM_ARCHITECTURE = "Modular Monolith"
-PLATFORM_EXECUTION_MODE = "Single Deployable Unit"
+# The deployment topology. Deliberately *not* named "execution mode": that term
+# is reserved for the FILE/API ingestion selection (EXECUTION_MODE env var), and
+# for manifest.json's dry-run/live field. Three distinct concepts, three names.
+PLATFORM_DEPLOYMENT_MODEL = "Single Deployable Unit"
 
 
 @dataclass(frozen=True)
@@ -84,7 +87,11 @@ ARCHITECTURE_COMPONENTS: tuple[Capability, ...] = (
     Capability("Execution Package", True, group="execution"),
     Capability("Requirement Analysis CLI", True, group="execution"),
     Capability("Response Validator", True, group="ai"),
-    Capability("CP1 Validator", False, group="future", note="Planned"),
+    Capability("Response Normalizer", True, group="ai"),
+    Capability("Prompt Governance", True, group="ai"),
+    Capability("CP1 Validator", True, group="ai"),
+    Capability("Startup Validation", True, group="execution"),
+    Capability("Connector Health Check", True, group="execution"),
     Capability("Feature Generator", False, group="future", note="Planned"),
     Capability("Test Generator", False, group="future", note="Planned"),
 )
@@ -109,9 +116,8 @@ PROVIDERS: tuple[ProviderInfo, ...] = (
 # --- CLI command catalogue --------------------------------------------------
 CLI_COMMANDS: tuple[str, ...] = (
     "analyze",
+    "health",
     "list-artifacts",
-    "validate",
-    "benchmark",
     "version",
     "help",
 )
@@ -138,7 +144,7 @@ __all__ = [
     "MAPPER_VERSION",
     "PLATFORM_ARCHITECTURE",
     "PLATFORM_CAPABILITIES_VERSION",
-    "PLATFORM_EXECUTION_MODE",
+    "PLATFORM_DEPLOYMENT_MODEL",
     "PLATFORM_NAME",
     "PLATFORM_VERSION",
     "PROMPT_FRAMEWORK_VERSION",

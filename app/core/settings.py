@@ -15,20 +15,6 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AzureOpenAISettings(BaseSettings):
-    """Connection settings for the Azure OpenAI provider."""
-
-    model_config = SettingsConfigDict(env_prefix="AZURE_OPENAI_", extra="ignore")
-
-    endpoint: str = ""
-    api_key: str = ""
-    api_version: str = "2024-06-01"
-    deployment: str = "gpt-4o"
-    embedding_deployment: str = "text-embedding-3-large"
-    timeout_seconds: int = 60
-    max_retries: int = 3
-
-
 class Settings(BaseSettings):
     """Root application settings — the single source of truth for config."""
 
@@ -54,9 +40,6 @@ class Settings(BaseSettings):
 
     # --- Persistence (future phase) -----------------------------------------
     database_url: str = Field(default="")
-
-    # --- Nested provider settings -------------------------------------------
-    azure_openai: AzureOpenAISettings = Field(default_factory=AzureOpenAISettings)
 
 
 @lru_cache(maxsize=1)

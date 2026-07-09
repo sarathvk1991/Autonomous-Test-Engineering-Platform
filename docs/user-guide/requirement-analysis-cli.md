@@ -127,13 +127,26 @@ python scripts/run_requirement_analysis.py <subcommand> [options]
 | Subcommand       | Purpose |
 | ---------------- | ------- |
 | `analyze`        | Execute a complete AI analysis (live, or `--dry-run`). |
+| `health`         | Check every enabled source is reachable. Runs no pipeline stage. |
 | `list-artifacts` | Run the engineering pipeline and list all ConsolidatedArtifacts. |
-| `validate`       | Reserved for a future phase. |
-| `benchmark`      | Reserved for a future phase. |
 | `version`        | Platform introspection (metadata, capabilities, providers, system info). |
 | `help`           | Detailed usage and examples. |
 
 Built-in `-h` / `--help` is available on the tool and on every subcommand.
+
+## Execution mode
+
+One environment variable selects how **every** source is ingested. Sources are
+never configured independently.
+
+| `EXECUTION_MODE` | Behaviour |
+| ---------------- | --------- |
+| `FILE` (default) | Connectors read exported artifacts from `inputPath`. |
+| `API`            | Connectors fetch live from JIRA, SonarQube, OWASP ZAP. |
+
+An unset or empty value means `FILE`. Any other value is rejected at startup
+with exit code `2`. Startup validation runs before any source is contacted and
+names every missing configuration value.
 
 ---
 
@@ -166,8 +179,7 @@ nothing is hardcoded in the CLI. Organised into grouped sections:
 - **AI Platform** — Prompt Framework, LLM Framework, Gemini Provider, Requirement
   Analysis Service.
 - **Execution Platform** — Execution Package, Requirement Analysis CLI.
-- **Future Platform** — Response Validator, CP1 Validator, Feature Generator, Test
-  Generator (`○`, planned).
+- **Future Platform** — Feature Generator, Test Generator (`○`, planned).
 - **Available Providers** — `✓ Gemini`, plus reserved providers (`○`).
 - **Supported Commands** — the registered subcommands.
 - **System Information** — Python version, OS, architecture, working directory
@@ -183,12 +195,16 @@ Runs the engineering pipeline only and displays every ConsolidatedArtifact
 (Consolidated ID, Business Area, Module, Risk Level, and functional/security/
 quality counts). Does **not** invoke the LLM and writes nothing.
 
-### `validate` / `benchmark`
+### `health`
 
-Reserved. Each prints:
+Probes every enabled source and reports `READY`, `MISCONFIGURED`, or
+`UNREACHABLE`. Exercises the connector layer only — no consolidation, no LLM
+call, no validation, no CP1, no execution package. Exit code is `0` only when
+every source is `READY`, so the command works as a deployment gate.
 
-```text
-This capability will be implemented in a future phase.
+```bash
+python scripts/run_requirement_analysis.py health
+EXECUTION_MODE=API python scripts/run_requirement_analysis.py health --verbose
 ```
 
 ### `help`
@@ -377,8 +393,6 @@ subparser registration** — no architectural change. Reserved/anticipated:
 
 | Subcommand          | Intent |
 | ------------------- | ------ |
-| `validate`          | Validate generated requirements (future phase). |
-| `benchmark`         | Benchmark prompt/provider performance (future phase). |
 | `generate-features` | Generate feature specifications. |
 | `generate-tests`    | Generate executable tests. |
 | `compare-providers` | Compare output across providers. |

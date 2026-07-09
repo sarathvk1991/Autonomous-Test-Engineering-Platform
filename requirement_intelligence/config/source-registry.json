@@ -1,7 +1,7 @@
 {
   "registryVersion": "1.0.0",
   "phase": "PHASE_1_REQUIREMENT_INTELLIGENCE",
-  "description": "Declarative registry of ingestion sources for the Requirement Intelligence Layer. Each entry maps a source to its connector and mapper. The registry is configuration only and intentionally contains no business logic. API-mode base URLs and credentials are never stored here: the connection block names the environment variables that hold them (see .env.example).",
+  "description": "Declarative registry of ingestion sources for the Requirement Intelligence Layer. Each entry maps a source to its connector and mapper. The registry is configuration only and intentionally contains no business logic. The ingestion mode is NOT declared per source: it is selected globally by the EXECUTION_MODE environment variable (FILE or API) and stamped onto every source by the RegistryLoader; defaults.inputMode below records only the fallback used when EXECUTION_MODE is unset. API-mode base URLs and credentials are never stored here: the connection block names the environment variables that hold them (see .env.example).",
   "defaults": {
     "inputMode": "FILE",
     "enabled": false
@@ -20,7 +20,6 @@
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.jira.connector.JiraConnector",
       "mapperClass": "requirement_intelligence.mappers.jira_mapper.JiraMapper",
-      "inputMode": "FILE",
       "inputPath": "input/jira/jira-issues.json",
       "outputCategory": "FUNCTIONAL_REQUIREMENT",
       "priority": 1,
@@ -42,12 +41,13 @@
         "pagination": {
           "pageSize": 50
         },
+        "jql": "issuetype in (Story, Bug, Epic)",
         "incremental": {
           "enabled": false,
           "jql": "updated >= -30d"
         }
       },
-      "description": "Functional requirements, epics, stories, and defects sourced from JIRA. FILE mode ingests an exported issue dump; API mode fetches live via the JIRA REST API using credentials from the environment."
+      "description": "Functional requirements, epics, stories, and defects sourced from JIRA. FILE mode ingests an exported issue dump; API mode fetches live via the JIRA REST API using credentials from the environment. The api.jql restriction scopes retrieval to the three issue types JiraMapper canonicalises (Story, Bug, Epic); JIRA issues of any other type (e.g. Task, Sub-task) are not ingested."
     },
     {
       "sourceId": "owasp_zap",
@@ -58,7 +58,6 @@
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.zap.connector.ZapConnector",
       "mapperClass": "requirement_intelligence.mappers.zap_mapper.ZapMapper",
-      "inputMode": "FILE",
       "inputPath": "input/zap/zap-alerts.json",
       "outputCategory": "SECURITY_FINDING",
       "priority": 2,
@@ -91,7 +90,6 @@
       "enabled": true,
       "connectorClass": "requirement_intelligence.connectors.sonarqube.connector.SonarQubeConnector",
       "mapperClass": "requirement_intelligence.mappers.sonar_mapper.SonarMapper",
-      "inputMode": "FILE",
       "inputPath": "input/sonar/sonar-issues.json",
       "outputCategory": "QUALITY_FINDING",
       "priority": 3,
