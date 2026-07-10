@@ -42,7 +42,14 @@ from tests.productization.fixtures.golden_dataset import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_CORE_ARTIFACTS = frozenset({"consolidated_artifact.json", "prompt.txt", "llm_request.json"})
+_CORE_ARTIFACTS = frozenset(
+    {
+        "consolidated_artifact.json",
+        "engineering_context.json",
+        "prompt.txt",
+        "llm_request.json",
+    }
+)
 _RESULT_ARTIFACTS = frozenset(
     {
         "analysis_result.json",
@@ -128,6 +135,44 @@ class TestPhase3PipelineExecution:
     def test_consolidated_quality_count(self, golden_pipeline_result: PipelineResult) -> None:
         """Two SonarQube quality artifacts."""
         assert len(golden_pipeline_result.selected.quality_artifacts) == 2
+
+    @pytest.mark.productization
+    def test_orchestrator_produced_an_engineering_context(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """EngineeringContextOrchestrator produced the context the prompt was built from."""
+        assert golden_pipeline_result.engineering_context is not None
+
+    @pytest.mark.productization
+    def test_legacy_selection_policy_is_active(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The runtime executes LegacySelectionPolicy; the default policy stays inactive."""
+        orchestration = golden_pipeline_result.engineering_context.orchestration
+        assert str(orchestration.policy_id) == "legacy-single-largest"
+        assert str(orchestration.policy_version) == "1.0.0"
+
+    @pytest.mark.productization
+    def test_context_selects_the_same_group_the_legacy_rule_selected(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Selection is unchanged: one group, and it is the one the old rule chose."""
+        provenance = golden_pipeline_result.engineering_context.provenance
+        assert provenance.contributing_group_count == 1
+        assert provenance.contributing_consolidated_ids == (
+            golden_pipeline_result.selected.consolidated_id,
+        )
+
+    @pytest.mark.productization
+    def test_context_evidence_matches_the_selected_group(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Every artifact of the selected group, and nothing else, reaches the context."""
+        selected = golden_pipeline_result.selected
+        evidence = golden_pipeline_result.engineering_context.evidence
+        assert list(evidence.functional_artifacts) == selected.functional_artifacts
+        assert list(evidence.security_artifacts) == selected.security_artifacts
+        assert list(evidence.quality_artifacts) == selected.quality_artifacts
 
     @pytest.mark.productization
     def test_analysis_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
@@ -229,6 +274,55 @@ class TestPhase4OutputVerification:
     def test_raw_llm_response_json_parseable(self, golden_pipeline_result: PipelineResult) -> None:
         data = _load_json(golden_pipeline_result.output_dir / "raw_llm_response.json")
         assert "generatedText" in data or "generated_text" in data
+
+    # --- EngineeringContext artifact verification --------------------------
+
+    @pytest.mark.productization
+    def test_engineering_context_artifact_records_identity_and_policy(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """engineering_context.json names the context and the rules that composed it."""
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        context = golden_pipeline_result.engineering_context
+        assert data["contextId"] == str(context.context_id)
+        assert data["orchestration"]["policyId"] == "legacy-single-largest"
+        assert data["orchestration"]["policyVersion"] == "1.0.0"
+        assert data["orchestrationReason"] == context.orchestration_reason
+
+    @pytest.mark.productization
+    def test_engineering_context_artifact_records_evidence_counts(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Evidence counts in the artifact match the nine golden source artifacts."""
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        counts = data["evidenceCounts"]
+        assert counts == {"functional": 4, "security": 3, "quality": 2, "total": 9}
+        assert data["provenance"]["sourceArtifactCount"] == 9
+
+    @pytest.mark.productization
+    def test_engineering_context_artifact_explains_every_contribution(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Every contributing group carries a non-empty, documented inclusion reason."""
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        contributions = data["provenance"]["contributions"]
+        assert contributions, "No contribution was recorded"
+        for contribution in contributions:
+            assert contribution["consolidatedId"]
+            assert contribution["inclusionReason"].strip()
+            assert contribution["consolidationReason"].strip()
+
+    @pytest.mark.productization
+    def test_engineering_context_artifact_summarises_every_evidence_item(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Each evidence artifact is traceable to its origin record."""
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        summary = data["evidenceSummary"]
+        items = summary["functional"] + summary["security"] + summary["quality"]
+        assert len(items) == data["evidenceCounts"]["total"]
+        for item in items:
+            assert item["sourceSystem"] and item["sourceRecordId"] and item["title"]
 
     # --- NormalizationResult verification ----------------------------------
 
@@ -343,6 +437,30 @@ class TestPhase4OutputVerification:
         assert manifest.get("cp1Executed") is True
         assert manifest.get("cp1Verdict") is not None
         assert manifest.get("cp1Report") == "cp1_report.md"
+
+    @pytest.mark.productization
+    def test_manifest_registers_the_engineering_context(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json names the artifact and the policy that produced it."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        context = golden_pipeline_result.engineering_context
+        assert manifest["engineeringContextArtifact"] == "engineering_context.json"
+        assert manifest["engineeringContextId"] == str(context.context_id)
+        assert manifest["orchestrationPolicyId"] == "legacy-single-largest"
+        assert manifest["orchestrationPolicyVersion"] == "1.0.0"
+
+    @pytest.mark.productization
+    def test_manifest_checksums_the_engineering_context(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The new artifact is checksummed by the same mechanism as every other."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        entries = {a["name"]: a for a in manifest["generatedArtifacts"]}
+        entry = entries["engineering_context.json"]
+        path = golden_pipeline_result.output_dir / "engineering_context.json"
+        assert entry["sha256"] == _sha256(path)
+        assert entry["bytes"] == path.stat().st_size
 
     @pytest.mark.productization
     def test_manifest_generated_artifacts_list(
@@ -615,6 +733,42 @@ class TestPhase5Determinism:
         text2 = run2.execution_data.generated_text
         assert text1 == text2, "Generated text differs between runs"
 
+    @pytest.mark.productization
+    def test_determinism_engineering_context_id(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """The context identity is a pure function of its inputs — never a uuid or clock."""
+        run2 = _run_golden_pipeline(tmp_path)
+        id1 = str(golden_pipeline_result.engineering_context.context_id)
+        id2 = str(run2.engineering_context.context_id)
+        assert id1 == id2, f"Context id differs: run1={id1!r} run2={id2!r}"
+
+    @pytest.mark.productization
+    def test_determinism_engineering_context_artifact_bytes(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """engineering_context.json is byte-identical across two runs."""
+        run2 = _run_golden_pipeline(tmp_path)
+        sha1 = _sha256(golden_pipeline_result.output_dir / "engineering_context.json")
+        sha2 = _sha256(run2.output_dir / "engineering_context.json")
+        assert sha1 == sha2, "engineering_context.json differs between runs"
+
+    @pytest.mark.productization
+    def test_determinism_prompt_sha256(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """The orchestrated prompt is byte-identical across two runs."""
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1["promptSha256"] == m2["promptSha256"]
+
 
 # ===========================================================================
 # PHASE 6 — Productization Assertions
@@ -739,3 +893,50 @@ class TestPhase6ProductizationAssertions:
         """cp1_report.md renders the CP1 overall verdict."""
         content = (golden_pipeline_result.output_dir / "cp1_report.md").read_text()
         assert "PASS" in content.upper()
+
+    # --- Explainability (CAP-076C Stage 9) ---------------------------------
+
+    @pytest.mark.productization
+    def test_context_carries_an_orchestration_reason(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Every EngineeringContext explains, in one sentence, why it was composed."""
+        reason = golden_pipeline_result.engineering_context.orchestration_reason
+        assert reason.strip()
+        assert golden_pipeline_result.engineering_context.subject.label in reason
+
+    @pytest.mark.productization
+    def test_every_contributing_group_has_an_inclusion_reason(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """No group is present without a recorded reason naming the policy that admitted it."""
+        provenance = golden_pipeline_result.engineering_context.provenance
+        policy_id = str(golden_pipeline_result.engineering_context.orchestration.policy_id)
+        for contribution in provenance.contributions:
+            assert contribution.inclusion_reason.strip()
+            assert policy_id in contribution.inclusion_reason
+
+    @pytest.mark.productization
+    def test_provenance_records_every_candidate_the_policy_ranked(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Selection is falsifiable: the context records what it was chosen *from*."""
+        provenance = golden_pipeline_result.engineering_context.provenance
+        assert provenance.candidate_group_count == len(
+            golden_pipeline_result.consolidated_artifacts
+        )
+
+    @pytest.mark.productization
+    def test_every_evidence_artifact_is_traceable_to_its_source_record(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """No evidence item is anonymous: each carries its origin system and record id."""
+        evidence = golden_pipeline_result.engineering_context.evidence
+        artifacts = (
+            *evidence.functional_artifacts,
+            *evidence.security_artifacts,
+            *evidence.quality_artifacts,
+        )
+        assert len(artifacts) == evidence.total_count
+        for artifact in artifacts:
+            assert artifact.source_system and artifact.source_record_id

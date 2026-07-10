@@ -103,7 +103,12 @@ def engineering_metrics(data: Any) -> dict[str, Any]:
     metrics["smallest_consolidation_group"] = min(totals)
     metrics["average_artifacts_per_group"] = round(sum(totals) / len(totals), 2)
 
-    # Rank by the deterministic selection order: largest first, tie-break by id.
+    # Rank by group size: largest first, tie-break by id. This *mirrors* the ranking
+    # of the active LegacySelectionPolicy rather than reading it, so it reports the
+    # selected group's size rank, not its rank under whichever policy actually chose
+    # it. The two coincide today and will diverge the moment a risk-ranked policy is
+    # activated (CAP-076D), at which point this metric must read the rank the
+    # orchestrator already records in ContextContribution.inclusion_reason.
     ordered = sorted(consolidated, key=lambda c: (-_group_total(c), c.consolidated_id))
     for index, candidate in enumerate(ordered, start=1):
         if candidate.consolidated_id == selected.consolidated_id:

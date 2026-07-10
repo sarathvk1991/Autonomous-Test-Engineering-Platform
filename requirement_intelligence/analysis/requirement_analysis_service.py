@@ -2,10 +2,15 @@
 
 This service coordinates one AI analysis end-to-end:
 
-    ConsolidatedArtifact
+    EngineeringContext
         → Prompt Builder → PromptRequest → LLMRequest
         → LLM Provider → LLMResponse
         → AnalysisResult
+
+Its input is the canonical orchestration model produced by the Engineering
+Context Orchestrator, never a raw consolidation group (CAP-076C). The service
+selects nothing: by the time a context reaches it, every evidence decision has
+already been made, and explained, by the orchestrator.
 
 It performs **orchestration only**.  Per
 ``docs/architecture/requirement-analysis-service.md`` it does not validate,
@@ -33,17 +38,23 @@ from requirement_intelligence.analysis.analysis_exceptions import (
     ProviderExecutionError,
 )
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
+from requirement_intelligence.context_orchestration.models.engineering_context import (
+    EngineeringContext,
+)
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
-from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     PromptRequest,
     RequirementPromptBuilder,
 )
 
+#: Joins the contributing group ids recorded on an ``AnalysisResult``. Matches
+#: the separator the prompt builder uses, so the two can never disagree.
+_ID_SEPARATOR = ", "
+
 
 class RequirementAnalysisService:
-    """Coordinate a single AI analysis of one consolidated artifact.
+    """Coordinate a single AI analysis of one engineering context.
 
     The service is the exclusive orchestration entry point for AI execution; no
     other component invokes a provider directly.  Its only public method is
@@ -61,7 +72,7 @@ class RequirementAnalysisService:
         Parameters
         ----------
         prompt_builder:
-            Builds a versioned :class:`PromptRequest` from a consolidated artifact.
+            Builds a versioned :class:`PromptRequest` from an engineering context.
         provider:
             The provider-agnostic LLM provider abstraction used for execution.
         configuration:
@@ -89,7 +100,7 @@ class RequirementAnalysisService:
     # Public API (frozen for Phase 1)
     # ------------------------------------------------------------------
 
-    def analyze(self, consolidated_artifact: ConsolidatedArtifact) -> AnalysisResult:
+    def analyze(self, context: EngineeringContext) -> AnalysisResult:
         """Orchestrate one AI analysis and return its result.
 
         The returned :class:`AnalysisResult` is **raw and un-validated**; whether
@@ -106,7 +117,7 @@ class RequirementAnalysisService:
             For any unexpected orchestration failure.
         """
         try:
-            return self._orchestrate(consolidated_artifact)
+            return self._orchestrate(context)
         except AnalysisError:
             # Already a typed orchestration error — surface as-is.
             raise
@@ -119,9 +130,9 @@ class RequirementAnalysisService:
     # Internal orchestration steps
     # ------------------------------------------------------------------
 
-    def _orchestrate(self, consolidated_artifact: ConsolidatedArtifact) -> AnalysisResult:
+    def _orchestrate(self, context: EngineeringContext) -> AnalysisResult:
         # Step 1 — generate the prompt request.
-        prompt_request = self._build_prompt(consolidated_artifact)
+        prompt_request = self._build_prompt(context)
 
         # Step 2 — generate request identifiers.
         analysis_id = str(uuid4())
@@ -144,7 +155,9 @@ class RequirementAnalysisService:
         return AnalysisResult(
             analysis_id=analysis_id,
             execution_id=execution_id,
-            source_consolidated_id=consolidated_artifact.consolidated_id,
+            source_consolidated_id=_ID_SEPARATOR.join(
+                context.provenance.contributing_consolidated_ids
+            ),
             prompt_version=prompt_request.prompt_version,
             reasoning_contract_version=self._configuration.reasoning_contract_version,
             provider=llm_response.provider,
@@ -156,25 +169,19 @@ class RequirementAnalysisService:
             metadata=dict(llm_request.metadata),
         )
 
-    def _build_prompt(
-        self, consolidated_artifact: ConsolidatedArtifact
-    ) -> PromptRequest:
+    def _build_prompt(self, context: EngineeringContext) -> PromptRequest:
         """Delegate prompt construction to the prompt builder (Step 1)."""
         try:
-            return self._prompt_builder.build(consolidated_artifact)
+            return self._prompt_builder.build(context)
         except Exception as exc:  # classify as prompt-generation failure
             raise PromptGenerationError(f"Prompt generation failed: {exc}") from exc
 
-    def _to_llm_request(
-        self, prompt_request: PromptRequest, execution_id: str
-    ) -> LLMRequest:
+    def _to_llm_request(self, prompt_request: PromptRequest, execution_id: str) -> LLMRequest:
         """Convert the prompt request into a provider-agnostic request (Step 3)."""
         try:
             return prompt_request.to_llm_request(request_id=execution_id)
         except Exception as exc:  # classify as prompt-generation failure
-            raise PromptGenerationError(
-                f"Prompt request conversion failed: {exc}"
-            ) from exc
+            raise PromptGenerationError(f"Prompt request conversion failed: {exc}") from exc
 
     def _execute(self, llm_request: LLMRequest) -> LLMResponse:
         """Dispatch the request through the provider abstraction (Step 5).

@@ -37,6 +37,7 @@ MANIFEST_SCHEMA_VERSION = "1.0.0"  # JSON contract of manifest.json
 CONNECTOR_REGISTRY_VERSION = "1.0.0"
 MAPPER_VERSION = "1.0.0"
 CONSOLIDATION_ENGINE_VERSION = "1.0.0"
+CONTEXT_ORCHESTRATION_VERSION = "1.0.0"  # Engineering Context Orchestration (ADR-0015)
 PROMPT_FRAMEWORK_VERSION = "1.0.0"
 LLM_FRAMEWORK_VERSION = "1.0.0"
 ANALYSIS_SERVICE_VERSION = "1.0.0"
@@ -80,6 +81,7 @@ ARCHITECTURE_COMPONENTS: tuple[Capability, ...] = (
     Capability("Connectors", True, group="core"),
     Capability("Mappers", True, group="core"),
     Capability("Consolidation Engine", True, group="core"),
+    Capability("Engineering Context Orchestration", True, group="core"),
     Capability("Prompt Framework", True, group="ai"),
     Capability("LLM Framework", True, group="ai"),
     Capability("Gemini Provider", True, group="ai"),
@@ -137,6 +139,7 @@ __all__ = [
     "COMPONENT_GROUPS",
     "CONNECTOR_REGISTRY_VERSION",
     "CONSOLIDATION_ENGINE_VERSION",
+    "CONTEXT_ORCHESTRATION_VERSION",
     "EXECUTION_PACKAGE_VERSION",
     "EXECUTION_WRITER_VERSION",
     "LLM_FRAMEWORK_VERSION",

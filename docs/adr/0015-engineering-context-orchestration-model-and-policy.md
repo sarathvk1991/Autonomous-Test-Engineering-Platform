@@ -4,6 +4,7 @@
 - **Date:** 2026-07-10 (Proposed) · 2026-07-10 (Accepted)
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing review:** `docs/reviews/cap-076-engineering-context-orchestration.md` (CAP-076 Part 1, CAP-076A)
+- **Runtime status:** Live as of CAP-076C — see [Addendum: CAP-076C](#addendum--cap-076c-runtime-integration).
 
 ## Problem
 
@@ -173,3 +174,45 @@ Recorded as direction, **not authorised by this ADR**:
 3. **Correlation.** Populating `ContextDependencies.correlations` from a curated correlation table or bounded key-set intersection. Until then, `render_reason` states plainly that evidence is *co-selected*, and that **no correlation is asserted** — discharging Invariant 2 where a reader will see it.
 4. **Grounding validation.** CAP-074B showed five hallucinated requirements passing all 13 validation rules and the CP1 gate. Widening the evidence surface widens the hallucination surface. This remains the highest-value outstanding investment and a prerequisite for evaluating whether orchestration improved anything.
 5. **Shared `SemanticVersion`.** Consolidate `PromptVersion` and `PolicyVersion`.
+
+---
+
+## Addendum — CAP-076C Runtime Integration
+
+- **Date:** 2026-07-10
+- **Amends:** this ADR's "Consequences" and "Future Evolution" §1. The framework is no longer inert.
+
+### What changed
+
+The `EngineeringContextOrchestrator` was introduced and wired into the runtime. `_select_consolidated` is deleted. The runtime path is now:
+
+```
+SourceArtifacts → Consolidation → EngineeringContextOrchestrator → EngineeringContext
+                → RequirementPromptBuilder → Gemini → Validation → CP1 → Execution Package
+```
+
+`RequirementPromptBuilder.build` and `RequirementAnalysisService.analyze` take an `EngineeringContext`. `PlatformContext` is the sole construction point for the orchestrator, the builder, and both policies. The golden harness *imports* the orchestrator instead of duplicating the selection rule, discharging the duplication this ADR's Problem section named.
+
+**`LegacySelectionPolicy` is the active policy.** `DefaultOrchestrationPolicy` is constructed but never bound by default. The orchestrator executes only the rules Legacy declares (`single_largest`, `group_order`) and **raises** on `coverage_guaranteed` and `risk_then_record_id` rather than approximating them: a policy that is silently half-applied is worse than no policy. Activating them is CAP-076D.
+
+### Behavioural result
+
+Prompt bytes, the LLM request, selection, normalization, validation, CP1, and every pre-existing execution artifact are unchanged. Verified by executing the CLI at `HEAD` and at the working tree over the same FILE-mode inputs: `prompt.txt` and `llm_request.json` are byte-identical, and `consolidated_artifact.json` differs only in the `artifactId` uuid4 the mappers mint per run — a pre-existing non-determinism that `HEAD` also exhibits against itself.
+
+The contract changes this ADR deferred to CAP-076C (`manifest.selectedArtifactId`, `consolidated_artifact.json`, golden hashes) were **not incurred**, because `LegacySelectionPolicy` selects the same single group. They fall due in CAP-076D.
+
+### Model changes
+
+`ENGINEERING_CONTEXT_VERSION` advanced `1.0 → 1.1`. `ContextProvenance` is now built from `ContextContribution` records, each carrying its group's `module`, `consolidation_reason`, `artifact_count`, and — new — an `inclusion_reason` naming the rank the group achieved, the keys it was ranked by, and the policy that admitted it. `candidate_group_count` records how many groups were *ranked*, not merely how many contributed. Without it, "selected the largest group" is unfalsifiable. `contributing_consolidated_ids` and `contributing_group_count` survive as derived properties. No 1.0 context was ever serialised, so no stored artifact is invalidated.
+
+`REASON_TEMPLATE_FIELDS` gained `candidates`, distinct from `groups`. `LegacySelectionPolicy`'s reason template now reads "the largest of {candidates} consolidation group(s)" — with `{groups}` it rendered "the largest of 1", concealing the 22 groups it beat.
+
+### New execution artifact
+
+`engineering_context.json` is written for every run, including dry runs, and registered in `manifest.json` with its SHA-256 and byte count alongside every other artifact. The manifest additionally names `engineeringContextId`, `orchestrationPolicyId`, and `orchestrationPolicyVersion`, so a historical package can be attributed to the rules that produced it without opening another file. The orchestrator constructs; `ExecutionWriter` writes; `EngineeringContextArtifactBuilder` projects. No ownership is duplicated.
+
+The artifact makes the CAP-074B defect legible for the first time: on the repository's own fixtures it records `candidateGroupCount: 23`, `contributingGroupCount: 1`, and `evidenceCounts: {functional: 0, security: 0, quality: 71}`.
+
+### Known residue
+
+`execution_metrics.engineering_metrics` still ranks groups by size to compute `selected_artifact_rank`, mirroring rather than reading the policy. It decides nothing — the orchestrator remains the only orchestration point — but the number becomes misleading the moment a risk-ranked policy is activated. CAP-076D must read the rank the orchestrator already records.

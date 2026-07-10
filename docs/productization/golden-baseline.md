@@ -170,6 +170,7 @@ output directory.
 | Artifact | Type | Description |
 |---|---|---|
 | `consolidated_artifact.json` | JSON | Serialised ConsolidatedArtifact (all 9 source artifacts) |
+| `engineering_context.json` | JSON | Serialised EngineeringContext: policy, provenance, evidence summary |
 | `prompt.txt` | Text | System prompt + user prompt submitted to the stub provider |
 | `llm_request.json` | JSON | Provider-agnostic LLMRequest |
 | `analysis_result.json` | JSON | Serialised AnalysisResult |

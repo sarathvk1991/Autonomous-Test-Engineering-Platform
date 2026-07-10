@@ -25,6 +25,8 @@ from requirement_intelligence.consolidation.consolidation_engine import (
 from requirement_intelligence.context_orchestration import (
     DefaultOrchestrationPolicy,
     EngineeringContextBuilder,
+    EngineeringContextOrchestrator,
+    LegacySelectionPolicy,
     OrchestrationPolicy,
 )
 from requirement_intelligence.cp1.response import (
@@ -65,21 +67,49 @@ class PlatformContext:
     def create_orchestration_policy(self) -> OrchestrationPolicy:
         """Return the governed default :class:`OrchestrationPolicy` (CAP-076B).
 
-        Construction only. Nothing in the pipeline consumes a policy today — the
-        Engineering Context Orchestrator that will apply it lands in CAP-076C. The
-        returned policy is inert declarative data: it states coverage, ranking,
-        budget, ordering and tie-breaking rules, and applies none of them.
+        Construction only. The default policy is **not** the policy the runtime
+        executes: :meth:`create_engineering_context_orchestrator` binds
+        :class:`LegacySelectionPolicy` so behaviour is unchanged. This policy —
+        coverage-guaranteed, risk-ranked, domain-budgeted, and the one that
+        repairs the CAP-074B defect — is activated in CAP-076D.
         """
         return DefaultOrchestrationPolicy()
+
+    def create_legacy_selection_policy(self) -> OrchestrationPolicy:
+        """Return the behaviour-preserving :class:`LegacySelectionPolicy` (CAP-076C).
+
+        The **active** runtime policy. It restates the pre-CAP-076 selection rule
+        declaratively — largest group by artifact count, ties broken by
+        ``consolidated_id`` ascending — so wiring the orchestrator into the runtime
+        changes plumbing without changing which evidence a reasoner receives.
+        """
+        return LegacySelectionPolicy()
 
     def create_engineering_context_builder(self) -> EngineeringContextBuilder:
         """Return a new :class:`EngineeringContextBuilder` (CAP-076B).
 
-        Construction only, and nothing calls the builder yet. It owns construction
-        of an immutable ``EngineeringContext`` from already-selected consolidation
-        groups; it performs no ranking, coverage, budgeting, or orchestration.
+        Construction only. It owns construction of an immutable
+        ``EngineeringContext`` from already-selected consolidation groups; it
+        performs no ranking, coverage, budgeting, or orchestration. The
+        orchestrator is its only runtime caller.
         """
         return EngineeringContextBuilder()
+
+    def create_engineering_context_orchestrator(
+        self, policy: OrchestrationPolicy | None = None
+    ) -> EngineeringContextOrchestrator:
+        """Return the runtime's :class:`EngineeringContextOrchestrator` (CAP-076C).
+
+        The single orchestration point between Consolidation and Analysis. When
+        *policy* is omitted the orchestrator is bound to
+        :meth:`create_legacy_selection_policy`, which is what the runtime uses;
+        the parameter exists so a caller can exercise a different governed policy
+        without constructing the orchestrator itself.
+        """
+        return EngineeringContextOrchestrator(
+            policy=policy if policy is not None else self.create_legacy_selection_policy(),
+            builder=self.create_engineering_context_builder(),
+        )
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

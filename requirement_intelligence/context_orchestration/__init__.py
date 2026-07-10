@@ -8,13 +8,18 @@ Consolidation owns *grouping*: which records share an attribute. This subsystem
 owns *orchestration*: which evidence a reasoning session receives, under a
 governed :class:`OrchestrationPolicy`. See ADR-0015.
 
-Scope at CAP-076B
+Scope at CAP-076C
 -----------------
-This milestone lands the **architectural foundation only** — the canonical model,
-the identity value objects, the declarative policy framework, and the builder.
-The Engineering Context Orchestrator itself, and every runtime wiring, is
-CAP-076C. Nothing in the runtime consumes this package today, and the platform
-is behaviourally identical with it present.
+The subsystem is **live**. :class:`EngineeringContextOrchestrator` is the
+runtime's single orchestration point: the CLI hands it every consolidation
+group, it executes :class:`LegacySelectionPolicy`, and the resulting
+``EngineeringContext`` flows to the prompt builder, the analysis service, and
+the execution package.
+
+:class:`LegacySelectionPolicy` is the **active** policy and reproduces the
+pre-CAP-076 selection rule exactly, so runtime behaviour is unchanged.
+:class:`DefaultOrchestrationPolicy` — the policy that repairs the CAP-074B
+defect — remains constructed but **inactive**; activating it is CAP-076D.
 
 A note on the word "orchestration"
 ----------------------------------
@@ -37,8 +42,13 @@ from requirement_intelligence.context_orchestration.engineering_context_builder 
     SUPPORTED_POLICY_MAJOR,
     EngineeringContextBuilder,
 )
+from requirement_intelligence.context_orchestration.engineering_context_orchestrator import (
+    ContextOrchestrationResult,
+    EngineeringContextOrchestrator,
+)
 from requirement_intelligence.context_orchestration.models import (
     ENGINEERING_CONTEXT_VERSION,
+    ContextContribution,
     ContextCorrelation,
     ContextDependencies,
     ContextEvidence,
@@ -71,11 +81,13 @@ __all__ = [
     "SUPPORTED_POLICY_MAJOR",
     "ContextBudgetExceededError",
     "ContextConstructionError",
+    "ContextContribution",
     "ContextCorrelation",
     "ContextDependencies",
     "ContextEvidence",
     "ContextMetadata",
     "ContextOrchestrationError",
+    "ContextOrchestrationResult",
     "ContextProvenance",
     "ContextSubject",
     "ContextSubjectBasis",
@@ -85,6 +97,7 @@ __all__ = [
     "EngineeringContext",
     "EngineeringContextBuilder",
     "EngineeringContextId",
+    "EngineeringContextOrchestrator",
     "EvidenceBudget",
     "EvidenceOrdering",
     "LegacySelectionPolicy",

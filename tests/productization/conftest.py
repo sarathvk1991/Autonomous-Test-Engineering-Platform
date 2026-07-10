@@ -20,6 +20,7 @@ from requirement_intelligence.analysis.requirement_analysis_service import (
     RequirementAnalysisService,
 )
 from requirement_intelligence.consolidation.consolidation_engine import ConsolidationEngine
+from requirement_intelligence.context_orchestration import EngineeringContext
 from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from requirement_intelligence.execution.execution_data import ExecutionData
 from requirement_intelligence.execution.execution_writer import (
@@ -42,7 +43,6 @@ from requirement_intelligence.normalization.models.normalization_result import N
 from requirement_intelligence.normalization.response import ResponseNormalizer
 from requirement_intelligence.platform import platform_metadata as meta
 from requirement_intelligence.platform.platform_context import PlatformContext
-from requirement_intelligence.prompts.requirement_prompt_builder import RequirementPromptBuilder
 from requirement_intelligence.validation import ValidationInput
 from requirement_intelligence.validation.models.validation_result import ValidationResult
 from shared.enums.base import ExecutionStatus, ProviderType
@@ -109,6 +109,9 @@ class PipelineResult:
     consolidated_artifacts: list[ConsolidatedArtifact]
     selected: ConsolidatedArtifact
 
+    # Engineering Context Orchestration
+    engineering_context: EngineeringContext
+
     # Analysis
     analysis_result: Any  # AnalysisResult
 
@@ -139,6 +142,7 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
 
         SourceArtifacts
             → ConsolidationEngine
+            → EngineeringContextOrchestrator (LegacySelectionPolicy)
             → RequirementAnalysisService (stub provider)
             → ResponseNormalizer
             → ValidationInput binding (handoff seam)
@@ -157,17 +161,20 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
     engine = ConsolidationEngine()
     consolidated = engine.consolidate(GOLDEN_SOURCE_ARTIFACTS)
 
-    # Select deterministically (most artifacts first, then by id).
-    def _key(c: ConsolidatedArtifact) -> tuple[int, str]:
-        total = len(c.functional_artifacts) + len(c.security_artifacts) + len(c.quality_artifacts)
-        return (-total, c.consolidated_id)
-
-    selected = sorted(consolidated, key=_key)[0]
+    # -----------------------------------------------------------------------
+    # Step 2 — Engineering Context Orchestration (CAP-076C)
+    # -----------------------------------------------------------------------
+    # Selection is the governed policy's decision, not this harness's. Under the
+    # active LegacySelectionPolicy the context carries exactly one group, so the
+    # prompt this baseline pins is byte-identical to the pre-CAP-076C baseline.
+    orchestration = context.create_engineering_context_orchestrator().orchestrate(consolidated)
+    engineering_context = orchestration.context
+    selected = orchestration.selected_groups[0]
 
     # -----------------------------------------------------------------------
-    # Step 2 — Prompt building + Analysis (stub provider)
+    # Step 3 — Prompt building + Analysis (stub provider)
     # -----------------------------------------------------------------------
-    prompt_builder = RequirementPromptBuilder()
+    prompt_builder = context.create_prompt_builder()
     stub_provider = GoldenStubProvider()
 
     service = RequirementAnalysisService(
@@ -177,12 +184,12 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
             reasoning_contract_version=meta.REASONING_CONTRACT_VERSION,
         ),
     )
-    analysis_result = service.analyze(selected)
-    prompt_request = prompt_builder.build(selected)
+    analysis_result = service.analyze(engineering_context)
+    prompt_request = prompt_builder.build(engineering_context)
     llm_request = prompt_request.to_llm_request(request_id=analysis_result.execution_id)
 
     # -----------------------------------------------------------------------
-    # Step 3 — Normalization
+    # Step 4 — Normalization
     # -----------------------------------------------------------------------
     norm_registry = NormalizationRegistry()
     normalizer = ResponseNormalizer(
@@ -193,7 +200,7 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
     normalization_result = normalizer.normalize(analysis_result.llm_response)
 
     # -----------------------------------------------------------------------
-    # Step 4 — Validation
+    # Step 5 — Validation
     # -----------------------------------------------------------------------
     validation_profile = context.get_validation_profile()  # default = STANDARD
     validation_input = ValidationInput(
@@ -204,7 +211,7 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
     validation_result = validator.validate(validation_input)
 
     # -----------------------------------------------------------------------
-    # Step 5 — Validation → CP1 handoff
+    # Step 6 — Validation → CP1 handoff
     # -----------------------------------------------------------------------
     handoff = context.create_validation_to_cp1_handoff()
     cp1_input = handoff.hand_off(validation_result, normalization_result)
@@ -213,10 +220,11 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
         cp1_result = context.cp1_service.run(cp1_input)
 
     # -----------------------------------------------------------------------
-    # Step 6 — Execution package
+    # Step 7 — Execution package
     # -----------------------------------------------------------------------
     execution_data = ExecutionData(
         selected=selected,
+        engineering_context=engineering_context,
         prompt_request=prompt_request,
         llm_request=llm_request,
         result=analysis_result,
@@ -241,6 +249,7 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
         source_artifact_count=len(GOLDEN_SOURCE_ARTIFACTS),
         consolidated_artifacts=consolidated,
         selected=selected,
+        engineering_context=engineering_context,
         analysis_result=analysis_result,
         normalization_result=normalization_result,
         validation_result=validation_result,

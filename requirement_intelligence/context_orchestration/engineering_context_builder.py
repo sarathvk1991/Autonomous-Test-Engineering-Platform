@@ -51,6 +51,7 @@ from requirement_intelligence.context_orchestration.models.context_identity impo
 )
 from requirement_intelligence.context_orchestration.models.engineering_context import (
     ENGINEERING_CONTEXT_VERSION,
+    ContextContribution,
     ContextEvidence,
     ContextMetadata,
     ContextProvenance,
@@ -91,6 +92,8 @@ class EngineeringContextBuilder:
         subject: ContextSubject,
         contributing_groups: Sequence[ConsolidatedArtifact],
         policy: OrchestrationPolicy,
+        inclusion_reasons: Sequence[str] | None = None,
+        candidate_group_count: int | None = None,
     ) -> EngineeringContext:
         """Assemble one ``EngineeringContext`` from already-selected groups.
 
@@ -101,23 +104,35 @@ class EngineeringContextBuilder:
                 order is preserved exactly; the builder never reorders.
             policy: The policy under which the groups were selected. Recorded in
                 the context and used to render the Orchestration Reason.
+            inclusion_reasons: One reason per contributing group, explaining why
+                the policy admitted it. Supplied by the orchestrator, which is
+                the only component that knows the ranking each group survived.
+                When omitted, a reason naming the policy is recorded — never an
+                empty one, because an unexplained group is not permitted.
+            candidate_group_count: How many groups the orchestrator ranked before
+                selecting. Defaults to the number of contributing groups, which
+                is the truth when no group was discarded.
 
         Returns:
             EngineeringContext: The immutable, fully populated context.
 
         Raises:
-            ContextConstructionError: If any input is missing or wrongly typed.
+            ContextConstructionError: If any input is missing, wrongly typed, or
+                if the supplied reasons or candidate count do not match the groups.
             PolicyCompatibilityError: If *policy* has an incompatible major version.
             ContextBudgetExceededError: If the evidence exceeds *policy*'s budget.
         """
         self._validate_inputs(subject, contributing_groups, policy)
         self._validate_policy_compatibility(policy)
 
+        reasons = self._resolve_inclusion_reasons(contributing_groups, policy, inclusion_reasons)
+        candidates = self._resolve_candidate_count(contributing_groups, candidate_group_count)
+
         evidence = self._collect_evidence(contributing_groups)
         self._enforce_budget(evidence, policy)
 
         members = self._all_artifacts(evidence)
-        provenance = self._build_provenance(contributing_groups, len(members))
+        provenance = self._build_provenance(contributing_groups, reasons, candidates, len(members))
         context_id = self._build_context_id(subject, provenance.contributing_consolidated_ids)
 
         return EngineeringContext(
@@ -132,7 +147,7 @@ class EngineeringContextBuilder:
                 context_model_version=self._context_model_version,
             ),
             orchestration_reason=self._render_reason(
-                subject, contributing_groups, evidence, policy
+                subject, contributing_groups, evidence, policy, candidates
             ),
         )
 
@@ -164,6 +179,39 @@ class EngineeringContextBuilder:
                 raise ContextConstructionError(
                     f"Expected ConsolidatedArtifact, got: {type(group).__name__}"
                 )
+
+    @staticmethod
+    def _resolve_inclusion_reasons(
+        groups: Sequence[ConsolidatedArtifact],
+        policy: OrchestrationPolicy,
+        supplied: Sequence[str] | None,
+    ) -> tuple[str, ...]:
+        """Return one non-empty inclusion reason per contributing group."""
+        if supplied is None:
+            return tuple(f"Included by policy '{policy.policy_id}'." for _ in groups)
+        if len(supplied) != len(groups):
+            raise ContextConstructionError(
+                f"Expected one inclusion reason per contributing group: "
+                f"{len(groups)} group(s), {len(supplied)} reason(s)."
+            )
+        for reason in supplied:
+            if not isinstance(reason, str) or not reason.strip():
+                raise ContextConstructionError("An inclusion reason must be a non-empty string.")
+        return tuple(supplied)
+
+    @staticmethod
+    def _resolve_candidate_count(
+        groups: Sequence[ConsolidatedArtifact], supplied: int | None
+    ) -> int:
+        """Return the number of groups the orchestrator ranked."""
+        if supplied is None:
+            return len(groups)
+        if supplied < len(groups):
+            raise ContextConstructionError(
+                f"candidate_group_count ({supplied}) is below the {len(groups)} "
+                f"group(s) supplied as contributing."
+            )
+        return supplied
 
     @staticmethod
     def _validate_policy_compatibility(policy: OrchestrationPolicy) -> None:
@@ -253,13 +301,30 @@ class EngineeringContextBuilder:
 
     @staticmethod
     def _build_provenance(
-        groups: Sequence[ConsolidatedArtifact], artifact_count: int
+        groups: Sequence[ConsolidatedArtifact],
+        inclusion_reasons: Sequence[str],
+        candidate_group_count: int,
+        artifact_count: int,
     ) -> ContextProvenance:
         """Record which groups contributed, in the order they were selected."""
-        ids = tuple(group.consolidated_id for group in groups)
+        contributions = tuple(
+            ContextContribution(
+                consolidated_id=group.consolidated_id,
+                module=group.module,
+                business_area=group.business_area,
+                consolidation_reason=group.consolidation_reason,
+                artifact_count=(
+                    len(group.functional_artifacts)
+                    + len(group.security_artifacts)
+                    + len(group.quality_artifacts)
+                ),
+                inclusion_reason=reason,
+            )
+            for group, reason in zip(groups, inclusion_reasons, strict=True)
+        )
         return ContextProvenance(
-            contributing_consolidated_ids=ids,
-            contributing_group_count=len(ids),
+            contributions=contributions,
+            candidate_group_count=candidate_group_count,
             source_artifact_count=artifact_count,
         )
 
@@ -285,6 +350,7 @@ class EngineeringContextBuilder:
         groups: Sequence[ConsolidatedArtifact],
         evidence: ContextEvidence,
         policy: OrchestrationPolicy,
+        candidate_group_count: int,
     ) -> str:
         """Render the Orchestration Reason from the policy's own template."""
         categories = ", ".join(sorted(str(c) for c in evidence.categories_present))
@@ -292,5 +358,6 @@ class EngineeringContextBuilder:
             subject=subject.label,
             strategy=str(policy.selection_strategy),
             groups=len(groups),
+            candidates=candidate_group_count,
             categories=categories or "no evidence",
         )

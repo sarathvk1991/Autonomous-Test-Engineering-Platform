@@ -115,4 +115,6 @@ class LegacySelectionPolicy(OrchestrationPolicy):
     evidence_ordering: EvidenceOrdering = EvidenceOrdering.GROUP_ORDER
     selection_strategy: SelectionStrategy = SelectionStrategy.SINGLE_LARGEST
 
-    reason_template: str = "Selected {subject} as the largest of {groups} consolidation group(s)."
+    reason_template: str = (
+        "Selected {subject} as the largest of {candidates} consolidation group(s)."
+    )

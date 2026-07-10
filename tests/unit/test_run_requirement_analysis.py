@@ -42,6 +42,14 @@ from requirement_intelligence.execution.execution_metrics import (
     execution_package_identifier,
 )
 from requirement_intelligence.llm.llm_models import LLMResponse
+from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
+from requirement_intelligence.models.enums import (
+    RiskLevel,
+    SourceCategory,
+    SourceSystem,
+    SourceType,
+)
+from requirement_intelligence.models.source_artifact import SourceArtifact
 from requirement_intelligence.platform import PlatformCapabilities, PlatformContext
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
@@ -68,27 +76,53 @@ cli = _load_cli()
 # ---------------------------------------------------------------------------
 
 
-class FakeArtifact:
-    def __init__(
-        self,
-        consolidated_id: str,
-        functional: int = 0,
-        security: int = 0,
-        quality: int = 0,
-        module: str = "module-x",
-        business_area: str | None = None,
-        risk: str = "low",
-    ) -> None:
-        self.consolidated_id = consolidated_id
-        self.module = module
-        self.business_area = business_area
-        self.risk_level = risk
-        self.functional_artifacts = [object()] * functional
-        self.security_artifacts = [object()] * security
-        self.quality_artifacts = [object()] * quality
+def _source_artifact(
+    index: int, category: SourceCategory, source_type: SourceType
+) -> SourceArtifact:
+    return SourceArtifact(
+        artifact_id=f"A{index}",
+        source_system=SourceSystem.JIRA,
+        source_record_id=f"REC-{index}",
+        source_category=category,
+        source_type=source_type,
+        title=f"Artifact {index}",
+    )
 
-    def model_dump(self, **_: Any) -> dict[str, Any]:
-        return {"consolidatedId": self.consolidated_id}
+
+def FakeArtifact(  # noqa: N802 — kept as a factory so call sites read unchanged
+    consolidated_id: str,
+    functional: int = 0,
+    security: int = 0,
+    quality: int = 0,
+    module: str = "module-x",
+    business_area: str | None = None,
+    risk: RiskLevel = RiskLevel.LOW,
+) -> ConsolidatedArtifact:
+    """Build a real ``ConsolidatedArtifact`` with the requested domain counts.
+
+    A duck-typed stand-in no longer suffices: the Engineering Context
+    Orchestrator type-checks its candidates, and the context it builds carries
+    real ``SourceArtifact`` evidence (CAP-076C).
+    """
+    return ConsolidatedArtifact(
+        consolidated_id=consolidated_id,
+        module=module,
+        business_area=business_area,
+        risk_level=risk,
+        consolidation_reason=f"Grouped by component {module}",
+        functional_artifacts=[
+            _source_artifact(i, SourceCategory.FUNCTIONAL, SourceType.STORY)
+            for i in range(functional)
+        ],
+        security_artifacts=[
+            _source_artifact(100 + i, SourceCategory.SECURITY, SourceType.DAST)
+            for i in range(security)
+        ],
+        quality_artifacts=[
+            _source_artifact(200 + i, SourceCategory.QUALITY, SourceType.SAST)
+            for i in range(quality)
+        ],
+    )
 
 
 class FakeLLMRequest:
@@ -148,7 +182,7 @@ class FakeResult:
 class FakeContext:
     """A drop-in fake PlatformContext returning mocked components."""
 
-    def __init__(self, consolidated: list[FakeArtifact], result: Any = None) -> None:
+    def __init__(self, consolidated: list[ConsolidatedArtifact], result: Any = None) -> None:
         self._consolidated = consolidated
         self._result = result
 
@@ -161,6 +195,11 @@ class FakeContext:
         engine = MagicMock()
         engine.consolidate.return_value = self._consolidated
         return engine
+
+    def create_engineering_context_orchestrator(self, policy: Any = None) -> Any:
+        # Faithful drop-in: the real hub's orchestrator, bound to the active
+        # LegacySelectionPolicy, so the CLI's selection behaviour is genuinely tested.
+        return PlatformContext().create_engineering_context_orchestrator(policy)
 
     def create_prompt_builder(self) -> MagicMock:
         builder = MagicMock()
@@ -211,7 +250,7 @@ def _no_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _use_context(
     monkeypatch: pytest.MonkeyPatch,
-    consolidated: list[FakeArtifact],
+    consolidated: list[ConsolidatedArtifact],
     result: Any = None,
 ) -> None:
     monkeypatch.setattr(cli, "PlatformContext", lambda: FakeContext(consolidated, result))
@@ -221,9 +260,18 @@ def _read_manifest(directory: Path) -> dict[str, Any]:
     return json.loads((directory / "manifest.json").read_text())
 
 
+def _engineering_context(artifact: ConsolidatedArtifact) -> Any:
+    """Orchestrate *artifact* into the context the execution package persists."""
+    return (
+        PlatformContext().create_engineering_context_orchestrator().orchestrate([artifact]).context
+    )
+
+
 def _dry_run_data(execution_name: str | None = None) -> ExecutionData:
+    selected = FakeArtifact("cons-a", quality=2)
     return ExecutionData(
-        selected=FakeArtifact("cons-a", quality=2),
+        selected=selected,
+        engineering_context=_engineering_context(selected),
         prompt_request=FakePromptRequest(),
         llm_request=FakeLLMRequest("rid"),
         result=None,
@@ -237,8 +285,10 @@ def _dry_run_data(execution_name: str | None = None) -> ExecutionData:
 
 
 def _live_data(validation_result: Any = None, cp1_result: Any = None) -> ExecutionData:
+    selected = FakeArtifact("cons-a", quality=2)
     return ExecutionData(
-        selected=FakeArtifact("cons-a", quality=2),
+        selected=selected,
+        engineering_context=_engineering_context(selected),
         prompt_request=FakePromptRequest(),
         llm_request=FakeLLMRequest("execution-456"),
         result=FakeResult(),
@@ -350,8 +400,11 @@ def test_history_finalize_copies_to_latest(tmp_path: Path) -> None:
 def test_writer_dry_run_writes_core_only(tmp_path: Path) -> None:
     result = ExecutionWriter().write(tmp_path, _dry_run_data())
     names = {p.name for p in tmp_path.iterdir()}
+    # engineering_context.json is core: the context exists before the provider is
+    # ever called, so a dry run persists the orchestration decision too (CAP-076C).
     assert names == {
         "consolidated_artifact.json",
+        "engineering_context.json",
         "prompt.txt",
         "llm_request.json",
         "manifest.json",
@@ -471,6 +524,7 @@ def test_engineering_metrics_from_pipeline_only() -> None:
     ]
     data = ExecutionData(
         selected=consolidated[1],
+        engineering_context=_engineering_context(consolidated[1]),
         prompt_request=FakePromptRequest(),
         llm_request=FakeLLMRequest("r"),
         result=None,
@@ -1516,6 +1570,7 @@ def test_writer_dry_run_never_persists_validation_result(tmp_path: Path) -> None
     assert not (tmp_path / _VALIDATION_ARTIFACT).exists()
     assert {p.name for p in tmp_path.iterdir()} == {
         "consolidated_artifact.json",
+        "engineering_context.json",
         "prompt.txt",
         "llm_request.json",
         "manifest.json",

@@ -1,11 +1,21 @@
 """Requirement Prompt Builder.
 
-Turns a :class:`ConsolidatedArtifact` into a provider-agnostic
+Turns an :class:`EngineeringContext` into a provider-agnostic
 :class:`PromptRequest`.  The builder **assembles** prompts; it does not author
 them.  All fixed prompt wording is resolved from the governed Prompt Registry
 (``PromptRegistry`` → ``PromptLoader`` → ``versions/`` → ``manifest.json``).
-The builder's own responsibility is limited to rendering the consolidated
-artifact into the context block and injecting it into the governed template.
+The builder's own responsibility is limited to rendering the engineering context
+into the context block and injecting it into the governed template.
+
+Why a context and not a ``ConsolidatedArtifact`` (CAP-076C)
+-----------------------------------------------------------
+Before CAP-076C the builder rendered a single consolidation group, which is why
+the runtime could only ever show a reasoner one group's evidence (CAP-074B).
+It now renders an :class:`EngineeringContext`, the canonical orchestration
+model, whose evidence may span several groups. Under the active
+``LegacySelectionPolicy`` a context carries exactly one group, so every rendered
+byte is unchanged; the join separators below exist for the multi-group contexts
+CAP-076D activates and are inert until then.
 
 It knows nothing about Gemini, Azure OpenAI, Anthropic or any specific model,
 and it makes no API calls.  ``PromptRequest`` carries the finished prompt and
@@ -25,9 +35,12 @@ governance, the template contract, lifecycle decisions, or version selection:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
+from requirement_intelligence.context_orchestration.models.engineering_context import (
+    EngineeringContext,
+)
 from requirement_intelligence.models.source_artifact import SourceArtifact
 from requirement_intelligence.prompts import prompt_constants as consts
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
@@ -43,6 +56,12 @@ if TYPE_CHECKING:
 
 _SECTION_SEPARATOR = "\n\n"
 
+#: Joins the contributing groups' ids on the Consolidation ID header line.
+_ID_SEPARATOR = ", "
+
+#: Joins the contributing groups' consolidation reasons on the reason line.
+_REASON_SEPARATOR = "; "
+
 #: Identifier of the governed prompt the runtime resolves from the registry.
 RUNTIME_PROMPT_ID = "requirement_analysis"
 
@@ -57,8 +76,9 @@ class PromptRequest(Schema):
     user_prompt:
         The analysis + output-format prompt, with the artifact context injected.
     source_consolidated_id:
-        Identifier of the :class:`ConsolidatedArtifact` this prompt was built
-        from, retained for traceability.
+        Identifiers of the :class:`ConsolidatedArtifact`\\ s whose evidence this
+        prompt was built from, retained for traceability. A single id today;
+        comma-joined once a context spans several groups.
     prompt_version:
         Semantic version of the prompt contract that produced this request
         (see :data:`~requirement_intelligence.prompts.prompt_constants.PROMPT_VERSION`).
@@ -118,9 +138,9 @@ class PromptRequest(Schema):
 
 
 class RequirementPromptBuilder:
-    """Build a :class:`PromptRequest` from a :class:`ConsolidatedArtifact`.
+    """Build a :class:`PromptRequest` from an :class:`EngineeringContext`.
 
-    The builder is deterministic: the same artifact always yields the same
+    The builder is deterministic: the same context always yields the same
     prompt.  It holds no provider state.
 
     Prompt text is resolved once, at construction, from the governed
@@ -162,56 +182,70 @@ class RequirementPromptBuilder:
         """The governed :class:`PromptDefinition` this builder is pinned to."""
         return self._definition
 
-    def build(self, artifact: ConsolidatedArtifact) -> PromptRequest:
-        """Assemble the complete prompt for the given consolidated artifact.
+    def build(self, context: EngineeringContext) -> PromptRequest:
+        """Assemble the complete prompt for the given engineering context.
 
         Parameters
         ----------
-        artifact:
-            The consolidated artifact to analyse.
+        context:
+            The orchestrated engineering context to analyse.
 
         Returns
         -------
         PromptRequest
             The provider-agnostic prompt request.
         """
-        artifact_context = self._render_artifact_context(artifact)
+        artifact_context = self._render_artifact_context(context)
 
         return PromptRequest(
             system_prompt=self._template.system_prompt,
             user_prompt=self._template.render_user_prompt(artifact_context),
             prompt_version=self._definition.metadata.version,
-            source_consolidated_id=artifact.consolidated_id,
+            source_consolidated_id=_ID_SEPARATOR.join(
+                context.provenance.contributing_consolidated_ids
+            ),
         )
 
     # ------------------------------------------------------------------
     # Internal rendering helpers (data injection only — no prompt wording)
     # ------------------------------------------------------------------
 
-    def _render_artifact_context(self, artifact: ConsolidatedArtifact) -> str:
-        """Render the artifact into the injectable context block."""
+    def _render_artifact_context(self, context: EngineeringContext) -> str:
+        """Render the engineering context into the injectable context block.
+
+        The header projects the context onto the same five labelled lines the
+        governed template has always carried: the contributing group ids, the
+        subject and its business area, the rolled-up risk, and the reason each
+        contributing group was grouped. The three domain sections project the
+        context's three evidence tuples (CAP-076A Invariant 6).
+        """
+        contributions = context.provenance.contributions
+        reasons = [c.consolidation_reason for c in contributions if c.consolidation_reason]
+
         header_lines = [
             consts.ARTIFACT_CONTEXT_HEADER,
-            f"{consts.LABEL_CONSOLIDATION_ID}: {artifact.consolidated_id}",
-            f"{consts.LABEL_MODULE}: {artifact.module}",
+            f"{consts.LABEL_CONSOLIDATION_ID}: "
+            f"{_ID_SEPARATOR.join(context.provenance.contributing_consolidated_ids)}",
+            f"{consts.LABEL_MODULE}: {context.subject.label}",
             f"{consts.LABEL_BUSINESS_AREA}: "
-            f"{artifact.business_area or consts.ARTIFACT_FIELD_FALLBACK}",
-            f"{consts.LABEL_RISK_LEVEL}: {artifact.risk_level}",
+            f"{context.subject.business_area or consts.ARTIFACT_FIELD_FALLBACK}",
+            f"{consts.LABEL_RISK_LEVEL}: {context.context_metadata.risk_level}",
         ]
-        if artifact.consolidation_reason:
+        if reasons:
             header_lines.append(
-                f"{consts.LABEL_CONSOLIDATION_REASON}: {artifact.consolidation_reason}"
+                f"{consts.LABEL_CONSOLIDATION_REASON}: {_REASON_SEPARATOR.join(reasons)}"
             )
 
+        evidence = context.evidence
         sections = [
-            self._render_section(consts.FUNCTIONAL_SECTION_HEADER, artifact.functional_artifacts),
-            self._render_section(consts.SECURITY_SECTION_HEADER, artifact.security_artifacts),
-            self._render_section(consts.QUALITY_SECTION_HEADER, artifact.quality_artifacts),
+            self._render_section(consts.FUNCTIONAL_SECTION_HEADER, evidence.functional_artifacts),
+            self._render_section(consts.SECURITY_SECTION_HEADER, evidence.security_artifacts),
+            self._render_section(consts.QUALITY_SECTION_HEADER, evidence.quality_artifacts),
         ]
 
         return "\n".join(header_lines) + _SECTION_SEPARATOR + _SECTION_SEPARATOR.join(sections)
 
-    def _render_section(self, header: str, artifacts: list[SourceArtifact]) -> str:
+    def _render_section(self, header: str, artifacts: Sequence[SourceArtifact]) -> str:
         """Render one domain section, deterministically, preserving list order."""
         lines = [header]
         if not artifacts:

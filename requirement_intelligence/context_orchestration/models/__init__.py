@@ -9,6 +9,7 @@ from requirement_intelligence.context_orchestration.models.context_identity impo
 )
 from requirement_intelligence.context_orchestration.models.engineering_context import (
     ENGINEERING_CONTEXT_VERSION,
+    ContextContribution,
     ContextCorrelation,
     ContextDependencies,
     ContextEvidence,
@@ -22,6 +23,7 @@ from requirement_intelligence.context_orchestration.models.engineering_context i
 
 __all__ = [
     "ENGINEERING_CONTEXT_VERSION",
+    "ContextContribution",
     "ContextCorrelation",
     "ContextDependencies",
     "ContextEvidence",

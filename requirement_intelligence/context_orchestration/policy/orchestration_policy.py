@@ -47,7 +47,14 @@ from shared.contracts.base import Schema
 #: Placeholders an Orchestration Reason template may reference. Any other
 #: placeholder is rejected at policy construction, so a reason can never fail to
 #: render at orchestration time.
-REASON_TEMPLATE_FIELDS: frozenset[str] = frozenset({"subject", "strategy", "groups", "categories"})
+#:
+#: ``groups`` and ``candidates`` are deliberately separate: the first counts the
+#: groups that *contributed* evidence, the second the groups that were *ranked*.
+#: A reason claiming "the largest of 1 group" when 22 others were discarded would
+#: be a hidden ranking (CAP-076A Invariant 7), which is what this split prevents.
+REASON_TEMPLATE_FIELDS: frozenset[str] = frozenset(
+    {"subject", "strategy", "groups", "candidates", "categories"}
+)
 
 
 class CoverageMode(StrEnum):

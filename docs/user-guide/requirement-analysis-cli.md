@@ -276,6 +276,7 @@ python scripts/run_requirement_analysis.py analyze --dry-run --verbose
 It still writes the deterministic, provider-independent artifacts:
 
 - `consolidated_artifact.json`
+- `engineering_context.json`
 - `prompt.txt`
 - `llm_request.json`
 - `manifest.json` (with `"executionMode": "dry-run"`, `"dryRun": true`)
@@ -321,6 +322,7 @@ Every execution package contains a canonical `manifest.json` plus its artifacts.
 | --------------------------- | ---------- | ----------- |
 | `manifest.json`             | always     | Canonical entry point / index. |
 | `consolidated_artifact.json`| always     | The exact ConsolidatedArtifact analysed. |
+| `engineering_context.json`  | always     | The EngineeringContext the prompt was built from: contributing groups, evidence counts, orchestration policy, and the reason each group was included. |
 | `prompt.txt`                | always     | System + User prompt submitted to the provider. |
 | `llm_request.json`          | always     | Serialised LLMRequest. |
 | `analysis_result.json`      | live only  | Serialised AnalysisResult. |

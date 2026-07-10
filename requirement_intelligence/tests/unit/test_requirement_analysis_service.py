@@ -28,11 +28,23 @@ from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.analysis.requirement_analysis_service import (
     RequirementAnalysisService,
 )
+from requirement_intelligence.context_orchestration import (
+    EngineeringContext,
+    EngineeringContextBuilder,
+    EngineeringContextOrchestrator,
+    LegacySelectionPolicy,
+)
 from requirement_intelligence.llm.llm_exceptions import ProviderGenerationError
 from requirement_intelligence.llm.llm_models import LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
-from requirement_intelligence.models.enums import RiskLevel
+from requirement_intelligence.models.enums import (
+    RiskLevel,
+    SourceCategory,
+    SourceSystem,
+    SourceType,
+)
+from requirement_intelligence.models.source_artifact import SourceArtifact
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     PromptRequest,
     RequirementPromptBuilder,
@@ -45,19 +57,43 @@ _PROMPT_VERSION = "1.0.0"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _config(
     reasoning_contract_version: str = _REASONING_VERSION,
 ) -> AnalysisConfiguration:
-    return AnalysisConfiguration(
-        reasoning_contract_version=reasoning_contract_version
+    return AnalysisConfiguration(reasoning_contract_version=reasoning_contract_version)
+
+
+def _context(consolidated_id: str = "CONS-1") -> EngineeringContext:
+    """The orchestrated context the service consumes (CAP-076C).
+
+    Built through the real orchestrator under the active ``LegacySelectionPolicy``,
+    so these tests exercise the same context shape the runtime produces.
+    """
+    orchestrator = EngineeringContextOrchestrator(
+        policy=LegacySelectionPolicy(),
+        builder=EngineeringContextBuilder(),
     )
+    return orchestrator.orchestrate([_consolidated(consolidated_id)]).context
 
 
 def _consolidated(consolidated_id: str = "CONS-1") -> ConsolidatedArtifact:
+    # Carries one artifact because an EngineeringContext with no evidence is not
+    # a context (the model rejects it), and the service now consumes a context.
     return ConsolidatedArtifact(
         consolidated_id=consolidated_id,
         module="payments",
         risk_level=RiskLevel.HIGH,
+        functional_artifacts=[
+            SourceArtifact(
+                artifact_id="F1",
+                source_system=SourceSystem.JIRA,
+                source_record_id="PAY-1",
+                source_category=SourceCategory.FUNCTIONAL,
+                source_type=SourceType.STORY,
+                title="Pay with a saved card",
+            )
+        ],
     )
 
 
@@ -114,28 +150,29 @@ def _make_service(
 # 1. Successful orchestration
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_analyze_returns_analysis_result() -> None:
     service, _, _ = _make_service()
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
     assert isinstance(result, AnalysisResult)
 
 
 @pytest.mark.unit
 def test_analyze_invokes_builder_and_provider_once() -> None:
     service, builder, provider = _make_service()
-    artifact = _consolidated()
+    context = _context()
 
-    service.analyze(artifact)
+    service.analyze(context)
 
-    builder.build.assert_called_once_with(artifact)
+    builder.build.assert_called_once_with(context)
     provider.generate.assert_called_once()
 
 
 @pytest.mark.unit
 def test_analyze_passes_llm_request_with_execution_id_as_request_id() -> None:
     service, _, provider = _make_service()
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
 
     llm_request = provider.generate.call_args.args[0]
     assert llm_request.request_id == result.execution_id
@@ -146,12 +183,13 @@ def test_analyze_passes_llm_request_with_execution_id_as_request_id() -> None:
 # 2. AnalysisResult correctness
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_analysis_result_correctness() -> None:
     response = _llm_response()
     service, _, _ = _make_service(llm_response=response)
 
-    result = service.analyze(_consolidated("CONS-XYZ"))
+    result = service.analyze(_context("CONS-XYZ"))
 
     assert result.source_consolidated_id == "CONS-XYZ"
     assert result.provider == "gemini"
@@ -163,7 +201,7 @@ def test_analysis_result_correctness() -> None:
 @pytest.mark.unit
 def test_analysis_result_serializes_camelcase() -> None:
     service, _, _ = _make_service()
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
 
     data = result.model_dump(by_alias=True)
     for key in (
@@ -183,7 +221,7 @@ def test_analysis_result_serializes_camelcase() -> None:
 @pytest.mark.unit
 def test_analysis_result_is_immutable() -> None:
     service, _, _ = _make_service()
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
     with pytest.raises((TypeError, ValueError)):
         result.analysis_id = "mutated"  # type: ignore[misc]
 
@@ -192,10 +230,11 @@ def test_analysis_result_is_immutable() -> None:
 # 3. UUID generation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_ids_are_uuid4_and_distinct() -> None:
     service, _, _ = _make_service()
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
 
     assert result.analysis_id != result.execution_id
     assert UUID(result.analysis_id).version == 4
@@ -205,8 +244,8 @@ def test_ids_are_uuid4_and_distinct() -> None:
 @pytest.mark.unit
 def test_each_analysis_gets_fresh_ids() -> None:
     service, _, _ = _make_service()
-    first = service.analyze(_consolidated())
-    second = service.analyze(_consolidated())
+    first = service.analyze(_context())
+    second = service.analyze(_context())
 
     assert first.analysis_id != second.analysis_id
     assert first.execution_id != second.execution_id
@@ -216,10 +255,11 @@ def test_each_analysis_gets_fresh_ids() -> None:
 # 4. Duration calculation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_duration_ms_is_non_negative_float() -> None:
     service, _, _ = _make_service()
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
     assert isinstance(result.duration_ms, float)
     assert result.duration_ms >= 0.0
 
@@ -234,7 +274,7 @@ def test_duration_ms_computed_from_timestamps() -> None:
         "requirement_intelligence.analysis.requirement_analysis_service.datetime"
     ) as fake_datetime:
         fake_datetime.now.side_effect = [start, end]
-        result = service.analyze(_consolidated())
+        result = service.analyze(_context())
 
     assert result.started_at == start
     assert result.completed_at == end
@@ -245,24 +285,25 @@ def test_duration_ms_computed_from_timestamps() -> None:
 # 5. Version + metadata propagation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_prompt_version_propagates() -> None:
     service, _, _ = _make_service(prompt_request=_prompt_request())
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
     assert result.prompt_version == _PROMPT_VERSION
 
 
 @pytest.mark.unit
 def test_reasoning_contract_version_propagates() -> None:
     service, _, _ = _make_service()
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
     assert result.reasoning_contract_version == _REASONING_VERSION
 
 
 @pytest.mark.unit
 def test_metadata_propagation() -> None:
     service, _, _ = _make_service(prompt_request=_prompt_request("CONS-META"))
-    result = service.analyze(_consolidated("CONS-META"))
+    result = service.analyze(_context("CONS-META"))
     # Framework metadata bridged through PromptRequest.to_llm_request.
     assert result.metadata["prompt_version"] == _PROMPT_VERSION
     assert result.metadata["source_consolidated_id"] == "CONS-META"
@@ -272,22 +313,21 @@ def test_metadata_propagation() -> None:
 # 6. Error handling
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_prompt_builder_failure_raises_prompt_generation_error() -> None:
     service, _, provider = _make_service(build_side_effect=RuntimeError("boom"))
     with pytest.raises(PromptGenerationError, match="Prompt generation failed"):
-        service.analyze(_consolidated())
+        service.analyze(_context())
     # Provider is never invoked when prompt generation fails.
     provider.generate.assert_not_called()
 
 
 @pytest.mark.unit
 def test_provider_failure_raises_provider_execution_error() -> None:
-    service, _, _ = _make_service(
-        generate_side_effect=ProviderGenerationError("quota exceeded")
-    )
+    service, _, _ = _make_service(generate_side_effect=ProviderGenerationError("quota exceeded"))
     with pytest.raises(ProviderExecutionError, match="Provider execution failed"):
-        service.analyze(_consolidated())
+        service.analyze(_context())
 
 
 @pytest.mark.unit
@@ -296,7 +336,7 @@ def test_provider_specific_exception_does_not_leak() -> None:
         generate_side_effect=ProviderGenerationError("internal provider detail")
     )
     with pytest.raises(ProviderExecutionError) as exc_info:
-        service.analyze(_consolidated())
+        service.analyze(_context())
     # The raised error is an orchestration error, not the provider's exception.
     assert not isinstance(exc_info.value, ProviderGenerationError)
     # The original provider exception is preserved as the cause for debugging.
@@ -314,6 +354,7 @@ def test_all_orchestration_errors_share_base() -> None:
 # ---------------------------------------------------------------------------
 # 7. Configuration validation (constructor)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_missing_prompt_builder_raises_configuration_error() -> None:
@@ -357,5 +398,5 @@ def test_configuration_reasoning_version_propagates() -> None:
         provider=provider,
         configuration=_config(reasoning_contract_version="rc-9.9.9"),
     )
-    result = service.analyze(_consolidated())
+    result = service.analyze(_context())
     assert result.reasoning_contract_version == "rc-9.9.9"

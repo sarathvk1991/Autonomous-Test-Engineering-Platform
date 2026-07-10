@@ -59,7 +59,12 @@ from shared.contracts.base import Schema
 #: Version of the :class:`EngineeringContext` *shape* — the single source of
 #: truth. Advances additively; breaking changes are ADR-gated, matching
 #: ``PROMPT_DEFINITION_VERSION``.
-ENGINEERING_CONTEXT_VERSION = "1.0"
+#:
+#: 1.1 (CAP-076C) reshaped :class:`ContextProvenance` around
+#: :class:`ContextContribution`. The 1.0 shape was never serialised by anything —
+#: no execution package, baseline, or persisted artifact carries it — so the
+#: change invalidates no stored data.
+ENGINEERING_CONTEXT_VERSION = "1.1"
 
 
 class ContextSubjectBasis(StrEnum):
@@ -179,22 +184,79 @@ class ContextDependencies(Schema):
     related_context_ids: tuple[EngineeringContextId, ...] = Field(default=())
 
 
+class ContextContribution(Schema):
+    """One :class:`ConsolidatedArtifact`'s documented contribution to a context.
+
+    Carries the group's own identity and grouping facts alongside the
+    orchestrator's :attr:`inclusion_reason` — the explicit answer to *"why is
+    this group in this context?"*. Nothing about a contributing group is left
+    implicit, so a context needs no access to Consolidation to be explained
+    (CAP-076C Stage 9).
+
+    ``module`` and ``consolidation_reason`` are recorded rather than re-derived
+    because they are Consolidation's outputs, not Orchestration's, and only the
+    contributing group knows them.
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    consolidated_id: str = Field(..., min_length=1, description="The contributing group's id.")
+    module: str = Field(..., min_length=1, description="The group's module / component.")
+    business_area: str | None = Field(default=None)
+    consolidation_reason: str | None = Field(
+        default=None, description="Why Consolidation grouped these records together."
+    )
+    artifact_count: int = Field(..., ge=1, description="Source artifacts the group carries.")
+    inclusion_reason: str = Field(
+        ...,
+        min_length=1,
+        description="Why the orchestrator's policy admitted this group into the context.",
+    )
+
+
 class ContextProvenance(Schema):
     """How this context came to exist — which groups fed it, and how much.
 
     Traceability of individual evidence is not duplicated here: every
     ``SourceArtifact`` already carries ``(source_system, source_record_id)``.
+
+    :attr:`candidate_group_count` records how many groups the orchestrator
+    *considered*, not merely how many it chose. Without it, "selected the
+    largest group" is unfalsifiable — a reader cannot tell a policy that
+    discarded four candidates from one that had no choice to make.
     """
 
     model_config = ConfigDict(alias_generator=to_camel)
 
-    contributing_consolidated_ids: tuple[str, ...] = Field(
+    contributions: tuple[ContextContribution, ...] = Field(
         ...,
         min_length=1,
-        description="Ids of the ConsolidatedArtifacts that contributed, in order.",
+        description="The contributing groups, in the order the orchestrator selected them.",
     )
-    contributing_group_count: int = Field(..., ge=1)
+    candidate_group_count: int = Field(
+        ..., ge=1, description="Groups the policy ranked, including those not selected."
+    )
     source_artifact_count: int = Field(..., ge=1)
+
+    @property
+    def contributing_consolidated_ids(self) -> tuple[str, ...]:
+        """Ids of the ConsolidatedArtifacts that contributed, in selection order."""
+        return tuple(contribution.consolidated_id for contribution in self.contributions)
+
+    @property
+    def contributing_group_count(self) -> int:
+        """How many groups contributed evidence to this context."""
+        return len(self.contributions)
+
+    @model_validator(mode="after")
+    def _validate_provenance(self) -> ContextProvenance:
+        """A context cannot draw on more groups than the policy ever considered."""
+        if self.candidate_group_count < self.contributing_group_count:
+            raise ValueError(
+                f"candidateGroupCount ({self.candidate_group_count}) is below the "
+                f"{self.contributing_group_count} group(s) that contributed."
+            )
+        return self
 
 
 class OrchestrationMetadata(Schema):
@@ -249,13 +311,10 @@ class EngineeringContext(Schema):
                 f"sourceArtifactCount={self.provenance.source_artifact_count} but "
                 f"{self.evidence.total_count} evidence artifacts are present."
             )
-        if self.provenance.contributing_group_count != len(
-            self.provenance.contributing_consolidated_ids
-        ):
+        contributed = sum(c.artifact_count for c in self.provenance.contributions)
+        if contributed != self.evidence.total_count:
             raise ValueError(
-                f"Provenance disagrees with itself: "
-                f"contributingGroupCount={self.provenance.contributing_group_count} but "
-                f"{len(self.provenance.contributing_consolidated_ids)} contributing ids "
-                f"are recorded."
+                f"Contributions disagree with evidence: the contributing groups declare "
+                f"{contributed} artifacts but {self.evidence.total_count} are present."
             )
         return self

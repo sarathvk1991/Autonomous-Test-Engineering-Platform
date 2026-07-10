@@ -16,6 +16,7 @@ no business logic and no file-format knowledge.
 Pipeline (no layer is bypassed; the provider is never called directly):
 
     Connectors -> Mappers -> Consolidation Engine
+        -> EngineeringContextOrchestrator -> EngineeringContext
         -> RequirementAnalysisService
             -> RequirementPromptBuilder -> PromptRequest -> LLMRequest
             -> LLM Provider -> LLMResponse
@@ -41,6 +42,9 @@ DEFAULT_OUTPUT_DIR = _REPO_ROOT / "output" / "executions"
 sys.path.insert(0, str(_REPO_ROOT))
 
 from requirement_intelligence.connectors.connector_exceptions import ConnectorError  # noqa: E402
+from requirement_intelligence.context_orchestration import (  # noqa: E402
+    ContextOrchestrationError,
+)
 from requirement_intelligence.execution import (  # noqa: E402
     ExecutionData,
     ExecutionHistory,
@@ -274,30 +278,22 @@ def run_engineering_pipeline(
     return source_count, consolidated
 
 
-def _select_consolidated(consolidated: list[Any]) -> Any:
-    """Deterministically select the consolidated artifact to analyse.
+def _resolve_candidates(consolidated: list[Any], artifact_id: str | None) -> list[Any]:
+    """Return the consolidation groups the orchestrator may choose between.
 
-    Rule: the artifact with the greatest total grouped count; ties are broken by
-    ``consolidated_id`` ascending. Fully reproducible for a given input.
+    The CLI narrows the *candidate set*; it never selects from it. ``--artifact-id``
+    restricts the run to one named group, after which the orchestration policy has
+    exactly one candidate and trivially selects it. Which group an unrestricted run
+    analyses is decided by the governed ``OrchestrationPolicy`` alone (CAP-076C).
     """
-
-    def _key(c: Any) -> tuple[int, str]:
-        total = len(c.functional_artifacts) + len(c.security_artifacts) + len(c.quality_artifacts)
-        return (-total, c.consolidated_id)
-
-    return sorted(consolidated, key=_key)[0]
-
-
-def _resolve_selected(consolidated: list[Any], artifact_id: str | None) -> Any:
-    """Return the consolidated artifact to analyse (by id, or deterministically)."""
     if not consolidated:
         raise CliError("No consolidated artifacts were produced from the inputs.")
-    if artifact_id:
-        for candidate in consolidated:
-            if candidate.consolidated_id == artifact_id:
-                return candidate
-        raise CliError(f"No consolidated artifact found with id '{artifact_id}'.")
-    return _select_consolidated(consolidated)
+    if not artifact_id:
+        return consolidated
+    for candidate in consolidated:
+        if candidate.consolidated_id == artifact_id:
+            return [candidate]
+    raise CliError(f"No consolidated artifact found with id '{artifact_id}'.")
 
 
 def _resolve_output_base(output_dir: str) -> Path:
@@ -477,7 +473,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
 
     try:
         source_count, consolidated = run_engineering_pipeline(context, console, registry)
-        selected = _resolve_selected(consolidated, args.artifact_id)
+        candidates = _resolve_candidates(consolidated, args.artifact_id)
     except CliError as exc:
         console.error(str(exc))
         return 1
@@ -489,11 +485,25 @@ def handle_analyze(args: argparse.Namespace) -> int:
         console.error(f"Source mapping failed ({mode} mode): {exc}")
         return 1
 
+    # Engineering Context Orchestration (CAP-076C). The orchestrator applies the
+    # governed policy PlatformContext bound it to and returns the composed context
+    # plus the groups that composed it. The CLI ranks nothing and selects nothing.
+    console.action("\nOrchestrating Engineering Context")
+    try:
+        orchestration = context.create_engineering_context_orchestrator().orchestrate(candidates)
+    except ContextOrchestrationError as exc:
+        console.error(f"Engineering context orchestration failed: {exc}")
+        return 1
+    engineering_context = orchestration.context
+    selected = orchestration.selected_groups[0]
+    console.ok(f"{engineering_context.context_id}")
+    console.detail(engineering_context.orchestration_reason)
+
     console.note(f"\nSelected\n  {selected.consolidated_id}")
 
     console.action("\nBuilding Prompt")
     prompt_builder = context.create_prompt_builder()
-    prompt_request = prompt_builder.build(selected)
+    prompt_request = prompt_builder.build(engineering_context)
     console.ok("Complete")
 
     if args.dry_run:
@@ -511,7 +521,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
             context.create_analysis_configuration(REASONING_CONTRACT_VERSION),
         )
         try:
-            result = service.analyze(selected)
+            result = service.analyze(engineering_context)
         except Exception as exc:  # surface provider/orchestration errors cleanly
             console.error(f"Analysis failed: {exc}")
             return 1
@@ -547,6 +557,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
 
     data = ExecutionData(
         selected=selected,
+        engineering_context=engineering_context,
         prompt_request=prompt_request,
         llm_request=llm_request,
         result=result,
@@ -750,7 +761,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--artifact-id",
         default=None,
-        help="Analyse a specific ConsolidatedArtifact id (default: deterministic selection).",
+        help="Restrict the run to one ConsolidatedArtifact id (default: policy selection).",
     )
     analyze.add_argument(
         "--provider", default=DEFAULT_PROVIDER, help=f"LLM provider (default: {DEFAULT_PROVIDER})."
@@ -856,8 +867,9 @@ EXECUTION MODE
   are present before any source is contacted.
 
 analyze OPTIONS
-  --artifact-id <id>     Analyse a specific ConsolidatedArtifact (default:
-                         deterministic selection — the largest by grouped count).
+  --artifact-id <id>     Restrict the run to one ConsolidatedArtifact (default:
+                         the governed orchestration policy selects — today, the
+                         largest group by grouped count).
   --provider <name>      LLM provider (default: gemini). Supported today: gemini.
   --model <name>         Override the configured model (default: env model).
   --output-dir <dir>     Base dir for saved executions (default: output/executions/).

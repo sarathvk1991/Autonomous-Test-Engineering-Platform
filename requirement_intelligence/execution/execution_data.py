@@ -18,7 +18,13 @@ class ExecutionData:
     Fields
     ------
     selected:
-        The ConsolidatedArtifact that was analysed.
+        The ConsolidatedArtifact the orchestrator selected. Persisted verbatim as
+        ``consolidated_artifact.json``.
+    engineering_context:
+        The ``EngineeringContext`` the Engineering Context Orchestrator composed
+        and the prompt was built from (CAP-076C). Persisted as
+        ``engineering_context.json``. Present for every run, including dry runs:
+        the context exists before the provider is ever called.
     prompt_request:
         The built PromptRequest (system/user prompts, version, full prompt).
     llm_request:
@@ -67,6 +73,7 @@ class ExecutionData:
     """
 
     selected: Any
+    engineering_context: Any
     prompt_request: Any
     llm_request: Any
     result: Any | None

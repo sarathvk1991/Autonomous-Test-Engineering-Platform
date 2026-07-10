@@ -24,6 +24,7 @@ class ManifestBuilder:
         result = data.result
         full_prompt = data.full_prompt
         generated_text = data.generated_text
+        context = data.engineering_context
 
         manifest: dict[str, Any] = {
             "manifestSchemaVersion": meta.MANIFEST_SCHEMA_VERSION,
@@ -33,6 +34,7 @@ class ManifestBuilder:
             "connectorRegistryVersion": meta.CONNECTOR_REGISTRY_VERSION,
             "mapperVersion": meta.MAPPER_VERSION,
             "consolidationEngineVersion": meta.CONSOLIDATION_ENGINE_VERSION,
+            "contextOrchestrationVersion": meta.CONTEXT_ORCHESTRATION_VERSION,
             "promptFrameworkVersion": meta.PROMPT_FRAMEWORK_VERSION,
             "llmFrameworkVersion": meta.LLM_FRAMEWORK_VERSION,
             "analysisServiceVersion": meta.ANALYSIS_SERVICE_VERSION,
@@ -51,6 +53,15 @@ class ManifestBuilder:
             "promptVersion": data.prompt_request.prompt_version,
             "reasoningContractVersion": data.reasoning_contract_version,
             "selectedArtifactId": data.selected.consolidated_id,
+            # Engineering Context references (CAP-076C). The manifest names the
+            # artifact and the governed rules that produced it, so a package can be
+            # attributed to its orchestration policy without opening another file.
+            # SHA-256 and byte count are recorded in ``generatedArtifacts`` alongside
+            # every other artifact — one mechanism, no special case.
+            "engineeringContextArtifact": "engineering_context.json",
+            "engineeringContextId": str(context.context_id),
+            "orchestrationPolicyId": str(context.orchestration.policy_id),
+            "orchestrationPolicyVersion": str(context.orchestration.policy_version),
             "promptSha256": sha256_text(full_prompt),
             "promptCharacterCount": len(full_prompt),
             "responseSha256": sha256_text(generated_text) if result else None,

@@ -15,6 +15,12 @@ from __future__ import annotations
 
 import pytest
 
+from requirement_intelligence.context_orchestration import (
+    EngineeringContext,
+    EngineeringContextBuilder,
+    EngineeringContextOrchestrator,
+    LegacySelectionPolicy,
+)
 from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
 from requirement_intelligence.models.enums import (
     RiskLevel,
@@ -29,6 +35,7 @@ from requirement_intelligence.prompts.prompt_constants import PROMPT_VERSION
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _artifact(
     artifact_id: str,
@@ -89,21 +96,45 @@ def _full_consolidated() -> ConsolidatedArtifact:
     )
 
 
-def _empty_consolidated() -> ConsolidatedArtifact:
+def _single_domain_consolidated() -> ConsolidatedArtifact:
+    """A group whose evidence covers one domain only.
+
+    There is no all-empty case to test: a context with no evidence is rejected by
+    the model, and Consolidation never forms a group without members. The
+    placeholder is exercised by the two domains that *are* empty.
+    """
     return ConsolidatedArtifact(
         consolidated_id="CONS-EMPTY",
         module="reporting",
         risk_level=RiskLevel.LOW,
+        functional_artifacts=[
+            _artifact("F9", SourceCategory.FUNCTIONAL, SourceType.STORY, "Export a report"),
+        ],
     )
+
+
+def _context(artifact: ConsolidatedArtifact) -> EngineeringContext:
+    """Orchestrate *artifact* into the context the prompt builder consumes.
+
+    Uses the real orchestrator under the active ``LegacySelectionPolicy``, so a
+    single group produces a single-group context — exactly what the runtime
+    hands the builder (CAP-076C).
+    """
+    orchestrator = EngineeringContextOrchestrator(
+        policy=LegacySelectionPolicy(),
+        builder=EngineeringContextBuilder(),
+    )
+    return orchestrator.orchestrate([artifact]).context
 
 
 # ---------------------------------------------------------------------------
 # 1. Prompt generation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_build_returns_prompt_request() -> None:
-    result = RequirementPromptBuilder().build(_full_consolidated())
+    result = RequirementPromptBuilder().build(_context(_full_consolidated()))
     assert isinstance(result, PromptRequest)
     assert result.system_prompt.strip()
     assert result.user_prompt.strip()
@@ -112,14 +143,14 @@ def test_build_returns_prompt_request() -> None:
 
 @pytest.mark.unit
 def test_full_prompt_combines_system_and_user() -> None:
-    result = RequirementPromptBuilder().build(_full_consolidated())
+    result = RequirementPromptBuilder().build(_context(_full_consolidated()))
     assert result.system_prompt in result.full_prompt
     assert result.user_prompt in result.full_prompt
 
 
 @pytest.mark.unit
 def test_prompt_includes_analysis_objectives() -> None:
-    user_prompt = RequirementPromptBuilder().build(_full_consolidated()).user_prompt
+    user_prompt = RequirementPromptBuilder().build(_context(_full_consolidated())).user_prompt
     lowered = user_prompt.lower()
     assert "functional requirements" in lowered
     assert "security findings" in lowered
@@ -133,9 +164,10 @@ def test_prompt_includes_analysis_objectives() -> None:
 # 2. Artifact injection
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_artifact_context_is_injected() -> None:
-    user_prompt = RequirementPromptBuilder().build(_full_consolidated()).user_prompt
+    user_prompt = RequirementPromptBuilder().build(_context(_full_consolidated())).user_prompt
     # Header metadata
     assert "CONS-1" in user_prompt
     assert "payments" in user_prompt
@@ -152,7 +184,7 @@ def test_artifact_context_is_injected() -> None:
 
 @pytest.mark.unit
 def test_artifact_field_fallback_used_for_missing_values() -> None:
-    user_prompt = RequirementPromptBuilder().build(_full_consolidated()).user_prompt
+    user_prompt = RequirementPromptBuilder().build(_context(_full_consolidated())).user_prompt
     # The DAST finding has no priority/component → fallback marker present.
     assert "n/a" in user_prompt
 
@@ -161,9 +193,10 @@ def test_artifact_field_fallback_used_for_missing_values() -> None:
 # 3. JSON instruction inclusion
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_json_contract_keys_included() -> None:
-    user_prompt = RequirementPromptBuilder().build(_full_consolidated()).user_prompt
+    user_prompt = RequirementPromptBuilder().build(_context(_full_consolidated())).user_prompt
     for key in (
         '"summary"',
         '"functional_requirements"',
@@ -177,7 +210,7 @@ def test_json_contract_keys_included() -> None:
 
 @pytest.mark.unit
 def test_prompt_forbids_markdown_and_prose() -> None:
-    user_prompt = RequirementPromptBuilder().build(_full_consolidated()).user_prompt
+    user_prompt = RequirementPromptBuilder().build(_context(_full_consolidated())).user_prompt
     lowered = user_prompt.lower()
     assert "json" in lowered
     assert "markdown" in lowered
@@ -189,12 +222,13 @@ def test_prompt_forbids_markdown_and_prose() -> None:
 # 4. Deterministic output
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_prompt_generation_is_deterministic() -> None:
     builder = RequirementPromptBuilder()
-    artifact = _full_consolidated()
-    first = builder.build(artifact)
-    second = builder.build(artifact)
+    context = _context(_full_consolidated())
+    first = builder.build(context)
+    second = builder.build(context)
     assert first.system_prompt == second.system_prompt
     assert first.user_prompt == second.user_prompt
     assert first.full_prompt == second.full_prompt
@@ -211,19 +245,21 @@ def test_prompt_preserves_artifact_order() -> None:
             _artifact("B", SourceCategory.FUNCTIONAL, SourceType.STORY, "Second story"),
         ],
     )
-    user_prompt = RequirementPromptBuilder().build(artifact).user_prompt
+    user_prompt = RequirementPromptBuilder().build(_context(artifact)).user_prompt
     assert user_prompt.index("First story") < user_prompt.index("Second story")
 
 
 # ---------------------------------------------------------------------------
-# 5. Empty artifact handling
+# 5. Empty domain handling
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
-def test_empty_artifact_produces_valid_prompt() -> None:
-    result = RequirementPromptBuilder().build(_empty_consolidated())
+def test_domains_without_evidence_render_the_placeholder() -> None:
+    result = RequirementPromptBuilder().build(_context(_single_domain_consolidated()))
     assert isinstance(result, PromptRequest)
-    assert result.user_prompt.count("(none provided)") == 3
+    # Functional evidence is present; security and quality render the placeholder.
+    assert result.user_prompt.count("(none provided)") == 2
     # Output / JSON instructions are still present for an empty artifact.
     assert '"recommendations"' in result.user_prompt
     assert "business area: n/a" in result.user_prompt.lower()
@@ -233,9 +269,10 @@ def test_empty_artifact_produces_valid_prompt() -> None:
 # 6. Provider-agnosticism
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_prompt_has_no_provider_references() -> None:
-    result = RequirementPromptBuilder().build(_full_consolidated())
+    result = RequirementPromptBuilder().build(_context(_full_consolidated()))
     blob = result.full_prompt.lower()
     for forbidden in ("gemini", "azure", "openai", "anthropic", "bedrock", "ollama"):
         assert forbidden not in blob
@@ -245,11 +282,12 @@ def test_prompt_has_no_provider_references() -> None:
 # 7. PromptRequest → LLMRequest bridge (provider-agnostic contract)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_to_llm_request_bridges_to_contract() -> None:
     from requirement_intelligence.llm.llm_models import LLMRequest
 
-    result = RequirementPromptBuilder().build(_full_consolidated())
+    result = RequirementPromptBuilder().build(_context(_full_consolidated()))
     llm_request = result.to_llm_request(request_id="trace-1", temperature=0.2)
 
     assert isinstance(llm_request, LLMRequest)
@@ -261,10 +299,8 @@ def test_to_llm_request_bridges_to_contract() -> None:
 
 @pytest.mark.unit
 def test_to_llm_request_merges_metadata() -> None:
-    result = RequirementPromptBuilder().build(_full_consolidated())
-    llm_request = result.to_llm_request(
-        request_id="trace-2", metadata={"run": "abc"}
-    )
+    result = RequirementPromptBuilder().build(_context(_full_consolidated()))
+    llm_request = result.to_llm_request(request_id="trace-2", metadata={"run": "abc"})
     assert llm_request.metadata["run"] == "abc"
     assert llm_request.metadata["source_consolidated_id"] == "CONS-1"
 
@@ -273,22 +309,23 @@ def test_to_llm_request_merges_metadata() -> None:
 # 8. Prompt versioning
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_prompt_request_contains_prompt_version() -> None:
-    result = RequirementPromptBuilder().build(_full_consolidated())
+    result = RequirementPromptBuilder().build(_context(_full_consolidated()))
     assert result.prompt_version == PROMPT_VERSION
 
 
 @pytest.mark.unit
 def test_prompt_version_propagates_to_llm_request() -> None:
-    result = RequirementPromptBuilder().build(_full_consolidated())
+    result = RequirementPromptBuilder().build(_context(_full_consolidated()))
     llm_request = result.to_llm_request(request_id="trace-ver")
     assert llm_request.metadata["prompt_version"] == PROMPT_VERSION
 
 
 @pytest.mark.unit
 def test_framework_metadata_overrides_user_metadata() -> None:
-    result = RequirementPromptBuilder().build(_full_consolidated())
+    result = RequirementPromptBuilder().build(_context(_full_consolidated()))
     llm_request = result.to_llm_request(
         request_id="trace-override",
         metadata={"prompt_version": "999", "source_consolidated_id": "BAD"},

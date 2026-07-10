@@ -19,6 +19,9 @@ from requirement_intelligence.execution.baseline_metrics_builder import (
     BaselineMetricsBuilder,
 )
 from requirement_intelligence.execution.cp1_report_builder import CP1ReportBuilder
+from requirement_intelligence.execution.engineering_context_artifact import (
+    EngineeringContextArtifactBuilder,
+)
 from requirement_intelligence.execution.execution_data import ExecutionData
 from requirement_intelligence.execution.execution_metrics import observe_response_counts
 from requirement_intelligence.execution.execution_summary_builder import (
@@ -30,7 +33,12 @@ from requirement_intelligence.execution.validation_report_builder import (
     ValidationReportBuilder,
 )
 
-_CORE_ARTIFACTS = ("consolidated_artifact.json", "prompt.txt", "llm_request.json")
+_CORE_ARTIFACTS = (
+    "consolidated_artifact.json",
+    "engineering_context.json",
+    "prompt.txt",
+    "llm_request.json",
+)
 _RESULT_ARTIFACTS = (
     "analysis_result.json",
     "raw_llm_response.json",
@@ -79,6 +87,7 @@ class ExecutionWriter:
         self._review = ReviewBuilder()
         self._validation_report = ValidationReportBuilder()
         self._cp1_report = CP1ReportBuilder()
+        self._engineering_context = EngineeringContextArtifactBuilder()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -107,10 +116,20 @@ class ExecutionWriter:
     # -- internal ----------------------------------------------------------
 
     def _write_core(self, target_dir: Path, data: ExecutionData) -> tuple[str, ...]:
-        """Write the three artifacts produced for every run (incl. dry runs)."""
+        """Write the four artifacts produced for every run (incl. dry runs).
+
+        ``engineering_context.json`` records the orchestration decision — which
+        groups were considered, which contributed, and under which policy — that
+        the prompt in ``prompt.txt`` is the rendering of. The writer serialises
+        the context it is handed; it composes nothing and re-decides nothing.
+        """
         _write_json(
             target_dir / "consolidated_artifact.json",
             data.selected.model_dump(mode="json", by_alias=True),
+        )
+        _write_json(
+            target_dir / "engineering_context.json",
+            self._engineering_context.build(data.engineering_context),
         )
         prompt_txt = (
             "===== SYSTEM PROMPT =====\n"

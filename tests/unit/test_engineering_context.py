@@ -17,6 +17,7 @@ from requirement_intelligence.context_orchestration import (
     ENGINEERING_CONTEXT_VERSION,
     ContextBudgetExceededError,
     ContextConstructionError,
+    ContextContribution,
     ContextDependencies,
     ContextEvidence,
     ContextMetadata,
@@ -296,6 +297,28 @@ def test_equal_inputs_produce_equal_contexts() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _contribution(consolidated_id: str, artifact_count: int = 1) -> ContextContribution:
+    return ContextContribution(
+        consolidated_id=consolidated_id,
+        module="auth",
+        artifact_count=artifact_count,
+        inclusion_reason="selected for the test",
+    )
+
+
+def _provenance(
+    ids: tuple[str, ...],
+    *,
+    source_artifact_count: int,
+    artifact_count: int = 1,
+) -> ContextProvenance:
+    return ContextProvenance(
+        contributions=tuple(_contribution(i, artifact_count) for i in ids),
+        candidate_group_count=len(ids),
+        source_artifact_count=source_artifact_count,
+    )
+
+
 def _valid_kwargs() -> dict[str, object]:
     return {
         "context_id": EngineeringContextId("ctx-a-1"),
@@ -305,11 +328,7 @@ def _valid_kwargs() -> dict[str, object]:
         ),
         "context_metadata": ContextMetadata(risk_level=RiskLevel.LOW),
         "dependencies": ContextDependencies(),
-        "provenance": ContextProvenance(
-            contributing_consolidated_ids=("cons-a",),
-            contributing_group_count=1,
-            source_artifact_count=1,
-        ),
+        "provenance": _provenance(("cons-a",), source_artifact_count=1),
         "orchestration": OrchestrationMetadata(
             policy_id=OrchestrationPolicyId("coverage"),
             policy_version=PolicyVersion(1, 0, 0),
@@ -329,25 +348,29 @@ def test_context_rejects_empty_evidence() -> None:
 @pytest.mark.unit
 def test_context_rejects_provenance_disagreeing_with_evidence() -> None:
     kwargs = _valid_kwargs()
-    kwargs["provenance"] = ContextProvenance(
-        contributing_consolidated_ids=("cons-a",),
-        contributing_group_count=1,
-        source_artifact_count=99,
-    )
+    kwargs["provenance"] = _provenance(("cons-a",), source_artifact_count=99)
     with pytest.raises(ValidationError, match="Provenance disagrees with evidence"):
         EngineeringContext(**kwargs)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
-def test_context_rejects_self_inconsistent_provenance() -> None:
+def test_context_rejects_contributions_disagreeing_with_evidence() -> None:
+    """A group cannot claim to have contributed artifacts the context does not hold."""
     kwargs = _valid_kwargs()
-    kwargs["provenance"] = ContextProvenance(
-        contributing_consolidated_ids=("cons-a", "cons-b"),
-        contributing_group_count=1,
-        source_artifact_count=1,
-    )
-    with pytest.raises(ValidationError, match="Provenance disagrees with itself"):
+    kwargs["provenance"] = _provenance(("cons-a",), source_artifact_count=1, artifact_count=7)
+    with pytest.raises(ValidationError, match="Contributions disagree with evidence"):
         EngineeringContext(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.unit
+def test_provenance_rejects_fewer_candidates_than_contributors() -> None:
+    """A context cannot draw on more groups than the policy ever ranked."""
+    with pytest.raises(ValidationError, match="candidateGroupCount"):
+        ContextProvenance(
+            contributions=(_contribution("cons-a"), _contribution("cons-b")),
+            candidate_group_count=1,
+            source_artifact_count=2,
+        )
 
 
 @pytest.mark.unit
@@ -492,13 +515,19 @@ def test_platform_context_returns_independent_instances() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Containment — the central CAP-076B claim
+# Containment — the runtime consumers of the subsystem (CAP-076C)
 # ---------------------------------------------------------------------------
 
-#: Modules permitted to import the subsystem at CAP-076B. Everything else must
-#: be unaware it exists. CAP-076C will add the orchestrator and the CLI.
+#: Modules permitted to reference the subsystem now that it is live. The set is
+#: exhaustive and deliberately small: construction happens only in
+#: ``PlatformContext``, the CLI orchestrates, and the three consumers below read
+#: an ``EngineeringContext``. Anything else must remain unaware it exists.
 _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/platform/platform_context.py"),
+    Path("requirement_intelligence/prompts/requirement_prompt_builder.py"),
+    Path("requirement_intelligence/analysis/requirement_analysis_service.py"),
+    Path("requirement_intelligence/execution/engineering_context_artifact.py"),
+    Path("scripts/run_requirement_analysis.py"),
 }
 
 _RUNTIME_ROOTS = (
@@ -520,11 +549,11 @@ def _runtime_modules() -> list[Path]:
 
 
 @pytest.mark.unit
-def test_nothing_but_platform_context_consumes_the_orchestration_framework() -> None:
-    """EngineeringContext, the builder, and the policy have zero runtime consumers.
+def test_only_the_permitted_modules_consume_the_orchestration_framework() -> None:
+    """The subsystem's runtime consumers are exactly the ones CAP-076C wired.
 
-    This is the milestone's behavioural guarantee, expressed as a test so that
-    CAP-076C must *consciously* update it rather than silently wire the runtime.
+    Expressed as a test so that a future milestone must *consciously* widen the
+    set rather than silently grow a new dependency on orchestration.
     """
     importers = {
         path.relative_to(_REPO_ROOT)
