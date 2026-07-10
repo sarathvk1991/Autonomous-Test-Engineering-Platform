@@ -1,8 +1,35 @@
-# CAP-076 Part 1 — Engineering Context Assembly: Architecture Review & Design
+# CAP-076 Part 1 — Engineering Context Orchestration: Architecture Review & Design
 
 **Status:** Architecture review. No code written. No ADR, model, Consolidation, or Selection change made.
 **Predecessor:** `docs/reviews/cap-074b-requirement-evidence-investigation.md`, `docs/proposals/cross-source-consolidation-and-selection.md`
 **Outcome:** One architecture recommended. Requires a new ADR before Part 2.
+**Terminology:** Canonicalised by CAP-076A (2026-07-10). This document previously used *Engineering Context Assembly / Context Assembler / Assembly Policy / Assembly Reason*; those terms are retired.
+
+---
+
+## 0. Canonical Terminology
+
+CAP-076A promotes the following to canonical architectural vocabulary. These are **documentation terms**. Implementation class names remain deferred to Part 2.
+
+| Canonical term | Meaning | Retired synonym |
+|---|---|---|
+| **Engineering Context Orchestration** | The subsystem, and the architectural stage, sitting between Consolidation and Analysis. | Engineering Context Assembly |
+| **Engineering Context Orchestrator** | The component that executes that stage. | Context Assembler |
+| **Orchestration Policy** | The governed, versioned rule set deciding coverage, ranking, and evidence budget. | Assembly Policy |
+| **Orchestration Reason** | The single explainable sentence recording why a context was composed as it was. | Assembly Reason |
+| **`EngineeringContext`** | The canonical model the orchestrator produces. New; additive. | — |
+| **`ConsolidatedArtifact`** | The canonical model Consolidation produces. **Unchanged.** Becomes an *input* to orchestration. | — |
+
+### 0.1 Disambiguation — two senses of "orchestration"
+
+The word already carries a load-bearing meaning in this repository, and the new vocabulary collides with it. The collision is resolved by qualifier, never by context alone:
+
+- **Analysis-execution orchestration** — the established sense. ADR-0002, ADR-0003 and ADR-0011 designate `ResponseNormalizer`, `ResponseValidator`, `CP1Service` and `RequirementAnalysisService` as *single orchestration boundaries*: components that sequence collaborators and own no policy. `RequirementAnalysisService` "performs orchestration only" in this sense.
+- **Engineering Context Orchestration** — the new sense. Composing evidence into a context under a governed policy. This stage **does** own policy; that is its entire purpose.
+
+They are different kinds of thing: one sequences calls, the other decides content. Wherever ambiguity is possible, prose in this repository must use the full term *Engineering Context Orchestration* rather than the bare noun.
+
+A note on why the rename is nonetheless an improvement: `assembly` was itself already overloaded, denoting dependency wiring in `cp1/response/cp1_composition.py` ("the composition root owns only assembly") and in `docs/architecture/normalization-assembly-contract.md`. Both candidate words were taken. The chosen one is at least taken by a *neighbouring* concept rather than an unrelated one, and it is disambiguated above.
 
 ---
 
@@ -42,7 +69,7 @@ source-registry.json
 | **Selection** | Choosing one artifact to analyse | — | `scripts/run_requirement_analysis.py:277-300` |
 | `RequirementPromptBuilder` | Rendering *one* `ConsolidatedArtifact` into the `{artifact_context}` block; injecting it into the governed template | Prompt wording, version selection, governance | `prompts/requirement_prompt_builder.py:165-239` |
 | `PromptRegistry` / template contract | Governed prompt text, SHA verification, exactly-one-placeholder invariant | Data rendering | `prompts/framework/prompt_template_contract.py:65` |
-| `RequirementAnalysisService` | Orchestration of one analysis over one artifact | Validation, persistence, ingestion | `analysis/requirement_analysis_service.py:92` |
+| `RequirementAnalysisService` | Analysis-execution orchestration of one analysis over one artifact (see §0) | Validation, persistence, ingestion | `analysis/requirement_analysis_service.py:92` |
 | `ExecutionWriter` / `manifest_builder` | Persisting the package; `selectedArtifactId` | Selection policy | `execution/manifest_builder.py:53` |
 
 ### 1.3 The one ownership anomaly
@@ -148,7 +175,7 @@ The builder is honest about the emptiness. It is reporting the defect, not causi
 
 Gemini receives precisely the bytes the prompt contains — verified byte-for-byte in CAP-075. The prompt instructs it to "Analyze the security findings" and "Analyze the functional requirements" (`prompt_constants.py:59-73`) while supplying `(none provided)` for both. Any functional or security requirement in the response is, by construction, ungrounded.
 
-CAP-074B established that five such hallucinated requirements passed all 13 validation rules and the CP1 gate with zero findings. That is a **real, separate defect** — the platform has no grounding rule — but it is downstream. Fixing the model or the prompt cannot conjure evidence that was discarded three stages earlier. Fixing the context assembly will, however, *widen the surface* for ungrounded inference, which makes the grounding gap a prerequisite rather than an afterthought (§9, §10).
+CAP-074B established that five such hallucinated requirements passed all 13 validation rules and the CP1 gate with zero findings. That is a **real, separate defect** — the platform has no grounding rule — but it is downstream. Fixing the model or the prompt cannot conjure evidence that was discarded three stages earlier. Fixing the context orchestration will, however, *widen the surface* for ungrounded inference, which makes the grounding gap a prerequisite rather than an afterthought (§9, §11).
 
 ### 2.7 Why the regression suite never caught this
 
@@ -195,8 +222,8 @@ EngineeringContext
 │
 └── Provenance            how this context came to exist
       ├── contributing consolidation groups
-      ├── assembly policy + policy version
-      └── assembly reason (one explainable sentence)
+      ├── orchestration policy + policy version
+      └── orchestration reason (one explainable sentence)
 ```
 
 ### 3.2 Governing invariants
@@ -205,8 +232,30 @@ EngineeringContext
 2. **Correlation is asserted, never implied.** Evidence placed side by side must not be presented as related unless a correlation basis is recorded. Co-presence is not co-reference. *(This is the central risk of every option in §4.)*
 3. **Bounded.** A context must fit one reasoning session. Unbounded evidence is not a context; it is a data dump.
 4. **Traceable.** Every element resolves to a `(source_system, source_record_id)`.
-5. **Deterministic and explainable.** Same input → same context, same ID, same one-sentence reason. No AI in assembly.
+5. **Deterministic and explainable.** Within a single run, the orchestrator is a pure function of its input: no I/O, no clock, no AI, no randomness. Every composition decision can be stated in a sentence.
 6. **Renderable without prompt change.** A context must project onto the existing three-section context block, so the governed prompt template is untouched.
+7. **Reproducible.** *(Added by CAP-076A.)* Given identical repository inputs, Engineering Context Orchestration shall always produce an identical `EngineeringContext` — identical evidence **ordering**, identical evidence **selection**, identical **identifiers**, and an identical **Orchestration Reason** — across processes, machines, and time. **No probabilistic ranking is permitted.**
+
+#### 3.2.1 Why Invariant 7 is not a restatement of Invariant 5
+
+Invariant 5 is *determinism*: one function, one input, one output. Invariant 7 is *reproducibility*: that guarantee must survive leaving the process. A function can be perfectly deterministic in-process and still yield different bytes on the next run, and this repository already contains exactly that hazard.
+
+All three mappers mint identity non-reproducibly:
+
+```python
+# jira_mapper.py:103, sonar_mapper.py:102, zap_mapper.py:91 — identical in all three
+artifact_id=str(uuid4()),
+```
+
+`SourceArtifact.artifact_id` therefore differs on every run. Consolidation is insulated from this only by accident of design: `build_consolidated_id` derives identity from the *grouping key*, never from `artifact_id` (`consolidation_rules.py:200-207`). The golden-baseline harness works around the same hazard by comparing content "excluding run-specific provenance such as IDs and timestamps" (`tests/productization/test_golden_baseline.py:7`).
+
+Invariant 7 converts that accident into a rule. Concretely, it forbids the Engineering Context Orchestrator from:
+
+- deriving a context identifier, an ordering, or a tie-break from `artifact_id`, any UUID, `hash()` (PYTHONHASHSEED-dependent), object identity, or wall-clock time;
+- iterating a `set` or an unordered `dict` where the iteration order can influence selection or ordering;
+- ranking by any score with a probabilistic, learned, or model-derived component.
+
+Every ranking key must be a total order over values the source data actually carries — `risk_level`, artifact count, `consolidated_id`, `source_record_id` — so that ties break identically everywhere. This is what makes a golden hash over `engineering_context.json` meaningful at all; without Invariant 7, the Part 2 re-baseline (§9 Stage 4) could not be verified.
 
 ### 3.3 Worked example (the intent)
 
@@ -249,15 +298,15 @@ JIRA story  → {tag: login,   endpoint: /login}
 
 **It does not solve the primary problem.** It links ZAP↔JIRA on `/login`. It does nothing for Sonar↔JIRA, which is the valuable link. It pays the highest compatibility cost for the smaller half of the benefit.
 
-### Option B — Engineering Context Assembly after Consolidation ★
+### Option B — Engineering Context Orchestration after Consolidation ★
 
-Introduce a new, owned subsystem between Consolidation and Analysis. Consolidation keeps producing groups exactly as it does today. The **Context Assembler** consumes `list[ConsolidatedArtifact]` and applies a *governed assembly policy* to produce one `EngineeringContext`.
+Introduce a new, owned subsystem between Consolidation and Analysis. Consolidation keeps producing groups exactly as it does today. The **Engineering Context Orchestrator** consumes `list[ConsolidatedArtifact]` and applies a *governed orchestration policy* to produce one `EngineeringContext`.
 
 ```
 list[SourceArtifact] ─► ConsolidationEngine ─► list[ConsolidatedArtifact]
                                                           │
-                                              ContextAssembler (new)
-                                              ├─ assembly policy (governed)
+                                              EngineeringContextOrchestrator (new)
+                                              ├─ orchestration policy (governed)
                                               ├─ coverage rule
                                               ├─ risk-aware ranking
                                               └─ evidence budget
@@ -272,7 +321,7 @@ The default policy — *coverage-guaranteed, risk-ranked, budget-bounded*:
 1. For every `SourceCategory` that produced at least one artifact in this run, the context **must** contain evidence from it. (Fixes the defect directly.)
 2. Within a category, groups rank by `risk_level` first, then artifact count, then `consolidated_id`. (A `CRITICAL` defect outranks 71 code smells.)
 3. Evidence is truncated to a per-category budget, deterministically, highest-risk first.
-4. `assembly_reason` states, in one sentence, which groups contributed and why.
+4. `orchestration_reason` states, in one sentence, which groups contributed and why.
 
 | Criterion | Assessment |
 |---|---|
@@ -281,12 +330,12 @@ The default policy — *coverage-guaranteed, risk-ranked, budget-bounded*:
 | Backward compat | **High.** Consolidation, `ConsolidatedArtifact`, `consolidated_id`, mappers, connectors, and `consolidation_rules.py` are untouched. |
 | Performance | O(n log n). Negligible. |
 | Testability | Strong. Policy is injectable; coverage and budget are directly assertable. Enables the ingestion-level test the golden baseline lacks (§2.7). |
-| Scalability | Strong. Budget is enforced at assembly, so prompt size is bounded by policy, not by dataset size. |
-| Extensibility | Strong. Correlation (Option A's real value) later becomes an *enrichment step inside the assembler*, populating `dependencies`, without touching Consolidation. |
+| Scalability | Strong. Budget is enforced at orchestration, so prompt size is bounded by policy, not by dataset size. |
+| Extensibility | Strong. Correlation (Option A's real value) later becomes an *enrichment step inside the orchestrator*, populating `dependencies`, without touching Consolidation. |
 
-The critical property: `EngineeringContext` is a **structural superset** of `ConsolidatedArtifact` (id, subject label, business area, risk level, three evidence lists, reason). Rendering it through the existing three-section context block requires **no prompt wording change and no template change** — the `{artifact_context}` placeholder invariant holds. When exactly one group exists, the assembler degenerates to identity and the rendered prompt is byte-identical to today's.
+The critical property: `EngineeringContext` is a **structural superset** of `ConsolidatedArtifact` (id, subject label, business area, risk level, three evidence lists, reason). Rendering it through the existing three-section context block requires **no prompt wording change and no template change** — the `{artifact_context}` placeholder invariant holds. When exactly one group exists, the orchestrator degenerates to identity and the rendered prompt is byte-identical to today's.
 
-### Option C — Selection assembles multiple ConsolidatedArtifacts
+### Option C — Selection orchestrates multiple ConsolidatedArtifacts
 
 Keep everything; change `_select_consolidated` to return `list[ConsolidatedArtifact]`, and have the Prompt Builder loop over the list.
 
@@ -304,14 +353,14 @@ Option C is Option B with the new subsystem deleted and its responsibility smear
 
 ### 4.1 Recommendation — Option B
 
-**Adopt Option B (Engineering Context Assembly after Consolidation), with Option A deferred as a future enrichment step inside the assembler.**
+**Adopt Option B (Engineering Context Orchestration after Consolidation), with Option A deferred as a future enrichment step inside the orchestrator.**
 
 Reasoning:
 
 1. **It fixes the actual defect.** Coverage guarantee, not correlation inference, is what puts JIRA and ZAP in front of the model. Correlation is a separate, later, harder question — and one that cannot be evaluated until a working multi-source baseline exists.
-2. **It respects every existing ownership boundary.** Consolidation groups. Assembly composes. Prompt renders. Nothing gains a second responsibility.
+2. **It respects every existing ownership boundary.** Consolidation groups. Orchestration composes. Prompt renders. Nothing gains a second responsibility.
 3. **It creates the owner that §1.3 shows is missing.** Selection policy stops being CLI glue and becomes a governed, injectable, unit-testable subsystem — with the immediate benefit that the golden harness can *import* it instead of duplicating it.
-4. **It is the only option with a place to put correlation later.** `EngineeringContext.dependencies` is where Option A's key-set intersection eventually lands, as an enrichment pass over already-assembled evidence, where runaway merging is bounded by the budget rather than by luck.
+4. **It is the only option with a place to put correlation later.** `EngineeringContext.dependencies` is where Option A's key-set intersection eventually lands, as an enrichment pass over an already-orchestrated context, where runaway merging is bounded by the budget rather than by luck.
 5. **It preserves prompt governance and the golden prompt bytes** for the single-group case, which no other option does.
 
 Option C is not wrong in outcome; it is wrong in ownership, and this milestone exists precisely because ownership drift is what produced the defect.
@@ -322,17 +371,17 @@ Option C is not wrong in outcome; it is wrong in ownership, and this milestone e
 
 | Subsystem | Code | Tests | Docs | ADR | Rationale |
 |---|:--:|:--:|:--:|:--:|---|
-| **Context Assembly** (new) | ✅ new | ✅ new | ✅ new | ✅ new | The entire deliverable. |
+| **Engineering Context Orchestration** (new) | ✅ new | ✅ new | ✅ new | ✅ new | The entire deliverable. |
 | `EngineeringContext` model (new) | ✅ new | ✅ new | ✅ | ✅ | New canonical model; additive. |
 | `ConsolidationEngine` | ⬜ | ⬜ | ⬜ | ⬜ | **Untouched.** Groups remain groups. |
 | `consolidation_rules.py` | ⬜ | ⬜ | ⬜ | ⬜ | **Untouched.** Cascade preserved. |
-| `ConsolidatedArtifact` | ⬜ | ⬜ | ➖ | ⬜ | Untouched. Docstring may note it is now an assembly *input*. |
+| `ConsolidatedArtifact` | ⬜ | ⬜ | ➖ | ⬜ | Untouched. Docstring may note it is now an orchestration *input*. |
 | `SourceArtifact` | ⬜ | ⬜ | ⬜ | ⬜ | **Untouched.** |
 | Connectors | ⬜ | ⬜ | ⬜ | ⬜ | **Untouched.** API + FILE mode unaffected. |
 | Mappers | ⬜ | ⬜ | ⬜ | ⬜ | **Untouched** in Part 2. (A future `component` enrichment is out of scope.) |
-| Selection (`_select_consolidated`) | ✅ **removed** | ✅ | ✅ | ✅ | Responsibility migrates into the assembler. |
-| `run_requirement_analysis.py` | ✅ | ✅ | ✅ | ⬜ | Calls the assembler; keeps `--artifact-id` as a policy override. |
-| `PlatformContext` | ✅ | ✅ | ⬜ | ⬜ | Gains `create_context_assembler()`. Construction hub, per existing pattern. |
+| Selection (`_select_consolidated`) | ✅ **removed** | ✅ | ✅ | ✅ | Responsibility migrates into the orchestrator. |
+| `run_requirement_analysis.py` | ✅ | ✅ | ✅ | ⬜ | Calls the orchestrator; keeps `--artifact-id` as a policy override. |
+| `PlatformContext` | ✅ | ✅ | ⬜ | ⬜ | Gains `create_context_orchestrator()`. Construction hub, per existing pattern. |
 | `RequirementPromptBuilder` | ✅ signature | ✅ | ✅ | ⬜ | `build(context)` instead of `build(artifact)`. **Rendering logic and output bytes unchanged for single-group contexts.** |
 | Prompt template / `PromptRegistry` | ⬜ | ⬜ | ⬜ | ⬜ | **Untouched.** One `{artifact_context}` placeholder; wording frozen (ADR-0014). |
 | `prompt_constants.py` framing | ⬜ | ⬜ | ⬜ | ⬜ | **Untouched.** Section headers and line formats reused verbatim. |
@@ -356,7 +405,7 @@ Legend: ✅ change required ・ ➖ verify / possibly minor ・ ⬜ untouched
 Three, and only three:
 
 1. **`PromptRequest.source_consolidated_id`** — becomes a context id. Additive alternative: keep the field, add `source_context_id`, deprecate later. *ADR decision.*
-2. **`manifest.json → selectedArtifactId`** (`execution/manifest_builder.py:53`) — a bundle has an assembled id, plus a list of contributing group ids. *ADR decision: `selectedArtifactId` + `contributingArtifactIds[]`, or a versioned manifest schema bump.*
+2. **`manifest.json → selectedArtifactId`** (`execution/manifest_builder.py:53`) — a bundle has an orchestration-assigned id, plus a list of contributing group ids. *ADR decision: `selectedArtifactId` + `contributingArtifactIds[]`, or a versioned manifest schema bump.*
 3. **`consolidated_artifact.json`** (`execution/execution_writer.py:112`) — becomes `engineering_context.json`, or is written alongside it. Every golden SHA-256 changes either way.
 
 ### 6.2 Untouched, and verified so
@@ -370,7 +419,7 @@ Grepped: `requirement_intelligence/validation/` and `requirement_intelligence/no
 | Today's selected artifact (71 Sonar findings) | 21,202 | 5,300 |
 | Naive union of the top group per category | 39,269 | 9,817 |
 
-An unbudgeted coverage bundle nearly doubles the prompt on this small dataset alone. The evidence budget in Option B's policy is not a nicety — it is load-bearing. This is why coverage must be implemented *inside* an assembler that owns the budget, not as a loop in the prompt builder (Option C).
+An unbudgeted coverage bundle nearly doubles the prompt on this small dataset alone. The evidence budget in Option B's policy is not a nicety — it is load-bearing. This is why coverage must be implemented *inside* an orchestrator that owns the budget, not as a loop in the prompt builder (Option C).
 
 ---
 
@@ -378,18 +427,47 @@ An unbudgeted coverage bundle nearly doubles the prompt on this small dataset al
 
 | Check | Verdict | Evidence |
 |---|:--:|---|
-| No ownership violations | ✅ | Assembler owns composition; Consolidation owns grouping; Builder owns rendering. Option B *removes* the existing violation (§1.3). |
-| No circular dependencies | ✅ | `models ← consolidation ← context_assembly ← analysis ← cli`. Strictly acyclic; assembler imports Consolidation's output type only. |
-| No duplicated responsibilities | ✅ | Selection ceases to exist in two places (CLI + `conftest.py`). Risk rollup stays solely in `consolidation_rules.rollup_risk`, reused by the assembler. |
+| No ownership violations | ✅ | Orchestrator owns composition; Consolidation owns grouping; Builder owns rendering. Option B *removes* the existing violation (§1.3). |
+| No circular dependencies | ✅ | `models ← consolidation ← context_orchestration ← analysis ← cli`. Strictly acyclic; orchestrator imports Consolidation's output type only. |
+| No duplicated responsibilities | ✅ | Selection ceases to exist in two places (CLI + `conftest.py`). Risk rollup stays solely in `consolidation_rules.rollup_risk`, reused by the orchestrator. |
 | Prompt Governance unchanged | ✅ | `PromptRegistry`, `manifest.json`, SHA verification, `versions/` untouched. |
 | Prompt wording unchanged | ✅ | Governed template not edited. `{artifact_context}` placeholder count unchanged (invariant enforced at `prompt_template_contract.py:128`). Framing constants reused verbatim. |
 | Validation unchanged | ✅ | §6.2 — zero coupling. |
 | CP1 unchanged | ✅ | §6.2 — zero coupling. |
 | Execution Package unchanged | ❌ **must change** | `selectedArtifactId` and `consolidated_artifact.json` are, by definition, the selection contract. Cannot be preserved. Requires an explicit ADR ruling. |
-| API mode unchanged | ✅ | Assembly is downstream of ingestion; `EXECUTION_MODE` is mode-agnostic below the connector layer. |
+| API mode unchanged | ✅ | Orchestration is downstream of ingestion; `EXECUTION_MODE` is mode-agnostic below the connector layer. |
 | Productization unchanged | ❌ **must change** | Golden baseline hashes and `EXPECTED_*` constants shift. §2.7 shows the current baseline is unsound regardless. |
 
-**Two of the ten guarantees cannot be honoured.** They are the two that *encode the defect*. The Execution Package's `selectedArtifactId` and the golden baseline's `EXPECTED_CONSOLIDATED_COUNT = 1` are both artefacts of a single-artifact world. Preserving them would mean preserving the bug. This is stated here rather than glossed, because Phase 6 asks for a verdict, not for reassurance.
+**Two of the ten guarantees cannot be honoured.** They are the two that *encode the defect*. The Execution Package's `selectedArtifactId` and the golden baseline's `EXPECTED_CONSOLIDATED_COUNT = 1` are both artefacts of a single-artifact world. Preserving them would mean preserving the bug. This is stated here rather than glossed, because a verdict was asked for, not reassurance.
+
+### 7.1 Ownership chain after the terminology refinement (CAP-076A)
+
+The refined vocabulary does not move a single boundary. Restated end to end:
+
+```
+Consolidation                    owns grouping                       (unchanged)
+  ↓  list[ConsolidatedArtifact]
+Engineering Context Orchestrator owns context composition + policy   (new)
+  ↓  EngineeringContext
+Requirement Prompt Builder       owns rendering                      (unchanged; retyped input)
+  ↓  PromptRequest
+Requirement Analysis Service     owns analysis-execution orchestration (unchanged; retyped input)
+  ↓  AnalysisResult
+Normalization                    owns normalization                  (unchanged)
+  ↓  NormalizationResult
+Validation                       owns judgement                      (unchanged)
+  ↓  ValidationResult
+CP1                              owns the readiness gate             (unchanged)
+  ↓  CP1Result
+Execution Package                owns persistence                    (contract changes; §6.1)
+```
+
+Two boundaries deserve explicit confirmation, because the shared word invites confusion:
+
+- The **Engineering Context Orchestrator** owns *policy* and decides content. It never calls a provider, never validates, never renders a prompt.
+- The **Requirement Analysis Service** owns *analysis-execution orchestration* and decides nothing. It remains the single orchestration boundary for AI execution and continues to own no policy, exactly as `docs/architecture/requirement-analysis-service.md` states.
+
+Nothing in CAP-076A alters either. The rename is vocabulary, not architecture.
 
 ---
 
@@ -397,16 +475,16 @@ An unbudgeted coverage bundle nearly doubles the prompt on this small dataset al
 
 | # | Risk | Severity | Mitigation |
 |---|---|:--:|---|
-| R1 | **Union ≠ correlation.** Evidence appears together without any assertion that it concerns the same code. The model may confabulate relationships — a *subtler* failure than today's obviously-Sonar-only output, and harder to detect. | **High** | Assembly reason must state the basis honestly ("co-selected for coverage; no correlation asserted"). Grounding validation (R2) must precede promotion. |
+| R1 | **Union ≠ correlation.** Evidence appears together without any assertion that it concerns the same code. The model may confabulate relationships — a *subtler* failure than today's obviously-Sonar-only output, and harder to detect. | **High** | Orchestration reason must state the basis honestly ("co-selected for coverage; no correlation asserted"). Grounding validation (R2) must precede promotion. |
 | R2 | **No grounding rule exists.** CAP-074B: five hallucinated requirements passed 13 validation rules and CP1 with zero findings. Widening the evidence surface widens the hallucination surface. | **High** | A grounding rule (requirement must cite a supplied artifact) is a **prerequisite**, not a follow-up. It presupposes artifact traceability in the response schema — a schema change with its own ADR. |
-| R3 | **Prompt-size regression.** Measured 5.3k → 9.8k tokens unbudgeted (§6.3). | Medium | Evidence budget owned by the assembly policy; enforced and asserted in unit tests. |
+| R3 | **Prompt-size regression.** Measured 5.3k → 9.8k tokens unbudgeted (§6.3). | Medium | Evidence budget owned by the orchestration policy; enforced and asserted in unit tests. |
 | R4 | **Golden baseline masks ingestion defects** (§2.7) — the harness bypasses connectors and mappers and hand-sets `component`. | **High** | Add an ingestion-level productization test over the real `input/` fixtures asserting multi-domain coverage. Do this *before* re-baselining, or the re-baseline will re-enshrine the blind spot. |
-| R5 | Selection-rule duplication in `conftest.py:162` diverges from production. | Medium | Harness imports the assembler. Mechanically eliminated by Option B. |
-| R6 | Assembly policy becomes an ungoverned tuning knob (budget, ranking weights). | Medium | Policy is a versioned, injectable object recorded in the manifest — the same discipline Prompt Governance applies to prompts. |
+| R5 | Selection-rule duplication in `conftest.py:162` diverges from production. | Medium | Harness imports the orchestrator. Mechanically eliminated by Option B. |
+| R6 | Orchestration policy becomes an ungoverned tuning knob (budget, ranking weights). | Medium | Policy is a versioned, injectable object recorded in the manifest — the same discipline Prompt Governance applies to prompts. |
 | R7 | `EngineeringContext` drifts from `ConsolidatedArtifact` and the prompt bytes change for single-group runs. | Low | Contract test: one group in → prompt byte-identical to the CAP-075 baseline. |
-| R8 | JIRA singleton groups persist. Even with coverage, the functional evidence in the context is *one* issue. | **High** | Coverage fixes *presence*; it does not fix *sufficiency*. Assembly must select the top-N functional groups, not one. Flag explicitly for the ADR — this is the difference between "JIRA appears" and "JIRA is usable." |
+| R8 | JIRA singleton groups persist. Even with coverage, the functional evidence in the context is *one* issue. | **High** | Coverage fixes *presence*; it does not fix *sufficiency*. Orchestration must select the top-N functional groups, not one. Flag explicitly for the ADR — this is the difference between "JIRA appears" and "JIRA is usable." |
 
-R8 deserves emphasis. Measured, the best functional group available for assembly contains exactly **one** JIRA issue. A coverage guarantee alone would put a single user story in front of the model beside 71 Sonar findings and 36 ZAP alerts. That is technically multi-source and practically still unbalanced. The assembly policy must budget *by domain*, not globally.
+R8 deserves emphasis. Measured, the best functional group available for orchestration contains exactly **one** JIRA issue. A coverage guarantee alone would put a single user story in front of the model beside 71 Sonar findings and 36 ZAP alerts. That is technically multi-source and practically still unbalanced. The orchestration policy must budget *by domain*, not globally.
 
 ---
 
@@ -414,18 +492,18 @@ R8 deserves emphasis. Measured, the best functional group available for assembly
 
 Five stages. Each is independently revertible; each leaves the repository green.
 
-**Stage 0 — Prerequisites (before any assembly code)**
-- Ingestion-level productization test over real `input/` fixtures, asserting the *current* behaviour (0 multi-domain groups). It should pass now and fail the moment assembly lands. This is the regression net R4 requires.
-- ADR authored and accepted: `EngineeringContext` model, manifest contract, assembly-policy governance, `selectedArtifactId` disposition.
+**Stage 0 — Prerequisites (before any orchestration code)**
+- Ingestion-level productization test over real `input/` fixtures, asserting the *current* behaviour (0 multi-domain groups). It should pass now and fail the moment orchestration lands. This is the regression net R4 requires.
+- ADR authored and accepted: `EngineeringContext` model, manifest contract, orchestration-policy governance, `selectedArtifactId` disposition.
 
 **Stage 1 — Model** *(Part 2)*
 - Add `EngineeringContext` alongside `ConsolidatedArtifact`. Purely additive; nothing consumes it. Zero behaviour change.
 
-**Stage 2 — Assembler, dark**
-- `ContextAssembler` + `AssemblyPolicy`, constructed via `PlatformContext`, fully unit-tested. Not yet wired into the CLI. Contract test: single-group input → identity output.
+**Stage 2 — Orchestrator, dark**
+- `EngineeringContextOrchestrator` + `OrchestrationPolicy`, constructed via `PlatformContext`, fully unit-tested. Not yet wired into the CLI. Contract test: single-group input → identity output.
 
 **Stage 3 — Wire, behind an explicit switch**
-- Prompt Builder and Analysis Service accept a context. `_select_consolidated` deleted; CLI calls the assembler. Ship with the assembly policy defaulting to *single-group, largest-count* — **behaviour-identical to today, prompt bytes identical, golden baseline green.** This proves the plumbing in isolation from the policy change.
+- Prompt Builder and Analysis Service accept a context. `_select_consolidated` deleted; CLI calls the orchestrator. Ship with the orchestration policy defaulting to *single-group, largest-count* — **behaviour-identical to today, prompt bytes identical, golden baseline green.** This proves the plumbing in isolation from the policy change.
 
 **Stage 4 — Flip the policy**
 - Default policy becomes coverage-guaranteed, risk-ranked, domain-budgeted. Behaviour changes here and only here. Re-baseline golden hashes in a single, reviewable commit whose diff is *only* hashes and `EXPECTED_*` constants. Retain the prior baseline as `golden-baseline-v1.0.0` for A/B comparison.
@@ -437,7 +515,40 @@ Stages 3 and 4 are deliberately separate. Merging them would make a plumbing bug
 
 ---
 
-## 10. Repository Readiness
+## 10. Future Evolution — Governed Orchestration Policy (non-normative)
+
+> **This section is informational only.**
+> It is **not** part of CAP-076. It introduces no capability, adds no repository structure, changes no governance, and authorises no implementation. It exists so that Part 2's design does not accidentally foreclose the direction sketched here.
+
+Risk R6 (§8) observes that the Orchestration Policy — coverage rule, ranking order, evidence budget — is the kind of asset that quietly becomes an ungoverned tuning knob. The platform has already solved this class of problem once, for prompts: ADR-0014 established the Prompt Governance subsystem, where prompt text is a versioned, SHA-verified, registry-resolved artifact rather than a constant someone can edit.
+
+An Orchestration Policy has the same properties that made prompts worth governing. It materially changes what the LLM sees; it is small, declarative, and reviewable; it needs a version recorded in the execution manifest for any result to be interpretable after the fact; and a silent change to it would invalidate every prior baseline without any code diff to notice.
+
+A future milestone *could* therefore mirror the Prompt Governance structure:
+
+```
+context_orchestration/
+    framework/
+        policy_loader.py        # load + integrity-verify
+        policy_registry.py      # sealed (policy_id, version) resolution
+        policy_contract.py      # structural contract a policy must satisfy
+    versions/
+        coverage_v1.0.0.json    # a governed, immutable policy
+    manifest.json               # SHA-256 per version
+```
+
+The runtime would pin an explicit `(policy_id, version)` pair — exactly as `RequirementPromptBuilder` now pins `("requirement_analysis", "1.0.0")` after CAP-075 — so promoting a new orchestration policy becomes a deliberate, reviewable change rather than an edit to a default argument.
+
+Two honest caveats, recorded so the idea is not adopted uncritically:
+
+1. **Governance is not free.** CAP-075 showed that wiring a registry into the runtime is a milestone in itself. A policy registry is only worth its cost once more than one policy exists and someone actually needs to switch between them or explain a historical result. Until then, a versioned, injectable policy object recorded in the manifest (Stage 2, §9) delivers most of the auditability at a fraction of the cost.
+2. **Governing the policy does not govern the outcome.** CAP-074B demonstrated that a fully governed prompt still produced hallucinated requirements that passed every validation rule. Governance makes a change *traceable*; it does not make the change *correct*. The grounding gap (R2) remains the higher-value investment.
+
+**This is a future architectural direction only. It is not part of CAP-076. No implementation shall be created. No repository structure shall be added.**
+
+---
+
+## 11. Repository Readiness
 
 | Gate | Status |
 |---|:--:|
@@ -449,9 +560,24 @@ Stages 3 and 4 are deliberately separate. Merging them would make a plumbing bug
 | Migration strategy documented | ✅ §9 |
 | No code written | ✅ |
 | Repository otherwise unchanged | ✅ This document is the only addition |
+| Canonical terminology synchronized (CAP-076A) | ✅ §0 |
+| Reproducibility established as a governing invariant | ✅ §3.2 Invariant 7 |
+| Future policy governance recorded as informational only | ✅ §10 |
 | **Blocking prerequisites for Part 2** | ⚠️ ADR not yet authored (§9 Stage 0); grounding-validation gap (R2) unresolved |
 
-**Verdict: ready for Part 2 — Engineering Context Model**, conditional on the Stage 0 ADR, and with R2 and R8 recorded as explicit, accepted risks rather than silently deferred ones.
+### 11.1 Canonical status declarations
+
+| Question | Answer |
+|---|---|
+| Is **Engineering Context Orchestration** now the canonical architectural term? | **Yes.** Adopted by CAP-076A. *Engineering Context Assembly* is retired. The bare noun "orchestration" remains ambiguous and must be qualified (§0.1). |
+| Does **`ConsolidatedArtifact`** remain the canonical consolidation model? | **Yes. Unchanged, and not deprecated.** It remains the sole output of Consolidation, and becomes the *input* to orchestration. |
+| Is **`EngineeringContext`** a new canonical orchestration model? | **Yes — but prospectively.** It is a canonical *conceptual* model as of CAP-076A. It does not exist as a type, is not implemented, and becomes a canonical *code* model only when Part 2 lands it. |
+| Does `EngineeringContext` replace `ConsolidatedArtifact`? | **No.** They are stacked, not substituted. One is a grouping of records that share an attribute; the other is a bounded body of evidence composed for one reasoning session. |
+| Is the repository ready for **Part 2 — Engineering Context Canonical Model & Orchestration Framework**? | **Yes, conditionally** — see below. |
+
+**Verdict: ready for Part 2**, conditional on the Stage 0 ADR being authored and accepted first, and with R2 (no grounding rule), R4 (golden baseline masks ingestion defects) and R8 (coverage ≠ sufficiency) carried forward as explicit, accepted risks rather than silently deferred ones.
+
+CAP-076A changed vocabulary, added one invariant, and recorded one non-normative future direction. It changed **no** architecture, no runtime behaviour, no model, no governance, and no code. The repository is behaviourally identical to its state before this milestone.
 
 ---
 
