@@ -29,6 +29,8 @@ from requirement_intelligence.cp1.response import (
 )
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.prompts.framework.composition import build_prompt_registry
+from requirement_intelligence.prompts.framework.prompt_registry import PromptRegistry
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
@@ -55,9 +57,21 @@ class PlatformContext:
         """Return a new consolidation engine."""
         return ConsolidationEngine()
 
+    @cached_property
+    def prompt_registry(self) -> PromptRegistry:
+        """The single sealed :class:`PromptRegistry` owned by this context (CAP-075).
+
+        Built **once**, exclusively through the Prompt Governance composition root
+        :func:`~requirement_intelligence.prompts.framework.composition.build_prompt_registry`,
+        and reused for every prompt builder this context creates. Composing it
+        loads and SHA-verifies every governed template, so the cost is paid once
+        per context rather than once per builder.
+        """
+        return build_prompt_registry()
+
     def create_prompt_builder(self) -> RequirementPromptBuilder:
-        """Return a new requirement prompt builder."""
-        return RequirementPromptBuilder()
+        """Return a new requirement prompt builder bound to this context's registry."""
+        return RequirementPromptBuilder(registry=self.prompt_registry)
 
     def create_provider(self, provider_name: str, model: str | None = None) -> LLMProvider:
         """Return a provider instance via the platform factory.

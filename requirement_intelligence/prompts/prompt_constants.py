@@ -1,9 +1,20 @@
 """Centralised prompt text for the Requirement Intelligence analysis prompt.
 
-Every piece of fixed, human-authored prompt wording lives here — the role
-definition, the analysis objectives, the output rules, the JSON contract and
-the CP1 preparation guidance.  Builders and templates assemble these constants;
-they never embed prompt text of their own.
+.. note::
+   **This module is no longer the runtime source of prompt text** (CAP-075).
+   The runtime resolves fixed prompt wording from the governed Prompt Registry
+   (``versions/`` + ``manifest.json``).  The instructional constants below —
+   :data:`SYSTEM_ROLE`, :data:`ANALYSIS_OBJECTIVES`, :data:`OUTPUT_REQUIREMENTS`,
+   :data:`JSON_RESPONSE_REQUIREMENTS`, :data:`CP1_PREPARATION_GUIDANCE` — are
+   retained as the byte-frozen **provenance** of the governed
+   ``requirement_analysis_v1.0.0`` template (ADR-0014 invariant 1).
+
+   Two things in this module *are* still live at runtime:
+
+   * :data:`PROMPT_VERSION` — the governed version the runtime is pinned to.
+   * The artifact-context framing constants — labels and line formats the
+     builder uses to render the injected ``{artifact_context}`` block, which
+     by construction cannot live inside a static template.
 
 Nothing in this module references a specific LLM provider or model.  The text is
 provider-agnostic by construction.

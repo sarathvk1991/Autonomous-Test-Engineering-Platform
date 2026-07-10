@@ -62,6 +62,25 @@ class PromptNotFoundError(PromptRegistryError):
     """
 
 
+class PromptTemplateContractError(PromptFrameworkError):
+    """Raised when a governed template violates the runtime template contract.
+
+    The contract is defined and enforced in
+    :mod:`~requirement_intelligence.prompts.framework.prompt_template_contract`.
+
+    Examples
+    --------
+    * The template has no blank line, so no system/user split point exists.
+    * The system prompt section spans more than one paragraph.
+    * The user section is missing the ``{artifact_context}`` placeholder, or
+      contains it more than once.
+
+    A :class:`PromptTemplateContractError` means the template's *bytes* may be
+    intact (its SHA-256 verified) while its *structure* cannot be interpreted by
+    the runtime, so no ``PromptRequest`` can be assembled from it.
+    """
+
+
 class PromptLoaderError(PromptFrameworkError):
     """Raised when the :class:`PromptLoader` cannot load or verify a prompt file.
 

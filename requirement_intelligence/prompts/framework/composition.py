@@ -148,10 +148,10 @@ def build_prompt_registry(
     # Governed candidate produced by CAP-073 (Prompt Evaluation & Tuning).
     # Evidence-driven, conservative wording clarification of v1.0.0 with an
     # identical output schema.  Registered as APPROVED — approved for
-    # production but not yet the live runtime prompt (the runtime prompt is
-    # still assembled from prompt_constants.py; wiring the runtime to the
-    # governed registry is a separate future capability and is intentionally
-    # out of scope for CAP-073).  v1.0.0 remains PRODUCTION.
+    # production but not yet the live runtime prompt.  Since CAP-075 the
+    # runtime resolves its prompt from this registry, pinned explicitly to
+    # v1.0.0; promoting v1.1.0 is a deliberate, separate governed change.
+    # v1.0.0 remains PRODUCTION.
     loaded_v110 = loader.load(
         prompt_id="requirement_analysis",
         version="1.1.0",

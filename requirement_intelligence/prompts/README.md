@@ -41,9 +41,10 @@ requirement_intelligence/prompts/
 │
 ├── __init__.py                     ← unified public API
 │
-├── prompt_constants.py             ← static prompt wording (UNCHANGED)
-├── prompt_templates.py             ← section assembly helpers (UNCHANGED)
-├── requirement_prompt_builder.py   ← PromptRequest builder (UNCHANGED)
+├── prompt_constants.py             ← version pin + artifact-context framing
+│                                     (instructional wording = frozen provenance)
+├── prompt_templates.py             ← section assembly helpers (provenance only)
+├── requirement_prompt_builder.py   ← PromptRequest builder (reads the registry)
 │
 ├── models/                         ← Canonical models (Phase 3)
 │   ├── __init__.py
@@ -57,6 +58,7 @@ requirement_intelligence/prompts/
 │   ├── prompt_exceptions.py        ← Exception hierarchy
 │   ├── prompt_registry.py          ← PromptRegistry (OPEN/SEALED)
 │   ├── prompt_loader.py            ← File loader + SHA-256 verification
+│   ├── prompt_template_contract.py ← Governed runtime template contract (CAP-075)
 │   └── composition.py             ← Canonical composition entry point
 │
 └── versions/                       ← Versioned template storage (Phase 5)
@@ -85,14 +87,20 @@ composition.py (assembly root)
         ├── assembles ──► PromptDefinition (metadata + content)
         │
         └── registers in ──► PromptRegistry (OPEN → SEALED)
+                                    │
+                                    └── resolved by ──► RequirementPromptBuilder
+                                                          (runtime prompt source,
+                                                           pinned to a governed
+                                                           (prompt_id, version))
 ```
 
 ### 3.2 Separation of concerns
 
 | Component | Knows about | Does NOT know about |
 | --------- | ----------- | ------------------- |
-| `prompt_constants.py` | Prompt wording | Governance, registry, versions |
-| `RequirementPromptBuilder` | Assembly | Governance, registry, SHA-256 |
+| `prompt_constants.py` | Version pin, artifact-context framing | Governance, registry, versions |
+| `RequirementPromptBuilder` | Assembly, registry lookup | Files, SHA-256, template structure, providers |
+| `prompt_template_contract.py` | Template structure, placeholder | Files, registry, providers |
 | `PromptLoader` | Files, SHA-256 | Registry, metadata, providers |
 | `PromptRegistry` | Definitions, lifecycle | File system, providers |
 | `PromptMetadata` | Identity, compatibility | File system, providers, runtime |
@@ -168,6 +176,27 @@ This **template fingerprint** is distinct from the per-execution
 `promptSha256` in `manifest.json` (execution package), which fingerprints the
 fully assembled prompt (template + injected artifact context).
 
+### 7.1 Two fingerprints, two owners (CAP-075)
+
+The runtime computes exactly two SHA-256 values on the prompt path, over
+**different inputs**, each computed once and owned by exactly one component:
+
+| Fingerprint | Input | Computed by | Travels to |
+| ----------- | ----- | ----------- | ---------- |
+| Template fingerprint | raw bytes of `versions/*.txt` | `PromptLoader.compute_sha256` | `PromptMetadata.sha256` → `PromptDefinition` — **and stops there** |
+| Assembled-prompt fingerprint | `PromptRequest.full_prompt` | `ManifestBuilder` via `sha256_text` | `manifest.json` `promptSha256` |
+
+Neither value is ever recomputed by a downstream component, and neither is
+derivable from the other (the assembled prompt contains injected artifact data
+the template does not).
+
+**Known gap.** The template fingerprint is *not* transported into the execution
+package, so `manifest.json` records which prompt *version* produced a run but
+not which template *bytes*. An execution package therefore cannot, on its own,
+prove which governed template file it was produced from. Closing this means
+adding fields to `manifest.json`, which changes execution-package output and is
+out of scope for CAP-075 Part 2.
+
 ---
 
 ## 8. Regression contract (Phase 10)
@@ -209,7 +238,9 @@ The following are **invariants**:
 
 1. `prompt_constants.py` — wording must remain byte-for-byte identical unless
    a governed version bump is performed.
-2. `RequirementPromptBuilder` — not modified by this subsystem.
+2. `RequirementPromptBuilder` — resolves its prompt text from the sealed
+   registry (CAP-075) and never embeds instructional prompt wording.  Version
+   selection is an explicit pin, never a lifecycle query.
 3. No provider-specific code in any module under `prompts/`.
 4. No filesystem discovery — all registrations are explicit.
 5. No dynamic loading — no reflection, no `importlib`, no plugin scanning.

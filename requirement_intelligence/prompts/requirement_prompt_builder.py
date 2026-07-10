@@ -1,14 +1,26 @@
 """Requirement Prompt Builder.
 
 Turns a :class:`ConsolidatedArtifact` into a provider-agnostic
-:class:`PromptRequest`.  The builder assembles the centralised prompt sections,
-injects the artifact context, and includes the output / JSON-format
-instructions.
+:class:`PromptRequest`.  The builder **assembles** prompts; it does not author
+them.  All fixed prompt wording is resolved from the governed Prompt Registry
+(``PromptRegistry`` → ``PromptLoader`` → ``versions/`` → ``manifest.json``).
+The builder's own responsibility is limited to rendering the consolidated
+artifact into the context block and injecting it into the governed template.
 
 It knows nothing about Gemini, Azure OpenAI, Anthropic or any specific model,
 and it makes no API calls.  ``PromptRequest`` carries the finished prompt and
 can be bridged to the frozen, provider-agnostic ``LLMRequest`` contract via
 :meth:`PromptRequest.to_llm_request`.
+
+Responsibility boundary
+-----------------------
+The builder owns **assembly only**.  It does not own prompt content, prompt
+governance, the template contract, lifecycle decisions, or version selection:
+
+* Prompt content, metadata and SHA verification — :class:`PromptRegistry`.
+* File loading and integrity — :class:`PromptLoader`.
+* Template structure — :mod:`...framework.prompt_template_contract`.
+* Version selection — an explicit pin supplied by the caller.
 """
 
 from __future__ import annotations
@@ -18,17 +30,21 @@ from typing import TYPE_CHECKING, Any
 from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
 from requirement_intelligence.models.source_artifact import SourceArtifact
 from requirement_intelligence.prompts import prompt_constants as consts
-from requirement_intelligence.prompts.prompt_templates import (
-    build_analysis_prompt,
-    build_output_format_prompt,
-    build_system_prompt,
+from requirement_intelligence.prompts.framework.composition import build_prompt_registry
+from requirement_intelligence.prompts.framework.prompt_registry import PromptRegistry
+from requirement_intelligence.prompts.framework.prompt_template_contract import (
+    parse_governed_template,
 )
+from requirement_intelligence.prompts.models.prompt_definition import PromptDefinition
 from shared.contracts.base import Schema
 
 if TYPE_CHECKING:
     from requirement_intelligence.llm.llm_models import LLMRequest
 
 _SECTION_SEPARATOR = "\n\n"
+
+#: Identifier of the governed prompt the runtime resolves from the registry.
+RUNTIME_PROMPT_ID = "requirement_analysis"
 
 
 class PromptRequest(Schema):
@@ -105,8 +121,46 @@ class RequirementPromptBuilder:
     """Build a :class:`PromptRequest` from a :class:`ConsolidatedArtifact`.
 
     The builder is deterministic: the same artifact always yields the same
-    prompt.  It performs no I/O and holds no provider state.
+    prompt.  It holds no provider state.
+
+    Prompt text is resolved once, at construction, from the governed
+    :class:`PromptRegistry`; :meth:`build` performs no I/O.
+
+    Parameters
+    ----------
+    registry:
+        The sealed governed registry to resolve the prompt from.  When *None*,
+        the canonical registry is composed via
+        :func:`~requirement_intelligence.prompts.framework.composition.build_prompt_registry`,
+        which loads ``versions/`` and verifies every SHA-256 against
+        ``manifest.json``.
+    prompt_id / prompt_version:
+        The governed ``(prompt_id, version)`` pair the runtime is pinned to.
+        Selection is an explicit, reviewable constant rather than a lifecycle
+        query, so promoting a new prompt version is a deliberate change.
+
+    Raises
+    ------
+    PromptFrameworkError
+        If the registry cannot be composed, the pinned ``(prompt_id, version)``
+        pair is not registered, or the resolved template does not satisfy the
+        governed template contract.
     """
+
+    def __init__(
+        self,
+        registry: PromptRegistry | None = None,
+        prompt_id: str = RUNTIME_PROMPT_ID,
+        prompt_version: str = consts.PROMPT_VERSION,
+    ) -> None:
+        self._registry = registry if registry is not None else build_prompt_registry()
+        self._definition = self._registry.get(prompt_id, prompt_version)
+        self._template = parse_governed_template(self._definition.content)
+
+    @property
+    def prompt_definition(self) -> PromptDefinition:
+        """The governed :class:`PromptDefinition` this builder is pinned to."""
+        return self._definition
 
     def build(self, artifact: ConsolidatedArtifact) -> PromptRequest:
         """Assemble the complete prompt for the given consolidated artifact.
@@ -123,17 +177,10 @@ class RequirementPromptBuilder:
         """
         artifact_context = self._render_artifact_context(artifact)
 
-        user_prompt = _SECTION_SEPARATOR.join(
-            [
-                build_analysis_prompt(artifact_context),
-                build_output_format_prompt(),
-            ]
-        )
-
         return PromptRequest(
-            system_prompt=build_system_prompt(),
-            user_prompt=user_prompt,
-            prompt_version=consts.PROMPT_VERSION,
+            system_prompt=self._template.system_prompt,
+            user_prompt=self._template.render_user_prompt(artifact_context),
+            prompt_version=self._definition.metadata.version,
             source_consolidated_id=artifact.consolidated_id,
         )
 
@@ -157,24 +204,14 @@ class RequirementPromptBuilder:
             )
 
         sections = [
-            self._render_section(
-                consts.FUNCTIONAL_SECTION_HEADER, artifact.functional_artifacts
-            ),
-            self._render_section(
-                consts.SECURITY_SECTION_HEADER, artifact.security_artifacts
-            ),
-            self._render_section(
-                consts.QUALITY_SECTION_HEADER, artifact.quality_artifacts
-            ),
+            self._render_section(consts.FUNCTIONAL_SECTION_HEADER, artifact.functional_artifacts),
+            self._render_section(consts.SECURITY_SECTION_HEADER, artifact.security_artifacts),
+            self._render_section(consts.QUALITY_SECTION_HEADER, artifact.quality_artifacts),
         ]
 
-        return "\n".join(header_lines) + _SECTION_SEPARATOR + _SECTION_SEPARATOR.join(
-            sections
-        )
+        return "\n".join(header_lines) + _SECTION_SEPARATOR + _SECTION_SEPARATOR.join(sections)
 
-    def _render_section(
-        self, header: str, artifacts: list[SourceArtifact]
-    ) -> str:
+    def _render_section(self, header: str, artifacts: list[SourceArtifact]) -> str:
         """Render one domain section, deterministically, preserving list order."""
         lines = [header]
         if not artifacts:
@@ -185,9 +222,7 @@ class RequirementPromptBuilder:
             lines.append(self._render_artifact_line(artifact))
             if artifact.description:
                 lines.append(
-                    consts.ARTIFACT_DESCRIPTION_FORMAT.format(
-                        description=artifact.description
-                    )
+                    consts.ARTIFACT_DESCRIPTION_FORMAT.format(description=artifact.description)
                 )
         return "\n".join(lines)
 

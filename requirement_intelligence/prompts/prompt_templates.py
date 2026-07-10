@@ -1,5 +1,13 @@
 """Reusable prompt section templates.
 
+.. note::
+   **Not on the runtime path** (CAP-075).  ``RequirementPromptBuilder`` now
+   assembles the runtime prompt from the governed Prompt Registry rather than
+   from these helpers.  They are retained as the executable provenance of the
+   governed ``requirement_analysis_v1.0.0`` template: the template file is the
+   byte-for-byte output of these functions with the artifact context replaced by
+   the ``{artifact_context}`` placeholder.
+
 Each function assembles centralised constants (and, where relevant, an already
 rendered context string) into a finished prompt section.  Templates are pure:
 they take strings, return strings, and contain no business logic, no iteration

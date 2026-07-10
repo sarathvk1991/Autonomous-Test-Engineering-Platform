@@ -273,6 +273,21 @@ def test_platform_context_constructs_components() -> None:
     service = ctx.create_requirement_analysis_service(ctx.create_prompt_builder(), provider, config)
     assert isinstance(service, RequirementAnalysisService)
 
+
+@pytest.mark.unit
+def test_platform_context_owns_a_single_sealed_prompt_registry() -> None:
+    """CAP-075: the registry is composed once per context and injected, not rebuilt."""
+    ctx = PlatformContext()
+
+    assert ctx.prompt_registry is ctx.prompt_registry
+    assert ctx.prompt_registry.is_sealed
+
+    first = ctx.create_prompt_builder()
+    second = ctx.create_prompt_builder()
+    assert first._registry is ctx.prompt_registry
+    assert second._registry is ctx.prompt_registry
+    assert first.prompt_definition is second.prompt_definition
+
     # PlatformContext is the single construction hub for the Response Validator too.
     from requirement_intelligence.validation.response import ResponseValidator
 

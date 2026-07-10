@@ -34,14 +34,22 @@ from requirement_intelligence.prompts.framework.prompt_exceptions import (
     PromptLoaderError,
     PromptNotFoundError,
     PromptRegistryError,
+    PromptTemplateContractError,
 )
 from requirement_intelligence.prompts.framework.prompt_loader import PromptLoader
 from requirement_intelligence.prompts.framework.prompt_registry import (
     PromptRegistry,
     PromptRegistryState,
 )
+from requirement_intelligence.prompts.framework.prompt_template_contract import (
+    ARTIFACT_CONTEXT_PLACEHOLDER,
+    GovernedTemplate,
+    parse_governed_template,
+)
 
 __all__ = [
+    "ARTIFACT_CONTEXT_PLACEHOLDER",
+    "GovernedTemplate",
     "PromptFrameworkError",
     "PromptLoader",
     "PromptLoaderError",
@@ -49,5 +57,7 @@ __all__ = [
     "PromptRegistry",
     "PromptRegistryError",
     "PromptRegistryState",
+    "PromptTemplateContractError",
     "build_prompt_registry",
+    "parse_governed_template",
 ]
