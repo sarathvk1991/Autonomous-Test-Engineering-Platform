@@ -52,16 +52,29 @@ class ManifestBuilder:
             "model": (result.model if result else data.requested_model),
             "promptVersion": data.prompt_request.prompt_version,
             "reasoningContractVersion": data.reasoning_contract_version,
+            # The primary (highest-ranked) contributing group, persisted verbatim as
+            # ``consolidated_artifact.json``. Under a multi-source policy it is one
+            # of several contributors, which ``contributingConsolidatedIds`` names.
             "selectedArtifactId": data.selected.consolidated_id,
-            # Engineering Context references (CAP-076C). The manifest names the
-            # artifact and the governed rules that produced it, so a package can be
-            # attributed to its orchestration policy without opening another file.
-            # SHA-256 and byte count are recorded in ``generatedArtifacts`` alongside
-            # every other artifact — one mechanism, no special case.
+            # Engineering Context references (CAP-076C, extended CAP-076D). The
+            # manifest names the artifact, the governed rules that produced it, and
+            # the shape of the orchestration it performed, so a package can be
+            # attributed to its policy and its coverage read without opening another
+            # file. SHA-256 and byte count are recorded in ``generatedArtifacts``
+            # alongside every other artifact — one mechanism, no special case.
             "engineeringContextArtifact": "engineering_context.json",
             "engineeringContextId": str(context.context_id),
             "orchestrationPolicyId": str(context.orchestration.policy_id),
             "orchestrationPolicyVersion": str(context.orchestration.policy_version),
+            "selectionStrategy": context.coverage.selection_strategy,
+            "candidateGroupCount": context.provenance.candidate_group_count,
+            "contributingGroupCount": context.provenance.contributing_group_count,
+            "contributingConsolidatedIds": list(context.provenance.contributing_consolidated_ids),
+            "evidenceDomainsRepresented": [
+                str(category) for category in context.coverage.represented_categories
+            ],
+            "coverageComplete": context.coverage.all_present_categories_represented,
+            "contextArtifactCount": context.evidence.total_count,
             "promptSha256": sha256_text(full_prompt),
             "promptCharacterCount": len(full_prompt),
             "responseSha256": sha256_text(generated_text) if result else None,

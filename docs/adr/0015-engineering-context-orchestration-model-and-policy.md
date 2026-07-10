@@ -4,7 +4,7 @@
 - **Date:** 2026-07-10 (Proposed) · 2026-07-10 (Accepted)
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing review:** `docs/reviews/cap-076-engineering-context-orchestration.md` (CAP-076 Part 1, CAP-076A)
-- **Runtime status:** Live as of CAP-076C — see [Addendum: CAP-076C](#addendum--cap-076c-runtime-integration).
+- **Runtime status:** Live as of CAP-076C; multi-source as of CAP-076D — see [Addendum: CAP-076C](#addendum--cap-076c-runtime-integration) and [Addendum: CAP-076D](#addendum--cap-076d-multi-source-activation).
 
 ## Problem
 
@@ -215,4 +215,87 @@ The artifact makes the CAP-074B defect legible for the first time: on the reposi
 
 ### Known residue
 
-`execution_metrics.engineering_metrics` still ranks groups by size to compute `selected_artifact_rank`, mirroring rather than reading the policy. It decides nothing — the orchestrator remains the only orchestration point — but the number becomes misleading the moment a risk-ranked policy is activated. CAP-076D must read the rank the orchestrator already records.
+`execution_metrics.engineering_metrics` still ranks groups by size to compute `selected_artifact_rank`, mirroring rather than reading the policy. It decides nothing — the orchestrator remains the only orchestration point — but the number becomes misleading the moment a risk-ranked policy is activated. CAP-076D must read the rank the orchestrator already records. *(Discharged in CAP-076D.)*
+
+---
+
+## Addendum — CAP-076D Multi-Source Activation
+
+- **Date:** 2026-07-10
+- **Amends:** the CAP-076C addendum. `DefaultOrchestrationPolicy` is now the active runtime policy, and the framework is no longer behaviour-preserving.
+
+### What changed
+
+`PlatformContext.create_engineering_context_orchestrator` binds `DefaultOrchestrationPolicy`. The orchestrator now executes the rules that policy declares — `coverage_guaranteed` selection, `risk_then_record_id` ordering, and a per-domain evidence budget — where CAP-076C raised on them. **`default_policy.py` is unmodified**: the behaviour change arises solely from activation, which is what makes the diff attributable.
+
+`LegacySelectionPolicy` is retained, unchanged, and remains fully executable. It is no longer dead code awaiting deletion; it is the **control arm**. The golden baseline runs both policies over the same candidates, which is the only way to prove that a difference in a reasoner's evidence came from the policy rather than from the code executing it.
+
+### The orchestration algorithm
+
+Four ordered steps, all deterministic:
+
+1. **Rank** every candidate by the policy's keys (`risk_level_desc`, `artifact_count_desc`, `consolidated_id_asc`), terminated by the tie-breaker.
+2. **Allocate** the evidence budget across the three domains by integer **water-filling** (max-min fairness): a domain's ceiling is `min(maxArtifactsPerDomain, available)`; if the ceilings fit the total, each takes its ceiling; otherwise the total is shared equally, with under-demanding domains settled at their ceiling and their surplus returned to the pool. An indivisible remainder is granted one unit at a time in canonical domain order.
+3. **Select** per domain, walking the ranking and admitting each group's evidence up to the remaining allocation. A group larger than its remaining budget **contributes its highest-ordered artifacts rather than being skipped** — dropping a CRITICAL 71-finding group for not fitting a 25-artifact budget would let the budget silently override the ranking.
+4. **Order** each assembled domain under the policy's ordering rule, across all contributing groups.
+
+Water-filling exists because the naive alternative — cap each domain, walk in order, stop at the total — lets the first domain starve the last, which is risk R8 and the CAP-074B defect wearing a different hat.
+
+`evidence_ordering` therefore decides two things at once, and deliberately: *which* artifacts survive the budget, and *how* they read. Under `risk_then_record_id` the most severe survive.
+
+### Subject derivation
+
+A multi-source context takes its subject from its **highest-ranked contributing group**, not from a concatenation of every contributor's module. Joining ten modules with `" + "` yields a label no reader can use and a context-id slug no manifest can display. More importantly, under a ranking both policies share, the rank-1 group is the one `single_largest` would also have chosen — so activating coverage **adds evidence to a context without moving its subject**, which is the claim CAP-076D makes and the golden baseline asserts.
+
+### Model changes
+
+`ENGINEERING_CONTEXT_VERSION` advanced `1.1 → 1.2`. `EngineeringContext` gained four sections, each recording decisions that were previously either implicit or absent:
+
+| Section | Records |
+| --- | --- |
+| `ranking` | Every candidate: rank, risk, the rendered score for each declared key, whether it was selected, and **why it was admitted or excluded**. |
+| `coverage` | Per domain: whether evidence existed among the *candidates*, whether it reached the context, how much, and why. |
+| `evidenceBudget` | Per domain: available, allocated, used. |
+| `grounding` | Observational: evidence domains, counts, and the source-system distribution. |
+
+`ContextContribution` now separates `artifactCount` (contributed) from `candidateArtifactCount` (carried), which is what makes truncation visible; recording only the first would misreport a truncated group as small. It also carries the group's `rank` and its per-domain contribution.
+
+`ContextCoverage` deliberately holds **two** booleans that a careless model would merge. `ruleSatisfied` asks whether the policy's declared coverage rule was met; `allPresentCategoriesRepresented` asks whether every domain that had evidence actually reached the reasoner. A legacy run reports `true` and `false` respectively — satisfying its rule while losing two domains is *exactly* how the CAP-074B defect passed unnoticed, and collapsing the two would let it pass unnoticed again.
+
+`EngineeringContext`'s validator now checks `coverage`, `evidenceBudget`, `grounding` and `ranking` against the evidence they claim to describe, rather than against each other. A projection that miscounts cannot be constructed.
+
+### Component boundary changes
+
+`EngineeringContextBuilder.build` now receives the assembled `ContextEvidence` and per-group `GroupContribution` **counts**, rather than the contributing `ConsolidatedArtifact`s to flatten. A domain's evidence is ordered *across* its contributing groups, so no group owns a contiguous slice of it; a builder handed per-group lists would silently undo the policy's ordering rule when it concatenated them. Giving it nothing to reorder keeps "the builder never reorders" structural rather than conventional. The builder still enforces the budget as an input contract and never truncates.
+
+### Contract changes now incurred
+
+The changes this ADR deferred twice fall due here.
+
+- `manifest.json` gains `selectionStrategy`, `candidateGroupCount`, `contributingGroupCount`, `contributingConsolidatedIds`, `evidenceDomainsRepresented`, `coverageComplete`, `contextArtifactCount`. `selectedArtifactId` survives and now names the **primary** contributing group.
+- `engineering_context.json` advances to artifact version `2.0.0` — major, because a reader of `1.0.0` would misread a truncated group's `artifactCount` as the group's size.
+- `CONTEXT_ORCHESTRATION_VERSION` advances `1.0.0 → 2.0.0`.
+- Golden hashes for `prompt.txt` change, because evidence ordering changed. Prompt *wording* does not: `RequirementPromptBuilder`, `prompt_constants`, and Prompt Governance are untouched.
+
+### Residue discharged
+
+`execution_metrics.engineering_metrics` now **reads** `context.ranking.rank_of(...)` instead of re-sorting the consolidated artifacts by size. Its domain counts describe the engineering context — the evidence a reasoner received — not the primary group. The orchestrator is the single source of truth for its own decisions.
+
+### Behavioural result
+
+Measured on the repository's FILE-mode fixtures (387 source artifacts → 23 groups):
+
+| | `LegacySelectionPolicy` | `DefaultOrchestrationPolicy` |
+| --- | --- | --- |
+| Contributing groups | 1 of 23 | 10 of 23 |
+| Functional / Security / Quality | 0 / 0 / 71 | 4 / 25 / 25 |
+| Domains represented | 1 | 3 |
+| Source systems reaching Gemini | `sonarqube` | `jira`, `owasp_zap`, `sonarqube` |
+
+In API mode (372 artifacts → 47 groups) all three domains contest the budget and water-filling allocates 20/20/20.
+
+Live Gemini runs under both policies pass Validation (13 rules, 0 issues) and CP1 (`pass`, 0 findings) identically — Validation and CP1 are untouched and must not react to the policy. The requirements themselves change character: Legacy's "security requirements" are inferred from SonarQube code smells (*"replace generic catch-all blocks"*), because no security evidence reached the model. Default's are grounded in the OWASP ZAP findings that were there all along (*"implement the 'X-Frame-Options' header … to prevent clickjacking"*).
+
+### What this does not fix
+
+Future Evolution §4 stands, and grows more urgent. CAP-074B showed hallucinated requirements passing all 13 validation rules and the CP1 gate. Widening the evidence surface widens the hallucination surface. `grounding` metadata is **observational only** — Validation and CP1 do not read it, by construction (Stage 7). Turning grounding into an enforced check is the next milestone's work, not this one's.

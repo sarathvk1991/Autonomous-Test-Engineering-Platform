@@ -218,8 +218,8 @@ Written to `output/latest/` and, when named, `output/executions/<name>/`.
 | File | Contents |
 | --- | --- |
 | `manifest.json` | Canonical entry point: versions, hashes, timings, verdicts |
-| `consolidated_artifact.json` | The consolidation group that was analysed |
-| `engineering_context.json` | The orchestrated evidence, the policy that selected it, and why |
+| `consolidated_artifact.json` | The primary (highest-ranked) consolidation group that contributed |
+| `engineering_context.json` | The complete evidence the reasoner received, every candidate group ranked, why each was admitted or excluded, the coverage achieved, and how the evidence budget was spent |
 | `prompt.txt` | The exact prompt sent |
 | `llm_request.json` | The provider-agnostic request |
 | `raw_llm_response.json` | The unmodified provider response |

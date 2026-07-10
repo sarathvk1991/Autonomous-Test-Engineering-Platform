@@ -73,23 +73,51 @@ def _group_total(artifact: Any) -> int:
 def engineering_metrics(data: Any) -> dict[str, Any]:
     """Compute engineering-pipeline metrics from *data*.
 
-    These are derived solely from the platform pipeline (source artifacts and
-    consolidated groups). They never inspect AI output. Values that cannot be
-    computed (e.g. the consolidated list was not supplied) are ``"N/A"``.
+    These are derived solely from the platform pipeline (source artifacts,
+    consolidated groups, and the orchestrated engineering context). They never
+    inspect AI output. Values that cannot be computed (e.g. the consolidated list
+    was not supplied) are ``"N/A"``.
+
+    Every orchestration figure is **read** from the ``EngineeringContext``, never
+    recomputed (CAP-076D Stage 12). Before this milestone the selected group's
+    rank was derived here by re-sorting the consolidated artifacts by size — a
+    second, uncoordinated implementation of a ranking rule that happened to agree
+    with the active policy. Under a risk-ranked policy it would have silently
+    disagreed. The orchestrator is the single source of truth for its own
+    decisions; this module observes them.
+
+    The domain counts describe the **context** — the evidence a reasoner actually
+    received — not the primary group. Under a multi-source policy those differ,
+    and the reasoner's input is the figure worth reporting.
     """
-    selected = data.selected
     consolidated = list(data.consolidated_artifacts or [])
+    context = data.engineering_context
 
     metrics: dict[str, Any] = {
         "source_artifacts_processed": (
             data.source_artifact_count if data.source_artifact_count is not None else "N/A"
         ),
         "consolidated_artifacts_produced": len(consolidated) if consolidated else "N/A",
-        "functional_artifact_count": len(selected.functional_artifacts),
-        "security_artifact_count": len(selected.security_artifacts),
-        "quality_artifact_count": len(selected.quality_artifacts),
-        "selected_consolidated_artifact": selected.consolidated_id,
-        "selected_artifact_rank": "N/A",
+        "functional_artifact_count": len(context.evidence.functional_artifacts),
+        "security_artifact_count": len(context.evidence.security_artifacts),
+        "quality_artifact_count": len(context.evidence.quality_artifacts),
+        "context_artifact_count": context.evidence.total_count,
+        "selected_consolidated_artifact": data.selected.consolidated_id,
+        "selected_artifact_rank": context.ranking.rank_of(data.selected.consolidated_id) or "N/A",
+        "candidate_group_count": context.provenance.candidate_group_count,
+        "contributing_group_count": context.provenance.contributing_group_count,
+        "contributing_consolidated_artifacts": list(
+            context.provenance.contributing_consolidated_ids
+        ),
+        "orchestration_policy": str(context.orchestration.policy_id),
+        "selection_strategy": context.coverage.selection_strategy,
+        "evidence_domains_represented": [
+            str(category) for category in context.coverage.represented_categories
+        ],
+        "coverage_complete": context.coverage.all_present_categories_represented,
+        "evidence_budget_allocated": context.evidence_budget.total_allocated,
+        "evidence_budget_used": context.evidence_budget.total_used,
+        "evidence_budget_truncated": context.evidence_budget.truncated,
         "largest_consolidation_group": "N/A",
         "smallest_consolidation_group": "N/A",
         "average_artifacts_per_group": "N/A",
@@ -102,18 +130,6 @@ def engineering_metrics(data: Any) -> dict[str, Any]:
     metrics["largest_consolidation_group"] = max(totals)
     metrics["smallest_consolidation_group"] = min(totals)
     metrics["average_artifacts_per_group"] = round(sum(totals) / len(totals), 2)
-
-    # Rank by group size: largest first, tie-break by id. This *mirrors* the ranking
-    # of the active LegacySelectionPolicy rather than reading it, so it reports the
-    # selected group's size rank, not its rank under whichever policy actually chose
-    # it. The two coincide today and will diverge the moment a risk-ranked policy is
-    # activated (CAP-076D), at which point this metric must read the rank the
-    # orchestrator already records in ContextContribution.inclusion_reason.
-    ordered = sorted(consolidated, key=lambda c: (-_group_total(c), c.consolidated_id))
-    for index, candidate in enumerate(ordered, start=1):
-        if candidate.consolidated_id == selected.consolidated_id:
-            metrics["selected_artifact_rank"] = index
-            break
     return metrics
 
 

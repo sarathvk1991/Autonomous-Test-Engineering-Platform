@@ -25,7 +25,8 @@ class ReviewBuilder:
         **not** duplicate the full CP1 report. When CP1 did not run the review is
         byte-identical to before.
         """
-        selected = data.selected
+        context = data.engineering_context
+        evidence = context.evidence
         result = data.result
         counts = observe_response_counts(data.generated_text)
         json_valid = "valid" if counts["json_valid"] else "INVALID"
@@ -34,9 +35,14 @@ class ReviewBuilder:
         review = f"""# AI Review — Version {meta.BASELINE_VERSION}
 
 > Observation only. Nothing was modified, repaired, or tuned.
-> Selected consolidated artifact: `{selected.consolidated_id}`
-> (functional={len(selected.functional_artifacts)}, \
-security={len(selected.security_artifacts)}, quality={len(selected.quality_artifacts)}).
+> Engineering context: `{context.context_id}`, composed from \
+{context.provenance.contributing_group_count} of \
+{context.provenance.candidate_group_count} consolidation group(s)
+> under policy `{context.orchestration.policy_id}` \
+v{context.orchestration.policy_version}
+> (functional={len(evidence.functional_artifacts)}, \
+security={len(evidence.security_artifacts)}, quality={len(evidence.quality_artifacts)}).
+> Primary consolidated artifact: `{data.selected.consolidated_id}`.
 > Strict JSON validity of response: {json_valid}.
 
 ## Execution Package Identity

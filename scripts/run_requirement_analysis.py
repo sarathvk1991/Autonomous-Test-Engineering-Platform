@@ -240,6 +240,48 @@ def _print_startup_banner(
     print()
 
 
+def _print_orchestration_summary(console: Console, engineering_context: Any) -> None:
+    """Report which groups composed the context, and what each domain contributed.
+
+    Under a multi-source policy "Selected: <one id>" would misdescribe the run, so
+    the summary states how many groups contributed and, per domain, how much of the
+    available evidence reached the reasoner. An uncovered domain that *had* evidence
+    is the CAP-074B defect, so it is called out rather than left to be inferred from
+    a zero. Per-group attribution is verbose-only; the coverage line is not.
+
+    Every figure is read from the context; the CLI computes none of them.
+    """
+    provenance = engineering_context.provenance
+    evidence = engineering_context.evidence
+    coverage = engineering_context.coverage
+
+    console.note(
+        f"\nEngineering Context\n"
+        f"  groups   : {provenance.contributing_group_count} contributing "
+        f"of {provenance.candidate_group_count} candidates\n"
+        f"  evidence : functional={len(evidence.functional_artifacts)} "
+        f"security={len(evidence.security_artifacts)} "
+        f"quality={len(evidence.quality_artifacts)} "
+        f"(total={evidence.total_count})"
+    )
+    for domain in coverage.domains:
+        if domain.evidence_present and not domain.represented:
+            console.note(
+                f"  warning  : {domain.candidate_artifact_count} {domain.category} "
+                f"artifact(s) available but not represented"
+            )
+
+    console.detail("")
+    for contribution in provenance.contributions:
+        truncation = (
+            f" (of {contribution.candidate_artifact_count})" if contribution.truncated else ""
+        )
+        console.detail(
+            f"#{contribution.rank} {contribution.consolidated_id} — "
+            f"{contribution.artifact_count} artifact(s){truncation}"
+        )
+
+
 def run_engineering_pipeline(
     context: PlatformContext,
     console: Console,
@@ -485,9 +527,10 @@ def handle_analyze(args: argparse.Namespace) -> int:
         console.error(f"Source mapping failed ({mode} mode): {exc}")
         return 1
 
-    # Engineering Context Orchestration (CAP-076C). The orchestrator applies the
-    # governed policy PlatformContext bound it to and returns the composed context
-    # plus the groups that composed it. The CLI ranks nothing and selects nothing.
+    # Engineering Context Orchestration (CAP-076C; multi-source since CAP-076D).
+    # The orchestrator applies the governed policy PlatformContext bound it to and
+    # returns the composed context plus the groups that composed it, in rank order.
+    # The CLI ranks nothing, selects nothing, and budgets nothing.
     console.action("\nOrchestrating Engineering Context")
     try:
         orchestration = context.create_engineering_context_orchestrator().orchestrate(candidates)
@@ -495,11 +538,10 @@ def handle_analyze(args: argparse.Namespace) -> int:
         console.error(f"Engineering context orchestration failed: {exc}")
         return 1
     engineering_context = orchestration.context
-    selected = orchestration.selected_groups[0]
+    selected = orchestration.primary_group
     console.ok(f"{engineering_context.context_id}")
     console.detail(engineering_context.orchestration_reason)
-
-    console.note(f"\nSelected\n  {selected.consolidated_id}")
+    _print_orchestration_summary(console, engineering_context)
 
     console.action("\nBuilding Prompt")
     prompt_builder = context.create_prompt_builder()

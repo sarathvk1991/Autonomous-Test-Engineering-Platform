@@ -3,8 +3,12 @@
 Provides:
 * ``golden_stub_provider``  — a deterministic, in-process LLM provider stub
   that returns the golden response without any network I/O.
-* ``golden_pipeline_result``  — executes the complete pipeline once and returns
-  a :class:`PipelineResult` bundle that every test in this package can inspect.
+* ``golden_pipeline_result``  — executes the complete pipeline once under the
+  **active** orchestration policy and returns a :class:`PipelineResult` bundle
+  that every test in this package can inspect.
+* ``legacy_pipeline_result``  — the same pipeline under ``LegacySelectionPolicy``.
+  The control arm: comparing the two isolates a behaviour change to the policy
+  that caused it rather than to the code that executes it (CAP-076D Stage 11).
 """
 
 from __future__ import annotations
@@ -20,7 +24,11 @@ from requirement_intelligence.analysis.requirement_analysis_service import (
     RequirementAnalysisService,
 )
 from requirement_intelligence.consolidation.consolidation_engine import ConsolidationEngine
-from requirement_intelligence.context_orchestration import EngineeringContext
+from requirement_intelligence.context_orchestration import (
+    EngineeringContext,
+    LegacySelectionPolicy,
+    OrchestrationPolicy,
+)
 from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from requirement_intelligence.execution.execution_data import ExecutionData
 from requirement_intelligence.execution.execution_writer import (
@@ -107,6 +115,7 @@ class PipelineResult:
     # Engineering pipeline
     source_artifact_count: int
     consolidated_artifacts: list[ConsolidatedArtifact]
+    #: The primary (highest-ranked) contributing group, persisted verbatim.
     selected: ConsolidatedArtifact
 
     # Engineering Context Orchestration
@@ -135,14 +144,16 @@ class PipelineResult:
 # ---------------------------------------------------------------------------
 
 
-def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
+def _run_golden_pipeline(
+    tmp_dir: Path, policy: OrchestrationPolicy | None = None
+) -> PipelineResult:
     """Execute the complete pipeline with the golden dataset and stub provider.
 
     This function orchestrates every subsystem in the governed pipeline order:
 
         SourceArtifacts
             → ConsolidationEngine
-            → EngineeringContextOrchestrator (LegacySelectionPolicy)
+            → EngineeringContextOrchestrator (the active policy, unless overridden)
             → RequirementAnalysisService (stub provider)
             → ResponseNormalizer
             → ValidationInput binding (handoff seam)
@@ -150,6 +161,11 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
             → ValidationToCP1Handoff (gate)
             → CP1Service
             → ExecutionWriter
+
+    *policy* is passed through to ``PlatformContext`` so the baseline can be run
+    under a governed policy other than the active one. It defaults to ``None``,
+    which binds whatever the runtime binds — the baseline must never pin a policy
+    the runtime does not execute.
 
     No external I/O is performed.  The output directory is ``tmp_dir``.
     """
@@ -162,14 +178,19 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
     consolidated = engine.consolidate(GOLDEN_SOURCE_ARTIFACTS)
 
     # -----------------------------------------------------------------------
-    # Step 2 — Engineering Context Orchestration (CAP-076C)
+    # Step 2 — Engineering Context Orchestration (CAP-076C; multi-source CAP-076D)
     # -----------------------------------------------------------------------
-    # Selection is the governed policy's decision, not this harness's. Under the
-    # active LegacySelectionPolicy the context carries exactly one group, so the
-    # prompt this baseline pins is byte-identical to the pre-CAP-076C baseline.
-    orchestration = context.create_engineering_context_orchestrator().orchestrate(consolidated)
+    # Selection is the governed policy's decision, not this harness's. The golden
+    # dataset consolidates to a single group carrying all three domains, so the
+    # policies agree on *which* evidence reaches the prompt and differ only in the
+    # order they present it. That is deliberate: the dataset isolates the ordering
+    # rule, and the multi-group behaviour is proven where it belongs, over
+    # candidate sets that actually have several groups.
+    orchestration = context.create_engineering_context_orchestrator(policy).orchestrate(
+        consolidated
+    )
     engineering_context = orchestration.context
-    selected = orchestration.selected_groups[0]
+    selected = orchestration.primary_group
 
     # -----------------------------------------------------------------------
     # Step 3 — Prompt building + Analysis (stub provider)
@@ -267,13 +288,20 @@ def _run_golden_pipeline(tmp_dir: Path) -> PipelineResult:
 
 @pytest.fixture(scope="module")
 def golden_pipeline_result(tmp_path_factory: pytest.TempPathFactory) -> PipelineResult:
-    """Execute the golden pipeline once per module and cache the result.
+    """Execute the golden pipeline once per module under the **active** policy.
 
     Scope is ``module`` so the pipeline runs once for the entire test module
     (determinism tests run it a second time themselves using ``tmp_path``).
     """
     tmp_dir = tmp_path_factory.mktemp("golden_baseline_run1")
     return _run_golden_pipeline(tmp_dir)
+
+
+@pytest.fixture(scope="module")
+def legacy_pipeline_result(tmp_path_factory: pytest.TempPathFactory) -> PipelineResult:
+    """The same pipeline under ``LegacySelectionPolicy`` — the control arm."""
+    tmp_dir = tmp_path_factory.mktemp("golden_baseline_legacy")
+    return _run_golden_pipeline(tmp_dir, policy=LegacySelectionPolicy())
 
 
 @pytest.fixture()

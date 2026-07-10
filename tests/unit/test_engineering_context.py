@@ -15,24 +15,35 @@ from pydantic import ValidationError
 
 from requirement_intelligence.context_orchestration import (
     ENGINEERING_CONTEXT_VERSION,
+    EVIDENCE_DOMAINS,
     ContextBudgetExceededError,
     ContextConstructionError,
     ContextContribution,
+    ContextCoverage,
+    ContextCoverageDomain,
     ContextDependencies,
     ContextEvidence,
+    ContextEvidenceBudgetUsage,
+    ContextGrounding,
     ContextMetadata,
     ContextProvenance,
+    ContextRanking,
+    ContextRankingEntry,
     ContextSubject,
     ContextSubjectBasis,
     DefaultOrchestrationPolicy,
+    DomainBudgetUsage,
     EngineeringContext,
     EngineeringContextBuilder,
     EngineeringContextId,
+    GroupContribution,
     LegacySelectionPolicy,
     OrchestrationMetadata,
     OrchestrationPolicyId,
     PolicyCompatibilityError,
     PolicyVersion,
+    RankingScoreComponent,
+    SourceDistributionEntry,
 )
 from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
 from requirement_intelligence.models.enums import (
@@ -116,11 +127,117 @@ def _subject() -> ContextSubject:
     return ContextSubject(label="Authentication", basis=ContextSubjectBasis.MULTI)
 
 
+def _domain_artifacts(group: ConsolidatedArtifact, domain: SourceCategory) -> list[SourceArtifact]:
+    if domain == SourceCategory.FUNCTIONAL:
+        return group.functional_artifacts
+    if domain == SourceCategory.SECURITY:
+        return group.security_artifacts
+    return group.quality_artifacts
+
+
+class _Decision:
+    """Everything an orchestrator decides, for a builder that decides nothing.
+
+    The builder's contract is that it receives already-selected, already-ordered,
+    already-budgeted evidence and the records of how those decisions were made.
+    Constructing those records here — rather than running the real orchestrator —
+    is what lets these tests exercise the *builder* in isolation, including the
+    inputs a correct orchestrator would never hand it.
+
+    The recorded budget bounds are deliberately permissive: they describe what was
+    spent, not what the policy allows. The *policy* carries the rule, and the
+    builder enforces it, which is what the budget-rejection tests below prove.
+    """
+
+    def __init__(self, groups: list[ConsolidatedArtifact]) -> None:
+        self.evidence = ContextEvidence(
+            functional_artifacts=tuple(a for g in groups for a in g.functional_artifacts),
+            security_artifacts=tuple(a for g in groups for a in g.security_artifacts),
+            quality_artifacts=tuple(a for g in groups for a in g.quality_artifacts),
+        )
+        self.contributions = tuple(
+            GroupContribution.whole(group, rank=rank, inclusion_reason=f"admitted at rank {rank}")
+            for rank, group in enumerate(groups, start=1)
+        )
+        counts = {
+            domain: len(_domain_artifacts_of(self.evidence, domain)) for domain in EVIDENCE_DOMAINS
+        }
+
+        self.ranking = ContextRanking(
+            keys=("artifact_count_desc",),
+            tie_breaker="consolidated_id_asc",
+            entries=tuple(
+                ContextRankingEntry(
+                    rank=c.rank,
+                    consolidated_id=c.consolidated_id,
+                    risk_level=c.group.risk_level,
+                    candidate_artifact_count=c.candidate_count,
+                    contributed_artifact_count=c.contributed_count,
+                    score=(
+                        RankingScoreComponent(
+                            key="artifact_count_desc", value=str(c.candidate_count)
+                        ),
+                    ),
+                    selected=True,
+                    decision_reason=c.inclusion_reason,
+                )
+                for c in self.contributions
+            ),
+        )
+        self.coverage = ContextCoverage(
+            mode="all_present_categories",
+            selection_strategy="coverage_guaranteed",
+            domains=tuple(
+                ContextCoverageDomain(
+                    category=domain,
+                    evidence_present=counts[domain] > 0,
+                    represented=counts[domain] > 0,
+                    candidate_artifact_count=counts[domain],
+                    contributed_artifact_count=counts[domain],
+                    contributing_group_count=sum(1 for g in groups if _domain_artifacts(g, domain)),
+                    truncated=False,
+                    reason="Supplied whole by the test decision record.",
+                )
+                for domain in EVIDENCE_DOMAINS
+            ),
+            rule_satisfied=True,
+            all_present_categories_represented=any(counts.values()),
+        )
+        self.evidence_budget = ContextEvidenceBudgetUsage(
+            max_artifacts_per_domain=max(1, *counts.values()),
+            max_artifacts_total=max(1, sum(counts.values())),
+            domains=tuple(
+                DomainBudgetUsage(
+                    category=domain,
+                    available=counts[domain],
+                    allocated=counts[domain],
+                    used=counts[domain],
+                )
+                for domain in EVIDENCE_DOMAINS
+            ),
+        )
+
+
+def _domain_artifacts_of(
+    evidence: ContextEvidence, domain: SourceCategory
+) -> tuple[SourceArtifact, ...]:
+    if domain == SourceCategory.FUNCTIONAL:
+        return evidence.functional_artifacts
+    if domain == SourceCategory.SECURITY:
+        return evidence.security_artifacts
+    return evidence.quality_artifacts
+
+
 def _build(groups: list[ConsolidatedArtifact], policy: object | None = None) -> EngineeringContext:
+    decision = _Decision(groups)
     return EngineeringContextBuilder().build(
         subject=_subject(),
-        contributing_groups=groups,
+        evidence=decision.evidence,
+        contributions=decision.contributions,
         policy=policy or DefaultOrchestrationPolicy(),  # type: ignore[arg-type]
+        ranking=decision.ranking,
+        coverage=decision.coverage,
+        evidence_budget=decision.evidence_budget,
     )
 
 
@@ -301,7 +418,10 @@ def _contribution(consolidated_id: str, artifact_count: int = 1) -> ContextContr
     return ContextContribution(
         consolidated_id=consolidated_id,
         module="auth",
+        rank=1,
         artifact_count=artifact_count,
+        candidate_artifact_count=artifact_count,
+        quality_count=artifact_count,
         inclusion_reason="selected for the test",
     )
 
@@ -319,6 +439,89 @@ def _provenance(
     )
 
 
+def _ranking(ids: tuple[str, ...] = ("cons-a",), *, artifact_count: int = 1) -> ContextRanking:
+    return ContextRanking(
+        keys=("artifact_count_desc",),
+        tie_breaker="consolidated_id_asc",
+        entries=tuple(
+            ContextRankingEntry(
+                rank=rank,
+                consolidated_id=identifier,
+                risk_level=RiskLevel.LOW,
+                candidate_artifact_count=artifact_count,
+                contributed_artifact_count=artifact_count,
+                score=(
+                    RankingScoreComponent(key="artifact_count_desc", value=str(artifact_count)),
+                ),
+                selected=True,
+                decision_reason="selected for the test",
+            )
+            for rank, identifier in enumerate(ids, start=1)
+        ),
+    )
+
+
+def _coverage(*, quality: int = 1) -> ContextCoverage:
+    counts = {
+        SourceCategory.FUNCTIONAL: 0,
+        SourceCategory.SECURITY: 0,
+        SourceCategory.QUALITY: quality,
+    }
+    return ContextCoverage(
+        mode="all_present_categories",
+        selection_strategy="coverage_guaranteed",
+        domains=tuple(
+            ContextCoverageDomain(
+                category=domain,
+                evidence_present=counts[domain] > 0,
+                represented=counts[domain] > 0,
+                candidate_artifact_count=counts[domain],
+                contributed_artifact_count=counts[domain],
+                contributing_group_count=1 if counts[domain] else 0,
+                truncated=False,
+                reason="test",
+            )
+            for domain in EVIDENCE_DOMAINS
+        ),
+        rule_satisfied=True,
+        all_present_categories_represented=True,
+    )
+
+
+def _budget(*, quality: int = 1) -> ContextEvidenceBudgetUsage:
+    counts = {
+        SourceCategory.FUNCTIONAL: 0,
+        SourceCategory.SECURITY: 0,
+        SourceCategory.QUALITY: quality,
+    }
+    return ContextEvidenceBudgetUsage(
+        max_artifacts_per_domain=max(1, quality),
+        max_artifacts_total=max(1, quality),
+        domains=tuple(
+            DomainBudgetUsage(
+                category=domain,
+                available=counts[domain],
+                allocated=counts[domain],
+                used=counts[domain],
+            )
+            for domain in EVIDENCE_DOMAINS
+        ),
+    )
+
+
+def _grounding(*, quality: int = 1) -> ContextGrounding:
+    return ContextGrounding(
+        evidence_domains=(SourceCategory.QUALITY,),
+        functional_count=0,
+        security_count=0,
+        quality_count=quality,
+        total_count=quality,
+        source_distribution=(
+            SourceDistributionEntry(source_system=SourceSystem.SONARQUBE, artifact_count=quality),
+        ),
+    )
+
+
 def _valid_kwargs() -> dict[str, object]:
     return {
         "context_id": EngineeringContextId("ctx-a-1"),
@@ -333,6 +536,10 @@ def _valid_kwargs() -> dict[str, object]:
             policy_id=OrchestrationPolicyId("coverage"),
             policy_version=PolicyVersion(1, 0, 0),
         ),
+        "ranking": _ranking(),
+        "coverage": _coverage(),
+        "evidence_budget": _budget(),
+        "grounding": _grounding(),
         "orchestration_reason": "because",
     }
 
@@ -342,6 +549,40 @@ def test_context_rejects_empty_evidence() -> None:
     kwargs = _valid_kwargs()
     kwargs["evidence"] = ContextEvidence()
     with pytest.raises(ValidationError, match="at least one evidence artifact"):
+        EngineeringContext(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.unit
+def test_context_rejects_a_ranking_that_disagrees_with_provenance() -> None:
+    """A group the ranking never admitted cannot appear as a contributor."""
+    kwargs = _valid_kwargs()
+    kwargs["ranking"] = _ranking(("cons-somewhere-else",))
+    with pytest.raises(ValidationError, match="Ranking selected"):
+        EngineeringContext(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.unit
+def test_context_rejects_coverage_that_miscounts_the_evidence() -> None:
+    """Coverage is checked against the artifacts, not against its own good intentions."""
+    kwargs = _valid_kwargs()
+    kwargs["coverage"] = _coverage(quality=9)
+    with pytest.raises(ValidationError, match="Coverage claims"):
+        EngineeringContext(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.unit
+def test_context_rejects_grounding_that_miscounts_the_evidence() -> None:
+    kwargs = _valid_kwargs()
+    kwargs["grounding"] = _grounding(quality=4)
+    with pytest.raises(ValidationError, match="Grounding counts"):
+        EngineeringContext(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.unit
+def test_context_rejects_a_budget_that_miscounts_the_evidence() -> None:
+    kwargs = _valid_kwargs()
+    kwargs["evidence_budget"] = _budget(quality=6)
+    with pytest.raises(ValidationError, match="Budget records"):
         EngineeringContext(**kwargs)  # type: ignore[arg-type]
 
 
@@ -397,6 +638,10 @@ def test_context_serialises_to_camel_case_with_string_identifiers() -> None:
         "dependencies",
         "provenance",
         "orchestration",
+        "ranking",
+        "coverage",
+        "evidenceBudget",
+        "grounding",
         "orchestrationReason",
     }
     assert isinstance(dumped["contextId"], str)
@@ -414,16 +659,32 @@ def test_context_survives_a_json_round_trip() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _build_with(**overrides: object) -> EngineeringContext:
+    """Build from a valid decision record with individual inputs replaced."""
+    decision = _Decision([_quality_group()])
+    kwargs: dict[str, object] = {
+        "subject": _subject(),
+        "evidence": decision.evidence,
+        "contributions": decision.contributions,
+        "policy": DefaultOrchestrationPolicy(),
+        "ranking": decision.ranking,
+        "coverage": decision.coverage,
+        "evidence_budget": decision.evidence_budget,
+    }
+    kwargs.update(overrides)
+    return EngineeringContextBuilder().build(**kwargs)  # type: ignore[arg-type]
+
+
 @pytest.mark.unit
 def test_builder_rejects_no_contributing_groups() -> None:
     with pytest.raises(ContextConstructionError, match="At least one ConsolidatedArtifact"):
-        _build([])
+        _build_with(contributions=[])
 
 
 @pytest.mark.unit
-def test_builder_rejects_a_non_consolidated_artifact() -> None:
-    with pytest.raises(ContextConstructionError, match="Expected ConsolidatedArtifact"):
-        _build(["not a group"])  # type: ignore[list-item]
+def test_builder_rejects_a_non_contribution() -> None:
+    with pytest.raises(ContextConstructionError, match="Expected GroupContribution"):
+        _build_with(contributions=["not a contribution"])
 
 
 @pytest.mark.unit
@@ -435,11 +696,55 @@ def test_builder_rejects_a_non_policy() -> None:
 @pytest.mark.unit
 def test_builder_rejects_a_non_subject() -> None:
     with pytest.raises(ContextConstructionError, match="Expected a ContextSubject"):
-        EngineeringContextBuilder().build(
-            subject="Authentication",  # type: ignore[arg-type]
-            contributing_groups=[_quality_group()],
-            policy=DefaultOrchestrationPolicy(),
-        )
+        _build_with(subject="Authentication")
+
+
+@pytest.mark.unit
+def test_builder_rejects_contributions_that_do_not_account_for_the_evidence() -> None:
+    """The orchestrator counts what each group gave; the builder checks the sum.
+
+    A selection bug that dropped an artifact between counting and assembly would
+    otherwise reach a reasoner as silently thinner evidence.
+    """
+    decision = _Decision([_quality_group(count=3)])
+    understated = (
+        GroupContribution(
+            group=decision.contributions[0].group,
+            rank=1,
+            inclusion_reason="admitted at rank 1",
+            quality_count=2,
+        ),
+    )
+    with pytest.raises(ContextConstructionError, match="declare 2 quality artifact"):
+        _build_with(contributions=understated, evidence=decision.evidence)
+
+
+@pytest.mark.unit
+def test_builder_rejects_a_contributor_that_contributed_nothing() -> None:
+    decision = _Decision([_quality_group()])
+    empty = (
+        GroupContribution(
+            group=decision.contributions[0].group, rank=1, inclusion_reason="admitted"
+        ),
+    )
+    with pytest.raises(ContextConstructionError, match="contributed no evidence"):
+        _build_with(contributions=empty, evidence=ContextEvidence())
+
+
+@pytest.mark.unit
+def test_builder_rejects_an_unexplained_contributor() -> None:
+    """An unexplained group is not permitted, whatever it contributed."""
+    decision = _Decision([_quality_group()])
+    unexplained = (
+        GroupContribution(
+            group=decision.contributions[0].group,
+            rank=1,
+            inclusion_reason="   ",
+            quality_count=1,
+        ),
+    )
+    with pytest.raises(ContextConstructionError, match="without a reason"):
+        _build_with(contributions=unexplained)
 
 
 @pytest.mark.unit

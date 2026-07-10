@@ -65,23 +65,28 @@ class PlatformContext:
         return ConsolidationEngine()
 
     def create_orchestration_policy(self) -> OrchestrationPolicy:
-        """Return the governed default :class:`OrchestrationPolicy` (CAP-076B).
+        """Return the **active** governed :class:`OrchestrationPolicy` (CAP-076D).
 
-        Construction only. The default policy is **not** the policy the runtime
-        executes: :meth:`create_engineering_context_orchestrator` binds
-        :class:`LegacySelectionPolicy` so behaviour is unchanged. This policy —
-        coverage-guaranteed, risk-ranked, domain-budgeted, and the one that
-        repairs the CAP-074B defect — is activated in CAP-076D.
+        :class:`DefaultOrchestrationPolicy` — coverage-guaranteed, risk-ranked,
+        domain-budgeted — is what
+        :meth:`create_engineering_context_orchestrator` binds, and therefore what
+        every runtime execution now applies. It is the policy that repairs the
+        CAP-074B defect: functional, security and quality evidence all reach the
+        reasoner whenever the repository holds them.
         """
         return DefaultOrchestrationPolicy()
 
     def create_legacy_selection_policy(self) -> OrchestrationPolicy:
         """Return the behaviour-preserving :class:`LegacySelectionPolicy` (CAP-076C).
 
-        The **active** runtime policy. It restates the pre-CAP-076 selection rule
-        declaratively — largest group by artifact count, ties broken by
-        ``consolidated_id`` ascending — so wiring the orchestrator into the runtime
-        changes plumbing without changing which evidence a reasoner receives.
+        No longer the runtime policy, and deliberately retained. It restates the
+        pre-CAP-076 selection rule declaratively — largest group by artifact
+        count, ties broken by ``consolidated_id`` ascending — and exists as the
+        **control arm**: running it against the active policy over the same
+        candidates is what demonstrates that a change in a reasoner's evidence
+        came from the policy rather than from the code that executes it.
+
+        Pass it to :meth:`create_engineering_context_orchestrator` to use it.
         """
         return LegacySelectionPolicy()
 
@@ -98,16 +103,18 @@ class PlatformContext:
     def create_engineering_context_orchestrator(
         self, policy: OrchestrationPolicy | None = None
     ) -> EngineeringContextOrchestrator:
-        """Return the runtime's :class:`EngineeringContextOrchestrator` (CAP-076C).
+        """Return the runtime's :class:`EngineeringContextOrchestrator` (CAP-076D).
 
         The single orchestration point between Consolidation and Analysis. When
         *policy* is omitted the orchestrator is bound to
-        :meth:`create_legacy_selection_policy`, which is what the runtime uses;
-        the parameter exists so a caller can exercise a different governed policy
-        without constructing the orchestrator itself.
+        :meth:`create_orchestration_policy` — the active
+        :class:`DefaultOrchestrationPolicy`. The parameter exists so a caller can
+        exercise a different governed policy (notably
+        :meth:`create_legacy_selection_policy`, for comparison) without
+        constructing the orchestrator itself.
         """
         return EngineeringContextOrchestrator(
-            policy=policy if policy is not None else self.create_legacy_selection_policy(),
+            policy=policy if policy is not None else self.create_orchestration_policy(),
             builder=self.create_engineering_context_builder(),
         )
 

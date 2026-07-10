@@ -1,16 +1,16 @@
 """EngineeringContextBuilder — constructs an immutable EngineeringContext.
 
-The builder owns **construction only**. Given a subject, an already-selected,
-already-ordered, already-budgeted sequence of ``ConsolidatedArtifact``s, and the
-policy under which they were chosen, it validates the inputs and assembles one
+The builder owns **construction only**. Given a subject, the already-selected,
+already-ordered, already-budgeted evidence, the per-group contributions that
+produced it, the decisions the orchestrator recorded, and the policy those
+decisions were made under, it validates the inputs and assembles one
 :class:`EngineeringContext`.
 
 What the builder does *not* do
 -----------------------------
 It does not orchestrate, rank, apply coverage, apply a budget, or execute a
-policy. Those are the Engineering Context Orchestrator's responsibilities
-(CAP-076C). The builder *reads* the policy in exactly three ways, none of which
-is a decision:
+policy. Those are the Engineering Context Orchestrator's responsibilities. The
+builder *reads* the policy in exactly three ways, none of which is a decision:
 
 1. **Compatibility check** — refuses a policy whose major version it was not
    built against.
@@ -20,20 +20,34 @@ is a decision:
 3. **Reason rendering** — substitutes provenance facts into the policy's own
    explainability template.
 
+It is handed the evidence pre-assembled rather than handed the groups to flatten
+(CAP-076D). A domain's evidence is ordered *across* the contributing groups, so
+no group owns a contiguous slice of it; a builder that concatenated per-group
+lists would silently undo the policy's ordering rule. Giving it nothing to
+reorder is how "the builder never reorders" stays true structurally.
+
+The one thing it derives
+------------------------
+:class:`ContextGrounding` — a pure measurement of the evidence it was handed. It
+is not a decision: no ordering, selection or bound depends on it, and computing
+it anywhere else would mean re-walking the same artifacts to reach the same
+answer.
+
 Reproducibility (CAP-076A Invariant 7)
 --------------------------------------
 The builder is a pure function of its inputs. The context identity is a SHA-256
 of the subject and the contributing group ids — never ``uuid4``, never a clock,
 never ``hash()``. This matters concretely: all three mappers mint
 ``artifact_id=str(uuid4())``, so any identity derived from an artifact id would
-differ on every run. Derived collections (``components``, ``endpoints``) are
-sorted, never taken from set-iteration order.
+differ on every run. Derived collections (``components``, ``endpoints``,
+``source_distribution``) are sorted, never taken from set-iteration order.
 """
 
 from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from collections.abc import Sequence
 
 from requirement_intelligence.consolidation.consolidation_rules import (
@@ -45,24 +59,31 @@ from requirement_intelligence.context_orchestration.context_exceptions import (
     ContextConstructionError,
     PolicyCompatibilityError,
 )
+from requirement_intelligence.context_orchestration.evidence_selection import GroupContribution
 from requirement_intelligence.context_orchestration.models.context_identity import (
     EngineeringContextId,
     PolicyVersion,
 )
 from requirement_intelligence.context_orchestration.models.engineering_context import (
     ENGINEERING_CONTEXT_VERSION,
+    EVIDENCE_DOMAINS,
     ContextContribution,
+    ContextCoverage,
     ContextEvidence,
+    ContextEvidenceBudgetUsage,
+    ContextGrounding,
     ContextMetadata,
     ContextProvenance,
+    ContextRanking,
     ContextSubject,
     EngineeringContext,
     OrchestrationMetadata,
+    SourceDistributionEntry,
 )
 from requirement_intelligence.context_orchestration.policy.orchestration_policy import (
     OrchestrationPolicy,
 )
-from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
+from requirement_intelligence.models.enums import SourceCategory
 from requirement_intelligence.models.source_artifact import SourceArtifact
 
 #: The ``OrchestrationPolicy`` major version this builder understands.
@@ -90,25 +111,28 @@ class EngineeringContextBuilder:
         self,
         *,
         subject: ContextSubject,
-        contributing_groups: Sequence[ConsolidatedArtifact],
+        evidence: ContextEvidence,
+        contributions: Sequence[GroupContribution],
         policy: OrchestrationPolicy,
-        inclusion_reasons: Sequence[str] | None = None,
+        ranking: ContextRanking,
+        coverage: ContextCoverage,
+        evidence_budget: ContextEvidenceBudgetUsage,
         candidate_group_count: int | None = None,
     ) -> EngineeringContext:
-        """Assemble one ``EngineeringContext`` from already-selected groups.
+        """Assemble one ``EngineeringContext`` from an orchestrator's decisions.
 
         Args:
             subject: What the context is about. Chosen by the orchestrator.
-            contributing_groups: The consolidated artifacts to draw evidence
-                from, in the order the orchestrator selected them. Evidence
-                order is preserved exactly; the builder never reorders.
-            policy: The policy under which the groups were selected. Recorded in
+            evidence: The selected, ordered, budgeted evidence. Recorded verbatim;
+                the builder never reorders or drops an artifact.
+            contributions: One record per contributing group, in rank order,
+                stating how many artifacts it supplied to each domain and why it
+                was admitted.
+            policy: The policy under which the decisions were made. Recorded in
                 the context and used to render the Orchestration Reason.
-            inclusion_reasons: One reason per contributing group, explaining why
-                the policy admitted it. Supplied by the orchestrator, which is
-                the only component that knows the ranking each group survived.
-                When omitted, a reason naming the policy is recorded — never an
-                empty one, because an unexplained group is not permitted.
+            ranking: Every candidate group's rank, score, and fate.
+            coverage: Whether each evidence domain was represented, and why.
+            evidence_budget: How the policy's budget was allocated and spent.
             candidate_group_count: How many groups the orchestrator ranked before
                 selecting. Defaults to the number of contributing groups, which
                 is the truth when no group was discarded.
@@ -118,21 +142,18 @@ class EngineeringContextBuilder:
 
         Raises:
             ContextConstructionError: If any input is missing, wrongly typed, or
-                if the supplied reasons or candidate count do not match the groups.
+                if the contributions do not account for the evidence supplied.
             PolicyCompatibilityError: If *policy* has an incompatible major version.
             ContextBudgetExceededError: If the evidence exceeds *policy*'s budget.
         """
-        self._validate_inputs(subject, contributing_groups, policy)
+        self._validate_inputs(subject, evidence, contributions, policy)
         self._validate_policy_compatibility(policy)
-
-        reasons = self._resolve_inclusion_reasons(contributing_groups, policy, inclusion_reasons)
-        candidates = self._resolve_candidate_count(contributing_groups, candidate_group_count)
-
-        evidence = self._collect_evidence(contributing_groups)
+        self._validate_contributions_account_for_evidence(contributions, evidence)
         self._enforce_budget(evidence, policy)
 
+        candidates = self._resolve_candidate_count(contributions, candidate_group_count)
         members = self._all_artifacts(evidence)
-        provenance = self._build_provenance(contributing_groups, reasons, candidates, len(members))
+        provenance = self._build_provenance(contributions, candidates, len(members))
         context_id = self._build_context_id(subject, provenance.contributing_consolidated_ids)
 
         return EngineeringContext(
@@ -146,8 +167,12 @@ class EngineeringContextBuilder:
                 policy_version=policy.policy_version,
                 context_model_version=self._context_model_version,
             ),
+            ranking=ranking,
+            coverage=coverage,
+            evidence_budget=evidence_budget,
+            grounding=self._build_grounding(evidence, members),
             orchestration_reason=self._render_reason(
-                subject, contributing_groups, evidence, policy, candidates
+                subject, contributions, evidence, policy, candidates
             ),
         )
 
@@ -158,7 +183,8 @@ class EngineeringContextBuilder:
     @staticmethod
     def _validate_inputs(
         subject: ContextSubject,
-        contributing_groups: Sequence[ConsolidatedArtifact],
+        evidence: ContextEvidence,
+        contributions: Sequence[GroupContribution],
         policy: OrchestrationPolicy,
     ) -> None:
         """Reject missing or wrongly-typed builder inputs."""
@@ -166,49 +192,72 @@ class EngineeringContextBuilder:
             raise ContextConstructionError(
                 f"Expected a ContextSubject, got: {type(subject).__name__}"
             )
+        if not isinstance(evidence, ContextEvidence):
+            raise ContextConstructionError(
+                f"Expected a ContextEvidence, got: {type(evidence).__name__}"
+            )
         if not isinstance(policy, OrchestrationPolicy):
             raise ContextConstructionError(
                 f"Expected an OrchestrationPolicy, got: {type(policy).__name__}"
             )
-        if not contributing_groups:
+        if not contributions:
             raise ContextConstructionError(
                 "At least one ConsolidatedArtifact must contribute to a context."
             )
-        for group in contributing_groups:
-            if not isinstance(group, ConsolidatedArtifact):
+        for contribution in contributions:
+            if not isinstance(contribution, GroupContribution):
                 raise ContextConstructionError(
-                    f"Expected ConsolidatedArtifact, got: {type(group).__name__}"
+                    f"Expected GroupContribution, got: {type(contribution).__name__}"
+                )
+            if not contribution.inclusion_reason.strip():
+                raise ContextConstructionError(
+                    f"Group '{contribution.consolidated_id}' was admitted without a reason; "
+                    f"an unexplained group is not permitted."
                 )
 
     @staticmethod
-    def _resolve_inclusion_reasons(
-        groups: Sequence[ConsolidatedArtifact],
-        policy: OrchestrationPolicy,
-        supplied: Sequence[str] | None,
-    ) -> tuple[str, ...]:
-        """Return one non-empty inclusion reason per contributing group."""
-        if supplied is None:
-            return tuple(f"Included by policy '{policy.policy_id}'." for _ in groups)
-        if len(supplied) != len(groups):
-            raise ContextConstructionError(
-                f"Expected one inclusion reason per contributing group: "
-                f"{len(groups)} group(s), {len(supplied)} reason(s)."
-            )
-        for reason in supplied:
-            if not isinstance(reason, str) or not reason.strip():
-                raise ContextConstructionError("An inclusion reason must be a non-empty string.")
-        return tuple(supplied)
+    def _validate_contributions_account_for_evidence(
+        contributions: Sequence[GroupContribution], evidence: ContextEvidence
+    ) -> None:
+        """Every evidence artifact must be claimed by exactly one contributing group.
+
+        This is the seam where a selection bug would otherwise pass silently: the
+        orchestrator counts what each group supplied, and assembles the evidence
+        separately. If the two disagree, one of them is wrong.
+        """
+        declared = {
+            SourceCategory.FUNCTIONAL: sum(c.functional_count for c in contributions),
+            SourceCategory.SECURITY: sum(c.security_count for c in contributions),
+            SourceCategory.QUALITY: sum(c.quality_count for c in contributions),
+        }
+        supplied = {
+            SourceCategory.FUNCTIONAL: len(evidence.functional_artifacts),
+            SourceCategory.SECURITY: len(evidence.security_artifacts),
+            SourceCategory.QUALITY: len(evidence.quality_artifacts),
+        }
+        for domain in EVIDENCE_DOMAINS:
+            if declared[domain] != supplied[domain]:
+                raise ContextConstructionError(
+                    f"Contributing groups declare {declared[domain]} {domain} artifact(s) "
+                    f"but {supplied[domain]} were supplied as evidence."
+                )
+        for contribution in contributions:
+            if contribution.contributed_count == 0:
+                raise ContextConstructionError(
+                    f"Group '{contribution.consolidated_id}' contributed no evidence; "
+                    f"a group that supplies nothing is not a contributor."
+                )
 
     @staticmethod
     def _resolve_candidate_count(
-        groups: Sequence[ConsolidatedArtifact], supplied: int | None
+        contributions: Sequence[GroupContribution], supplied: int | None
     ) -> int:
         """Return the number of groups the orchestrator ranked."""
         if supplied is None:
-            return len(groups)
-        if supplied < len(groups):
+            return len(contributions)
+        if supplied < len(contributions):
             raise ContextConstructionError(
-                f"candidate_group_count ({supplied}) is below the {len(groups)} "
+                f"candidate_group_count ({supplied}) is below the {len(contributions)} "
                 f"group(s) supplied as contributing."
             )
         return supplied
@@ -255,22 +304,6 @@ class EngineeringContextBuilder:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _collect_evidence(groups: Sequence[ConsolidatedArtifact]) -> ContextEvidence:
-        """Flatten the groups' three domain lists, preserving the supplied order."""
-        functional: list[SourceArtifact] = []
-        security: list[SourceArtifact] = []
-        quality: list[SourceArtifact] = []
-        for group in groups:
-            functional.extend(group.functional_artifacts)
-            security.extend(group.security_artifacts)
-            quality.extend(group.quality_artifacts)
-        return ContextEvidence(
-            functional_artifacts=tuple(functional),
-            security_artifacts=tuple(security),
-            quality_artifacts=tuple(quality),
-        )
-
-    @staticmethod
     def _all_artifacts(evidence: ContextEvidence) -> tuple[SourceArtifact, ...]:
         """Every evidence artifact, in domain order."""
         return (
@@ -300,30 +333,54 @@ class EngineeringContextBuilder:
         )
 
     @staticmethod
+    def _build_grounding(
+        evidence: ContextEvidence, members: Sequence[SourceArtifact]
+    ) -> ContextGrounding:
+        """Measure what the assembled evidence is grounded in.
+
+        ``source_distribution`` is what turns "the reasoner saw 54 artifacts" into
+        "the reasoner saw 4 from JIRA, 25 from OWASP ZAP and 25 from SonarQube" —
+        the single number that would have exposed the CAP-074B defect on sight.
+        Sorted by source system so two runs serialise identically.
+        """
+        counts = Counter(str(artifact.source_system) for artifact in members)
+        return ContextGrounding(
+            evidence_domains=tuple(sorted(evidence.categories_present, key=_domain_position)),
+            functional_count=len(evidence.functional_artifacts),
+            security_count=len(evidence.security_artifacts),
+            quality_count=len(evidence.quality_artifacts),
+            total_count=evidence.total_count,
+            source_distribution=tuple(
+                SourceDistributionEntry(source_system=system, artifact_count=count)
+                for system, count in sorted(counts.items())
+            ),
+        )
+
+    @staticmethod
     def _build_provenance(
-        groups: Sequence[ConsolidatedArtifact],
-        inclusion_reasons: Sequence[str],
+        contributions: Sequence[GroupContribution],
         candidate_group_count: int,
         artifact_count: int,
     ) -> ContextProvenance:
         """Record which groups contributed, in the order they were selected."""
-        contributions = tuple(
+        records = tuple(
             ContextContribution(
-                consolidated_id=group.consolidated_id,
-                module=group.module,
-                business_area=group.business_area,
-                consolidation_reason=group.consolidation_reason,
-                artifact_count=(
-                    len(group.functional_artifacts)
-                    + len(group.security_artifacts)
-                    + len(group.quality_artifacts)
-                ),
-                inclusion_reason=reason,
+                consolidated_id=contribution.consolidated_id,
+                module=contribution.group.module,
+                business_area=contribution.group.business_area,
+                consolidation_reason=contribution.group.consolidation_reason,
+                rank=contribution.rank,
+                artifact_count=contribution.contributed_count,
+                candidate_artifact_count=contribution.candidate_count,
+                functional_count=contribution.functional_count,
+                security_count=contribution.security_count,
+                quality_count=contribution.quality_count,
+                inclusion_reason=contribution.inclusion_reason,
             )
-            for group, reason in zip(groups, inclusion_reasons, strict=True)
+            for contribution in contributions
         )
         return ContextProvenance(
-            contributions=contributions,
+            contributions=records,
             candidate_group_count=candidate_group_count,
             source_artifact_count=artifact_count,
         )
@@ -347,7 +404,7 @@ class EngineeringContextBuilder:
     @staticmethod
     def _render_reason(
         subject: ContextSubject,
-        groups: Sequence[ConsolidatedArtifact],
+        contributions: Sequence[GroupContribution],
         evidence: ContextEvidence,
         policy: OrchestrationPolicy,
         candidate_group_count: int,
@@ -357,7 +414,12 @@ class EngineeringContextBuilder:
         return policy.render_reason(
             subject=subject.label,
             strategy=str(policy.selection_strategy),
-            groups=len(groups),
+            groups=len(contributions),
             candidates=candidate_group_count,
             categories=categories or "no evidence",
         )
+
+
+def _domain_position(category: SourceCategory) -> int:
+    """Sort key placing evidence domains in the canonical order."""
+    return EVIDENCE_DOMAINS.index(SourceCategory(category))

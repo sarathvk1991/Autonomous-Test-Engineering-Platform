@@ -18,11 +18,18 @@ class ExecutionData:
     Fields
     ------
     selected:
-        The ConsolidatedArtifact the orchestrator selected. Persisted verbatim as
-        ``consolidated_artifact.json``.
+        The **primary** contributing ConsolidatedArtifact — the highest-ranked
+        group the orchestrator admitted. Persisted verbatim as
+        ``consolidated_artifact.json``. Under the active multi-source policy it is
+        one of several contributors, and it is *not* the whole of what a reasoner
+        saw: ``engineering_context`` is. It remains in the package because a
+        context flattens and reorders evidence across its groups and so cannot
+        reconstitute a consolidation group, and because the group is the unit
+        Consolidation actually produced.
     engineering_context:
         The ``EngineeringContext`` the Engineering Context Orchestrator composed
-        and the prompt was built from (CAP-076C). Persisted as
+        and the prompt was built from (CAP-076C). The complete reasoning input,
+        and the complete record of how it was chosen. Persisted as
         ``engineering_context.json``. Present for every run, including dry runs:
         the context exists before the provider is ever called.
     prompt_request:

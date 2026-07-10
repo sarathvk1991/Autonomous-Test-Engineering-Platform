@@ -30,13 +30,20 @@ class BaselineMetricsBuilder:
         counts = observe_response_counts(generated_text)
         prompt_tokens, response_tokens = usage_tokens(result)
         eng = engineering_metrics(data)
-        notes = f"Live execution; selected consolidated artifact `{data.selected.consolidated_id}`."
+        notes = (
+            f"Live execution; engineering context composed from "
+            f"{eng['contributing_group_count']} of {eng['candidate_group_count']} consolidation "
+            f"group(s) under policy `{eng['orchestration_policy']}`."
+        )
+        domains = ", ".join(eng["evidence_domains_represented"]) or "none"
 
         return f"""# AI Metrics
 
 ## Engineering Metrics
 
-Derived only from the platform pipeline; these do not inspect AI output.
+Derived only from the platform pipeline; these do not inspect AI output. The
+artifact counts describe the **engineering context** — the evidence the reasoner
+received — and are read from the orchestrator's own decisions, never re-derived.
 
 | Metric                            | Value |
 | --------------------------------- | ----- |
@@ -45,8 +52,18 @@ Derived only from the platform pipeline; these do not inspect AI output.
 | Functional Artifact Count         | {eng["functional_artifact_count"]} |
 | Security Artifact Count           | {eng["security_artifact_count"]} |
 | Quality Artifact Count            | {eng["quality_artifact_count"]} |
-| Selected Consolidated Artifact    | {eng["selected_consolidated_artifact"]} |
-| Selected Artifact Rank            | {eng["selected_artifact_rank"]} |
+| Context Artifact Count            | {eng["context_artifact_count"]} |
+| Orchestration Policy              | {eng["orchestration_policy"]} |
+| Selection Strategy                | {eng["selection_strategy"]} |
+| Candidate Groups Ranked           | {eng["candidate_group_count"]} |
+| Contributing Groups               | {eng["contributing_group_count"]} |
+| Evidence Domains Represented      | {domains} |
+| Coverage Complete                 | {eng["coverage_complete"]} |
+| Evidence Budget Allocated         | {eng["evidence_budget_allocated"]} |
+| Evidence Budget Used              | {eng["evidence_budget_used"]} |
+| Evidence Budget Truncated         | {eng["evidence_budget_truncated"]} |
+| Primary Consolidated Artifact     | {eng["selected_consolidated_artifact"]} |
+| Primary Artifact Rank             | {eng["selected_artifact_rank"]} |
 | Largest Consolidation Group       | {eng["largest_consolidation_group"]} |
 | Smallest Consolidation Group      | {eng["smallest_consolidation_group"]} |
 | Average Artifacts Per Group       | {eng["average_artifacts_per_group"]} |

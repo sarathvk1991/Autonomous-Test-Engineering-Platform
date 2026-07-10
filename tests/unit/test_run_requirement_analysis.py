@@ -198,7 +198,8 @@ class FakeContext:
 
     def create_engineering_context_orchestrator(self, policy: Any = None) -> Any:
         # Faithful drop-in: the real hub's orchestrator, bound to the active
-        # LegacySelectionPolicy, so the CLI's selection behaviour is genuinely tested.
+        # DefaultOrchestrationPolicy, so the CLI's orchestration behaviour is
+        # genuinely tested rather than stubbed.
         return PlatformContext().create_engineering_context_orchestrator(policy)
 
     def create_prompt_builder(self) -> MagicMock:
@@ -260,10 +261,20 @@ def _read_manifest(directory: Path) -> dict[str, Any]:
     return json.loads((directory / "manifest.json").read_text())
 
 
-def _engineering_context(artifact: ConsolidatedArtifact) -> Any:
-    """Orchestrate *artifact* into the context the execution package persists."""
+def _engineering_context(
+    artifact: ConsolidatedArtifact, candidates: list[ConsolidatedArtifact] | None = None
+) -> Any:
+    """Orchestrate *candidates* into the context the execution package persists.
+
+    Defaults to a single-candidate run. Pass the full candidate list when the
+    assertion depends on a rank the orchestrator could only have computed by
+    ranking more than one group.
+    """
     return (
-        PlatformContext().create_engineering_context_orchestrator().orchestrate([artifact]).context
+        PlatformContext()
+        .create_engineering_context_orchestrator()
+        .orchestrate(candidates or [artifact])
+        .context
     )
 
 
@@ -524,7 +535,7 @@ def test_engineering_metrics_from_pipeline_only() -> None:
     ]
     data = ExecutionData(
         selected=consolidated[1],
-        engineering_context=_engineering_context(consolidated[1]),
+        engineering_context=_engineering_context(consolidated[1], consolidated),
         prompt_request=FakePromptRequest(),
         llm_request=FakeLLMRequest("r"),
         result=None,
@@ -545,15 +556,58 @@ def test_engineering_metrics_from_pipeline_only() -> None:
     assert metrics["largest_consolidation_group"] == 9
     assert metrics["smallest_consolidation_group"] == 1
     assert metrics["average_artifacts_per_group"] == round((1 + 9 + 4) / 3, 2)
-    assert metrics["quality_artifact_count"] == 9
+    # The domain counts describe the engineering context — the evidence the
+    # reasoner received — which under a coverage-guaranteed policy spans all three
+    # groups, not just the primary one.
+    assert metrics["quality_artifact_count"] == 1 + 9 + 4
+    assert metrics["contributing_group_count"] == 3
+    assert metrics["coverage_complete"] is True
+
+
+@pytest.mark.unit
+def test_engineering_metrics_read_the_orchestrators_ranking_rather_than_re_deriving_it() -> None:
+    """CAP-076D Stage 12: the orchestrator is the single source of truth for a rank.
+
+    All three groups are equal in size, so a rank derived by re-sorting on size
+    would depend on the tie-break alone. The orchestrator ranks on risk first, and
+    the metric must report *that* rank.
+    """
+    consolidated = [
+        FakeArtifact("a", quality=4, risk=RiskLevel.LOW),
+        FakeArtifact("b", quality=4, risk=RiskLevel.CRITICAL),
+        FakeArtifact("c", quality=4, risk=RiskLevel.MEDIUM),
+    ]
+    data = ExecutionData(
+        selected=consolidated[1],
+        engineering_context=_engineering_context(consolidated[1], consolidated),
+        prompt_request=FakePromptRequest(),
+        llm_request=FakeLLMRequest("r"),
+        result=None,
+        dry_run=True,
+        provider_name="gemini",
+        requested_model=None,
+        reasoning_contract_version="1.0.0",
+        execution_name=None,
+        command_line_arguments={},
+        consolidated_artifacts=consolidated,
+    )
+    metrics = engineering_metrics(data)
+    assert metrics["selected_artifact_rank"] == 1  # by risk, not by a size tie-break
+    assert metrics["orchestration_policy"] == "coverage"
+    assert metrics["selection_strategy"] == "coverage_guaranteed"
+    assert metrics["candidate_group_count"] == 3
 
 
 @pytest.mark.unit
 def test_engineering_metrics_na_without_pipeline_data() -> None:
+    """Consolidation-wide metrics need the group list; orchestration metrics do not."""
     metrics = engineering_metrics(_dry_run_data())  # no consolidated list
     assert metrics["source_artifacts_processed"] == "N/A"
     assert metrics["consolidated_artifacts_produced"] == "N/A"
-    assert metrics["selected_artifact_rank"] == "N/A"
+    assert metrics["largest_consolidation_group"] == "N/A"
+    # Read from the context, which exists for every run including dry runs.
+    assert metrics["selected_artifact_rank"] == 1
+    assert metrics["contributing_group_count"] == 1
 
 
 @pytest.mark.unit
@@ -561,7 +615,9 @@ def test_baseline_metrics_has_engineering_and_ai_sections() -> None:
     md = BaselineMetricsBuilder().build(_live_data())
     assert "## Engineering Metrics" in md
     assert "Source Artifacts Processed" in md
-    assert "Selected Artifact Rank" in md
+    assert "Primary Artifact Rank" in md
+    assert "Contributing Groups" in md
+    assert "Evidence Domains Represented" in md
     assert "## AI Metrics" in md  # existing metrics preserved
     assert "Baseline Version" in md
 

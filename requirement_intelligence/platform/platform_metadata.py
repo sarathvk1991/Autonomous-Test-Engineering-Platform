@@ -37,7 +37,10 @@ MANIFEST_SCHEMA_VERSION = "1.0.0"  # JSON contract of manifest.json
 CONNECTOR_REGISTRY_VERSION = "1.0.0"
 MAPPER_VERSION = "1.0.0"
 CONSOLIDATION_ENGINE_VERSION = "1.0.0"
-CONTEXT_ORCHESTRATION_VERSION = "1.0.0"  # Engineering Context Orchestration (ADR-0015)
+# Engineering Context Orchestration (ADR-0015). 2.0.0 activates
+# DefaultOrchestrationPolicy: a context is now composed from every consolidation
+# group needed to cover the evidence domains, not from the single largest group.
+CONTEXT_ORCHESTRATION_VERSION = "2.0.0"
 PROMPT_FRAMEWORK_VERSION = "1.0.0"
 LLM_FRAMEWORK_VERSION = "1.0.0"
 ANALYSIS_SERVICE_VERSION = "1.0.0"

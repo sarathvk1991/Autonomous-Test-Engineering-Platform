@@ -144,19 +144,19 @@ class TestPhase3PipelineExecution:
         assert golden_pipeline_result.engineering_context is not None
 
     @pytest.mark.productization
-    def test_legacy_selection_policy_is_active(
+    def test_default_orchestration_policy_is_active(
         self, golden_pipeline_result: PipelineResult
     ) -> None:
-        """The runtime executes LegacySelectionPolicy; the default policy stays inactive."""
+        """CAP-076D: the runtime executes DefaultOrchestrationPolicy."""
         orchestration = golden_pipeline_result.engineering_context.orchestration
-        assert str(orchestration.policy_id) == "legacy-single-largest"
+        assert str(orchestration.policy_id) == "coverage"
         assert str(orchestration.policy_version) == "1.0.0"
 
     @pytest.mark.productization
-    def test_context_selects_the_same_group_the_legacy_rule_selected(
+    def test_context_draws_on_the_only_group_the_golden_dataset_produces(
         self, golden_pipeline_result: PipelineResult
     ) -> None:
-        """Selection is unchanged: one group, and it is the one the old rule chose."""
+        """The golden dataset consolidates to one group, so one group contributes."""
         provenance = golden_pipeline_result.engineering_context.provenance
         assert provenance.contributing_group_count == 1
         assert provenance.contributing_consolidated_ids == (
@@ -164,15 +164,61 @@ class TestPhase3PipelineExecution:
         )
 
     @pytest.mark.productization
-    def test_context_evidence_matches_the_selected_group(
+    def test_context_carries_every_artifact_of_the_contributing_group(
         self, golden_pipeline_result: PipelineResult
     ) -> None:
-        """Every artifact of the selected group, and nothing else, reaches the context."""
+        """Nothing is dropped: the whole group fits inside the policy's budget.
+
+        Compared as multisets, not sequences — the active policy orders evidence by
+        risk, so a positional comparison would test the ordering rule rather than
+        the completeness claim this test makes. Ordering is tested separately.
+        """
         selected = golden_pipeline_result.selected
         evidence = golden_pipeline_result.engineering_context.evidence
-        assert list(evidence.functional_artifacts) == selected.functional_artifacts
-        assert list(evidence.security_artifacts) == selected.security_artifacts
-        assert list(evidence.quality_artifacts) == selected.quality_artifacts
+        assert sorted(a.source_record_id for a in evidence.functional_artifacts) == sorted(
+            a.source_record_id for a in selected.functional_artifacts
+        )
+        assert sorted(a.source_record_id for a in evidence.security_artifacts) == sorted(
+            a.source_record_id for a in selected.security_artifacts
+        )
+        assert sorted(a.source_record_id for a in evidence.quality_artifacts) == sorted(
+            a.source_record_id for a in selected.quality_artifacts
+        )
+
+    @pytest.mark.productization
+    def test_all_three_evidence_domains_reach_the_reasoner(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The CAP-074B repair, asserted against the golden baseline."""
+        coverage = golden_pipeline_result.engineering_context.coverage
+        assert coverage.all_present_categories_represented is True
+        assert coverage.rule_satisfied is True
+        assert [str(c) for c in coverage.represented_categories] == [
+            "functional",
+            "security",
+            "quality",
+        ]
+
+    @pytest.mark.productization
+    def test_active_policy_orders_evidence_by_risk_then_record_id(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The ordering rule is the one behaviour the golden dataset can isolate."""
+        from requirement_intelligence.consolidation.consolidation_rules import artifact_risk
+
+        rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        security = golden_pipeline_result.engineering_context.evidence.security_artifacts
+        keys = [(-rank[str(artifact_risk(a))], a.source_record_id) for a in security]
+        assert keys == sorted(keys)
+
+    @pytest.mark.productization
+    def test_the_evidence_budget_did_not_bind_this_dataset(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Nine artifacts sit far inside a 25-per-domain budget; nothing was truncated."""
+        budget = golden_pipeline_result.engineering_context.evidence_budget
+        assert budget.truncated is False
+        assert budget.total_used == 9
 
     @pytest.mark.productization
     def test_analysis_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
@@ -285,8 +331,9 @@ class TestPhase4OutputVerification:
         data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
         context = golden_pipeline_result.engineering_context
         assert data["contextId"] == str(context.context_id)
-        assert data["orchestration"]["policyId"] == "legacy-single-largest"
+        assert data["orchestration"]["policyId"] == "coverage"
         assert data["orchestration"]["policyVersion"] == "1.0.0"
+        assert data["orchestration"]["selectionStrategy"] == "coverage_guaranteed"
         assert data["orchestrationReason"] == context.orchestration_reason
 
     @pytest.mark.productization
@@ -311,6 +358,8 @@ class TestPhase4OutputVerification:
             assert contribution["consolidatedId"]
             assert contribution["inclusionReason"].strip()
             assert contribution["consolidationReason"].strip()
+            assert contribution["rank"] >= 1
+            assert contribution["artifactCount"] == contribution["candidateArtifactCount"]
 
     @pytest.mark.productization
     def test_engineering_context_artifact_summarises_every_evidence_item(
@@ -447,8 +496,17 @@ class TestPhase4OutputVerification:
         context = golden_pipeline_result.engineering_context
         assert manifest["engineeringContextArtifact"] == "engineering_context.json"
         assert manifest["engineeringContextId"] == str(context.context_id)
-        assert manifest["orchestrationPolicyId"] == "legacy-single-largest"
+        assert manifest["orchestrationPolicyId"] == "coverage"
         assert manifest["orchestrationPolicyVersion"] == "1.0.0"
+        assert manifest["selectionStrategy"] == "coverage_guaranteed"
+        assert manifest["candidateGroupCount"] == 1
+        assert manifest["contributingGroupCount"] == 1
+        assert manifest["contributingConsolidatedIds"] == list(
+            context.provenance.contributing_consolidated_ids
+        )
+        assert manifest["coverageComplete"] is True
+        assert manifest["evidenceDomainsRepresented"] == ["functional", "security", "quality"]
+        assert manifest["contextArtifactCount"] == 9
 
     @pytest.mark.productization
     def test_manifest_checksums_the_engineering_context(
@@ -940,3 +998,188 @@ class TestPhase6ProductizationAssertions:
         assert len(artifacts) == evidence.total_count
         for artifact in artifacts:
             assert artifact.source_system and artifact.source_record_id
+
+
+# ===========================================================================
+# CAP-076D — EngineeringContext as a first-class governed execution artifact
+# ===========================================================================
+
+
+class TestEngineeringContextGovernance:
+    """The Golden Baseline verifies the *context*, not a single selected group.
+
+    Before CAP-076D the baseline pinned the ConsolidatedArtifact the runtime
+    selected. That was the right subject when a context was a single group. It no
+    longer is: the context is the complete reasoning input, and the group is one
+    of its contributors. These tests govern the context and every orchestration
+    decision recorded inside it.
+    """
+
+    @pytest.mark.productization
+    def test_context_artifact_records_the_full_ranking(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Every candidate group appears, with the score it was ranked on."""
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        context = golden_pipeline_result.engineering_context
+        ranking = data["ranking"]
+        assert ranking["keys"] == list(context.ranking.keys)
+        assert ranking["tieBreaker"] == context.ranking.tie_breaker
+        assert len(ranking["entries"]) == context.provenance.candidate_group_count
+        for entry in ranking["entries"]:
+            assert entry["decisionReason"].strip()
+            assert len(entry["score"]) == len(ranking["keys"])
+
+    @pytest.mark.productization
+    def test_context_artifact_partitions_selected_and_excluded_groups(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Both halves of the ranking are named; an exclusion is never implicit."""
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        selected = data["selectedGroups"]
+        excluded = data["excludedGroups"]
+        assert len(selected) + len(excluded) == data["candidateGroupCount"]
+        assert len(selected) == data["contributingGroupCount"]
+        for group in selected:
+            assert group["inclusionReason"].strip()
+        for group in excluded:
+            assert group["exclusionReason"].strip()
+
+    @pytest.mark.productization
+    def test_context_artifact_records_coverage_per_domain(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        coverage = data["coverage"]
+        assert coverage["mode"] == "all_present_categories"
+        assert coverage["ruleSatisfied"] is True
+        assert coverage["allPresentCategoriesRepresented"] is True
+        assert [d["category"] for d in coverage["domains"]] == [
+            "functional",
+            "security",
+            "quality",
+        ]
+        for domain in coverage["domains"]:
+            assert domain["reason"].strip()
+
+    @pytest.mark.productization
+    def test_context_artifact_records_the_evidence_budget(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        budget = data["evidenceBudget"]
+        assert budget["maxArtifactsPerDomain"] == 25
+        assert budget["maxArtifactsTotal"] == 60
+        assert budget["totalUsed"] == 9
+        assert budget["truncated"] is False
+        assert sum(d["used"] for d in budget["domains"]) == budget["totalUsed"]
+
+    @pytest.mark.productization
+    def test_context_artifact_records_grounding_metadata(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Grounding names the domains, the counts and the systems the evidence came from."""
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        grounding = data["groundingMetadata"]
+        assert grounding["evidenceDomains"] == ["functional", "security", "quality"]
+        assert grounding["evidenceCounts"] == {
+            "functional": 4,
+            "security": 3,
+            "quality": 2,
+            "total": 9,
+        }
+        assert grounding["coverageAchieved"] is True
+        systems = {e["sourceSystem"]: e["artifactCount"] for e in grounding["sourceDistribution"]}
+        assert systems == {"jira": 4, "owasp_zap": 3, "sonarqube": 2}
+        assert sum(systems.values()) == grounding["evidenceCounts"]["total"]
+
+    @pytest.mark.productization
+    def test_context_artifact_declares_its_contract_version(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        data = _load_json(golden_pipeline_result.output_dir / "engineering_context.json")
+        assert data["engineeringContextArtifactVersion"] == "2.0.0"
+        assert data["contextModelVersion"] == "1.2"
+
+
+class TestPolicyComparison:
+    """Legacy versus Default over the identical candidate set (CAP-076D Stage 9).
+
+    The golden dataset consolidates to one group carrying all three domains, so it
+    isolates exactly one difference between the policies: the order evidence is
+    presented in. Every other output must be identical, and that is the point —
+    a difference anywhere else would mean the policy flip changed something the
+    policy does not govern.
+    """
+
+    @pytest.mark.productization
+    def test_both_policies_select_the_same_group(
+        self,
+        golden_pipeline_result: PipelineResult,
+        legacy_pipeline_result: PipelineResult,
+    ) -> None:
+        assert (
+            golden_pipeline_result.selected.consolidated_id
+            == legacy_pipeline_result.selected.consolidated_id
+        )
+
+    @pytest.mark.productization
+    def test_both_policies_deliver_the_same_evidence_for_this_dataset(
+        self,
+        golden_pipeline_result: PipelineResult,
+        legacy_pipeline_result: PipelineResult,
+    ) -> None:
+        """One group, whole, under both policies — only the ordering differs."""
+        active = golden_pipeline_result.engineering_context.evidence
+        legacy = legacy_pipeline_result.engineering_context.evidence
+        assert active.total_count == legacy.total_count == 9
+        assert sorted(a.source_record_id for a in active.security_artifacts) == sorted(
+            a.source_record_id for a in legacy.security_artifacts
+        )
+
+    @pytest.mark.productization
+    def test_the_policies_disagree_only_where_the_policy_says_they_should(
+        self,
+        golden_pipeline_result: PipelineResult,
+        legacy_pipeline_result: PipelineResult,
+    ) -> None:
+        """Same context identity and subject; different recorded policy and ordering."""
+        active = golden_pipeline_result.engineering_context
+        legacy = legacy_pipeline_result.engineering_context
+        assert active.context_id == legacy.context_id  # same subject, same groups
+        assert str(active.orchestration.policy_id) == "coverage"
+        assert str(legacy.orchestration.policy_id) == "legacy-single-largest"
+        assert active.coverage.selection_strategy == "coverage_guaranteed"
+        assert legacy.coverage.selection_strategy == "single_largest"
+
+    @pytest.mark.productization
+    def test_both_policies_produce_identical_validation_and_cp1_outcomes(
+        self,
+        golden_pipeline_result: PipelineResult,
+        legacy_pipeline_result: PipelineResult,
+    ) -> None:
+        """Validation and CP1 are unchanged by CAP-076D and must not react to the policy."""
+        assert (
+            golden_pipeline_result.validation_result.overall_verdict
+            == legacy_pipeline_result.validation_result.overall_verdict
+        )
+        assert golden_pipeline_result.cp1_result is not None
+        assert legacy_pipeline_result.cp1_result is not None
+        assert (
+            golden_pipeline_result.cp1_result.overall_verdict
+            == legacy_pipeline_result.cp1_result.overall_verdict
+        )
+
+    @pytest.mark.productization
+    def test_the_legacy_policy_still_reproduces_the_pre_cap_076_selection(
+        self, legacy_pipeline_result: PipelineResult
+    ) -> None:
+        """The control arm is only a control if it still controls."""
+        context = legacy_pipeline_result.engineering_context
+        assert context.provenance.contributing_group_count == 1
+        assert context.coverage.rule_satisfied is True
+        evidence = context.evidence
+        selected = legacy_pipeline_result.selected
+        assert list(evidence.functional_artifacts) == selected.functional_artifacts
+        assert list(evidence.security_artifacts) == selected.security_artifacts
+        assert list(evidence.quality_artifacts) == selected.quality_artifacts
