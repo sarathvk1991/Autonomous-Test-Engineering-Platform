@@ -22,6 +22,11 @@ from requirement_intelligence.analysis.requirement_analysis_service import (
 from requirement_intelligence.consolidation.consolidation_engine import (
     ConsolidationEngine,
 )
+from requirement_intelligence.context_orchestration import (
+    DefaultOrchestrationPolicy,
+    EngineeringContextBuilder,
+    OrchestrationPolicy,
+)
 from requirement_intelligence.cp1.response import (
     CP1Service,
     ValidationToCP1Handoff,
@@ -56,6 +61,25 @@ class PlatformContext:
     def create_consolidation_engine(self) -> ConsolidationEngine:
         """Return a new consolidation engine."""
         return ConsolidationEngine()
+
+    def create_orchestration_policy(self) -> OrchestrationPolicy:
+        """Return the governed default :class:`OrchestrationPolicy` (CAP-076B).
+
+        Construction only. Nothing in the pipeline consumes a policy today — the
+        Engineering Context Orchestrator that will apply it lands in CAP-076C. The
+        returned policy is inert declarative data: it states coverage, ranking,
+        budget, ordering and tie-breaking rules, and applies none of them.
+        """
+        return DefaultOrchestrationPolicy()
+
+    def create_engineering_context_builder(self) -> EngineeringContextBuilder:
+        """Return a new :class:`EngineeringContextBuilder` (CAP-076B).
+
+        Construction only, and nothing calls the builder yet. It owns construction
+        of an immutable ``EngineeringContext`` from already-selected consolidation
+        groups; it performs no ranking, coverage, budgeting, or orchestration.
+        """
+        return EngineeringContextBuilder()
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

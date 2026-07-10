@@ -4,6 +4,7 @@
 **Predecessor:** `docs/reviews/cap-074b-requirement-evidence-investigation.md`, `docs/proposals/cross-source-consolidation-and-selection.md`
 **Outcome:** One architecture recommended. Requires a new ADR before Part 2.
 **Terminology:** Canonicalised by CAP-076A (2026-07-10). This document previously used *Engineering Context Assembly / Context Assembler / Assembly Policy / Assembly Reason*; those terms are retired.
+**Implementation status:** CAP-076B (2026-07-10) landed §9 Stages 1–2 — the canonical model, typed identity model, policy framework, and builder — governed by **ADR-0015**. Nothing consumes them; runtime behaviour is unchanged. Stages 0 (ingestion-level test), 3, and 4 remain open. The recommendation in §4.1 is **accepted**.
 
 ---
 

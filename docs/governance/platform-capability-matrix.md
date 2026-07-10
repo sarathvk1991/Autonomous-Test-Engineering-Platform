@@ -290,6 +290,20 @@ not applicable.
 | -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
 | CAP-070 | Productization | Verify the completed Requirement Intelligence architecture end-to-end against a deterministic golden **Release Regression Baseline** | Governance contract 1.0 · Golden Dataset `GOLDEN_DATASET_VERSION` 1.0.0 (versioned independently) | 1.1.0 | Implementation | Completed pipeline it verifies — Consolidation (CAP-003), Requirement Analysis (CAP-014), Normalization (CAP-032), Response Validator (CAP-041), CP1 subsystem (CAP-060), Execution Package (CAP-020) | Governed regression datasets — `Golden Validation FAIL`, `Golden CP1 FAIL` (Planned) | Production Ready | Complete | `docs/productization/golden-baseline.md` (governing document; governance contract **frozen**, §13); `tests/productization/` — **70 productization tests** (Phase 3–6: 14 / 30 / 12 / 14) executing the full pipeline via a deterministic `GoldenStubProvider`, all passing. **Owns verification only**: it consumes the completed architecture and asserts pipeline execution, artifact generation, manifest integrity, deterministic execution, and the Validation/CP1 verdicts — it **does not own** Validation, CP1, Normalization, Analysis, Connectors, Prompt Engineering, or reporting. **Frozen ◑**: the governance contract is frozen; the golden dataset stays independently versioned (not frozen). |
 
+### 5.9 Engineering Context Orchestration
+
+**Lifecycle**
+
+| ID | Capability | Architecture | Framework | Canonical Models | Implementation | Testing | Frozen |
+| -- | ---------- | :----------: | :-------: | :--------------: | :------------: | :-----: | :----: |
+| CAP-076 | Engineering Context Orchestration | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ |
+
+**Governance**
+
+| ID | Capability | Purpose | Current Version | Introduced In | Owner | Dependencies | Next Planned Milestone | Maturity | Status | Notes |
+| -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
+| CAP-076 | Engineering Context Orchestration | Compose the complete, bounded engineering evidence for one reasoning session — `EngineeringContext` — from several `ConsolidatedArtifact`s under a governed, declarative `OrchestrationPolicy` | `ENGINEERING_CONTEXT_VERSION` 1.0 · `DefaultOrchestrationPolicy` `PolicyVersion` 1.0.0 | 1.1.0 | Architecture | Consolidation Engine (CAP-003); Canonical Data Model; ADR-0015 | **CAP-076C — Engineering Context Orchestrator Runtime Integration** | Foundation | **Implementation ◑ — foundation only, not wired** | Governed by **ADR-0015 (Accepted)**. Architecture: `docs/architecture/overview.md`; review: `docs/reviews/cap-076-engineering-context-orchestration.md`. `requirement_intelligence/context_orchestration/` ships the canonical model (`EngineeringContext`), the platform's **first strongly typed identifiers** (`EngineeringContextId`, `OrchestrationPolicyId`, `PolicyVersion`), the declarative policy framework (`OrchestrationPolicy`, `DefaultOrchestrationPolicy`, `LegacySelectionPolicy`), and `EngineeringContextBuilder`. 109 unit tests. **Implementation is deliberately partial:** the Engineering Context Orchestrator that *applies* a policy does not exist yet, and nothing but `PlatformContext` references the package — a containment test enforces this. Runtime behaviour is unchanged; prompt bytes, manifest, and the golden baseline are byte-identical. `ConsolidatedArtifact` is untouched and remains the canonical consolidation model. |
+
 ## 6. Overall Platform Health
 
 Objective counts, derived directly from the repository (no estimation):

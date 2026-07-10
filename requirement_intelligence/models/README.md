@@ -26,6 +26,30 @@ serialise to `camelCase` via `model_dump(by_alias=True)`.
 > exported from this package; the three models above form the broader canonical
 > pipeline described here.
 
+## Canonical consolidation vs. canonical orchestration
+
+`ConsolidatedArtifact` is the canonical **consolidation** model and remains so —
+unchanged, not deprecated, and not replaced.
+
+A second canonical model, `EngineeringContext`, lives in
+[`context_orchestration/models/`](../context_orchestration/models/) and is the
+canonical **orchestration** model (CAP-076B, ADR-0015). The two are stacked:
+
+| | `ConsolidatedArtifact` | `EngineeringContext` |
+|---|---|---|
+| Owner | Consolidation Engine | Engineering Context Orchestrator (CAP-076C) |
+| Answers | *Which records share an attribute?* | *What must a reasoner know about this subject?* |
+| Scope | One grouping dimension | Several groups, under a governed policy |
+| Identity | `consolidated_id` — a raw `str` derived from the grouping key | `EngineeringContextId` — a typed identifier derived from subject + contributing groups |
+
+An `EngineeringContext` **consumes** consolidated artifacts: it flattens their
+evidence and records which ones contributed. Consolidation is entirely unaware
+the orchestration model exists, and this package does not depend on it.
+
+Subsystem-owned models live inside their subsystem (`prompts/models/`,
+`cp1/models/`, `validation/models/`, `context_orchestration/models/`). This
+package holds only the *cross-layer* canonical data model.
+
 ## ParsedResponse — Shared Platform Artifact
 
 `ParsedResponse` is a **Core Canonical Model** and a **Shared Platform Artifact**:

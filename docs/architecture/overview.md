@@ -85,6 +85,41 @@ Package (`execution/`). The pipeline is composed by
 `requirement_intelligence.platform.PlatformContext` and driven by the CLI
 (`scripts/run_requirement_analysis.py`).
 
+## Engineering Context Orchestration (`context_orchestration/`)
+
+**Foundation only — not yet in the pipeline above.**
+
+Consolidation answers *"which records share an attribute?"*. It does not answer
+*"what evidence should one reasoning session receive?"* — a question the platform
+currently answers in eleven lines of private CLI glue. **Engineering Context
+Orchestration** is the subsystem that will own it, sitting between Consolidation
+and Analysis:
+
+```
+list[ConsolidatedArtifact]  ->  Engineering Context Orchestrator  ->  EngineeringContext
+```
+
+`EngineeringContext` is the canonical **orchestration** model: the complete,
+bounded evidence for one reasoning session, composed from several consolidation
+groups under a governed, declarative `OrchestrationPolicy` (coverage, ranking,
+evidence budget, ordering, tie-breaking, explainability). It **does not replace**
+`ConsolidatedArtifact`, which remains the canonical **consolidation** model and is
+unchanged. The two are stacked, not substituted.
+
+As of CAP-076B the package contains the canonical model, the typed identity model
+(`EngineeringContextId`, `OrchestrationPolicyId`, `PolicyVersion` — the platform's
+first strongly typed identifiers), the policy framework, and the builder.
+`PlatformContext` constructs them and **nothing consumes them**: the orchestrator
+itself and all runtime wiring land in CAP-076C. The pipeline diagram above is
+therefore accurate today.
+
+Governed by **ADR-0015**. Background: `docs/reviews/cap-076-engineering-context-orchestration.md`.
+
+> On the word *orchestration*: ADR-0002/0003/0011 use "orchestration boundary" for
+> components that sequence collaborators and own **no** policy. Engineering Context
+> Orchestration is the opposite — owning policy is its purpose. Always use the full
+> term.
+
 ## Cross-cutting
 - **Config:** one validated source — `app/core/settings.py` (pydantic-settings).
 - **Logging:** structured via `infrastructure/logging`.

@@ -51,6 +51,7 @@ autonomous-test-engineering-platform/
 │   ├── models/                #   canonical + shared models (Canonical Requirement, ParsedResponse)
 │   ├── registry/              #   connector registry + source loader
 │   ├── consolidation/         #   consolidation engine (multi-source -> ConsolidatedArtifact)
+│   ├── context_orchestration/ #   engineering context orchestration (model+policy; not yet wired)
 │   ├── prompts/               #   prompt framework
 │   ├── llm/                   #   provider framework (Gemini; Azure OpenAI stub)
 │   ├── platform/              #   PlatformContext, startup validation, health check
