@@ -77,6 +77,12 @@ class ExecutionData:
         (``FAILED`` / ``BLOCKED``). At this milestone the field only **transports** the
         result through the execution flow; no persistence, reporting, or rendering is
         introduced here.
+    grounding_result:
+        The complete ``GroundingResult`` produced by the Grounding runtime, when grounding
+        was executed for this run. ``None`` when grounding did not execute (the default —
+        grounding is not yet wired into the CLI run). When present, the execution package
+        serialises it as-is into ``grounding_result.json`` / ``grounding_report.md`` /
+        ``grounding_metrics.md`` — a pure projection; nothing is recomputed (CAP-077F.1).
     """
 
     selected: Any
@@ -96,6 +102,7 @@ class ExecutionData:
     validation_result: Any | None = None
     validation_profile: Any | None = None
     cp1_result: Any | None = None
+    grounding_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:

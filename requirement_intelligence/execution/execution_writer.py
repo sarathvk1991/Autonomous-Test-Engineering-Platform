@@ -32,6 +32,7 @@ from requirement_intelligence.execution.review_builder import ReviewBuilder
 from requirement_intelligence.execution.validation_report_builder import (
     ValidationReportBuilder,
 )
+from requirement_intelligence.grounding.serialization import GroundingSerializer
 
 _CORE_ARTIFACTS = (
     "consolidated_artifact.json",
@@ -88,6 +89,7 @@ class ExecutionWriter:
         self._validation_report = ValidationReportBuilder()
         self._cp1_report = CP1ReportBuilder()
         self._engineering_context = EngineeringContextArtifactBuilder()
+        self._grounding = GroundingSerializer()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -188,6 +190,21 @@ class ExecutionWriter:
                 self._cp1_report.build(data), encoding="utf-8"
             )
             names.append("cp1_report.md")
+        # Grounding artifacts (CAP-077F.1): appended only when a GroundingResult was
+        # produced. Pure projection — the GroundingResult is serialised/rendered as-is,
+        # nothing is matched, classified, scored, or recomputed.
+        if data.grounding_result is not None:
+            _write_json(
+                target_dir / "grounding_result.json",
+                self._grounding.render_json(data.grounding_result),
+            )
+            (target_dir / "grounding_report.md").write_text(
+                self._grounding.render_report(data.grounding_result), encoding="utf-8"
+            )
+            (target_dir / "grounding_metrics.md").write_text(
+                self._grounding.render_metrics(data.grounding_result), encoding="utf-8"
+            )
+            names += ["grounding_result.json", "grounding_report.md", "grounding_metrics.md"]
         return tuple(names)
 
     @staticmethod

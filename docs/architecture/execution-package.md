@@ -35,6 +35,9 @@ Execution Package
         ├── validation_result.json       (the validation verdict)   [conditional]
         ├── validation_report.md         (human-readable validation) [conditional]
         ├── cp1_report.md                (engineering-readiness)     [conditional]
+        ├── grounding_result.json        (grounding runtime contract) [conditional]
+        ├── grounding_report.md          (grounding projection)       [conditional]
+        ├── grounding_metrics.md         (grounding metrics projection)[conditional]
         ├── execution_summary.md         (human-readable run summary)
         ├── baseline_metrics.md          (engineering + AI metrics)
         └── review.md                    (qualitative review scaffold)
@@ -43,6 +46,16 @@ Execution Package
 Every artifact the manifest lists appears in `generatedArtifacts` with its byte count and
 SHA-256, so the package is self-verifying: the golden baseline re-hashes each file and
 checks it against the manifest.
+
+**Grounding artifacts are pure projections (CAP-077F.1).** `grounding_result.json`,
+`grounding_report.md`, and `grounding_metrics.md` are written only when a `GroundingResult`
+was produced for the run, via the same conditional append mechanism as validation/CP1. They
+are **serialization projections** of the `GroundingResult` (the frozen runtime contract, ADR-0016
+§D16) — reproducible from it alone. The Execution Package computes nothing for them: it never
+matches, classifies, scores confidence, or computes metrics/summaries/findings; the
+`GroundingSerializer` renders what the runtime already computed. Grounding is not yet wired into
+the CLI run, so these artifacts are absent from a default run today; the serialization boundary
+is what CAP-077F.1 established.
 
 ---
 
@@ -69,6 +82,9 @@ Artifacts fall into three groups by when they are written:
 | `validation_result.json` | Conditional | validation ran | `ExecutionWriter` | the `ValidationResult` |
 | `validation_report.md` | Conditional | validation ran | `ValidationReportBuilder` | human-readable validation report |
 | `cp1_report.md` | Conditional | CP1 ran | `CP1ReportBuilder` | the `CP1Result` |
+| `grounding_result.json` | Conditional | grounding ran | `GroundingSerializer` | the `GroundingResult` (verbatim) |
+| `grounding_report.md` | Conditional | grounding ran | `GroundingSerializer` | human-readable grounding projection |
+| `grounding_metrics.md` | Conditional | grounding ran | `GroundingSerializer` | grounding metrics projection |
 
 ---
 
@@ -186,6 +202,21 @@ Artifacts fall into three groups by when they are written:
 - **Lifetime** — one validated run whose gate opened.
 - **Relationship** — the terminal judgement of the pipeline; also summarized in
   `execution_summary.md` under *Engineering Readiness*.
+
+### `grounding_result.json`, `grounding_report.md`, `grounding_metrics.md`
+
+- **Purpose** — persist the grounding assessment for the run: `grounding_result.json` is the
+  `GroundingResult` verbatim (the frozen runtime contract); `grounding_report.md` and
+  `grounding_metrics.md` are human-readable projections of it.
+- **Producer** — `GroundingSerializer` (in `grounding/serialization/`), invoked by
+  `ExecutionWriter`. **Written only when a `GroundingResult` was produced.**
+- **Consumer** — auditors, humans, downstream phases, the manifest (`generatedArtifacts`).
+- **Lifetime** — one grounded run.
+- **Relationship** — **pure projections** of the `GroundingResult` (ADR-0016 §D16),
+  reproducible from it alone. The Execution Package computes nothing here — it never matches,
+  classifies, scores confidence, or computes metrics/summaries/findings; the runtime already
+  did. Grounding is not yet wired into the CLI run, so these are absent from a default run
+  today (`Runtime → GroundingResult → Execution Package → files` is one-way).
 
 ### `execution_summary.md`, `baseline_metrics.md`, `review.md`
 

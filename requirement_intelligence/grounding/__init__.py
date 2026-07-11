@@ -120,6 +120,7 @@ from requirement_intelligence.grounding.normalization import (
     NormalizedToken,
     default_normalization_configuration,
 )
+from requirement_intelligence.grounding.serialization import GroundingSerializer
 from requirement_intelligence.grounding.strategies import DeterministicTextMatchingStrategy
 from requirement_intelligence.grounding.version import (
     GROUNDING_CONFIGURATION_VERSION,
@@ -182,6 +183,7 @@ __all__ = [
     "GroundingResult",
     "GroundingResultBuilder",
     "GroundingResultVersion",
+    "GroundingSerializer",
     "GroundingService",
     "GroundingSeverity",
     "GroundingStrategy",
