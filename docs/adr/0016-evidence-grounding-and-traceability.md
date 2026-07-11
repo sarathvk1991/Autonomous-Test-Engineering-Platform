@@ -151,6 +151,26 @@ MatchResult  →  ClassificationResult  →  Confidence  →  GroundedRequiremen
 
 **Fully deterministic, boundary-clean, independently versioned.** Every verdict is a pure function of `(MatchResult, ClassificationPolicy)`. The engine reads only the `MatchResult`; it never inspects the `EngineeringContext`, `AnalysisResult`, strategy, normalizer, or matching policy (enforced by containment tests). `ClassificationVersion` (result schema) and `ClassificationPolicyVersion` are typed and advance independently of `MatchResultVersion`, `MatchingStrategyVersion`, and the framework version. `PlatformContext.create_classification_policy()` and `create_support_classification_engine()` construct them, unwired, with no consumers — runtime is byte-identical.
 
+## D14 — Confidence is a governed subsystem consuming only ClassificationResult (CAP-077C.1)
+
+Confidence is the fourth governed subsystem of the grounding pipeline, after Classification. It answers *how confident should this verdict make us?* — turning a `ClassificationResult` into a `ConfidenceAssessment`. It owns confidence **only**: no matching, normalization, classification, metrics, execution artifacts, `GroundingService`, Validation, or CP1. **CAP-077C.1 freezes the architecture only; no confidence is computed** (the deterministic calculator lands in CAP-077D).
+
+**The pipeline is now a chain of canonical hand-offs:**
+
+```
+MatchResult → ClassificationResult → ConfidenceAssessment → GroundedRequirement → GroundingResult
+```
+
+**Why `ConfidenceAssessment` exists.** It is the internal canonical output of Confidence — score, band, components, a structured explanation, and a `ConfidenceVersion` — independent of `GroundedRequirement`. Not an execution artifact, not exposed outside Grounding. Introducing it isolates CAP-077D: the calculator produces a `ConfidenceAssessment`, and nothing else creates confidence.
+
+**Why `ConfidenceExplanation` exists.** It replaces a plain reason string with structured, machine-readable data — summary, positive/negative factors, applied policy rules, score breakdown, recommendations — reusable by reports and governance dashboards. Deterministic observations only; no generated prose. It is the permanent explanation contract for the subsystem.
+
+**Why `GroundedRequirement` no longer owns confidence construction.** The builder now consumes a `ConfidenceAssessment` and *assembles* — it transcribes the assessment into the `GroundingConfidence` the (frozen) `GroundedRequirement` model carries, computing nothing. `GroundedRequirement` becomes a pure assembly target; confidence *creation* belongs solely to the Confidence subsystem. (The frozen `GroundedRequirement.confidence: GroundingConfidence` field is unchanged, keeping the canonical model byte-stable; the builder is the only thing that changed.)
+
+**Policy governs; the calculator implements.** A governed `ConfidencePolicy` holds base scores per verdict, bonuses (support, cross-source, evidence-count), penalties (conflict, unknown), the ceiling, and band thresholds — data only, no logic. The `ConfidenceCalculator` is an abstract contract, `calculate(classification_result) -> ConfidenceAssessment`, frozen now; the dormant default raises `NotImplementedError`. Future `DeterministicConfidenceCalculator` (CAP-077D), `StatisticalConfidenceCalculator`, and `HybridConfidenceCalculator` implement it behind the same signature. It consumes only a `ClassificationResult` — never the `MatchResult`, strategy, normalizer, or matching policy (enforced by containment tests).
+
+**Independently versioned, dormant, byte-identical.** `ConfidenceVersion` (assessment schema) and `ConfidencePolicyVersion` are typed and advance independently of `ClassificationVersion`, `MatchResultVersion`, `MatchingStrategyVersion`, and the framework version. `PlatformContext.create_confidence_policy()` and `create_confidence_calculator()` construct them, unwired, with no consumers — runtime is byte-identical.
+
 ---
 
 ## Trade-offs

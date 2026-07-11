@@ -138,13 +138,24 @@ MatchResult                (canonical output: links + statistics + explanation; 
 Classification → Confidence → Metrics → GroundingResult
 ```
 
-**Classification consumes only MatchResult (CAP-077C).** Support Classification is a
-governed subsystem that turns a `MatchResult` into a `ClassificationResult` under a
-governed `ClassificationPolicy` — the internal hand-off chain is:
+**Classification consumes only MatchResult (CAP-077C); Confidence consumes only
+ClassificationResult (CAP-077C.1).** Support Classification turns a `MatchResult` into a
+`ClassificationResult`; Confidence then turns that into a `ConfidenceAssessment`. The
+internal hand-off chain is a sequence of canonical models, each subsystem consuming only
+its immediate predecessor:
 
 ```
-MatchResult  →  ClassificationResult  →  Confidence  →  GroundedRequirement
+MatchResult  →  ClassificationResult  →  ConfidenceAssessment  →  GroundedRequirement  →  GroundingResult
 ```
+
+`ConfidenceAssessment` (internal to Grounding, never an execution artifact) carries the
+score, band, components, and a structured `ConfidenceExplanation` (positive/negative
+factors, applied policy rules, score breakdown, recommendations — machine-readable, not
+prose). A governed `ConfidencePolicy` holds the base scores, bonuses, penalties, ceiling,
+and band thresholds; a `ConfidenceCalculator` (abstract; dormant until CAP-077D) reads
+**only** the `ClassificationResult`. `GroundedRequirement` no longer owns confidence
+creation — the `GroundedRequirementBuilder` *assembles* from a `ConfidenceAssessment`,
+computing nothing. **CAP-077C.1 froze this architecture; no confidence is computed yet.**
 
 `ClassificationResult` (internal to Grounding, never an execution artifact) records the
 support verdict, the evidence links partitioned by role, and a deterministic reason. The

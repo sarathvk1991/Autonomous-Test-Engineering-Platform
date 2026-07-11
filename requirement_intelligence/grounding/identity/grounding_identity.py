@@ -134,6 +134,13 @@ class ClassificationPolicyId(_StringIdentifier):
 
 
 @dataclass(frozen=True)
+class ConfidencePolicyId(_StringIdentifier):
+    """The permanent, governed identity of a ``ConfidencePolicy``."""
+
+    _LABEL: ClassVar[str] = "confidence policy id"
+
+
+@dataclass(frozen=True)
 class GroundingAssessmentId(_StringIdentifier):
     """The deterministic identity of one grounding assessment.
 
@@ -279,3 +286,21 @@ class ClassificationPolicyVersion(_SemanticVersion):
     """Semantic version of a governed ``ClassificationPolicy``."""
 
     _LABEL: ClassVar[str] = "classification policy version"
+
+
+@dataclass(frozen=True, order=True)
+class ConfidenceVersion(_SemanticVersion):
+    """Semantic version of the ``ConfidenceAssessment`` **schema**.
+
+    Independent of :class:`ClassificationVersion`, :class:`MatchResultVersion`,
+    :class:`MatchingStrategyVersion`, and the framework version.
+    """
+
+    _LABEL: ClassVar[str] = "confidence version"
+
+
+@dataclass(frozen=True, order=True)
+class ConfidencePolicyVersion(_SemanticVersion):
+    """Semantic version of a governed ``ConfidencePolicy``."""
+
+    _LABEL: ClassVar[str] = "confidence policy version"

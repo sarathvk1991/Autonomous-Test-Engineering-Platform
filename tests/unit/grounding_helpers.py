@@ -147,3 +147,20 @@ def make_classification_result(
         supporting_links=links,
         classification_reason="test",
     )
+
+
+def make_confidence_assessment(*, text: str = "Set nosniff header.", score: int = 80):
+    # type: ignore[no-untyped-def]
+    """A valid ConfidenceAssessment (defaults to a HIGH-band placeholder)."""
+    from requirement_intelligence.grounding.confidence import (
+        ConfidenceAssessment,
+        ConfidenceExplanation,
+    )
+    from requirement_intelligence.grounding.identity import GroundedRequirementId
+
+    return ConfidenceAssessment(
+        requirement_id=GroundedRequirementId.for_requirement(SourceCategory.SECURITY, text),
+        confidence_score=score,
+        confidence_band=ConfidenceBand.HIGH,
+        confidence_explanation=ConfidenceExplanation(summary="placeholder"),
+    )

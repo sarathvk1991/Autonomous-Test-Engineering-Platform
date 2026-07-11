@@ -17,7 +17,7 @@ from tests.unit.grounding_helpers import (
     COMPLETED,
     STARTED,
     make_classification_result,
-    make_confidence,
+    make_confidence_assessment,
     make_explanation,
     make_metrics,
     make_summary,
@@ -26,12 +26,12 @@ from tests.unit.grounding_helpers import (
 
 @pytest.mark.unit
 class TestGroundedRequirementBuilder:
-    def test_consumes_classification_result(self) -> None:
+    def test_consumes_classification_and_confidence(self) -> None:
         builder = GroundedRequirementBuilder()
         text = "Set the X-Content-Type-Options header to nosniff."
         req = builder.build(
             classification_result=make_classification_result(text=text),
-            confidence=make_confidence(),
+            confidence_assessment=make_confidence_assessment(text=text),
             explanation=make_explanation(),
             domain=SourceCategory.SECURITY,
             text=text,
@@ -41,6 +41,7 @@ class TestGroundedRequirementBuilder:
             SourceCategory.SECURITY, text
         )
         assert req.classification == SupportClassification.SUPPORTED
+        assert req.confidence.score == 80
 
     def test_rejects_invalid_construction(self) -> None:
         builder = GroundedRequirementBuilder()
@@ -50,7 +51,7 @@ class TestGroundedRequirementBuilder:
                 classification_result=make_classification_result(
                     text="unsupported claim", supporting_links=()
                 ),
-                confidence=make_confidence(),
+                confidence_assessment=make_confidence_assessment(text="unsupported claim"),
                 explanation=make_explanation(),
                 domain=SourceCategory.SECURITY,
                 text="unsupported claim",
@@ -62,7 +63,7 @@ class TestGroundedRequirementBuilder:
         with pytest.raises(ValueError):
             builder.build(
                 classification_result=make_classification_result(text="one thing"),
-                confidence=make_confidence(),
+                confidence_assessment=make_confidence_assessment(text="one thing"),
                 explanation=make_explanation(),
                 domain=SourceCategory.SECURITY,
                 text="a different requirement",
@@ -76,7 +77,7 @@ class TestAssessmentAndResultBuilders:
         text = "Set nosniff header."
         return GroundedRequirementBuilder().build(
             classification_result=make_classification_result(text=text),
-            confidence=make_confidence(),
+            confidence_assessment=make_confidence_assessment(text=text),
             explanation=make_explanation(),
             domain=SourceCategory.SECURITY,
             text=text,

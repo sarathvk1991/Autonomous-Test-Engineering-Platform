@@ -40,6 +40,12 @@ from requirement_intelligence.grounding.classification import (
     ClassificationPolicyBuilder,
     SupportClassificationEngine,
 )
+from requirement_intelligence.grounding.confidence import (
+    ConfidenceCalculator,
+    ConfidencePolicy,
+    ConfidencePolicyBuilder,
+    DormantConfidenceCalculator,
+)
 from requirement_intelligence.grounding.config import (
     GroundingConfiguration,
     default_grounding_configuration,
@@ -226,6 +232,25 @@ class PlatformContext:
         no pipeline stage calls it, so runtime behaviour is unchanged.
         """
         return SupportClassificationEngine(policy=self.create_classification_policy())
+
+    def create_confidence_policy(self) -> ConfidencePolicy:
+        """Return the governed default :class:`ConfidencePolicy` (CAP-077C.1, ADR-0016).
+
+        The governed decision rules for confidence — base scores per verdict, bonuses,
+        penalties, ceiling, band thresholds. A ``ConfidenceCalculator`` reads it; it
+        contains no logic. **Not yet wired**: no pipeline stage calls it, so runtime
+        behaviour is unchanged.
+        """
+        return ConfidencePolicyBuilder().build()
+
+    def create_confidence_calculator(self) -> ConfidenceCalculator:
+        """Return the :class:`ConfidenceCalculator` boundary (CAP-077C.1, ADR-0016).
+
+        Returns the dormant calculator bound to the governed confidence policy; its
+        ``calculate`` raises ``NotImplementedError`` until CAP-077D. **Not yet wired**:
+        no pipeline stage calls it, so runtime behaviour is unchanged.
+        """
+        return DormantConfidenceCalculator(policy=self.create_confidence_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
