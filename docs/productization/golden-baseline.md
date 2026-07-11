@@ -122,7 +122,10 @@ ConsolidationEngine.consolidate()
         ▼  1 ConsolidatedArtifact (module: "authentication")
         │
         ▼
-RequirementPromptBuilder.build(selected)  → PromptRequest
+EngineeringContextOrchestrator.orchestrate([artifact])  → EngineeringContext
+        │
+        ▼
+RequirementPromptBuilder.build(engineering_context)  → PromptRequest
         │
         ▼
 GoldenStubProvider.generate(llm_request)  → LLMResponse (fixed golden JSON)
