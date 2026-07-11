@@ -43,6 +43,10 @@ from requirement_intelligence.grounding.grounding_service import (
     DefaultGroundingService,
     GroundingService,
 )
+from requirement_intelligence.grounding.matching import (
+    MatchingPolicy,
+    MatchingPolicyBuilder,
+)
 from requirement_intelligence.grounding.normalization import (
     DefaultMatchingNormalizer,
     MatchingNormalizer,
@@ -175,6 +179,16 @@ class PlatformContext:
         no pipeline stage calls it, so runtime behaviour is unchanged.
         """
         return DefaultMatchingNormalizer()
+
+    def create_matching_policy(self) -> MatchingPolicy:
+        """Return the governed default :class:`MatchingPolicy` (CAP-077A.5, ADR-0016).
+
+        The governed decision rules for *what constitutes a match* — thresholds,
+        weights, permitted relations, ranking, tie-breaking. A ``GroundingStrategy``
+        reads it; it contains no logic. **Not yet wired**: no pipeline stage calls it,
+        so runtime behaviour is unchanged.
+        """
+        return MatchingPolicyBuilder().build()
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

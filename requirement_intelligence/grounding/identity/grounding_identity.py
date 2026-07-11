@@ -116,6 +116,17 @@ class GroundedRequirementId(_StringIdentifier):
 
 
 @dataclass(frozen=True)
+class MatchingPolicyId(_StringIdentifier):
+    """The permanent, governed identity of a ``MatchingPolicy``.
+
+    A policy id is an identity, never an alias: two policies may currently express
+    identical rules yet remain distinct ids, mirroring ``OrchestrationPolicyId``.
+    """
+
+    _LABEL: ClassVar[str] = "matching policy id"
+
+
+@dataclass(frozen=True)
 class GroundingAssessmentId(_StringIdentifier):
     """The deterministic identity of one grounding assessment.
 
@@ -217,3 +228,10 @@ class MatchingNormalizationVersion(_SemanticVersion):
     """Semantic version of the governed matching text-normalization configuration."""
 
     _LABEL: ClassVar[str] = "matching normalization version"
+
+
+@dataclass(frozen=True, order=True)
+class MatchingPolicyVersion(_SemanticVersion):
+    """Semantic version of a governed ``MatchingPolicy``."""
+
+    _LABEL: ClassVar[str] = "matching policy version"

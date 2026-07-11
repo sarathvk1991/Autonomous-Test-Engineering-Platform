@@ -109,6 +109,18 @@ The canonical models — `NormalizedToken`, `NormalizedText`, `NormalizationStat
 
 **CAP-077A.4 establishes the boundary only.** `DefaultMatchingNormalizer` is minimal — lowercase + whitespace — enough to fix the permanent API; full tokenization is reserved for the first strategy (CAP-077B). `PlatformContext.create_matching_normalizer()` constructs it, unwired, with no consumers, so runtime behaviour is byte-identical. With normalization (input preprocessing), `MatchingContext` (input), and `MatchResult` (output) all canonical and frozen, the Grounding matching architecture is complete before a single matcher is written.
 
+## D11 — Why the matching policy is governed data, not part of the strategy (CAP-077A.5)
+
+The last piece of the matching architecture separates *what constitutes a match* from *how a match is evaluated*. **`MatchingPolicy` governs; `GroundingStrategy` implements.** A policy is an immutable, declarative, governed rule set — thresholds a candidate link must clear (`MatchingThresholds`), the weights a matcher applies per evidence field (`MatchingWeights`), the ranking keys (`MatchingRanking`), the tie-breaker (`MatchingTieBreaker`), and which relations are permitted (`allow_cross_domain / partial / derived / negative / contradicting`). It contains **no executable logic**. This is the exact `OrchestrationPolicy` pattern (ADR-0015 §D2/D3): policy is data, the executor is behaviour.
+
+**Why separate at all.** The knobs that tune matching quality — "a title match is worth more than a tag match", "require at least two exact terms", "don't admit contradicting evidence" — will be revised repeatedly as the platform learns what grounds well. If those lived inside the matcher, every tuning pass would be a code change (and a code review, and a regression risk). As governed data on a versioned `MatchingPolicy`, a tuning pass is a **data change under the golden re-baseline procedure** — auditable, attributable to a `MatchingPolicyVersion`, and revertible — exactly as orchestration ranking/budget tuning already is.
+
+**Three governed inputs, one algorithm.** A `GroundingStrategy` now reads three governed things and owns only the comparison: a `NormalizationConfiguration` (how to preprocess), a `MatchingPolicy` (what counts as a match), and the canonical `MatchingRequest` (the evidence). Because all three are data external to the algorithm, **one policy serves every matcher**: the deterministic matcher (CAP-077B), a future semantic matcher, and a future hybrid matcher each apply the *same* policy differently, and none needs a bespoke policy type. The dependency runs strategy→policy, never policy→strategy: the policy package imports neither the strategy contract nor `MatchResult`.
+
+**CAP-077A.5 establishes the framework only.** The default policy from `MatchingPolicyBuilder` is deliberately permissive and weightless (every relation allowed, every weight zero); the first strategy sets meaningful values by advancing `MatchingPolicyVersion`. `PlatformContext.create_matching_policy()` constructs it, unwired, with no consumers, so runtime behaviour is byte-identical.
+
+With preprocessing (`NormalizationConfiguration`), decision rules (`MatchingPolicy`), the input (`MatchingContext`), and the output (`MatchResult`) all canonical, governed, and frozen, the Grounding matching architecture is **fully closed** ahead of CAP-077B.
+
 ---
 
 ## Trade-offs

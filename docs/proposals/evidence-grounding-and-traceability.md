@@ -120,7 +120,10 @@ MatchingContext            (canonical matching input; fanned out to MatchingRequ
         │  each request's text preprocessed by
         ▼
 MatchingNormalizer         (preprocessing boundary — raw text → NormalizedText; CAP-077A.4)
-        │  normalized inputs handed to
+        │  normalized inputs, governed by
+        ▼
+MatchingPolicy             (governed decision rules — what constitutes a match; CAP-077A.5)
+        │  applied by
         ▼
 GroundingStrategy          (matching contract — the extension point)
         │  implemented by
@@ -144,13 +147,16 @@ grounding metrics are computed by the Grounding Service *from* `MatchResult`s an
 `GroundedRequirement`/`GroundingResult` — so the matching architecture is complete before a
 single matcher is written.
 
-**Ownership (three seams, three responsibilities).** `MatchingNormalizer` owns
+**Ownership (four seams, four responsibilities).** `MatchingNormalizer` owns
 **preprocessing only** (raw text → canonical `NormalizedText`; shared by every strategy so
-inputs are identical). `GroundingStrategy` owns **comparison only** (normalized requirement
-vs normalized evidence → `MatchResult`). `GroundingService` owns **orchestration only**
-(build context, fan out, normalize, delegate, assemble). Normalization sits *below* the
-strategy, not inside it, so no strategy re-implements preprocessing and a normalization
-change is one governed, versioned decision rather than N copies.
+inputs are identical). `MatchingPolicy` owns the **decision rules only** — *what constitutes
+a match* (thresholds, weights, permitted relations, ranking, tie-breaking) — as governed,
+versioned data with no logic. `GroundingStrategy` owns **comparison only** (apply the policy
+to normalized inputs → `MatchResult`). `GroundingService` owns **orchestration only** (build
+context, fan out, normalize, delegate, assemble). Both normalization and policy sit *below*
+the strategy, not inside it: no strategy re-implements preprocessing or re-defines matching
+rules, and tuning either is one governed, versioned decision rather than N copies. One
+`MatchingPolicy` serves the deterministic, semantic, and hybrid matchers unchanged.
 
 **Canonical matching input (CAP-077A.2).** A strategy never sees a runtime model.
 `MatchingContextBuilder` is the single place that touches `EngineeringContext` and
