@@ -34,7 +34,16 @@ from requirement_intelligence.cp1.response import (
     ValidationToCP1Handoff,
     build_cp1_service,
 )
-from requirement_intelligence.grounding.builders import MatchingContextBuilder
+from requirement_intelligence.grounding.builders import (
+    GroundedRequirementBuilder,
+    MatchingContextBuilder,
+)
+from requirement_intelligence.grounding.builders.grounding_assessment_builder import (
+    GroundingAssessmentBuilder,
+)
+from requirement_intelligence.grounding.builders.grounding_result_builder import (
+    GroundingResultBuilder,
+)
 from requirement_intelligence.grounding.classification import (
     ClassificationPolicy,
     ClassificationPolicyBuilder,
@@ -58,10 +67,12 @@ from requirement_intelligence.grounding.matching import (
     MatchingPolicy,
     MatchingPolicyBuilder,
 )
+from requirement_intelligence.grounding.metrics_builder import GroundingMetricsBuilder
 from requirement_intelligence.grounding.normalization import (
     DefaultMatchingNormalizer,
     MatchingNormalizer,
 )
+from requirement_intelligence.grounding.pipeline import GroundingPipeline
 from requirement_intelligence.grounding.strategies import DeterministicTextMatchingStrategy
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
@@ -159,17 +170,28 @@ class PlatformContext:
         return default_grounding_configuration()
 
     def create_grounding_service(self) -> GroundingService:
-        """Return the :class:`GroundingService` runtime boundary (CAP-077A.1, ADR-0016).
+        """Return the fully wired :class:`GroundingService` (CAP-077E, ADR-0016).
 
-        The single runtime entry point into the Grounding subsystem. It is built
-        with the governed :meth:`create_grounding_configuration` and **no strategy**
-        — matching is not implemented yet, so its ``assess`` raises
-        ``NotImplementedError``. Construction only, and **not yet consumed by any
-        runtime path**: no pipeline stage calls this method, so runtime behaviour is
-        unchanged. This mirrors how the Engineering Context Orchestrator was
-        registered before it was activated.
+        The single runtime entry point into the Grounding subsystem. This is the
+        composition root for grounding: it constructs the private ``GroundingPipeline``
+        from the governed components (matching context builder, deterministic strategy,
+        classification engine, confidence calculator, builders) and injects it into the
+        service, which delegates ``assess`` to it. The pipeline is an internal detail —
+        it is not exposed as a public factory. **Still unwired into the execution
+        pipeline**: nothing calls ``assess`` at runtime, so behaviour is byte-identical.
         """
-        return DefaultGroundingService(self.create_grounding_configuration())
+        pipeline = GroundingPipeline(
+            matching_context_builder=self.create_matching_context_builder(),
+            strategy=self.create_deterministic_text_matching_strategy(),
+            classification_engine=self.create_support_classification_engine(),
+            confidence_calculator=self.create_confidence_calculator(),
+            grounded_requirement_builder=GroundedRequirementBuilder(),
+            metrics_builder=GroundingMetricsBuilder(),
+            assessment_builder=GroundingAssessmentBuilder(),
+            result_builder=GroundingResultBuilder(),
+            configuration=self.create_grounding_configuration(),
+        )
+        return DefaultGroundingService(pipeline)
 
     def create_matching_context_builder(self) -> MatchingContextBuilder:
         """Return the :class:`MatchingContextBuilder` (CAP-077A.2, ADR-0016).

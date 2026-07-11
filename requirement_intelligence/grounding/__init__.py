@@ -80,6 +80,7 @@ from requirement_intelligence.grounding.matching import (
     MatchingWeights,
     default_matching_policy,
 )
+from requirement_intelligence.grounding.metrics_builder import GroundingMetricsBuilder
 from requirement_intelligence.grounding.models import (
     MATCH_RESULT_VERSION,
     ConfidenceBand,
@@ -174,6 +175,7 @@ __all__ = [
     "GroundingFinding",
     "GroundingFrameworkVersion",
     "GroundingMetrics",
+    "GroundingMetricsBuilder",
     "GroundingResult",
     "GroundingResultBuilder",
     "GroundingService",

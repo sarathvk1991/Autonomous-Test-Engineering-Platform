@@ -48,12 +48,12 @@ Dependency inversion
     explanation assemblers, the result builder) are **internal implementation
     details** of the service and can be added without changing this contract.
 
-This milestone (CAP-077A.1)
-    Establishes the boundary only. ``assess`` is abstract, and the registered
-    default implementation raises :class:`NotImplementedError`: no matching, no
-    classification, no confidence, no metrics, no runtime integration. The service
-    exists but is **dormant**, exactly as the Engineering Context Orchestrator did
-    before its own runtime activation.
+Runtime status (CAP-077E)
+    ``assess`` is now implemented: ``DefaultGroundingService`` delegates to a private
+    :class:`~requirement_intelligence.grounding.pipeline.GroundingPipeline` that sequences
+    the frozen stages end to end. The service is still **not wired into the execution
+    pipeline** (nothing calls ``assess`` at runtime), so behaviour remains byte-identical;
+    execution-package integration lands in CAP-077F.
 """
 
 from __future__ import annotations
@@ -64,9 +64,8 @@ from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.context_orchestration.models.engineering_context import (
     EngineeringContext,
 )
-from requirement_intelligence.grounding.config import GroundingConfiguration
-from requirement_intelligence.grounding.contracts import GroundingStrategy
 from requirement_intelligence.grounding.models import GroundingResult
+from requirement_intelligence.grounding.pipeline import GroundingPipeline
 
 
 class GroundingService(ABC):
@@ -101,51 +100,27 @@ class GroundingService(ABC):
 
         Notes
         -----
-        Unimplemented in CAP-077A.1: this contract exists to fix the runtime API.
-        Matching (CAP-077B), classification (CAP-077C), confidence and metrics
-        (CAP-077D), and runtime integration (CAP-077E) fill it in behind this
-        unchanged signature.
+        The full pipeline is wired in CAP-077E behind this unchanged signature.
         """
         raise NotImplementedError
 
 
 class DefaultGroundingService(GroundingService):
-    """The registered, construction-only grounding service.
+    """The registered grounding service — thin orchestration over the pipeline (CAP-077E).
 
-    Holds the governed :class:`GroundingConfiguration` and — once a matcher exists
-    — a :class:`GroundingStrategy`. It depends only on the strategy *abstraction*;
-    no concrete strategy is injected yet, so ``strategy`` defaults to ``None``.
-    ``assess`` deliberately raises :class:`NotImplementedError`: the boundary is
-    live, the behaviour is not.
+    It holds a private :class:`GroundingPipeline` and delegates ``assess`` to it, owning
+    only the public boundary and lifecycle. It computes nothing; the pipeline sequences the
+    governed stages. Still unwired into the execution pipeline, so runtime is byte-identical.
     """
 
-    def __init__(
-        self,
-        configuration: GroundingConfiguration,
-        strategy: GroundingStrategy | None = None,
-    ) -> None:
-        """Store the governed configuration and (future) matching strategy."""
-        self._configuration = configuration
-        self._strategy = strategy
-
-    @property
-    def configuration(self) -> GroundingConfiguration:
-        """The governed grounding configuration this service was built with."""
-        return self._configuration
-
-    @property
-    def strategy(self) -> GroundingStrategy | None:
-        """The matching strategy, or ``None`` until one is injected (CAP-077B)."""
-        return self._strategy
+    def __init__(self, pipeline: GroundingPipeline) -> None:
+        """Store the private stage-sequencing pipeline to delegate to."""
+        self._pipeline = pipeline
 
     def assess(
         self,
         engineering_context: EngineeringContext,
         analysis_result: AnalysisResult,
     ) -> GroundingResult:
-        """Not yet implemented — the boundary is dormant until CAP-077B onward."""
-        raise NotImplementedError(
-            "GroundingService.assess is not implemented in CAP-077A.1. The Grounding "
-            "subsystem exposes its runtime boundary here; matching, classification, "
-            "confidence, metrics, and runtime integration land in CAP-077B onward."
-        )
+        """Ground *analysis_result* against *engineering_context* via the frozen pipeline."""
+        return self._pipeline.execute(engineering_context, analysis_result)

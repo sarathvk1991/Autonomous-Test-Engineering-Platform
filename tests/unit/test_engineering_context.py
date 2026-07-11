@@ -843,6 +843,7 @@ _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/execution/engineering_context_artifact.py"),
     Path("requirement_intelligence/grounding/grounding_service.py"),
     Path("requirement_intelligence/grounding/builders/matching_context_builder.py"),
+    Path("requirement_intelligence/grounding/pipeline.py"),
     Path("scripts/run_requirement_analysis.py"),
 }
 

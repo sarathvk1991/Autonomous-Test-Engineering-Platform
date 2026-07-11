@@ -1,9 +1,9 @@
-"""Unit tests for the GroundingService runtime boundary (CAP-077A.1).
+"""Unit tests for the GroundingService runtime boundary.
 
-The service is the permanent orchestration entry point into the Grounding
-subsystem. This milestone establishes the boundary only: ``assess`` is abstract
-and the registered default raises ``NotImplementedError``. These tests pin the
-contract, the construction, and the containment (nothing consumes it yet).
+The service is the permanent orchestration entry point into the Grounding subsystem
+(CAP-077A.1). Since CAP-077E it delegates ``assess`` to a private pipeline. These tests
+pin the abstract contract, the delegation, and the containment (nothing consumes it at
+runtime yet).
 """
 
 from __future__ import annotations
@@ -14,14 +14,7 @@ from pathlib import Path
 
 import pytest
 
-import requirement_intelligence.grounding as grounding
-from requirement_intelligence.grounding import (
-    DefaultGroundingService,
-    GroundingConfiguration,
-    GroundingService,
-    GroundingStrategy,
-)
-from requirement_intelligence.grounding.version import GROUNDING_CONFIGURATION_VERSION
+from requirement_intelligence.grounding import DefaultGroundingService, GroundingService
 from requirement_intelligence.platform.platform_context import PlatformContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -49,46 +42,29 @@ class TestGroundingServiceContract:
 
 @pytest.mark.unit
 class TestDefaultGroundingService:
-    def _service(self) -> DefaultGroundingService:
-        return DefaultGroundingService(
-            GroundingConfiguration(
-                version=GROUNDING_CONFIGURATION_VERSION,
-                framework_version=grounding.GROUNDING_FRAMEWORK_VERSION,
-            )
-        )
+    def test_delegates_assess_to_its_pipeline(self) -> None:
+        class _StubPipeline:
+            def __init__(self) -> None:
+                self.calls: list[tuple[object, object]] = []
 
-    def test_constructs_with_configuration_only(self) -> None:
-        service = self._service()
+            def execute(self, engineering_context: object, analysis_result: object) -> str:
+                self.calls.append((engineering_context, analysis_result))
+                return "grounding-result"
+
+        pipeline = _StubPipeline()
+        service = DefaultGroundingService(pipeline)  # type: ignore[arg-type]
         assert isinstance(service, GroundingService)
-        assert service.configuration.version == GROUNDING_CONFIGURATION_VERSION
-        assert service.strategy is None
-
-    def test_depends_on_strategy_abstraction_not_a_concrete_one(self) -> None:
-        # The seam accepts the GroundingStrategy protocol; none is injected yet.
-        assert GroundingService.assess is not None
-        service = self._service()
-        assert service.strategy is None
-        # The parameter type is the protocol, so any conforming object is acceptable.
-        assert isinstance(GroundingStrategy, type)
-
-    def test_assess_raises_not_implemented(self) -> None:
-        service = self._service()
-        with pytest.raises(NotImplementedError):
-            service.assess(engineering_context=None, analysis_result=None)  # type: ignore[arg-type]
+        result = service.assess(engineering_context="ctx", analysis_result="ar")  # type: ignore[arg-type]
+        assert result == "grounding-result"
+        assert pipeline.calls == [("ctx", "ar")]
 
 
 @pytest.mark.unit
 class TestPlatformContextRegistration:
-    def test_factory_returns_dormant_service(self) -> None:
+    def test_factory_returns_wired_service(self) -> None:
         service = PlatformContext().create_grounding_service()
         assert isinstance(service, GroundingService)
         assert isinstance(service, DefaultGroundingService)
-        assert service.configuration.version == GROUNDING_CONFIGURATION_VERSION
-        assert service.strategy is None
-
-    def test_factory_injects_no_strategy(self) -> None:
-        service = PlatformContext().create_grounding_service()
-        assert service.strategy is None
 
 
 @pytest.mark.unit
