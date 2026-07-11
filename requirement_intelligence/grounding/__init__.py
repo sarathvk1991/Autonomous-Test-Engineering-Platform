@@ -40,6 +40,7 @@ from requirement_intelligence.grounding.confidence import (
     ConfidencePenalties,
     ConfidencePolicy,
     ConfidencePolicyBuilder,
+    DeterministicConfidenceCalculator,
     DormantConfidenceCalculator,
     default_confidence_policy,
 )
@@ -155,6 +156,7 @@ __all__ = [
     "ConfidenceVersion",
     "DefaultGroundingService",
     "DefaultMatchingNormalizer",
+    "DeterministicConfidenceCalculator",
     "DeterministicTextMatchingStrategy",
     "DormantConfidenceCalculator",
     "EvidenceReference",

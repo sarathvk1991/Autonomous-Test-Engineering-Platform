@@ -44,7 +44,7 @@ from requirement_intelligence.grounding.confidence import (
     ConfidenceCalculator,
     ConfidencePolicy,
     ConfidencePolicyBuilder,
-    DormantConfidenceCalculator,
+    DeterministicConfidenceCalculator,
 )
 from requirement_intelligence.grounding.config import (
     GroundingConfiguration,
@@ -244,13 +244,14 @@ class PlatformContext:
         return ConfidencePolicyBuilder().build()
 
     def create_confidence_calculator(self) -> ConfidenceCalculator:
-        """Return the :class:`ConfidenceCalculator` boundary (CAP-077C.1, ADR-0016).
+        """Return the :class:`DeterministicConfidenceCalculator` (CAP-077D, ADR-0016).
 
-        Returns the dormant calculator bound to the governed confidence policy; its
-        ``calculate`` raises ``NotImplementedError`` until CAP-077D. **Not yet wired**:
-        no pipeline stage calls it, so runtime behaviour is unchanged.
+        The first production confidence calculator, bound to the governed confidence
+        policy. It scores deterministically from the policy and a ``ClassificationResult``.
+        **Not yet wired**: no pipeline stage or ``GroundingService`` calls it, so runtime
+        behaviour is unchanged.
         """
-        return DormantConfidenceCalculator(policy=self.create_confidence_policy())
+        return DeterministicConfidenceCalculator(policy=self.create_confidence_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

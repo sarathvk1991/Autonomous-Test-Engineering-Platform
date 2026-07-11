@@ -155,7 +155,16 @@ prose). A governed `ConfidencePolicy` holds the base scores, bonuses, penalties,
 and band thresholds; a `ConfidenceCalculator` (abstract; dormant until CAP-077D) reads
 **only** the `ClassificationResult`. `GroundedRequirement` no longer owns confidence
 creation — the `GroundedRequirementBuilder` *assembles* from a `ConfidenceAssessment`,
-computing nothing. **CAP-077C.1 froze this architecture; no confidence is computed yet.**
+computing nothing. **CAP-077C.1 froze this architecture; CAP-077D implements it.** The
+`DeterministicConfidenceCalculator` (now returned by `create_confidence_calculator()`,
+still unwired) builds the score entirely from governed policy data —
+`base_scores[verdict] + Σ bonuses − Σ penalties`, clamped to `max_score`, banded by the
+policy thresholds — with integer-only arithmetic (no floats, probability, AI, or
+randomness). Every operation (base, each bonus, each penalty, any clamp) is one
+`ConfidenceComponent`, so the score equals the sum of its components and is fully
+reconstructable; the calculator is the single source of confidence arithmetic. The
+`ConfidenceExplanation` is populated deterministically (factors, applied rules, breakdown,
+governed recommendations).
 
 `ClassificationResult` (internal to Grounding, never an execution artifact) records the
 support verdict, the evidence links partitioned by role, and a deterministic reason. The

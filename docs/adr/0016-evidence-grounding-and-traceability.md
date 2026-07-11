@@ -171,6 +171,22 @@ MatchResult → ClassificationResult → ConfidenceAssessment → GroundedRequir
 
 **Independently versioned, dormant, byte-identical.** `ConfidenceVersion` (assessment schema) and `ConfidencePolicyVersion` are typed and advance independently of `ClassificationVersion`, `MatchResultVersion`, `MatchingStrategyVersion`, and the framework version. `PlatformContext.create_confidence_policy()` and `create_confidence_calculator()` construct them, unwired, with no consumers — runtime is byte-identical.
 
+## D14 addendum — the deterministic confidence implementation (CAP-077D)
+
+CAP-077D implements the first production calculator, `DeterministicConfidenceCalculator`, behind the frozen `ConfidenceCalculator` contract. It changed **only** the implementation — no contract, model, policy shape, or signature changed, and `PlatformContext.create_confidence_calculator()` now returns it (still unwired, so runtime is byte-identical).
+
+**Policy-driven, integer-only arithmetic.** The score is built entirely from governed policy data:
+
+```
+score = base_scores[classification] + Σ bonuses − Σ penalties
+score = clamp(score, 0, max_score)
+band  = HIGH | MEDIUM | LOW  (by band_thresholds)
+```
+
+Nothing is hard-coded: the base comes from `base_scores` keyed on the `SupportClassification`; the bonuses (`support_bonus` per additional supporting link, `cross_source_bonus` when evidence spans ≥2 source systems, `evidence_count_bonus` per additional evidence item) and penalties (`conflict_penalty` per conflicting link, `unknown_penalty` for an UNKNOWN verdict) are all read from the policy; the ceiling and band boundaries are the policy's. No floats, no probability, no AI, no randomness, no timestamps.
+
+**Single source of truth, fully reconstructable.** Every arithmetic operation the calculator performs — the base, each applied bonus, each applied penalty, and any ceiling/floor clamp — is recorded as exactly one `ConfidenceComponent`, so **`confidence_score == Σ component deltas`**: the score can be reconstructed entirely from its components, and no arithmetic happens anywhere else. `DeterministicConfidenceCalculator` is the *only* thing that computes confidence; `GroundedRequirementBuilder` assembles, `GroundingService` orchestrates, metrics read, reports render — none duplicate the arithmetic. The `ConfidenceExplanation` is fully populated deterministically (summary, positive/negative factors, applied policy rules, the component breakdown, and governed recommendations) — structured data, never prose. Future statistical or hybrid calculators replace this implementation behind the same contract without any change.
+
 ---
 
 ## Trade-offs

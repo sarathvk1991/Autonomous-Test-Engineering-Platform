@@ -26,6 +26,9 @@ from requirement_intelligence.grounding.confidence.confidence_policy import (
     ConfidencePolicyBuilder,
     default_confidence_policy,
 )
+from requirement_intelligence.grounding.confidence.deterministic_calculator import (
+    DeterministicConfidenceCalculator,
+)
 from requirement_intelligence.grounding.confidence.models import (
     CONFIDENCE_VERSION,
     ConfidenceAssessment,
@@ -45,6 +48,7 @@ __all__ = [
     "ConfidencePenalties",
     "ConfidencePolicy",
     "ConfidencePolicyBuilder",
+    "DeterministicConfidenceCalculator",
     "DormantConfidenceCalculator",
     "default_confidence_policy",
 ]
