@@ -187,6 +187,71 @@ Nothing is hard-coded: the base comes from `base_scores` keyed on the `SupportCl
 
 **Single source of truth, fully reconstructable.** Every arithmetic operation the calculator performs — the base, each applied bonus, each applied penalty, and any ceiling/floor clamp — is recorded as exactly one `ConfidenceComponent`, so **`confidence_score == Σ component deltas`**: the score can be reconstructed entirely from its components, and no arithmetic happens anywhere else. `DeterministicConfidenceCalculator` is the *only* thing that computes confidence; `GroundedRequirementBuilder` assembles, `GroundingService` orchestrates, metrics read, reports render — none duplicate the arithmetic. The `ConfidenceExplanation` is fully populated deterministically (summary, positive/negative factors, applied policy rules, the component breakdown, and governed recommendations) — structured data, never prose. Future statistical or hybrid calculators replace this implementation behind the same contract without any change.
 
+## D15 — The frozen Grounding execution pipeline (CAP-077D.1)
+
+With every layer implemented and frozen, CAP-077D.1 freezes the **orchestration** — the permanent execution order, ownership, dependency direction, and failure semantics that CAP-077E will activate without redesign. This is architecture only; Grounding remains dormant.
+
+### Frozen execution order
+
+`GroundingService.assess(engineering_context, analysis_result)` runs this sequence — future milestones *populate* stages, they never *reorder* them:
+
+```
+EngineeringContext + AnalysisResult
+  → MatchingContextBuilder      → MatchingContext → MatchingRequest(s)
+  → MatchingNormalizer          (preprocessing, inside each strategy call)
+  → GroundingStrategy           → MatchResult (one per requirement)
+  → SupportClassificationEngine → ClassificationResult
+  → ConfidenceCalculator        → ConfidenceAssessment
+  → GroundedRequirementBuilder  → GroundedRequirement
+  → GroundingMetricsBuilder     → GroundingMetrics + GroundingSummary
+  → GroundingResultBuilder      → GroundingResult
+```
+
+### Ownership matrix (frozen)
+
+| Component | Owns ONLY | Never does |
+|---|---|---|
+| `GroundingService` | orchestration, lifecycle, dependency coordination, execution ordering | matching, classification, confidence, metrics, serialization |
+| `MatchingContextBuilder` | runtime→canonical translation | matching |
+| `MatchingNormalizer` | text preprocessing | matching, scoring |
+| `GroundingStrategy` | evidence matching → `MatchResult` | classification, confidence, metrics |
+| `SupportClassificationEngine` | classification → `ClassificationResult` | matching, confidence |
+| `ConfidenceCalculator` | confidence → `ConfidenceAssessment` | matching, classification |
+| `GroundingMetricsBuilder` | metric computation, distributions, coverage, hallucination rate, grounding score | matching, classification, confidence, orchestration |
+| `GroundedRequirementBuilder` | per-requirement assembly | any computation |
+| `GroundingResultBuilder` (+ `GroundingAssessmentBuilder`) | final aggregate construction | any computation |
+| Execution Package | serialization of `GroundingResult` | any grounding logic |
+
+No component computes another component's responsibility.
+
+### Dependency direction (frozen, acyclic)
+
+The pipeline is a strict one-way chain. A `GroundingStrategy` never calls the classifier, calculator, metrics, or result builder. Classification never calls a strategy or normalizer. Confidence never calls matching or a strategy. Metrics never call matching or classification — a `GroundingMetricsBuilder` reads finished `GroundedRequirement`s only. Each stage depends only on the canonical output of the previous stage (`MatchResult` → `ClassificationResult` → `ConfidenceAssessment`), enforced by the containment tests already in place. `GroundingService` **assembles only** — it invokes each stage and passes outputs forward; it computes nothing itself.
+
+### Failure semantics (frozen)
+
+**Requirement-level failures become findings; grounding continues; a `GroundingResult` is always produced.** If one requirement cannot be grounded (e.g. a strategy or stage raises for that requirement), `GroundingService` records a `GroundingFinding` for it and proceeds with the remaining requirements. The service **never aborts the whole run because one requirement failed**. Rationale: a run over N requirements must degrade gracefully — one problematic requirement must not deny grounding for the other N−1, and the finding preserves auditability of what failed and why. Ownership: the service owns this policy (it is orchestration, not matching/classification/confidence); downstream, a partial `GroundingResult` is still a complete, well-formed aggregate whose metrics reflect the findings. (A *service-level* failure — e.g. a malformed `AnalysisResult` the `MatchingContextBuilder` rejects — is different: it fails the whole `assess` call, because there is no per-requirement work to continue.)
+
+### Metrics & result assembly (frozen)
+
+Metric computation is owned by a dedicated **`GroundingMetricsBuilder`** (a named responsibility to be built in CAP-077E): grounding coverage, evidence coverage, distributions, cross-source/single-source support, hallucination rate, grounding score, and the derived `GroundingMetrics` + `GroundingSummary`. `GroundingService` never computes a metric — it invokes the builder. Final aggregate construction is owned by **`GroundingResultBuilder`** (with `GroundingAssessmentBuilder` assembling the `GroundingAssessment` from grounded requirements, findings, metrics, summary, and versions). `GroundingService` never constructs a `GroundingResult`, `GroundingAssessment`, or `GroundingSummary` directly — it delegates.
+
+### Execution Package boundary (frozen)
+
+The Execution Package consumes **only** `GroundingResult`. It never depends on Matching, Classification, Confidence, the `GroundingMetricsBuilder`, or `GroundingService` internals. The future artifacts `grounding_result.json`, `grounding_report.md`, and `grounding_metrics.md` are **projections of `GroundingResult`** — serialization only, no grounding logic, no re-computation. No runtime component writes artifacts directly; only the Execution Writer serializes, and only from the aggregate.
+
+### GroundingPipeline — ACCEPTED (to be implemented in CAP-077E)
+
+An internal, private **`GroundingPipeline`** helper is **accepted** as the design for CAP-077E. `GroundingService.assess` will delegate to it:
+
+```
+GroundingService (public boundary, lifecycle, dependency coordination)
+  → GroundingPipeline (private stage sequencer)
+      → Matching → Classification → Confidence → per-requirement assembly → Metrics → ResultBuilder
+```
+
+**Rationale for accepting:** it separates the *stable public boundary* (`GroundingService.assess`, the one runtime entry point) from the *execution-ordering mechanics* (the fixed stage sequence and per-requirement fan-out), keeping `assess` thin and making the stage sequence unit-testable in isolation from the service's construction and lifecycle. It is **internal and private** — not exposed, not part of the public API, not registered in `PlatformContext` — so it adds no API surface. The service still *owns* execution ordering; the pipeline is the mechanism it delegates to, exactly as the CLI delegates to `PlatformContext` factories. It does not dilute ownership (the pipeline invokes the same governed components) and it improves separation, so it is preferred over inlining the whole sequence inside `assess`.
+
 ---
 
 ## Trade-offs

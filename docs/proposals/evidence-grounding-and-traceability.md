@@ -166,6 +166,36 @@ reconstructable; the calculator is the single source of confidence arithmetic. T
 `ConfidenceExplanation` is populated deterministically (factors, applied rules, breakdown,
 governed recommendations).
 
+**Frozen orchestration pipeline (CAP-077D.1).** Before CAP-077E activates it, the
+`GroundingService` execution order, ownership, dependency direction, and failure semantics
+are frozen (ADR-0016 §D15). `assess(engineering_context, analysis_result)` runs a strict
+one-way chain — future milestones *populate* stages, never *reorder* them:
+
+```
+EngineeringContext + AnalysisResult
+  → MatchingContextBuilder → MatchingContext → MatchingRequest(s)
+  → MatchingNormalizer → GroundingStrategy → MatchResult
+  → SupportClassificationEngine → ClassificationResult
+  → ConfidenceCalculator → ConfidenceAssessment
+  → GroundedRequirementBuilder → GroundedRequirement
+  → GroundingMetricsBuilder → GroundingMetrics + GroundingSummary
+  → GroundingResultBuilder → GroundingResult
+```
+
+Each stage depends only on the canonical output of the previous one; no stage calls back
+(strategy never calls classifier/calculator/metrics; classification never calls a
+strategy/normalizer; confidence never calls matching; metrics read finished
+`GroundedRequirement`s only). `GroundingService` **assembles only** — it invokes each stage,
+computing nothing; metric computation is owned by a dedicated `GroundingMetricsBuilder`
+(CAP-077E), and final aggregate construction by `GroundingResultBuilder`. **Failure
+semantics:** a requirement that cannot be grounded becomes a `GroundingFinding` and grounding
+continues — a `GroundingResult` is always produced; the service never aborts the run because
+one requirement failed. **Execution Package** consumes only `GroundingResult`; the future
+`grounding_result.json` / `grounding_report.md` / `grounding_metrics.md` are serialization
+projections of it, never re-computations. An internal, private **`GroundingPipeline`**
+sequencer (accepted for CAP-077E) will hold the stage mechanics behind the stable
+`GroundingService.assess` boundary; it is not public and not registered.
+
 `ClassificationResult` (internal to Grounding, never an execution artifact) records the
 support verdict, the evidence links partitioned by role, and a deterministic reason. The
 `SupportClassificationEngine` reads only the `MatchResult`; it owns classification only
