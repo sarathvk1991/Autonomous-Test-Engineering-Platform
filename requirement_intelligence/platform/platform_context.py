@@ -34,6 +34,10 @@ from requirement_intelligence.cp1.response import (
     ValidationToCP1Handoff,
     build_cp1_service,
 )
+from requirement_intelligence.grounding.config import (
+    GroundingConfiguration,
+    default_grounding_configuration,
+)
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
@@ -117,6 +121,17 @@ class PlatformContext:
             policy=policy if policy is not None else self.create_orchestration_policy(),
             builder=self.create_engineering_context_builder(),
         )
+
+    def create_grounding_configuration(self) -> GroundingConfiguration:
+        """Return the governed :class:`GroundingConfiguration` (CAP-077A, ADR-0016).
+
+        Construction only, and **not yet consumed by any runtime path**. CAP-077A
+        registers the Grounding Framework's versioned configuration here so future
+        milestones can obtain it from the same seam every other component uses; the
+        configuration is weightless today (matching and confidence land later). No
+        pipeline stage calls this method, so runtime behaviour is unchanged.
+        """
+        return default_grounding_configuration()
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
