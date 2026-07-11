@@ -4,10 +4,10 @@ Construction only. It assembles the framework's default governed policy — a
 deterministic, immutable value — and rejects nothing beyond the model's own field
 constraints. It performs no matching and has no runtime consumers.
 
-The default is intentionally *permissive and weightless*: every relation is allowed
-and every weight is zero at CAP-077A.5. The first strategy (CAP-077B) sets meaningful
-weights and thresholds by advancing the policy version under the golden re-baseline
-procedure — a governed data change, not a code change.
+CAP-077A.5 shipped a weightless foundation; CAP-077B (this policy, version 2.0.0)
+sets the meaningful weights and thresholds Strategy V1 matches against. These are
+**governed data**: tuning them is a versioned policy change, never a matcher code
+change, and the matcher hard-codes none of them.
 """
 
 from __future__ import annotations
@@ -34,11 +34,28 @@ class MatchingPolicyBuilder:
         return MatchingPolicy(
             policy_id=DEFAULT_MATCHING_POLICY_ID,
             policy_version=MATCHING_POLICY_VERSION,
-            description="Default matching policy (CAP-077A.5): permissive, weightless foundation.",
-            thresholds=MatchingThresholds(),
-            weights=MatchingWeights(),
+            description="Default matching policy (CAP-077B): governed weights for Strategy V1.",
+            thresholds=MatchingThresholds(
+                minimum_match_score=1,
+                minimum_token_overlap=1,
+                minimum_exact_terms=0,
+            ),
+            weights=MatchingWeights(
+                title_weight=5,
+                description_weight=3,
+                rule_key_weight=4,
+                tag_weight=2,
+                component_weight=2,
+                endpoint_weight=2,
+                exact_token_bonus=2,
+                partial_token_bonus=1,
+            ),
             ranking=MatchingRanking(
-                keys=(MatchRankingKey.MATCH_SCORE, MatchRankingKey.EXACT_TERMS)
+                keys=(
+                    MatchRankingKey.MATCH_SCORE,
+                    MatchRankingKey.EXACT_TERMS,
+                    MatchRankingKey.TOKEN_OVERLAP,
+                )
             ),
             tie_breaker=MatchingTieBreaker(key=MatchTieBreaker.SOURCE_RECORD_ID, ascending=True),
         )

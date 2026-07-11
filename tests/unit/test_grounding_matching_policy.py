@@ -63,7 +63,7 @@ class TestMatchingPolicy:
     def test_serialises_camel_case_and_round_trips(self) -> None:
         policy = default_matching_policy()
         dumped = policy.model_dump(mode="json", by_alias=True)
-        assert dumped["policyVersion"] == "1.0.0"
+        assert dumped["policyVersion"] == str(MATCHING_POLICY_VERSION)
         assert "allowCrossDomainMatching" in dumped
         assert "tieBreaker" in dumped
         assert MatchingPolicy.model_validate(dumped) == policy

@@ -235,3 +235,10 @@ class MatchingPolicyVersion(_SemanticVersion):
     """Semantic version of a governed ``MatchingPolicy``."""
 
     _LABEL: ClassVar[str] = "matching policy version"
+
+
+@dataclass(frozen=True, order=True)
+class MatchingStrategyVersion(_SemanticVersion):
+    """Semantic version of a concrete ``GroundingStrategy`` implementation."""
+
+    _LABEL: ClassVar[str] = "matching strategy version"

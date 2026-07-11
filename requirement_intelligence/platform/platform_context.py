@@ -51,6 +51,7 @@ from requirement_intelligence.grounding.normalization import (
     DefaultMatchingNormalizer,
     MatchingNormalizer,
 )
+from requirement_intelligence.grounding.strategies import DeterministicTextMatchingStrategy
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
@@ -189,6 +190,18 @@ class PlatformContext:
         so runtime behaviour is unchanged.
         """
         return MatchingPolicyBuilder().build()
+
+    def create_deterministic_text_matching_strategy(self) -> DeterministicTextMatchingStrategy:
+        """Return Strategy V1 — the deterministic text matcher (CAP-077B, ADR-0016).
+
+        Built from the governed matching normalizer and matching policy. It owns
+        comparison only. **Not yet wired**: no pipeline stage or ``GroundingService``
+        calls it, so runtime behaviour is unchanged.
+        """
+        return DeterministicTextMatchingStrategy(
+            normalizer=self.create_matching_normalizer(),
+            policy=self.create_matching_policy(),
+        )
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

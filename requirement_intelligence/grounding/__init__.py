@@ -35,6 +35,7 @@ from requirement_intelligence.grounding.identity import (
     MatchingNormalizationVersion,
     MatchingPolicyId,
     MatchingPolicyVersion,
+    MatchingStrategyVersion,
 )
 from requirement_intelligence.grounding.matching import (
     MATCHING_POLICY_VERSION,
@@ -81,6 +82,7 @@ from requirement_intelligence.grounding.normalization import (
     NormalizedToken,
     default_normalization_configuration,
 )
+from requirement_intelligence.grounding.strategies import DeterministicTextMatchingStrategy
 from requirement_intelligence.grounding.version import (
     GROUNDING_CONFIGURATION_VERSION,
     GROUNDING_FRAMEWORK_VERSION,
@@ -95,6 +97,7 @@ __all__ = [
     "ConfidenceComponent",
     "DefaultGroundingService",
     "DefaultMatchingNormalizer",
+    "DeterministicTextMatchingStrategy",
     "EvidenceReference",
     "EvidenceRelation",
     "GroundedRequirement",
@@ -132,6 +135,7 @@ __all__ = [
     "MatchingRanking",
     "MatchingRequest",
     "MatchingRequirement",
+    "MatchingStrategyVersion",
     "MatchingThresholds",
     "MatchingTieBreaker",
     "MatchingWeights",

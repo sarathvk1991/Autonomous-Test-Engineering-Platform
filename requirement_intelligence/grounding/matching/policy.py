@@ -33,8 +33,12 @@ from shared.contracts.base import Schema
 
 #: Version of the governed matching policy shape / default. Advances additively;
 #: any change that could alter which links a prior policy admits is MAJOR and
-#: re-baselines the golden dataset.
-MATCHING_POLICY_VERSION = MatchingPolicyVersion(1, 0, 0)
+#: re-baselines the golden dataset. 2.0.0 (CAP-077B) replaces the CAP-077A.5
+#: weightless foundation with the meaningful weights and thresholds Strategy V1
+#: matches against — a governed data change (no matcher code depends on the values).
+#: The policy is unwired, so no execution artifact or golden baseline carries the
+#: 1.0.0 values; the bump invalidates no stored data.
+MATCHING_POLICY_VERSION = MatchingPolicyVersion(2, 0, 0)
 
 #: The identity of the framework's default governed matching policy.
 DEFAULT_MATCHING_POLICY_ID = MatchingPolicyId("default-matching-policy")
