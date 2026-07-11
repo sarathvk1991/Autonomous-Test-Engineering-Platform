@@ -831,15 +831,18 @@ def test_platform_context_returns_independent_instances() -> None:
 #: ``grounding/grounding_service.py`` joined the set in CAP-077A.1: its permanent
 #: ``assess(engineering_context, analysis_result)`` contract takes an
 #: ``EngineeringContext`` as the evidence corpus it grounds requirements against.
-#: The dependency is on the model only, and the service is dormant (its ``assess``
-#: raises ``NotImplementedError``); this widening is the conscious consumer
-#: registration this guard exists to force.
+#: ``grounding/builders/matching_context_builder.py`` joined in CAP-077A.2: it is
+#: the single boundary that translates an ``EngineeringContext`` into the canonical
+#: ``MatchingContext`` so that no grounding *strategy* ever depends on it. Both
+#: dependencies are on the model only, and grounding stays dormant; each widening
+#: is the conscious consumer registration this guard exists to force.
 _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/platform/platform_context.py"),
     Path("requirement_intelligence/prompts/requirement_prompt_builder.py"),
     Path("requirement_intelligence/analysis/requirement_analysis_service.py"),
     Path("requirement_intelligence/execution/engineering_context_artifact.py"),
     Path("requirement_intelligence/grounding/grounding_service.py"),
+    Path("requirement_intelligence/grounding/builders/matching_context_builder.py"),
     Path("scripts/run_requirement_analysis.py"),
 }
 

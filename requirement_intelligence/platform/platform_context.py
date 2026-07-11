@@ -34,6 +34,7 @@ from requirement_intelligence.cp1.response import (
     ValidationToCP1Handoff,
     build_cp1_service,
 )
+from requirement_intelligence.grounding.builders import MatchingContextBuilder
 from requirement_intelligence.grounding.config import (
     GroundingConfiguration,
     default_grounding_configuration,
@@ -149,6 +150,17 @@ class PlatformContext:
         registered before it was activated.
         """
         return DefaultGroundingService(self.create_grounding_configuration())
+
+    def create_matching_context_builder(self) -> MatchingContextBuilder:
+        """Return the :class:`MatchingContextBuilder` (CAP-077A.2, ADR-0016).
+
+        The construction-only translator from runtime models (``EngineeringContext``
+        + ``AnalysisResult``) to the canonical ``MatchingContext`` every grounding
+        strategy consumes. **Not yet wired**: no pipeline stage calls it, so runtime
+        behaviour is unchanged. It is registered here so the future
+        :class:`GroundingService` can obtain it from the same seam.
+        """
+        return MatchingContextBuilder()
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

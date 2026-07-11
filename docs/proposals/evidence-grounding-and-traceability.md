@@ -107,14 +107,36 @@ the architecture does not hard-code *how* links are found. `GroundingService` is
 **architecture**; the concrete matcher (`Strategy V1`) is an **implementation** behind it:
 
 ```
+EngineeringContext + AnalysisResult   (runtime models)
+        │
+        ▼
 GroundingService           (orchestration — architecture, stable; CAP-077A.1)
-        │  delegates matching to
+        │  builds, via
+        ▼
+MatchingContextBuilder     (the one runtime→canonical boundary; CAP-077A.2)
+        │  produces
+        ▼
+MatchingContext            (canonical matching input; fanned out to MatchingRequests)
+        │  each request delegated to
         ▼
 GroundingStrategy          (matching contract — the extension point)
         │  implemented by
         ▼
 Strategy V1                (Deterministic Text Matching — implementation, CAP-077B)
+        │  returns
+        ▼
+RequirementEvidenceLinks
 ```
+
+**Canonical matching input (CAP-077A.2).** A strategy never sees a runtime model.
+`MatchingContextBuilder` is the single place that touches `EngineeringContext` and
+`AnalysisResult`; it emits a `MatchingContext` — `MatchingRequirement`s (ungraded
+candidates that already carry the deterministic `GroundedRequirementId`), `MatchingEvidence`
+(identity + matchable text, no `SourceArtifact` leak), the governed configuration, and the
+versions. `MatchingContext.to_requests()` fans it out into per-requirement `MatchingRequest`s,
+and `GroundingStrategy.match(request)` consumes those. This is what makes matching
+**deterministic** (no timestamps/UUIDs/mutable objects), **testable** in isolation, and
+**reusable** — semantic and hybrid strategies consume the identical `MatchingContext`.
 
 - **`GroundingService`** is the **single runtime entry point** into the subsystem and the
   permanent orchestration boundary (established in CAP-077A.1 as an abstract contract —
@@ -151,15 +173,17 @@ relation and match strength. It does **not** classify, score confidence, explain
 metrics — those belong to the Grounding Service. A strategy answers exactly one question:
 *given this requirement and this evidence corpus, what are the links?*
 
-**Contract.**
+**Contract (CAP-077A.2).**
 
 ```
-GroundingStrategy.match(requirement, evidence_corpus) -> tuple[RequirementEvidenceLink, ...]
+GroundingStrategy.match(request: MatchingRequest) -> tuple[RequirementEvidenceLink, ...]
 ```
 
-- **Inputs** — one normalized requirement (text + domain) and the read-only
-  `EngineeringContext.evidence` corpus (functional / security / quality `SourceArtifact`s,
-  each with stable `(source_system, source_record_id)` identity and searchable fields).
+- **Inputs** — one canonical `MatchingRequest`: a `MatchingRequirement` (text + domain +
+  deterministic id) plus the read-only `MatchingEvidence` corpus (each with stable
+  `(source_system, source_record_id)` identity and matchable text) and the governed
+  configuration/versions. The strategy sees **only canonical grounding models** — never
+  `EngineeringContext`, `AnalysisResult`, or `SourceArtifact`.
 - **Outputs** — zero or more `RequirementEvidenceLink`s, each carrying its
   `EvidenceReference`, `relation`, `match_score`, and the `matched_terms` that justify it.
   Zero links is a valid, meaningful answer (it drives `UNSUPPORTED`).

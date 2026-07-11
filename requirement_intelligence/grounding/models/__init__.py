@@ -24,6 +24,12 @@ from requirement_intelligence.grounding.models.evidence import (
 from requirement_intelligence.grounding.models.explanation import GroundingExplanation
 from requirement_intelligence.grounding.models.findings import GroundingFinding
 from requirement_intelligence.grounding.models.grounded_requirement import GroundedRequirement
+from requirement_intelligence.grounding.models.matching import (
+    MatchingContext,
+    MatchingEvidence,
+    MatchingRequest,
+    MatchingRequirement,
+)
 from requirement_intelligence.grounding.models.metrics import (
     GroundingMetrics,
     SupportDistributionEntry,
@@ -43,6 +49,10 @@ __all__ = [
     "GroundingResult",
     "GroundingSeverity",
     "GroundingSummary",
+    "MatchingContext",
+    "MatchingEvidence",
+    "MatchingRequest",
+    "MatchingRequirement",
     "RequirementEvidenceLink",
     "SupportClassification",
     "SupportDistributionEntry",

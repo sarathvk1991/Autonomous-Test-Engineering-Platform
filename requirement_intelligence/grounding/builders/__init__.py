@@ -11,9 +11,15 @@ from requirement_intelligence.grounding.builders.grounding_assessment_builder im
 from requirement_intelligence.grounding.builders.grounding_result_builder import (
     GroundingResultBuilder,
 )
+from requirement_intelligence.grounding.builders.matching_context_builder import (
+    MatchingContextBuilder,
+    MatchingContextConstructionError,
+)
 
 __all__ = [
     "GroundedRequirementBuilder",
     "GroundingAssessmentBuilder",
     "GroundingResultBuilder",
+    "MatchingContextBuilder",
+    "MatchingContextConstructionError",
 ]

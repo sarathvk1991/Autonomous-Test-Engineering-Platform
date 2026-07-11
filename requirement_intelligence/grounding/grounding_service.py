@@ -9,9 +9,26 @@ contract; nothing else is a public runtime surface. It mirrors the role
 that coordinates collaborators and owns none of their work.
 
     GroundingService              (orchestration — this contract, stable)
-            │  delegates matching to
+            │  builds a canonical MatchingContext, fans out to MatchingRequests,
+            │  delegates each to
             ▼
     GroundingStrategy             (matching — the replaceable extension point)
+
+Future internal flow (CAP-077B onward; not implemented here)
+------------------------------------------------------------
+``assess`` keeps its signature ``(engineering_context, analysis_result)``. Inside,
+it will:
+
+1. build a canonical :class:`MatchingContext` from those runtime inputs via the
+   ``MatchingContextBuilder`` — the one boundary that touches runtime models;
+2. fan it out into N :class:`MatchingRequest`\\ s (``MatchingContext.to_requests``);
+3. delegate each to the configured :class:`GroundingStrategy`, collecting
+   ``RequirementEvidenceLink``\\ s;
+4. classify, score confidence, explain, and assemble the ``GroundingResult`` via
+   its internal collaborators.
+
+The strategy sees only canonical matching models — never ``EngineeringContext`` or
+``AnalysisResult``.
 
 What the service OWNS
     orchestration, lifecycle, dependency coordination, execution ordering, and

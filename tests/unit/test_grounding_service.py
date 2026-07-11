@@ -93,29 +93,30 @@ class TestPlatformContextRegistration:
 
 @pytest.mark.unit
 class TestRuntimeContainment:
-    def test_no_runtime_module_consumes_the_grounding_service(self) -> None:
-        """Only its definition, its package export, and PlatformContext may name it.
+    def test_no_module_outside_grounding_consumes_the_service_except_platform_context(
+        self,
+    ) -> None:
+        """Outside the grounding package, only PlatformContext may name the service.
 
         The service is a dormant boundary: no pipeline stage, execution builder, or
-        CLI path may reference it yet. Expressed as a test so CAP-077E must
-        consciously wire it rather than let a dependency appear silently.
+        CLI path may reference it yet. Files *inside* ``grounding/`` may cross-refer
+        to it freely (definition, export, docstrings); this guard watches only the
+        subsystem's external surface, so CAP-077E must consciously wire it rather
+        than let an external dependency appear silently.
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
             _REPO_ROOT / "scripts",
             _REPO_ROOT / "app",
         )
+        grounding_pkg = _REPO_ROOT / "requirement_intelligence" / "grounding"
         needle = "GroundingService"
-        permitted = {
-            Path("requirement_intelligence/grounding/grounding_service.py"),  # defines it
-            Path("requirement_intelligence/grounding/__init__.py"),  # exports it
-            Path("requirement_intelligence/platform/platform_context.py"),  # constructs it
-        }
-        importers = set()
+        permitted = {Path("requirement_intelligence/platform/platform_context.py")}
+        external_consumers = set()
         for root in roots:
             for path in root.rglob("*.py"):
-                if "tests" in path.parts:
+                if "tests" in path.parts or path.is_relative_to(grounding_pkg):
                     continue
                 if needle in path.read_text(encoding="utf-8"):
-                    importers.add(path.relative_to(_REPO_ROOT))
-        assert importers == permitted
+                    external_consumers.add(path.relative_to(_REPO_ROOT))
+        assert external_consumers == permitted
