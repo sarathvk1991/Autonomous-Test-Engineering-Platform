@@ -242,3 +242,15 @@ class MatchingStrategyVersion(_SemanticVersion):
     """Semantic version of a concrete ``GroundingStrategy`` implementation."""
 
     _LABEL: ClassVar[str] = "matching strategy version"
+
+
+@dataclass(frozen=True, order=True)
+class MatchResultVersion(_SemanticVersion):
+    """Semantic version of the ``MatchResult`` **schema**.
+
+    Independent of :class:`MatchingStrategyVersion`: the shape of a ``MatchResult``
+    evolves separately from the strategies that produce it. A strategy may advance its
+    own version without touching this one, and vice versa.
+    """
+
+    _LABEL: ClassVar[str] = "match result version"

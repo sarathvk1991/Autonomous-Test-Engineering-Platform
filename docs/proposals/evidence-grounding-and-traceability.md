@@ -132,10 +132,28 @@ Strategy V1                (Deterministic Text Matching — implementation, CAP-
         │  returns
         ▼
 MatchResult                (canonical output: links + statistics + explanation; CAP-077A.3)
-        │  the Grounding Service then applies
+        │  the FROZEN, self-contained contract (CAP-077B.1) — the ONLY thing
+        │  Classification consumes; it never re-enters the matching layer
         ▼
 Classification → Confidence → Metrics → GroundingResult
 ```
+
+**MatchResult — the frozen Matching↔Classification contract (CAP-077B.1).** Before
+Classification (CAP-077C) consumes it, `MatchResult` is frozen under four invariants:
+
+- **Match score is deterministic evidence similarity — nothing more.** A link's
+  `match_score` is *not* confidence, probability, certainty, or a support
+  classification; those are computed *from* a match, downstream, on
+  `GroundedRequirement`/`GroundingResult`.
+- **Schema versioned independently of the strategy.** `MatchResultVersion`
+  (`result_version`) versions the shape; `MatchingStrategyVersion` versions the
+  producer. Either changes without forcing the other.
+- **Fully explainable without re-running the strategy.** Links, `MatchStatistics`, and a
+  structured `MatchEvaluationSummary` (examined/matched, highest score, winning evidence,
+  governed threshold + ranking summaries) carry every fact a consumer needs.
+- **One-way boundary.** Classification consumes only `MatchResult` and never invokes a
+  `GroundingStrategy`, `MatchingNormalizer`, or `MatchingPolicy`. Enforced by containment
+  tests.
 
 **Closed for extension (CAP-077A.3).** Both ends of the matcher are now canonical and
 frozen: the input is a `MatchingContext`/`MatchingRequest`, the output is a `MatchResult`

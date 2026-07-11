@@ -36,6 +36,7 @@ from requirement_intelligence.grounding.identity import (
     MatchingPolicyId,
     MatchingPolicyVersion,
     MatchingStrategyVersion,
+    MatchResultVersion,
 )
 from requirement_intelligence.grounding.matching import (
     MATCHING_POLICY_VERSION,
@@ -48,6 +49,7 @@ from requirement_intelligence.grounding.matching import (
     default_matching_policy,
 )
 from requirement_intelligence.grounding.models import (
+    MATCH_RESULT_VERSION,
     ConfidenceBand,
     ConfidenceComponent,
     EvidenceReference,
@@ -61,6 +63,7 @@ from requirement_intelligence.grounding.models import (
     GroundingResult,
     GroundingSeverity,
     GroundingSummary,
+    MatchEvaluationSummary,
     MatchExplanation,
     MatchingContext,
     MatchingEvidence,
@@ -93,6 +96,7 @@ __all__ = [
     "GROUNDING_FRAMEWORK_VERSION",
     "MATCHING_NORMALIZATION_VERSION",
     "MATCHING_POLICY_VERSION",
+    "MATCH_RESULT_VERSION",
     "ConfidenceBand",
     "ConfidenceComponent",
     "DefaultGroundingService",
@@ -119,8 +123,10 @@ __all__ = [
     "GroundingSeverity",
     "GroundingStrategy",
     "GroundingSummary",
+    "MatchEvaluationSummary",
     "MatchExplanation",
     "MatchResult",
+    "MatchResultVersion",
     "MatchStatistics",
     "MatchingContext",
     "MatchingContextBuilder",

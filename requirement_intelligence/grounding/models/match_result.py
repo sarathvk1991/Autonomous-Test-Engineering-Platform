@@ -8,15 +8,36 @@ caller with it. A `MatchResult` is **open for population, closed for redefinitio
 future strategies (deterministic, semantic, citation, hybrid) fill the same fields
 with richer values; none redefines the shape.
 
+The frozen contract between Matching and Classification
+-------------------------------------------------------
+`MatchResult` is the **only** thing Classification (CAP-077C) consumes. Two governed
+invariants make that safe:
+
+* **Match score is deterministic evidence similarity — nothing more.** The
+  ``match_score`` on each :class:`RequirementEvidenceLink` is *not* confidence, *not*
+  probability, *not* certainty, and *not* a support classification. It is the integer
+  a Grounding Strategy computed from token overlap under a governed Matching Policy.
+  Confidence and classification are computed *from* a `MatchResult`, downstream, and
+  live on `GroundedRequirement` / `GroundingResult` — never here.
+* **Full explainability without re-running the strategy.** Every fact needed to
+  understand why evidence matched, why it failed, and why it ranked is already inside
+  the `MatchResult` (links, statistics, and the structured explanation). A consumer
+  never needs the strategy, normalizer, or policy again.
+
 Scope boundary
 --------------
-A `MatchResult` is the **matcher's** output. It carries links, the matcher's own
-statistics, and the matcher's own explanation. It carries **no** classification,
-confidence, or grounding metrics — those are the Grounding Service's job, computed
-*from* a `MatchResult`, and they live on `GroundedRequirement` / `GroundingResult`.
-:class:`MatchExplanation` (matcher-scoped: matched/unmatched terms, rejected
-evidence) is deliberately distinct from ``GroundingExplanation`` (requirement-scoped:
-support, confidence breakdown, recommendations).
+A `MatchResult` is the **matcher's** output: links, the matcher's statistics, and the
+matcher's explanation. :class:`MatchExplanation` (matcher-scoped: matched/unmatched
+terms, rejected evidence, the evaluation summary) is deliberately distinct from
+``GroundingExplanation`` (requirement-scoped: support, confidence breakdown,
+recommendations).
+
+Versioning
+----------
+:data:`MATCH_RESULT_VERSION` versions the ``MatchResult`` *schema*, carried on every
+result as ``result_version``. It is independent of the producing strategy's version:
+a strategy may change without changing this schema, and this schema may change without
+bumping any strategy.
 
 Determinism
 -----------
@@ -30,12 +51,17 @@ from __future__ import annotations
 from pydantic import ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
+from requirement_intelligence.grounding.identity import MatchResultVersion
 from requirement_intelligence.grounding.models.evidence import (
     EvidenceReference,
     RequirementEvidenceLink,
 )
 from requirement_intelligence.grounding.models.matching import MatchingRequirement
 from shared.contracts.base import Schema
+
+#: Version of the ``MatchResult`` schema (not the strategy). Advances additively;
+#: a shape change a prior consumer could misread is MAJOR.
+MATCH_RESULT_VERSION = MatchResultVersion(1, 0, 0)
 
 
 class MatchStatistics(Schema):
@@ -70,6 +96,35 @@ class MatchStatistics(Schema):
         return self
 
 
+class MatchEvaluationSummary(Schema):
+    """A structured, deterministic summary of one match evaluation.
+
+    Not generated prose — structured data a consumer (or a report) can read directly:
+    how much evidence was seen and matched, the top score and the evidence that earned
+    it, and the governed thresholds/ranking the evaluation applied. Every field is a
+    pure observation; nothing here is confidence or classification.
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    evidence_examined: int = Field(..., ge=0, description="Evidence items considered.")
+    evidence_matched: int = Field(..., ge=0, description="Evidence items that produced a link.")
+    highest_score: int = Field(
+        ..., ge=0, le=100, description="Top match score (0 if none matched)."
+    )
+    winning_evidence: EvidenceReference | None = Field(
+        default=None, description="The top-ranked evidence, or None when nothing matched."
+    )
+    threshold_summary: str = Field(
+        ..., min_length=1, description="The governed thresholds the evaluation applied."
+    )
+    ranking_summary: str = Field(
+        ...,
+        min_length=1,
+        description="The governed ranking and tie-breaker the evaluation applied.",
+    )
+
+
 class MatchExplanation(Schema):
     """Structured, matcher-scoped explainability for one match.
 
@@ -91,14 +146,18 @@ class MatchExplanation(Schema):
         default=(), description="Evidence the matcher considered and dropped."
     )
     notes: tuple[str, ...] = Field(default=(), description="Free-form matcher observations.")
+    evaluation_summary: MatchEvaluationSummary | None = Field(
+        default=None, description="Structured, deterministic summary of the evaluation."
+    )
 
 
 class MatchResult(Schema):
     """The complete, deterministic output of one GroundingStrategy execution.
 
-    The permanent return type of ``GroundingStrategy.match``. It names the requirement
-    it answers, the links it produced, the statistics it observed, its explanation, and
-    the strategy identity that produced it.
+    The permanent return type of ``GroundingStrategy.match`` and the frozen contract
+    Classification consumes. It names the requirement it answers, the links it
+    produced, the statistics it observed, its explanation, the strategy identity that
+    produced it, and the schema version it conforms to.
     """
 
     model_config = ConfigDict(alias_generator=to_camel)
@@ -115,4 +174,8 @@ class MatchResult(Schema):
     )
     strategy_version: str = Field(
         ..., min_length=1, description="Self-declared version of the producing strategy."
+    )
+    result_version: MatchResultVersion = Field(
+        default=MATCH_RESULT_VERSION,
+        description="Version of the MatchResult schema (not the strategy).",
     )

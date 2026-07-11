@@ -35,6 +35,7 @@ from requirement_intelligence.grounding.models.evidence import (
     RequirementEvidenceLink,
 )
 from requirement_intelligence.grounding.models.match_result import (
+    MatchEvaluationSummary,
     MatchExplanation,
     MatchResult,
     MatchStatistics,
@@ -275,11 +276,29 @@ class DeterministicTextMatchingStrategy:
             f"Examined {len(ranked) + len(rejected)} evidence item(s); "
             f"matched {len(ranked)} ({exact} exact, {len(ranked) - exact} partial)."
         )
+        thresholds = self._policy.thresholds
+        tie = self._policy.tie_breaker
+        threshold_summary = (
+            f"min_score={thresholds.minimum_match_score}, "
+            f"min_overlap={thresholds.minimum_token_overlap}, "
+            f"min_exact={thresholds.minimum_exact_terms}"
+        )
+        ranking_summary = (
+            f"keys={[str(key) for key in self._policy.ranking.keys]}, "
+            f"tie_breaker={tie.key} ({'asc' if tie.ascending else 'desc'})"
+        )
         notes = (
             f"Ranking keys: {[str(key) for key in self._policy.ranking.keys]}.",
-            f"Tie-breaker: {self._policy.tie_breaker.key} "
-            f"({'asc' if self._policy.tie_breaker.ascending else 'desc'}).",
+            f"Tie-breaker: {tie.key} ({'asc' if tie.ascending else 'desc'}).",
             f"Normalization operations: {norm_ops}.",
+        )
+        evaluation_summary = MatchEvaluationSummary(
+            evidence_examined=len(ranked) + len(rejected),
+            evidence_matched=len(ranked),
+            highest_score=max((candidate.score for candidate in ranked), default=0),
+            winning_evidence=ranked[0].reference if ranked else None,
+            threshold_summary=threshold_summary,
+            ranking_summary=ranking_summary,
         )
         return MatchExplanation(
             summary=summary,
@@ -287,6 +306,7 @@ class DeterministicTextMatchingStrategy:
             unmatched_terms=unmatched,
             rejected_evidence=rejected,
             notes=notes,
+            evaluation_summary=evaluation_summary,
         )
 
     # -- normalization helpers --------------------------------------------

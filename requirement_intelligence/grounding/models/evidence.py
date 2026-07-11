@@ -40,9 +40,17 @@ class EvidenceReference(Schema):
 class RequirementEvidenceLink(Schema):
     """One requirement-to-evidence edge: the evidence, the relation, and the match.
 
-    ``match_score`` is a deterministic 0-100 measure a strategy assigns; ``matched_terms``
-    records *what* earned the score, so the link is self-explaining. ``rationale`` is a
-    short human-readable justification.
+    ``matched_terms`` records *what* earned the score, so the link is self-explaining;
+    ``rationale`` is a short human-readable justification.
+
+    **Match-score semantics (frozen).** ``match_score`` is *only* **deterministic
+    evidence similarity** — the integer a Grounding Strategy computed from token overlap
+    under a governed Matching Policy. It is **not** confidence, **not** probability,
+    **not** certainty, and **not** a support classification. Those are computed *from* a
+    match downstream (by Classification / the Grounding Service) and never live on a
+    link. Producer: a ``GroundingStrategy``. Consumer: Classification (CAP-077C) and
+    reporting. Lifecycle: minted per (requirement, evidence) pair during one match,
+    immutable thereafter.
     """
 
     model_config = ConfigDict(alias_generator=to_camel)
@@ -51,7 +59,12 @@ class RequirementEvidenceLink(Schema):
     relation: EvidenceRelation = Field(
         ..., description="How the evidence relates to the requirement."
     )
-    match_score: int = Field(..., ge=0, le=100, description="Deterministic 0-100 match strength.")
+    match_score: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Deterministic 0-100 evidence similarity. Not confidence/probability/class.",
+    )
     matched_terms: tuple[str, ...] = Field(
         default=(), description="Terms that earned the match (explainability)."
     )

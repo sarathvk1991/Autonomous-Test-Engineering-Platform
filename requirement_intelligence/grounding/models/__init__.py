@@ -25,6 +25,8 @@ from requirement_intelligence.grounding.models.explanation import GroundingExpla
 from requirement_intelligence.grounding.models.findings import GroundingFinding
 from requirement_intelligence.grounding.models.grounded_requirement import GroundedRequirement
 from requirement_intelligence.grounding.models.match_result import (
+    MATCH_RESULT_VERSION,
+    MatchEvaluationSummary,
     MatchExplanation,
     MatchResult,
     MatchStatistics,
@@ -41,6 +43,7 @@ from requirement_intelligence.grounding.models.metrics import (
 )
 
 __all__ = [
+    "MATCH_RESULT_VERSION",
     "ConfidenceBand",
     "ConfidenceComponent",
     "EvidenceReference",
@@ -54,6 +57,7 @@ __all__ = [
     "GroundingResult",
     "GroundingSeverity",
     "GroundingSummary",
+    "MatchEvaluationSummary",
     "MatchExplanation",
     "MatchResult",
     "MatchStatistics",

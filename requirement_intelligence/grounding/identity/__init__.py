@@ -11,6 +11,7 @@ from requirement_intelligence.grounding.identity.grounding_identity import (
     MatchingPolicyId,
     MatchingPolicyVersion,
     MatchingStrategyVersion,
+    MatchResultVersion,
 )
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "GroundingAssessmentId",
     "GroundingConfigurationVersion",
     "GroundingFrameworkVersion",
+    "MatchResultVersion",
     "MatchingNormalizationVersion",
     "MatchingPolicyId",
     "MatchingPolicyVersion",

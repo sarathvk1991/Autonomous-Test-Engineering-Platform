@@ -121,6 +121,18 @@ The last piece of the matching architecture separates *what constitutes a match*
 
 With preprocessing (`NormalizationConfiguration`), decision rules (`MatchingPolicy`), the input (`MatchingContext`), and the output (`MatchResult`) all canonical, governed, and frozen, the Grounding matching architecture is **fully closed** ahead of CAP-077B.
 
+## D12 — The frozen Matching↔Classification contract (CAP-077B.1)
+
+CAP-077B implemented Strategy V1; before CAP-077C (Support Classification) begins consuming its output, four invariants freeze the `MatchResult` as the **sole, self-contained contract** between Matching and Classification. None changes matching behaviour.
+
+**1 — Match-score semantics are frozen.** The `match_score` on a `RequirementEvidenceLink` is *only* **deterministic evidence similarity**: the integer a Grounding Strategy computed from token overlap under a governed Matching Policy. It is **not** confidence, **not** probability, **not** certainty, and **not** a support classification. Producer: a `GroundingStrategy`. Consumers: Classification and reporting. Lifecycle: minted per (requirement, evidence) pair, immutable thereafter. Confidence and classification are computed *from* a match, downstream, and live on `GroundedRequirement` / `GroundingResult` — never on a link.
+
+**2 — `MatchResult` is versioned independently of the strategy.** A new typed `MatchResultVersion` (`MATCH_RESULT_VERSION`, carried on every result as `result_version`) versions the **schema**, not the producer. A strategy may change its own `MatchingStrategyVersion` without touching the schema version, and the schema may evolve without bumping any strategy. The two concerns are decoupled so neither forces a change in the other.
+
+**3 — Explainability is a governed invariant.** *Every `MatchResult` must be completely explainable without re-running the strategy.* Every fact needed to understand why evidence matched, why it failed, and why it ranked already lives inside the result: the `links` (each with `match_score`, `matched_terms`, `relation`, `rationale`), the `MatchStatistics`, and a structured `MatchEvaluationSummary` (evidence examined/matched, highest score, winning evidence, the governed threshold and ranking summaries) — additive, structured data, never generated prose. Future strategies **must** honour this invariant. A consumer never needs the strategy, normalizer, or policy again.
+
+**4 — The Matching↔Classification boundary is frozen.** CAP-077C consumes **only** `MatchResult`. Classification must never invoke a `GroundingStrategy`, `MatchingNormalizer`, or `MatchingPolicy` — the matching layer is complete, and re-entering it downstream would duplicate matching and split its ownership. The dependency is one-way: `MatchResult` is self-contained (it imports no strategy, normalizer, or policy), and the matching layer imports nothing from Classification. This is enforced by containment tests.
+
 ---
 
 ## Trade-offs
