@@ -64,6 +64,7 @@ from requirement_intelligence.grounding.identity import (
     GroundingAssessmentId,
     GroundingConfigurationVersion,
     GroundingFrameworkVersion,
+    GroundingResultVersion,
     MatchingNormalizationVersion,
     MatchingPolicyId,
     MatchingPolicyVersion,
@@ -82,6 +83,7 @@ from requirement_intelligence.grounding.matching import (
 )
 from requirement_intelligence.grounding.metrics_builder import GroundingMetricsBuilder
 from requirement_intelligence.grounding.models import (
+    GROUNDING_RESULT_VERSION,
     MATCH_RESULT_VERSION,
     ConfidenceBand,
     ConfidenceComponent,
@@ -131,6 +133,7 @@ __all__ = [
     "CONFIDENCE_VERSION",
     "GROUNDING_CONFIGURATION_VERSION",
     "GROUNDING_FRAMEWORK_VERSION",
+    "GROUNDING_RESULT_VERSION",
     "MATCHING_NORMALIZATION_VERSION",
     "MATCHING_POLICY_VERSION",
     "MATCH_RESULT_VERSION",
@@ -178,6 +181,7 @@ __all__ = [
     "GroundingMetricsBuilder",
     "GroundingResult",
     "GroundingResultBuilder",
+    "GroundingResultVersion",
     "GroundingService",
     "GroundingSeverity",
     "GroundingStrategy",

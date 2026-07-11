@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from requirement_intelligence.grounding.models.assessment import (
+    GROUNDING_RESULT_VERSION,
     GroundingAssessment,
     GroundingResult,
     GroundingSummary,
@@ -43,6 +44,7 @@ from requirement_intelligence.grounding.models.metrics import (
 )
 
 __all__ = [
+    "GROUNDING_RESULT_VERSION",
     "MATCH_RESULT_VERSION",
     "ConfidenceBand",
     "ConfidenceComponent",

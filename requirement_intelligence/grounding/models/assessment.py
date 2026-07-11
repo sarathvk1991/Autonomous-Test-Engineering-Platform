@@ -21,6 +21,7 @@ from requirement_intelligence.grounding.identity.grounding_identity import (
     GroundingAssessmentId,
     GroundingConfigurationVersion,
     GroundingFrameworkVersion,
+    GroundingResultVersion,
 )
 from requirement_intelligence.grounding.models.enums import (
     HALLUCINATION_CLASSIFICATIONS,
@@ -88,8 +89,31 @@ class GroundingAssessment(Schema):
         return self
 
 
+#: Version of the ``GroundingResult`` **runtime contract** schema. Independent of the
+#: framework, strategy, match-result, classification, and confidence versions; a change
+#: here never forces any of those to change, and vice versa.
+GROUNDING_RESULT_VERSION = GroundingResultVersion(1, 0, 0)
+
+
 class GroundingResult(Schema):
-    """The carrier of one grounding assessment, tied to the analysis it graded."""
+    """The complete, deterministic grounding assessment for one Requirement Intelligence run.
+
+    ``GroundingResult`` is the **runtime contract** — the canonical repository-level
+    aggregate the Grounding runtime produces and ``GroundingService.assess`` returns. It is
+    the *only* runtime object that crosses into serialization. It is **not** a report, **not**
+    an execution artifact, **not** serialization, **not** a renderer, and **not** a metrics
+    calculator: it already contains everything (grounded requirements, findings, metrics,
+    summary, explanations, versions) that any downstream projection needs.
+
+    **Serialization invariant (frozen, CAP-077E.1).** Every execution artifact
+    (``grounding_result.json``, ``grounding_report.md``, ``grounding_metrics.md``) is a
+    **pure projection** of a ``GroundingResult`` — reproducible from it alone. A renderer
+    must never invoke a strategy, normalizer, matching/classification/confidence policy,
+    metrics builder, pipeline, or service, and must never recompute anything.
+
+    **Version.** ``result_version`` carries the schema version of this runtime contract,
+    so the contract can evolve without forcing renderer or framework changes.
+    """
 
     model_config = ConfigDict(alias_generator=to_camel)
 
@@ -98,6 +122,10 @@ class GroundingResult(Schema):
     assessment: GroundingAssessment = Field(..., description="The grounding assessment.")
     framework_version: GroundingFrameworkVersion = Field(...)
     configuration_version: GroundingConfigurationVersion = Field(...)
+    result_version: GroundingResultVersion = Field(
+        default=GROUNDING_RESULT_VERSION,
+        description="Version of the GroundingResult runtime-contract schema.",
+    )
     started_at: datetime = Field(..., description="When grounding started.")
     completed_at: datetime = Field(..., description="When grounding completed.")
 

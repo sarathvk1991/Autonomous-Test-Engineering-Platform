@@ -252,6 +252,33 @@ GroundingService (public boundary, lifecycle, dependency coordination)
 
 **Rationale for accepting:** it separates the *stable public boundary* (`GroundingService.assess`, the one runtime entry point) from the *execution-ordering mechanics* (the fixed stage sequence and per-requirement fan-out), keeping `assess` thin and making the stage sequence unit-testable in isolation from the service's construction and lifecycle. It is **internal and private** — not exposed, not part of the public API, not registered in `PlatformContext` — so it adds no API surface. The service still *owns* execution ordering; the pipeline is the mechanism it delegates to, exactly as the CLI delegates to `PlatformContext` factories. It does not dilute ownership (the pipeline invokes the same governed components) and it improves separation, so it is preferred over inlining the whole sequence inside `assess`.
 
+## D16 — GroundingResult is the frozen runtime contract; serialization is projection (CAP-077E.1)
+
+CAP-077E activated the runtime; before CAP-077F serializes its output, CAP-077E.1 freezes `GroundingResult` as the **runtime contract** — the single object that crosses from the runtime into serialization. No behaviour changed; this is the same freeze CAP-077B.1 gave `MatchResult`.
+
+**GroundingResult semantics (frozen).** A `GroundingResult` is *the complete, deterministic grounding assessment for one Requirement Intelligence execution*. It is **not** a report, an execution artifact, serialization, a renderer, or a metrics calculator — it is the canonical repository-level aggregate the runtime produces and `GroundingService.assess` returns, already containing the grounded requirements, findings, metrics, summary, explanations, and versions.
+
+**Versioned independently.** A new typed `GroundingResultVersion` (`GROUNDING_RESULT_VERSION`, carried as `result_version`) versions the **runtime-contract schema**, decoupled from `GroundingFrameworkVersion`, `MatchingStrategyVersion`, `MatchResultVersion`, `ClassificationVersion`, and `ConfidenceVersion`. The contract's schema may evolve without forcing a framework change, and vice versa; execution artifacts may evolve without a `GroundingResult` change, and a `GroundingResult` change never forces a renderer change.
+
+**Serialization invariant (frozen).** *Every execution artifact must be reproducible solely from a `GroundingResult`.* The three future artifacts —
+
+```
+GroundingResult
+  ├── grounding_result.json   (canonical serialization)
+  ├── grounding_report.md     (human-readable projection)
+  └── grounding_metrics.md    (metrics projection)
+```
+
+— are **pure projections**. A renderer must never invoke a `GroundingStrategy`, `MatchingNormalizer`, matching/classification/confidence policy, `GroundingMetricsBuilder`, `GroundingPipeline`, or `GroundingService`, and must never recompute matching, classification, confidence, metrics, summaries, or findings. Everything already exists inside the `GroundingResult`.
+
+**Explainability completeness (frozen).** `GroundingExplanation` (requirement-scoped), `GroundingFinding`, `GroundingSummary`, and `GroundingMetrics` together form the complete explanation model. A renderer derives no new information; Markdown generation is presentation only.
+
+**Runtime/artifact boundary (frozen, one-way).** `Runtime → GroundingResult → Execution Package → files`. The Execution Package owns *formatting only* and may consume `GroundingResult`; it never imports Matching, Classification, Confidence, the pipeline, the metrics builder, or the service, and the runtime never depends on the Execution Package. Enforced by containment tests.
+
+**Golden regression boundary (frozen).** Golden datasets compare the **`GroundingResult`**, never Markdown formatting. A change to `grounding_report.md`/`grounding_metrics.md` presentation must never invalidate a runtime regression baseline; only a change to the `GroundingResult` content (or its `result_version`) is a runtime regression.
+
+**Exception-boundary — future evolution (documentation only).** The pipeline's per-requirement recovery currently catches a broad `except Exception`. Architecturally, a narrower hierarchy — a `GroundingRequirementError` (or reusing the subsystems' own error types) caught per requirement, letting truly unexpected errors propagate — would sharpen the failure contract. This is recorded as the **preferred future evolution**; CAP-077E.1 introduces no new exception class and changes no behaviour, because the broad catch is what delivers the frozen "one requirement never denies the others" guarantee and narrowing it is a behavioural change reserved for a dedicated milestone.
+
 ---
 
 ## Trade-offs

@@ -196,6 +196,24 @@ projections of it, never re-computations. An internal, private **`GroundingPipel
 sequencer (accepted for CAP-077E) will hold the stage mechanics behind the stable
 `GroundingService.assess` boundary; it is not public and not registered.
 
+**GroundingResult — the frozen runtime contract (CAP-077E.1).** `GroundingResult` is *the
+complete, deterministic grounding assessment for one execution* — the single object crossing
+from the runtime into serialization. It is not a report, artifact, renderer, or metrics
+calculator; it already carries the grounded requirements, findings, metrics, summary,
+explanations, and versions. A typed `GroundingResultVersion` (`result_version`) versions its
+schema independently of the framework, strategy, match-result, classification, and confidence
+versions. **Serialization invariant (frozen):** the future `grounding_result.json` /
+`grounding_report.md` / `grounding_metrics.md` are **pure projections** — reproducible from a
+`GroundingResult` alone, never recomputing matching/classification/confidence/metrics and
+never invoking a strategy, normalizer, policy, metrics builder, pipeline, or service.
+**Boundary (frozen, one-way):** `Runtime → GroundingResult → Execution Package → files`; the
+Execution Package formats only and imports no runtime component, and the runtime never depends
+on it. **Golden regression** compares the `GroundingResult`, never Markdown formatting.
+`GroundingExplanation` + `GroundingFinding` + `GroundingSummary` + `GroundingMetrics` form the
+complete explanation model. (Future evolution, docs only: the pipeline's broad per-requirement
+`except Exception` could narrow to a dedicated `GroundingRequirementError` — a behavioural
+change reserved for a later milestone.)
+
 `ClassificationResult` (internal to Grounding, never an execution artifact) records the
 support verdict, the evidence links partitioned by role, and a deterministic reason. The
 `SupportClassificationEngine` reads only the `MatchResult`; it owns classification only

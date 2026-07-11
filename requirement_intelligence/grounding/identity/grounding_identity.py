@@ -304,3 +304,16 @@ class ConfidencePolicyVersion(_SemanticVersion):
     """Semantic version of a governed ``ConfidencePolicy``."""
 
     _LABEL: ClassVar[str] = "confidence policy version"
+
+
+@dataclass(frozen=True, order=True)
+class GroundingResultVersion(_SemanticVersion):
+    """Semantic version of the ``GroundingResult`` **runtime contract** schema.
+
+    The repository-level grounding aggregate's own version, independent of the
+    framework, strategy, match-result, classification, and confidence versions. The
+    schema of the runtime contract evolves on its own axis; a change here never forces
+    a framework version change, and vice versa.
+    """
+
+    _LABEL: ClassVar[str] = "grounding result version"
