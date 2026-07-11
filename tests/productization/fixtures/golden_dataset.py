@@ -29,9 +29,12 @@ from requirement_intelligence.models.enums import (
 from requirement_intelligence.models.source_artifact import SourceArtifact
 
 # ---------------------------------------------------------------------------
-# Dataset version — advance when the golden inputs change
+# Dataset version — advance when the golden inputs or the generated artifact set
+# change. 1.1.0 (CAP-077F.2) re-baselines the package to include the three
+# grounding artifacts now that Grounding is active in the live pipeline; the nine
+# source artifacts and the golden response are unchanged.
 # ---------------------------------------------------------------------------
-GOLDEN_DATASET_VERSION = "1.0.0"
+GOLDEN_DATASET_VERSION = "1.1.0"
 
 # ---------------------------------------------------------------------------
 # Fixed timestamps (deterministic provenance)

@@ -133,6 +133,9 @@ class PipelineResult:
     # CP1
     cp1_result: CP1Result | None
 
+    # Grounding
+    grounding_result: Any  # GroundingResult
+
     # Execution package
     execution_data: ExecutionData
     write_result: ExecutionWriteResult
@@ -241,6 +244,13 @@ def _run_golden_pipeline(
         cp1_result = context.cp1_service.run(cp1_input)
 
     # -----------------------------------------------------------------------
+    # Step 6b — Grounding (CAP-077F.2): strictly downstream of Analysis.
+    # -----------------------------------------------------------------------
+    grounding_result = context.create_grounding_service().assess(
+        engineering_context, analysis_result
+    )
+
+    # -----------------------------------------------------------------------
     # Step 7 — Execution package
     # -----------------------------------------------------------------------
     execution_data = ExecutionData(
@@ -261,6 +271,7 @@ def _run_golden_pipeline(
         validation_result=validation_result,
         validation_profile=validation_profile,
         cp1_result=cp1_result,
+        grounding_result=grounding_result,
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -275,6 +286,7 @@ def _run_golden_pipeline(
         normalization_result=normalization_result,
         validation_result=validation_result,
         cp1_result=cp1_result,
+        grounding_result=grounding_result,
         execution_data=execution_data,
         write_result=write_result,
         output_dir=tmp_dir,

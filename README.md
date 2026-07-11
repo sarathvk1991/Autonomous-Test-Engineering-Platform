@@ -23,8 +23,9 @@
 | 7     | Governance Dashboard (Streamlit)        | ⚪ Planned             |
 
 > Phase 1 is implemented end to end: connectors (FILE and live API ingestion),
-> consolidation, prompt governance, Gemini analysis, normalization, response
-> validation, CP1 engineering-readiness, and the execution package.
+> consolidation, engineering context orchestration, prompt governance, Gemini analysis,
+> **evidence grounding & traceability**, normalization, response validation, CP1
+> engineering-readiness, and the execution package. Architecture Version **1.2.0**.
 > See the [demo guide](docs/demo/demo-guide.md) to run it.
 
 ## Architecture at a glance
@@ -52,7 +53,7 @@ capability the milestone introduced.
 | **CAP-074** | API Execution Framework — live JIRA/SonarQube/ZAP ingestion (`EXECUTION_MODE`) |
 | **CAP-075** | Prompt Governance Runtime Integration — the registry becomes the runtime prompt source |
 | **CAP-076** | Engineering Context Orchestration — governed composition of evidence into an `EngineeringContext` |
-| **CAP-077** | Evidence Grounding & Traceability — *planned* |
+| **CAP-077** | Evidence Grounding & Traceability — deterministic requirement→evidence grounding, active in the live pipeline (Architecture 1.2.0) |
 
 ## Runtime Architecture
 

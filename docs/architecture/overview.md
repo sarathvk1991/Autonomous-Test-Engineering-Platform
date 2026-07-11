@@ -68,6 +68,9 @@ Engineering Context Orchestration
 Analysis
         │
         ▼
+Grounding
+        │
+        ▼
 Normalization
         │
         ▼
@@ -82,10 +85,11 @@ Execution Package
 
 Sources are ingested via `connectors/` + `mappers/` (selected by
 `registry/connector_registry.py`), consolidated by `consolidation/`, composed into a
-governed reasoning context by `context_orchestration/`, AI-analyzed by `analysis/`, then
-normalized (`normalization/`), validated (`validation/`), gated by the CP1
-engineering-readiness subsystem (`cp1/`), and written to the Execution Package
-(`execution/`). The pipeline is composed by
+governed reasoning context by `context_orchestration/`, AI-analyzed by `analysis/`, graded
+against its evidence by the Grounding Framework (`grounding/`, active since CAP-077F.2 —
+strictly downstream, modifies nothing upstream), then normalized (`normalization/`),
+validated (`validation/`), gated by the CP1 engineering-readiness subsystem (`cp1/`), and
+written to the Execution Package (`execution/`). The pipeline is composed by
 `requirement_intelligence.platform.PlatformContext` and driven by the CLI
 (`scripts/run_requirement_analysis.py`).
 

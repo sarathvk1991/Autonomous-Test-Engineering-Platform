@@ -1,9 +1,9 @@
 # Golden End-to-End Validation Baseline
 
-**CAP-070 — Productization Milestone 1**  
-Baseline Role: Release Regression Baseline (Requirement Intelligence v1.1.0)  
-Architecture Version: 1.1.0 (frozen)  
-Dataset Version: 1.0.0  
+**CAP-070 — Productization Milestone 1** (re-baselined at CAP-077F.2)  
+Baseline Role: Release Regression Baseline (Requirement Intelligence v1.2.0)  
+Architecture Version: 1.2.0 (frozen) — Grounding active in the live pipeline (CAP-077F.2)  
+Dataset Version: 1.1.0  
 Status: RELEASE REGRESSION BASELINE ESTABLISHED
 
 ---
@@ -24,8 +24,9 @@ against the golden dataset satisfies each of the following:
 
 - **Architecture** — every governed subsystem is present and wired correctly.
 - **Execution flow** — the subsystems execute in the governed pipeline order
-  (Consolidation → Engineering Context Orchestration → Analysis → Normalization →
-  Validation → CP1 → Execution Package).
+  (Consolidation → Engineering Context Orchestration → Analysis → Grounding →
+  Normalization → Validation → CP1 → Execution Package). Grounding is strictly
+  downstream of Analysis and modifies nothing upstream (CAP-077F.2).
 - **Execution artifacts** — every governed artifact is generated.
 - **Manifest integrity** — the manifest's checksums, byte counts, cross-references,
   and version fields agree with the on-disk artifacts.
@@ -150,6 +151,9 @@ ValidationToCP1Handoff.hand_off(...)  → CP1Input
 CP1Service.run(cp1_input)  → CP1Result (CP1-0001: PASS)
         │
         ▼
+GroundingService.assess(engineering_context, analysis_result)  → GroundingResult
+        │  (strictly downstream; modifies nothing upstream — CAP-077F.2)
+        ▼
 ExecutionWriter.write(target_dir, execution_data)  → artifacts + manifest.json
 ```
 
@@ -185,9 +189,14 @@ output directory.
 | `validation_result.json` | JSON | Complete ValidationResult (verdict, issues, statistics) |
 | `validation_report.md` | Markdown | Human-readable validation report |
 | `cp1_report.md` | Markdown | CP1 engineering-readiness report |
+| `grounding_result.json` | JSON | Serialised GroundingResult (the runtime contract, verbatim) |
+| `grounding_report.md` | Markdown | Human-readable grounding projection |
+| `grounding_metrics.md` | Markdown | Grounding metrics projection |
 | `manifest.json` | JSON | Complete manifest (checksums, byte counts, version fields) |
 
-Total: **12 artifacts** (11 + manifest).
+Total: **15 artifacts** (14 + manifest). The three grounding artifacts (CAP-077F.2)
+are **pure serialization projections** of the `GroundingResult` — nothing is recomputed
+during serialization (ADR-0016 §D16).
 
 ### 3.1 Manifest Requirements
 
@@ -260,12 +269,24 @@ The following fields MUST be identical across any two runs with the same golden 
 | Selected module name | `ConsolidatedArtifact.module` |
 | `manifest.cp1Verdict` | `manifest.json` |
 | `generated_text` (raw response) | `LLMResponse.generated_text` |
+| Grounding support distribution | `GroundingResult.assessment.metrics.support_distribution` |
+| Grounding score & hallucination rate | `GroundingResult.assessment.metrics` |
+| Grounded requirement ids | Each `GroundedRequirement.requirement_id` (minted from domain + text) |
+| Grounding finding ids | Each `GroundingFinding.finding_id` |
 
 The following fields are **excluded** from determinism comparisons (per-run provenance):
 
-- Timestamps (`started_at`, `completed_at`, execution timestamps)
+- Timestamps (`started_at`, `completed_at`, execution timestamps — including the
+  `GroundingResult` timestamps, which are provenance exactly like the analysis timestamps)
 - UUIDs / IDs (`analysis_id`, `execution_id`, `validation_id`, `normalization_id`,
   `cp1_id`, `finding_id`, `issue_id`)
+
+> **Grounding determinism.** `grounding_result.json` carries per-run timestamps and so is
+> not byte-identical across runs (exactly like `analysis_result.json`); the determinism
+> contract compares the grounding **content** above, and the manifest re-hashes each file
+> on disk within a single run. The grounded requirement ids and the entire grounding
+> assessment content are deterministic — a pure function of the (fixed) golden response and
+> evidence.
 
 ---
 
@@ -356,17 +377,18 @@ The baseline is planned to grow to exactly **three** governed datasets:
 
 ## 10. Repository Readiness Assessment
 
-Architecture v1.1.0 has been validated against this golden baseline.
+Architecture v1.2.0 has been validated against this golden baseline.
 
 | Subsystem | Status | Notes |
 |---|---|---|
 | ConsolidationEngine | ✓ VALIDATED | Deterministic grouping confirmed |
 | RequirementAnalysisService | ✓ VALIDATED | Orchestration boundary exercised |
+| GroundingService | ✓ VALIDATED | Active downstream of Analysis; deterministic assessment; modifies nothing upstream |
 | ResponseNormalizer | ✓ VALIDATED | ParsedResponse populated correctly |
 | ResponseValidator | ✓ VALIDATED | All rules execute; golden response passes |
 | ValidationToCP1Handoff | ✓ VALIDATED | Gate opens correctly for passing verdict |
 | CP1Engine + CP1Service | ✓ VALIDATED | CP1-0001 evaluated; PASS verdict confirmed |
-| ExecutionWriter | ✓ VALIDATED | All 12 artifacts generated; manifest integrity verified |
+| ExecutionWriter | ✓ VALIDATED | All 15 artifacts generated (incl. grounding projections); manifest integrity verified |
 | PlatformContext | ✓ VALIDATED | Correct construction and wiring confirmed |
 
 **Repository status: ARCHITECTURE VALIDATED — RELEASE REGRESSION BASELINE ESTABLISHED**

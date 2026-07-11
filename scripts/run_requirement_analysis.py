@@ -570,6 +570,26 @@ def handle_analyze(args: argparse.Namespace) -> int:
         console.ok("Success")
         llm_request = prompt_request.to_llm_request(request_id=result.execution_id)
 
+    # Grounding phase (CAP-077F.2): strictly downstream of Analysis. It grades the
+    # generated requirements against the evidence the reasoner actually saw and returns a
+    # GroundingResult, which the execution package serialises as-is. It never modifies the
+    # AnalysisResult, prompt, EngineeringContext, Validation, or CP1. Skipped for dry runs
+    # (no response to ground). Surfaced but never fatal — one grounding failure must not
+    # deny the rest of the run, exactly as validation/CP1 failures are handled.
+    grounding_result: Any = None
+    if result is not None:
+        console.action("\nGrounding")
+        try:
+            grounding_result = context.create_grounding_service().assess(
+                engineering_context, result
+            )
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Grounding failed: {exc}")
+        else:
+            summary = grounding_result.assessment.summary
+            console.ok(f"Grounding score: {summary.grounding_score}")
+            console.note(f"  {summary.verdict}")
+
     # Optional, opt-in Response Validation phase. Default behaviour is unchanged:
     # validation runs only with --validate and only when a real result exists
     # (never for --dry-run, which produces no response to validate). It is executed
@@ -614,6 +634,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         validation_result=validation_result,
         validation_profile=validation_profile if validation_result is not None else None,
         cp1_result=cp1_result,
+        grounding_result=grounding_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

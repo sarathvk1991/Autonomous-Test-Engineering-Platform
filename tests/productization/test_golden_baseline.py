@@ -61,8 +61,16 @@ _RESULT_ARTIFACTS = frozenset(
 )
 _VALIDATION_ARTIFACTS = frozenset({"validation_result.json", "validation_report.md"})
 _CP1_ARTIFACTS = frozenset({"cp1_report.md"})
+_GROUNDING_ARTIFACTS = frozenset(
+    {"grounding_result.json", "grounding_report.md", "grounding_metrics.md"}
+)
 _ALL_ARTIFACTS = (
-    _CORE_ARTIFACTS | _RESULT_ARTIFACTS | _VALIDATION_ARTIFACTS | _CP1_ARTIFACTS | {"manifest.json"}
+    _CORE_ARTIFACTS
+    | _RESULT_ARTIFACTS
+    | _VALIDATION_ARTIFACTS
+    | _CP1_ARTIFACTS
+    | _GROUNDING_ARTIFACTS
+    | {"manifest.json"}
 )
 
 
@@ -299,6 +307,24 @@ class TestPhase4OutputVerification:
         path = golden_pipeline_result.output_dir / "cp1_report.md"
         assert path.exists(), "cp1_report.md missing"
         assert path.stat().st_size > 0, "cp1_report.md is empty"
+
+    @pytest.mark.productization
+    def test_grounding_artifacts_present(self, golden_pipeline_result: PipelineResult) -> None:
+        """Grounding ran (CAP-077F.2), so all three grounding artifacts are written."""
+        for name in _GROUNDING_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Grounding artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Grounding artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_grounding_result_json_round_trips(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """grounding_result.json is a verbatim, round-trippable projection."""
+        from requirement_intelligence.grounding import GroundingResult
+
+        on_disk = _load_json(golden_pipeline_result.output_dir / "grounding_result.json")
+        assert GroundingResult.model_validate(on_disk) == golden_pipeline_result.grounding_result
 
     @pytest.mark.productization
     def test_manifest_present(self, golden_pipeline_result: PipelineResult) -> None:
@@ -713,6 +739,53 @@ class TestPhase5Determinism:
         assert cids1 == cids2, f"CP1 criterion IDs differ: run1={cids1} run2={cids2}"
 
     @pytest.mark.productization
+    def test_determinism_grounding_classification_distribution(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same grounding verdicts (content, not provenance)."""
+        run2 = _run_golden_pipeline(tmp_path)
+        g1 = golden_pipeline_result.grounding_result.assessment
+        g2 = run2.grounding_result.assessment
+        dist1 = [(str(e.classification), e.count) for e in g1.metrics.support_distribution]
+        dist2 = [(str(e.classification), e.count) for e in g2.metrics.support_distribution]
+        assert dist1 == dist2, f"Grounding distribution differs: {dist1} vs {dist2}"
+
+    @pytest.mark.productization
+    def test_determinism_grounding_score_and_findings(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same grounding score, coverage, and finding ids."""
+        run2 = _run_golden_pipeline(tmp_path)
+        g1 = golden_pipeline_result.grounding_result.assessment
+        g2 = run2.grounding_result.assessment
+        assert g1.metrics.grounding_score == g2.metrics.grounding_score
+        assert g1.metrics.hallucination_rate == g2.metrics.hallucination_rate
+        assert sorted(f.finding_id for f in g1.findings) == sorted(
+            f.finding_id for f in g2.findings
+        )
+
+    @pytest.mark.productization
+    def test_determinism_grounding_requirement_ids(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Grounded requirement ids are deterministic (minted from domain + text)."""
+        run2 = _run_golden_pipeline(tmp_path)
+        ids1 = sorted(
+            str(r.requirement_id)
+            for r in golden_pipeline_result.grounding_result.assessment.grounded_requirements
+        )
+        ids2 = sorted(
+            str(r.requirement_id) for r in run2.grounding_result.assessment.grounded_requirements
+        )
+        assert ids1 == ids2
+
+    @pytest.mark.productization
     def test_determinism_normalization_outcome(
         self,
         golden_pipeline_result: PipelineResult,
@@ -841,7 +914,7 @@ class TestPhase6ProductizationAssertions:
     @pytest.mark.productization
     def test_dataset_version(self) -> None:
         """The golden dataset declares a version."""
-        assert GOLDEN_DATASET_VERSION == "1.0.0"
+        assert GOLDEN_DATASET_VERSION == "1.1.0"
 
     @pytest.mark.productization
     def test_dataset_covers_all_categories(self) -> None:
