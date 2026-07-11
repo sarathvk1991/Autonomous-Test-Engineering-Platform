@@ -14,6 +14,36 @@ For the runtime models the package serializes, see the
 [Runtime Architecture](../../README.md#runtime-architecture) section of the README, which
 is the primary architectural entry point.
 
+## At a glance
+
+`manifest.json` is the **root index** of the package: it lists every other artifact by
+name, byte count, and SHA-256, and carries the run's identity and subsystem versions. To
+read a package, start at the manifest and follow it out to the artifacts it indexes.
+
+```
+Execution Package
+        │
+        ▼
+   manifest.json          ← root index: checksums, versions, cross-references
+        │
+        ├── consolidated_artifact.json   (the primary Consolidation group)
+        ├── engineering_context.json     (the complete reasoning context)
+        ├── prompt.txt                   (the exact prompt submitted)
+        ├── llm_request.json             (the provider-agnostic request)
+        ├── analysis_result.json         (the raw, un-validated response)
+        ├── raw_llm_response.json        (the raw provider response)
+        ├── validation_result.json       (the validation verdict)   [conditional]
+        ├── validation_report.md         (human-readable validation) [conditional]
+        ├── cp1_report.md                (engineering-readiness)     [conditional]
+        ├── execution_summary.md         (human-readable run summary)
+        ├── baseline_metrics.md          (engineering + AI metrics)
+        └── review.md                    (qualitative review scaffold)
+```
+
+Every artifact the manifest lists appears in `generatedArtifacts` with its byte count and
+SHA-256, so the package is self-verifying: the golden baseline re-hashes each file and
+checks it against the manifest.
+
 ---
 
 ## 1. What the package contains

@@ -94,6 +94,24 @@ For the runtime models each stage produces and consumes, see the
 primary architectural entry point) and the
 [Execution Package documentation](execution-package.md).
 
+## Runtime Ownership
+
+Each pipeline stage owns exactly one responsibility and hands a single model to the next.
+The README documents the models in full; this table is the architectural ownership map.
+
+| Stage | Primary Responsibility | Produces | Consumes |
+|---|---|---|---|
+| Connectors | Fetch raw payloads from source systems | Raw source payloads | Source system APIs / files |
+| Mappers | Map raw payloads to one canonical shape | `SourceArtifact` | Raw source payloads |
+| Consolidation | Group source artifacts that share a subject | `ConsolidatedArtifact` (per group) | `SourceArtifact`s |
+| Engineering Context Orchestration | Select, rank, budget and compose groups under a governed policy | `EngineeringContext` | `ConsolidatedArtifact`s |
+| Prompt Builder | Render the context into a governed prompt | `PromptRequest` | `EngineeringContext` |
+| Requirement Analysis | Submit the prompt to Gemini; carry the response | `AnalysisResult` | `PromptRequest` |
+| Normalization | Normalize the raw response for validation | `NormalizationResult` / `ParsedResponse` | `AnalysisResult` |
+| Validation | Judge correctness; open/close the CP1 gate | `ValidationResult` | `AnalysisResult` + `NormalizationResult` |
+| CP1 | Judge engineering readiness | `CP1Result` | `ValidationResult` (via the gate) |
+| Execution Package | Serialize every model + checksummed manifest | Execution package (artifacts + `manifest.json`) | all of the above |
+
 ## Engineering Context Orchestration (`context_orchestration/`)
 
 **Live in the pipeline above (since CAP-076C; multi-source since CAP-076D).**

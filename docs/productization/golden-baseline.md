@@ -24,7 +24,8 @@ against the golden dataset satisfies each of the following:
 
 - **Architecture** — every governed subsystem is present and wired correctly.
 - **Execution flow** — the subsystems execute in the governed pipeline order
-  (Consolidation → Analysis → Normalization → Validation → CP1 → Execution Package).
+  (Consolidation → Engineering Context Orchestration → Analysis → Normalization →
+  Validation → CP1 → Execution Package).
 - **Execution artifacts** — every governed artifact is generated.
 - **Manifest integrity** — the manifest's checksums, byte counts, cross-references,
   and version fields agree with the on-disk artifacts.

@@ -38,6 +38,22 @@
 
 See [`docs/architecture/overview.md`](docs/architecture/overview.md).
 
+## Platform Evolution
+
+The architectural milestones that shaped the current Requirement Intelligence runtime.
+This is a capability timeline, not release notes — each entry names the architectural
+capability the milestone introduced.
+
+| Milestone | Capability |
+|---|---|
+| **CAP-070** | Productization Baseline — the golden end-to-end regression baseline |
+| **CAP-072** | Prompt Governance — governed, versioned prompt framework |
+| **CAP-073** | Prompt Evaluation — evaluation of prompt/response quality |
+| **CAP-074** | API Execution Framework — live JIRA/SonarQube/ZAP ingestion (`EXECUTION_MODE`) |
+| **CAP-075** | Prompt Governance Runtime Integration — the registry becomes the runtime prompt source |
+| **CAP-076** | Engineering Context Orchestration — governed composition of evidence into an `EngineeringContext` |
+| **CAP-077** | Evidence Grounding & Traceability — *planned* |
+
 ## Runtime Architecture
 
 This is the primary architectural entry point for new developers. It describes the
@@ -259,7 +275,7 @@ autonomous-test-engineering-platform/
 │   ├── models/                #   canonical + shared models (Canonical Requirement, ParsedResponse)
 │   ├── registry/              #   connector registry + source loader
 │   ├── consolidation/         #   consolidation engine (multi-source -> ConsolidatedArtifact)
-│   ├── context_orchestration/ #   engineering context orchestration (model+policy; not yet wired)
+│   ├── context_orchestration/ #   Engineering Context Orchestration (runtime orchestrator, policy framework, engineering context model — active runtime component)
 │   ├── prompts/               #   prompt framework
 │   ├── llm/                   #   provider framework (Gemini; Azure OpenAI stub)
 │   ├── platform/              #   PlatformContext, startup validation, health check
