@@ -95,33 +95,49 @@ grounding/
 ├── classification/               # classification + confidence rules (governed, declarative)
 ├── explanation/                  # GroundingExplanation assembly
 ├── grounding_config.py           # governed thresholds/weights (data, versioned)
-└── grounding_service.py          # orchestration boundary: assess(context, parsed) -> GroundingResult
+└── grounding_service.py          # GroundingService (ABC) + DefaultGroundingService — the
+                                  #   runtime boundary: assess(engineering_context, analysis_result)
+                                  #   -> GroundingResult  (abstract in CAP-077A.1; dormant)
 ```
 
 ### Grounding Service vs Grounding Strategy — the load-bearing separation
 
 The subsystem is split into a stable **orchestrator** and a replaceable **matcher**, so
-the architecture does not hard-code *how* links are found:
+the architecture does not hard-code *how* links are found. `GroundingService` is
+**architecture**; the concrete matcher (`Strategy V1`) is an **implementation** behind it:
 
 ```
-Grounding Service          (orchestration — architecture, stable)
+GroundingService           (orchestration — architecture, stable; CAP-077A.1)
         │  delegates matching to
         ▼
-Grounding Strategy         (matching — a pluggable extension point)
+GroundingStrategy          (matching contract — the extension point)
+        │  implemented by
+        ▼
+Strategy V1                (Deterministic Text Matching — implementation, CAP-077B)
 ```
 
-- The **Grounding Service** owns orchestration: it receives the `EngineeringContext` and
-  the normalized requirements, invokes the configured `GroundingStrategy` to obtain
-  requirement→evidence links, then applies classification, confidence, explanation, and
-  metrics, and assembles the `GroundingResult`. It is **strategy-agnostic** — swapping the
-  strategy changes no service code.
-- The **Grounding Strategy** owns matching only: given one requirement and the evidence
-  corpus, it returns the `RequirementEvidenceLink`s. It is the single point where "how do
-  we decide a requirement is supported?" is answered, and the one place a future approach
-  plugs in (see [Grounding Strategy](#grounding-strategy)).
+- **`GroundingService`** is the **single runtime entry point** into the subsystem and the
+  permanent orchestration boundary (established in CAP-077A.1 as an abstract contract —
+  `assess(engineering_context, analysis_result) -> GroundingResult`). It owns orchestration,
+  lifecycle, dependency coordination, execution ordering, and result assembly: it invokes the
+  configured `GroundingStrategy` for links, then applies classification, confidence,
+  explanation, and metrics via its internal collaborators, and assembles the `GroundingResult`.
+  It is **strategy-agnostic** — swapping the strategy changes no service code.
+- **`GroundingStrategy`** owns matching only: given one requirement and the evidence corpus,
+  it returns the `RequirementEvidenceLink`s. It is the single point where "how do we decide a
+  requirement is supported?" is answered, and the one place a future approach plugs in (see
+  [Grounding Strategy](#grounding-strategy)).
+- The service's **future collaborators** — a classification engine, a confidence calculator,
+  metrics and explanation assemblers, and the result builder — are **internal implementation
+  details of the service**, not part of its public contract. They can be added milestone by
+  milestone (CAP-077C/D) without changing the `assess` signature or any caller.
 
-This is the architecture. The specific matching algorithm is an **implementation choice**
-behind the strategy contract, not an architectural commitment.
+**Dependency inversion.** `GroundingService` depends on the `GroundingStrategy` *abstraction*,
+never on a concrete strategy (`DeterministicTextMatchingStrategy`, `SemanticSimilarityStrategy`,
+`EvidenceCitationStrategy`, `HybridStrategy`). No runtime code references a concrete strategy;
+`Strategy V1` is selected and injected at composition time. This is what lets CAP-077B implement
+matching, CAP-077C add classification, CAP-077D add confidence and metrics, and CAP-077E wire
+runtime — each **without changing `GroundingService`**.
 
 ---
 

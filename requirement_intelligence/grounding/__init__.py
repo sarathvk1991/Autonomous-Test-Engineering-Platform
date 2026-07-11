@@ -21,6 +21,10 @@ from requirement_intelligence.grounding.config import (
     default_grounding_configuration,
 )
 from requirement_intelligence.grounding.contracts import GroundingStrategy
+from requirement_intelligence.grounding.grounding_service import (
+    DefaultGroundingService,
+    GroundingService,
+)
 from requirement_intelligence.grounding.identity import (
     GroundedRequirementId,
     GroundingAssessmentId,
@@ -55,6 +59,7 @@ __all__ = [
     "GROUNDING_FRAMEWORK_VERSION",
     "ConfidenceBand",
     "ConfidenceComponent",
+    "DefaultGroundingService",
     "EvidenceReference",
     "EvidenceRelation",
     "GroundedRequirement",
@@ -72,6 +77,7 @@ __all__ = [
     "GroundingMetrics",
     "GroundingResult",
     "GroundingResultBuilder",
+    "GroundingService",
     "GroundingSeverity",
     "GroundingStrategy",
     "GroundingSummary",

@@ -61,6 +61,22 @@ Making grounding gate the pipeline would, by definition, change Validation's or 
 
 Like ADR-0015 §D5, the new typed identifiers (`GroundedRequirementId`, `GroundingAssessmentId`, `GroundingConfigVersion`) are **scoped to this subsystem**. Evidence keeps its existing `(source_system, source_record_id)` identity; `analysis_id` / `execution_id` stay raw strings. No existing identifier is retyped — the change is purely additive.
 
+## D7 — Why `GroundingService` is the single runtime boundary (CAP-077A.1)
+
+The subsystem exposes exactly one runtime entry point: `GroundingService`, an abstract contract with a single method — `assess(engineering_context, analysis_result) -> GroundingResult`. Everything else in `grounding/` (models, identities, builders, config, the strategy contract) is internal; nothing outside the subsystem depends on any of it directly.
+
+```
+GroundingService     (orchestration — this boundary, stable)
+        ↓  delegates matching to
+GroundingStrategy    (matching — the replaceable extension point)
+```
+
+**`GroundingService` owns** orchestration, lifecycle, dependency coordination, execution ordering, and result assembly. **It does not own** evidence matching (delegated to `GroundingStrategy`), support classification, confidence, metrics, explanation, execution-package writing, Validation, CP1, or the Prompt Builder — each is a separate owner. The service's *future collaborators* (a classification engine, a confidence calculator, metrics and explanation assemblers, the result builder) are **internal implementation details**, not part of the contract.
+
+**Dependency inversion is the point.** The service depends on the `GroundingStrategy` *abstraction*, never on a concrete strategy; no runtime code references `DeterministicTextMatchingStrategy`, `SemanticSimilarityStrategy`, `EvidenceCitationStrategy`, or `HybridStrategy`. Fixing the boundary *before* implementing any behaviour is what lets each subsequent milestone — matching (CAP-077B), classification (CAP-077C), confidence and metrics (CAP-077D), runtime integration (CAP-077E) — land **behind an unchanged `assess` signature**, with no change to callers. This mirrors how the Engineering Context Orchestrator's boundary and `PlatformContext` factory existed before the orchestrator was activated.
+
+**CAP-077A.1 establishes the boundary only.** `assess` is abstract and the registered `DefaultGroundingService` raises `NotImplementedError`; `PlatformContext.create_grounding_service()` constructs it with the governed configuration and **no strategy**. It is dormant — no pipeline stage consumes it — so runtime behaviour is byte-identical. Its one new dependency, on the `EngineeringContext` *model* (the evidence corpus `assess` grounds against), was registered by consciously widening the CAP-076C orchestration-consumer allowlist, which is the mechanism that guard exists to force.
+
 ---
 
 ## Trade-offs

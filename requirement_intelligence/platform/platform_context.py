@@ -38,6 +38,10 @@ from requirement_intelligence.grounding.config import (
     GroundingConfiguration,
     default_grounding_configuration,
 )
+from requirement_intelligence.grounding.grounding_service import (
+    DefaultGroundingService,
+    GroundingService,
+)
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
@@ -132,6 +136,19 @@ class PlatformContext:
         pipeline stage calls this method, so runtime behaviour is unchanged.
         """
         return default_grounding_configuration()
+
+    def create_grounding_service(self) -> GroundingService:
+        """Return the :class:`GroundingService` runtime boundary (CAP-077A.1, ADR-0016).
+
+        The single runtime entry point into the Grounding subsystem. It is built
+        with the governed :meth:`create_grounding_configuration` and **no strategy**
+        — matching is not implemented yet, so its ``assess`` raises
+        ``NotImplementedError``. Construction only, and **not yet consumed by any
+        runtime path**: no pipeline stage calls this method, so runtime behaviour is
+        unchanged. This mirrors how the Engineering Context Orchestrator was
+        registered before it was activated.
+        """
+        return DefaultGroundingService(self.create_grounding_configuration())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

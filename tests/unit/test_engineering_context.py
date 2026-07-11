@@ -825,13 +825,21 @@ def test_platform_context_returns_independent_instances() -> None:
 
 #: Modules permitted to reference the subsystem now that it is live. The set is
 #: exhaustive and deliberately small: construction happens only in
-#: ``PlatformContext``, the CLI orchestrates, and the three consumers below read
-#: an ``EngineeringContext``. Anything else must remain unaware it exists.
+#: ``PlatformContext``, the CLI orchestrates, and the consumers below read an
+#: ``EngineeringContext``. Anything else must remain unaware it exists.
+#:
+#: ``grounding/grounding_service.py`` joined the set in CAP-077A.1: its permanent
+#: ``assess(engineering_context, analysis_result)`` contract takes an
+#: ``EngineeringContext`` as the evidence corpus it grounds requirements against.
+#: The dependency is on the model only, and the service is dormant (its ``assess``
+#: raises ``NotImplementedError``); this widening is the conscious consumer
+#: registration this guard exists to force.
 _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/platform/platform_context.py"),
     Path("requirement_intelligence/prompts/requirement_prompt_builder.py"),
     Path("requirement_intelligence/analysis/requirement_analysis_service.py"),
     Path("requirement_intelligence/execution/engineering_context_artifact.py"),
+    Path("requirement_intelligence/grounding/grounding_service.py"),
     Path("scripts/run_requirement_analysis.py"),
 }
 
