@@ -117,7 +117,10 @@ MatchingContextBuilder     (the one runtime→canonical boundary; CAP-077A.2)
         │  produces
         ▼
 MatchingContext            (canonical matching input; fanned out to MatchingRequests)
-        │  each request delegated to
+        │  each request's text preprocessed by
+        ▼
+MatchingNormalizer         (preprocessing boundary — raw text → NormalizedText; CAP-077A.4)
+        │  normalized inputs handed to
         ▼
 GroundingStrategy          (matching contract — the extension point)
         │  implemented by
@@ -140,6 +143,14 @@ strategies richer values); they never *redefine* it. Classification, confidence,
 grounding metrics are computed by the Grounding Service *from* `MatchResult`s and live on
 `GroundedRequirement`/`GroundingResult` — so the matching architecture is complete before a
 single matcher is written.
+
+**Ownership (three seams, three responsibilities).** `MatchingNormalizer` owns
+**preprocessing only** (raw text → canonical `NormalizedText`; shared by every strategy so
+inputs are identical). `GroundingStrategy` owns **comparison only** (normalized requirement
+vs normalized evidence → `MatchResult`). `GroundingService` owns **orchestration only**
+(build context, fan out, normalize, delegate, assemble). Normalization sits *below* the
+strategy, not inside it, so no strategy re-implements preprocessing and a normalization
+change is one governed, versioned decision rather than N copies.
 
 **Canonical matching input (CAP-077A.2).** A strategy never sees a runtime model.
 `MatchingContextBuilder` is the single place that touches `EngineeringContext` and

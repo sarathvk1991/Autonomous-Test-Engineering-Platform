@@ -32,6 +32,7 @@ from requirement_intelligence.grounding.identity import (
     GroundingAssessmentId,
     GroundingConfigurationVersion,
     GroundingFrameworkVersion,
+    MatchingNormalizationVersion,
 )
 from requirement_intelligence.grounding.models import (
     ConfidenceBand,
@@ -58,6 +59,16 @@ from requirement_intelligence.grounding.models import (
     SupportClassification,
     SupportDistributionEntry,
 )
+from requirement_intelligence.grounding.normalization import (
+    MATCHING_NORMALIZATION_VERSION,
+    DefaultMatchingNormalizer,
+    MatchingNormalizer,
+    NormalizationConfiguration,
+    NormalizationStatistics,
+    NormalizedText,
+    NormalizedToken,
+    default_normalization_configuration,
+)
 from requirement_intelligence.grounding.version import (
     GROUNDING_CONFIGURATION_VERSION,
     GROUNDING_FRAMEWORK_VERSION,
@@ -66,9 +77,11 @@ from requirement_intelligence.grounding.version import (
 __all__ = [
     "GROUNDING_CONFIGURATION_VERSION",
     "GROUNDING_FRAMEWORK_VERSION",
+    "MATCHING_NORMALIZATION_VERSION",
     "ConfidenceBand",
     "ConfidenceComponent",
     "DefaultGroundingService",
+    "DefaultMatchingNormalizer",
     "EvidenceReference",
     "EvidenceRelation",
     "GroundedRequirement",
@@ -97,10 +110,17 @@ __all__ = [
     "MatchingContextBuilder",
     "MatchingContextConstructionError",
     "MatchingEvidence",
+    "MatchingNormalizationVersion",
+    "MatchingNormalizer",
     "MatchingRequest",
     "MatchingRequirement",
+    "NormalizationConfiguration",
+    "NormalizationStatistics",
+    "NormalizedText",
+    "NormalizedToken",
     "RequirementEvidenceLink",
     "SupportClassification",
     "SupportDistributionEntry",
     "default_grounding_configuration",
+    "default_normalization_configuration",
 ]

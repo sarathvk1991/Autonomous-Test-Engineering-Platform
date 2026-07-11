@@ -210,3 +210,10 @@ class GroundingConfigurationVersion(_SemanticVersion):
     """Semantic version of the governed grounding configuration (weights/thresholds)."""
 
     _LABEL: ClassVar[str] = "grounding configuration version"
+
+
+@dataclass(frozen=True, order=True)
+class MatchingNormalizationVersion(_SemanticVersion):
+    """Semantic version of the governed matching text-normalization configuration."""
+
+    _LABEL: ClassVar[str] = "matching normalization version"

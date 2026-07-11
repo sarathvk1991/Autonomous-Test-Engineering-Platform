@@ -7,6 +7,7 @@ from requirement_intelligence.grounding.identity.grounding_identity import (
     GroundingAssessmentId,
     GroundingConfigurationVersion,
     GroundingFrameworkVersion,
+    MatchingNormalizationVersion,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "GroundingAssessmentId",
     "GroundingConfigurationVersion",
     "GroundingFrameworkVersion",
+    "MatchingNormalizationVersion",
 ]

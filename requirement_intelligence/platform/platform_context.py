@@ -43,6 +43,10 @@ from requirement_intelligence.grounding.grounding_service import (
     DefaultGroundingService,
     GroundingService,
 )
+from requirement_intelligence.grounding.normalization import (
+    DefaultMatchingNormalizer,
+    MatchingNormalizer,
+)
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
@@ -161,6 +165,16 @@ class PlatformContext:
         :class:`GroundingService` can obtain it from the same seam.
         """
         return MatchingContextBuilder()
+
+    def create_matching_normalizer(self) -> MatchingNormalizer:
+        """Return the :class:`MatchingNormalizer` preprocessing boundary (CAP-077A.4).
+
+        The canonical text-normalization seam every grounding strategy will share.
+        Returns the minimal :class:`DefaultMatchingNormalizer` (lowercase + whitespace);
+        the full normalizer lands with the first strategy (CAP-077B). **Not yet wired**:
+        no pipeline stage calls it, so runtime behaviour is unchanged.
+        """
+        return DefaultMatchingNormalizer()
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

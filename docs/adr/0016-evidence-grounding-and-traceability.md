@@ -95,6 +95,20 @@ The matching contract is completed — and **frozen** — by fixing the *output*
 
 With the input (`MatchingContext`/`MatchingRequest`) and the output (`MatchResult`) both canonical and frozen, the **entire matching architecture is closed** ahead of CAP-077B. `PlatformContext` needs no change — a `MatchResult` is produced by strategies, never constructed by the composition root.
 
+## D10 — Why matching normalization is a separate architectural boundary (CAP-077A.4)
+
+Matching and normalization are different jobs, and conflating them is a mistake the architecture forecloses now. **Normalization** turns raw text (a requirement, an evidence title/description) into a canonical, comparable form — lowercasing, whitespace, punctuation, camelCase/snake_case splitting, stop words, abbreviations. **Matching** compares already-normalized text and decides which evidence supports a requirement. The first is mechanical and universal; the second is where a strategy's judgement lives.
+
+**Normalization sits *below* `GroundingStrategy`, not inside it.** A new package, `grounding/normalization/`, owns preprocessing only via one abstraction — `MatchingNormalizer.normalize(text) -> NormalizedText`. Three reasons it is a boundary rather than a helper buried in the first matcher:
+
+1. **Every strategy must preprocess identically.** If deterministic, semantic, and hybrid strategies each rolled their own tokenizer, "the requirement says *nosniff*" could tokenize three different ways and the strategies would silently disagree on their *inputs* before they ever disagreed on their *judgement*. One shared normalizer makes the inputs canonical, so strategy differences are real, not artefacts of preprocessing.
+2. **No duplicated preprocessing.** Normalization is written once and reused; a new strategy consumes `NormalizedText`, never re-implements it.
+3. **Governed, versioned, auditable.** The switches live on an immutable, versioned `NormalizationConfiguration` (`MatchingNormalizationVersion`), and each run's `NormalizedText` carries `NormalizationStatistics` (pure observations) and the version that produced it — the same "policy is data" discipline as the orchestration and grounding configurations.
+
+The canonical models — `NormalizedToken`, `NormalizedText`, `NormalizationStatistics` — are immutable, tuple-backed, camelCase, and free of timestamps/UUIDs, like every grounding model. This is distinct from the response-normalization subsystem (`requirement_intelligence/normalization/`), which normalizes an AI *response's structure* into a `ParsedResponse`; matching normalization normalizes *free text into tokens*.
+
+**CAP-077A.4 establishes the boundary only.** `DefaultMatchingNormalizer` is minimal — lowercase + whitespace — enough to fix the permanent API; full tokenization is reserved for the first strategy (CAP-077B). `PlatformContext.create_matching_normalizer()` constructs it, unwired, with no consumers, so runtime behaviour is byte-identical. With normalization (input preprocessing), `MatchingContext` (input), and `MatchResult` (output) all canonical and frozen, the Grounding matching architecture is complete before a single matcher is written.
+
 ---
 
 ## Trade-offs
