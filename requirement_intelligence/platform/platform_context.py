@@ -35,6 +35,11 @@ from requirement_intelligence.cp1.response import (
     build_cp1_service,
 )
 from requirement_intelligence.grounding.builders import MatchingContextBuilder
+from requirement_intelligence.grounding.classification import (
+    ClassificationPolicy,
+    ClassificationPolicyBuilder,
+    SupportClassificationEngine,
+)
 from requirement_intelligence.grounding.config import (
     GroundingConfiguration,
     default_grounding_configuration,
@@ -202,6 +207,25 @@ class PlatformContext:
             normalizer=self.create_matching_normalizer(),
             policy=self.create_matching_policy(),
         )
+
+    def create_classification_policy(self) -> ClassificationPolicy:
+        """Return the governed default :class:`ClassificationPolicy` (CAP-077C, ADR-0016).
+
+        The governed decision rules for *what constitutes support* — score thresholds,
+        relation-to-role mapping, precedence, conflict and unknown handling. A
+        ``SupportClassificationEngine`` reads it; it contains no logic. **Not yet
+        wired**: no pipeline stage calls it, so runtime behaviour is unchanged.
+        """
+        return ClassificationPolicyBuilder().build()
+
+    def create_support_classification_engine(self) -> SupportClassificationEngine:
+        """Return the :class:`SupportClassificationEngine` (CAP-077C, ADR-0016).
+
+        Classifies a ``MatchResult`` into a ``ClassificationResult`` under the governed
+        classification policy. It consumes only a ``MatchResult``. **Not yet wired**:
+        no pipeline stage calls it, so runtime behaviour is unchanged.
+        """
+        return SupportClassificationEngine(policy=self.create_classification_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

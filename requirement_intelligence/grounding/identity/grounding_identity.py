@@ -127,6 +127,13 @@ class MatchingPolicyId(_StringIdentifier):
 
 
 @dataclass(frozen=True)
+class ClassificationPolicyId(_StringIdentifier):
+    """The permanent, governed identity of a ``ClassificationPolicy``."""
+
+    _LABEL: ClassVar[str] = "classification policy id"
+
+
+@dataclass(frozen=True)
 class GroundingAssessmentId(_StringIdentifier):
     """The deterministic identity of one grounding assessment.
 
@@ -254,3 +261,21 @@ class MatchResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "match result version"
+
+
+@dataclass(frozen=True, order=True)
+class ClassificationVersion(_SemanticVersion):
+    """Semantic version of the ``ClassificationResult`` **schema**.
+
+    Independent of :class:`MatchResultVersion`, :class:`MatchingStrategyVersion`, and
+    the grounding framework version: classification output evolves on its own axis.
+    """
+
+    _LABEL: ClassVar[str] = "classification version"
+
+
+@dataclass(frozen=True, order=True)
+class ClassificationPolicyVersion(_SemanticVersion):
+    """Semantic version of a governed ``ClassificationPolicy``."""
+
+    _LABEL: ClassVar[str] = "classification policy version"

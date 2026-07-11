@@ -18,6 +18,16 @@ from requirement_intelligence.grounding.builders import (
     MatchingContextBuilder,
     MatchingContextConstructionError,
 )
+from requirement_intelligence.grounding.classification import (
+    CLASSIFICATION_POLICY_VERSION,
+    CLASSIFICATION_VERSION,
+    ClassificationPolicy,
+    ClassificationPolicyBuilder,
+    ClassificationResult,
+    ClassificationThresholds,
+    SupportClassificationEngine,
+    default_classification_policy,
+)
 from requirement_intelligence.grounding.config import (
     GroundingConfiguration,
     default_grounding_configuration,
@@ -28,6 +38,9 @@ from requirement_intelligence.grounding.grounding_service import (
     GroundingService,
 )
 from requirement_intelligence.grounding.identity import (
+    ClassificationPolicyId,
+    ClassificationPolicyVersion,
+    ClassificationVersion,
     GroundedRequirementId,
     GroundingAssessmentId,
     GroundingConfigurationVersion,
@@ -92,11 +105,20 @@ from requirement_intelligence.grounding.version import (
 )
 
 __all__ = [
+    "CLASSIFICATION_POLICY_VERSION",
+    "CLASSIFICATION_VERSION",
     "GROUNDING_CONFIGURATION_VERSION",
     "GROUNDING_FRAMEWORK_VERSION",
     "MATCHING_NORMALIZATION_VERSION",
     "MATCHING_POLICY_VERSION",
     "MATCH_RESULT_VERSION",
+    "ClassificationPolicy",
+    "ClassificationPolicyBuilder",
+    "ClassificationPolicyId",
+    "ClassificationPolicyVersion",
+    "ClassificationResult",
+    "ClassificationThresholds",
+    "ClassificationVersion",
     "ConfidenceBand",
     "ConfidenceComponent",
     "DefaultGroundingService",
@@ -151,7 +173,9 @@ __all__ = [
     "NormalizedToken",
     "RequirementEvidenceLink",
     "SupportClassification",
+    "SupportClassificationEngine",
     "SupportDistributionEntry",
+    "default_classification_policy",
     "default_grounding_configuration",
     "default_matching_policy",
     "default_normalization_configuration",

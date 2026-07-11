@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from requirement_intelligence.grounding.identity.grounding_identity import (
+    ClassificationPolicyId,
+    ClassificationPolicyVersion,
+    ClassificationVersion,
     GroundedRequirementId,
     GroundingAssessmentId,
     GroundingConfigurationVersion,
@@ -15,6 +18,9 @@ from requirement_intelligence.grounding.identity.grounding_identity import (
 )
 
 __all__ = [
+    "ClassificationPolicyId",
+    "ClassificationPolicyVersion",
+    "ClassificationVersion",
     "GroundedRequirementId",
     "GroundingAssessmentId",
     "GroundingConfigurationVersion",

@@ -16,9 +16,9 @@ from requirement_intelligence.models.enums import SourceCategory
 from tests.unit.grounding_helpers import (
     COMPLETED,
     STARTED,
+    make_classification_result,
     make_confidence,
     make_explanation,
-    make_link,
     make_metrics,
     make_summary,
 )
@@ -26,47 +26,61 @@ from tests.unit.grounding_helpers import (
 
 @pytest.mark.unit
 class TestGroundedRequirementBuilder:
-    def test_mints_deterministic_id(self) -> None:
+    def test_consumes_classification_result(self) -> None:
         builder = GroundedRequirementBuilder()
         text = "Set the X-Content-Type-Options header to nosniff."
         req = builder.build(
+            classification_result=make_classification_result(text=text),
+            confidence=make_confidence(),
+            explanation=make_explanation(),
             domain=SourceCategory.SECURITY,
             text=text,
             position=0,
-            classification=SupportClassification.SUPPORTED,
-            confidence=make_confidence(),
-            explanation=make_explanation(),
-            evidence_links=(make_link(),),
         )
         assert req.requirement_id == GroundedRequirementId.for_requirement(
             SourceCategory.SECURITY, text
         )
+        assert req.classification == SupportClassification.SUPPORTED
 
     def test_rejects_invalid_construction(self) -> None:
         builder = GroundedRequirementBuilder()
         with pytest.raises(ValidationError):
             builder.build(
+                # SUPPORTED with no supporting links ⇒ GroundedRequirement validator rejects.
+                classification_result=make_classification_result(
+                    text="unsupported claim", supporting_links=()
+                ),
+                confidence=make_confidence(),
+                explanation=make_explanation(),
                 domain=SourceCategory.SECURITY,
                 text="unsupported claim",
                 position=0,
-                classification=SupportClassification.SUPPORTED,
+            )
+
+    def test_rejects_mismatched_requirement(self) -> None:
+        builder = GroundedRequirementBuilder()
+        with pytest.raises(ValueError):
+            builder.build(
+                classification_result=make_classification_result(text="one thing"),
                 confidence=make_confidence(),
                 explanation=make_explanation(),
-                evidence_links=(),  # SUPPORTED requires ≥1 supporting link
+                domain=SourceCategory.SECURITY,
+                text="a different requirement",
+                position=0,
             )
 
 
 @pytest.mark.unit
 class TestAssessmentAndResultBuilders:
     def _requirement(self):  # type: ignore[no-untyped-def]
+        text = "Set nosniff header."
         return GroundedRequirementBuilder().build(
-            domain=SourceCategory.SECURITY,
-            text="Set nosniff header.",
-            position=0,
-            classification=SupportClassification.SUPPORTED,
+            classification_result=make_classification_result(text=text),
             confidence=make_confidence(),
             explanation=make_explanation(),
-            evidence_links=(make_link(),),
+            domain=SourceCategory.SECURITY,
+            text=text,
+            position=0,
         )
 
     def test_assessment_builder_mints_id_and_validates(self) -> None:

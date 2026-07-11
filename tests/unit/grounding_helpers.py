@@ -128,3 +128,22 @@ def make_summary(*, total: int = 1, supported: int = 1, score: int = 100) -> Gro
 SUPPORTED = SupportClassification.SUPPORTED
 STARTED = datetime(2026, 7, 11, 12, 0, 0, tzinfo=UTC)
 COMPLETED = datetime(2026, 7, 11, 12, 0, 1, tzinfo=UTC)
+
+
+def make_classification_result(
+    *,
+    text: str = "Set nosniff header.",
+    classification: SupportClassification = SupportClassification.SUPPORTED,
+    supporting_links: tuple[RequirementEvidenceLink, ...] | None = None,
+):  # type: ignore[no-untyped-def]
+    """A valid ClassificationResult (defaults to SUPPORTED with one direct link)."""
+    from requirement_intelligence.grounding.classification import ClassificationResult
+    from requirement_intelligence.grounding.identity import GroundedRequirementId
+
+    links = (make_link(),) if supporting_links is None else supporting_links
+    return ClassificationResult(
+        requirement_id=GroundedRequirementId.for_requirement(SourceCategory.SECURITY, text),
+        support_classification=classification,
+        supporting_links=links,
+        classification_reason="test",
+    )

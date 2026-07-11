@@ -133,6 +133,24 @@ CAP-077B implemented Strategy V1; before CAP-077C (Support Classification) begin
 
 **4 — The Matching↔Classification boundary is frozen.** CAP-077C consumes **only** `MatchResult`. Classification must never invoke a `GroundingStrategy`, `MatchingNormalizer`, or `MatchingPolicy` — the matching layer is complete, and re-entering it downstream would duplicate matching and split its ownership. The dependency is one-way: `MatchResult` is self-contained (it imports no strategy, normalizer, or policy), and the matching layer imports nothing from Classification. This is enforced by containment tests.
 
+## D13 — Support Classification is a governed subsystem consuming only MatchResult (CAP-077C)
+
+Support Classification is the third governed subsystem of the grounding pipeline, after Matching. It answers *what verdict does the evidence warrant?* — turning a `MatchResult` into a `ClassificationResult`. It owns classification **only**: no matching, normalization, confidence, metrics, explanation rendering, or execution artifacts.
+
+**`ClassificationResult` is the internal contract between Classification and Confidence.** The grounding pipeline is now a chain of canonical hand-offs:
+
+```
+MatchResult  →  ClassificationResult  →  Confidence  →  GroundedRequirement
+```
+
+`ClassificationResult` records the support verdict, the evidence links partitioned by role (supporting / contradicting / partial / derived / unknown), and a short deterministic reason. It is **internal to Grounding** — not an execution artifact, not exposed outside the subsystem. Introducing it as a distinct model isolates CAP-077D: confidence is computed *from* a `ClassificationResult` without re-running matching or re-classifying, and the `GroundedRequirementBuilder` now assembles a requirement *from* a `ClassificationResult` rather than taking a bare verdict.
+
+**Policy governs; the engine implements.** A `SupportClassificationEngine` reads a governed `ClassificationPolicy` (score thresholds per verdict, the relation-to-role mapping, the precedence order, conflict and unknown handling, the permitted verdict set). Nothing is hard-coded; tuning classification is a versioned policy change. The default precedence is CONTRADICTED → SUPPORTED → PARTIALLY_SUPPORTED → WEAKLY_SUPPORTED → UNKNOWN → UNSUPPORTED — the engine emits the highest applicable verdict.
+
+**UNKNOWN ≠ UNSUPPORTED — the RC-1 lesson, now enforced.** When no evidence was examined at all, the verdict is UNKNOWN (a coverage gap — unassessable); when evidence was present but nothing supported the requirement, it is UNSUPPORTED (a hallucination). The engine distinguishes them from `MatchResult.statistics.evidence_examined`, so a budgeting gap is never miscounted as a hallucination.
+
+**Fully deterministic, boundary-clean, independently versioned.** Every verdict is a pure function of `(MatchResult, ClassificationPolicy)`. The engine reads only the `MatchResult`; it never inspects the `EngineeringContext`, `AnalysisResult`, strategy, normalizer, or matching policy (enforced by containment tests). `ClassificationVersion` (result schema) and `ClassificationPolicyVersion` are typed and advance independently of `MatchResultVersion`, `MatchingStrategyVersion`, and the framework version. `PlatformContext.create_classification_policy()` and `create_support_classification_engine()` construct them, unwired, with no consumers — runtime is byte-identical.
+
 ---
 
 ## Trade-offs

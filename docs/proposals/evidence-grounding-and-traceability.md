@@ -138,6 +138,24 @@ MatchResult                (canonical output: links + statistics + explanation; 
 Classification → Confidence → Metrics → GroundingResult
 ```
 
+**Classification consumes only MatchResult (CAP-077C).** Support Classification is a
+governed subsystem that turns a `MatchResult` into a `ClassificationResult` under a
+governed `ClassificationPolicy` — the internal hand-off chain is:
+
+```
+MatchResult  →  ClassificationResult  →  Confidence  →  GroundedRequirement
+```
+
+`ClassificationResult` (internal to Grounding, never an execution artifact) records the
+support verdict, the evidence links partitioned by role, and a deterministic reason. The
+`SupportClassificationEngine` reads only the `MatchResult`; it owns classification only
+(no matching/normalization/confidence/metrics), governed by policy thresholds and a
+precedence order (CONTRADICTED → SUPPORTED → PARTIALLY → WEAKLY → UNKNOWN → UNSUPPORTED).
+UNKNOWN (no evidence examined) is kept distinct from UNSUPPORTED (evidence present, none
+supported) — a coverage gap is never a hallucination. The `GroundedRequirementBuilder`
+now builds *from* a `ClassificationResult`; confidence stays a placeholder until CAP-077D,
+which computes it *from* the `ClassificationResult` without re-classifying.
+
 **MatchResult — the frozen Matching↔Classification contract (CAP-077B.1).** Before
 Classification (CAP-077C) consumes it, `MatchResult` is frozen under four invariants:
 
