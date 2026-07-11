@@ -22,10 +22,10 @@ it will:
 1. build a canonical :class:`MatchingContext` from those runtime inputs via the
    ``MatchingContextBuilder`` — the one boundary that touches runtime models;
 2. fan it out into N :class:`MatchingRequest`\\ s (``MatchingContext.to_requests``);
-3. delegate each to the configured :class:`GroundingStrategy`, collecting
-   ``RequirementEvidenceLink``\\ s;
-4. classify, score confidence, explain, and assemble the ``GroundingResult`` via
-   its internal collaborators.
+3. delegate each to the configured :class:`GroundingStrategy`, collecting one
+   ``MatchResult`` per requirement (links + match statistics + matcher explanation);
+4. classify, score confidence, explain (at requirement scope), and assemble the
+   ``GroundingResult`` from those ``MatchResult``\\ s via its internal collaborators.
 
 The strategy sees only canonical matching models — never ``EngineeringContext`` or
 ``AnalysisResult``.

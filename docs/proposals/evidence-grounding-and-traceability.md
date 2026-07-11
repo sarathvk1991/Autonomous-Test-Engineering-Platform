@@ -125,8 +125,21 @@ GroundingStrategy          (matching contract — the extension point)
 Strategy V1                (Deterministic Text Matching — implementation, CAP-077B)
         │  returns
         ▼
-RequirementEvidenceLinks
+MatchResult                (canonical output: links + statistics + explanation; CAP-077A.3)
+        │  the Grounding Service then applies
+        ▼
+Classification → Confidence → Metrics → GroundingResult
 ```
+
+**Closed for extension (CAP-077A.3).** Both ends of the matcher are now canonical and
+frozen: the input is a `MatchingContext`/`MatchingRequest`, the output is a `MatchResult`
+(`MatchStatistics` — pure observations; `MatchExplanation` — matcher-scoped structure).
+`GroundingStrategy.match(request) -> MatchResult` is the **permanent** signature. Future
+capabilities *populate* a `MatchResult` (CAP-077B links + statistics; semantic/hybrid
+strategies richer values); they never *redefine* it. Classification, confidence, and
+grounding metrics are computed by the Grounding Service *from* `MatchResult`s and live on
+`GroundedRequirement`/`GroundingResult` — so the matching architecture is complete before a
+single matcher is written.
 
 **Canonical matching input (CAP-077A.2).** A strategy never sees a runtime model.
 `MatchingContextBuilder` is the single place that touches `EngineeringContext` and
@@ -173,10 +186,10 @@ relation and match strength. It does **not** classify, score confidence, explain
 metrics — those belong to the Grounding Service. A strategy answers exactly one question:
 *given this requirement and this evidence corpus, what are the links?*
 
-**Contract (CAP-077A.2).**
+**Contract (frozen — CAP-077A.2 input, CAP-077A.3 output).**
 
 ```
-GroundingStrategy.match(request: MatchingRequest) -> tuple[RequirementEvidenceLink, ...]
+GroundingStrategy.match(request: MatchingRequest) -> MatchResult
 ```
 
 - **Inputs** — one canonical `MatchingRequest`: a `MatchingRequirement` (text + domain +
@@ -184,9 +197,11 @@ GroundingStrategy.match(request: MatchingRequest) -> tuple[RequirementEvidenceLi
   `(source_system, source_record_id)` identity and matchable text) and the governed
   configuration/versions. The strategy sees **only canonical grounding models** — never
   `EngineeringContext`, `AnalysisResult`, or `SourceArtifact`.
-- **Outputs** — zero or more `RequirementEvidenceLink`s, each carrying its
-  `EvidenceReference`, `relation`, `match_score`, and the `matched_terms` that justify it.
-  Zero links is a valid, meaningful answer (it drives `UNSUPPORTED`).
+- **Output** — one canonical `MatchResult`: the `RequirementEvidenceLink`s found (zero is a
+  valid, meaningful answer that drives `UNSUPPORTED`), plus `MatchStatistics` (pure
+  observations) and a matcher-scoped `MatchExplanation`, stamped with the producing
+  strategy's name and version. A canonical result, not a raw tuple, so a matcher can report
+  more without changing the return type or any caller.
 
 **Determinism requirements.** A strategy **must** be a pure, reproducible function of its
 inputs: identical inputs produce byte-identical links, independent of iteration order.
