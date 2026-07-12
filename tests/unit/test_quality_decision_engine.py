@@ -1,9 +1,10 @@
-"""Unit tests for the dormant QualityDecisionEngine and its architecture boundaries.
+"""Contract and architecture-boundary tests for the QualityDecisionEngine (CAP-080B.2).
 
-CAP-080A.3 is a pure architecture freeze: the engine is dormant, registered but
-unconsumed, is the sole owner of the release decision, and consumes only
-QualityAssessmentResult. These tests assert the dormant contract, the PlatformContext
-registration, and the containment/dependency invariants (ADR-0017 §D23).
+CAP-080B.2 replaces the dormant CAP-080A.3 engine with the real, deterministic
+:class:`DeterministicQualityDecisionEngine`. These tests assert the permanent contract,
+the ``PlatformContext`` registration, and the containment/dependency invariants
+(ADR-0017 §D23/§D28). Behaviour is exercised in
+``test_deterministic_quality_decision_engine.py``.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import pytest
 from requirement_intelligence.platform.platform_context import PlatformContext
 from requirement_intelligence.quality_governance.decision import (
     DecisionPolicy,
-    DormantQualityDecisionEngine,
+    DeterministicQualityDecisionEngine,
     QualityDecisionEngine,
 )
 
@@ -27,20 +28,15 @@ _DECISION_PKG = _QG_PKG / "decision"
 
 
 @pytest.mark.unit
-class TestDormantEngine:
+class TestEngineContract:
     def test_contract_is_abstract(self) -> None:
         assert issubclass(QualityDecisionEngine, ABC)
         with pytest.raises(TypeError):
             QualityDecisionEngine()  # type: ignore[abstract]
 
-    def test_decide_is_dormant(self) -> None:
-        engine = DormantQualityDecisionEngine(policy=PlatformContext().create_decision_policy())
-        with pytest.raises(NotImplementedError):
-            engine.decide(None)  # type: ignore[arg-type]
-
     def test_engine_carries_its_policy(self) -> None:
         policy = PlatformContext().create_decision_policy()
-        assert DormantQualityDecisionEngine(policy=policy).policy == policy
+        assert DeterministicQualityDecisionEngine(policy=policy).policy == policy
 
     def test_permanent_signature(self) -> None:
         sig = inspect.signature(QualityDecisionEngine.decide)
@@ -53,10 +49,16 @@ class TestPlatformContextRegistration:
     def test_create_decision_policy(self) -> None:
         assert isinstance(PlatformContext().create_decision_policy(), DecisionPolicy)
 
-    def test_create_engine_returns_dormant(self) -> None:
+    def test_create_engine_returns_deterministic(self) -> None:
         engine = PlatformContext().create_quality_decision_engine()
         assert isinstance(engine, QualityDecisionEngine)
-        assert isinstance(engine, DormantQualityDecisionEngine)
+        assert isinstance(engine, DeterministicQualityDecisionEngine)
+
+    def test_engine_constructed_with_policy_only(self) -> None:
+        ctx = PlatformContext()
+        engine = ctx.create_quality_decision_engine()
+        assert isinstance(engine, DeterministicQualityDecisionEngine)
+        assert engine.policy == ctx.create_decision_policy()
 
 
 @pytest.mark.unit
@@ -148,10 +150,6 @@ class TestDependencyBoundaries:
 
     def test_engine_consumes_only_assessment_result(self) -> None:
         source = (_DECISION_PKG / "quality_decision_engine.py").read_text(encoding="utf-8")
-        import_lines = [
-            line for line in source.splitlines() if line.strip().startswith(("import ", "from "))
-        ]
-        blob = "\n".join(import_lines)
-        assert "QualityAssessmentResult" in blob
-        assert "QualityDecisionResult" in blob
-        assert "DecisionPolicy" in blob
+        assert "QualityAssessmentResult" in source
+        assert "DecisionPolicy" in source
+        assert "QualityDecisionResult" in source

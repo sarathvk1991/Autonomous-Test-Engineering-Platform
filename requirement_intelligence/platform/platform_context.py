@@ -89,7 +89,7 @@ from requirement_intelligence.quality_governance.assessment import (
 )
 from requirement_intelligence.quality_governance.decision import (
     DecisionPolicy,
-    DormantQualityDecisionEngine,
+    DeterministicQualityDecisionEngine,
     QualityDecisionEngine,
     default_decision_policy,
 )
@@ -385,16 +385,17 @@ class PlatformContext:
         return default_decision_policy()
 
     def create_quality_decision_engine(self) -> QualityDecisionEngine:
-        """Return the dormant :class:`QualityDecisionEngine` (CAP-080A.3, ADR-0017).
+        """Return the :class:`DeterministicQualityDecisionEngine` (CAP-080B.2, ADR-0017 §D28).
 
         The single owner of the release decision — deriving ``PASS`` /
-        ``PASS_WITH_WARNINGS`` / ``FAIL`` from a ``QualityAssessmentResult``. It is
-        constructed with the governed :meth:`create_decision_policy`. In CAP-080A.3 the
-        engine is **dormant** — its ``decide`` raises ``NotImplementedError`` and no
-        decision logic is injected. Nothing consumes it at runtime, so behaviour is
-        byte-identical; the first real engine is wired here in a later CAP-080 milestone.
+        ``PASS_WITH_WARNINGS`` / ``FAIL`` from a ``QualityAssessmentResult`` under the
+        governed :meth:`create_decision_policy` (its only dependency). CAP-080B.2 replaces
+        the dormant CAP-080A.3 engine with this real, deterministic one, but it remains
+        **unwired** — no runtime path consumes it, so runtime behaviour is byte-identical
+        and the golden baseline is unchanged. The governance service consumes it in a later
+        CAP-080 milestone.
         """
-        return DormantQualityDecisionEngine(policy=self.create_decision_policy())
+        return DeterministicQualityDecisionEngine(policy=self.create_decision_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

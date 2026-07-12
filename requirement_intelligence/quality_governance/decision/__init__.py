@@ -33,7 +33,7 @@ from requirement_intelligence.quality_governance.decision.policy_builder import 
     default_decision_policy,
 )
 from requirement_intelligence.quality_governance.decision.quality_decision_engine import (
-    DormantQualityDecisionEngine,
+    DeterministicQualityDecisionEngine,
     QualityDecisionEngine,
 )
 
@@ -48,7 +48,7 @@ __all__ = [
     "DecisionRule",
     "DecisionStatistics",
     "DecisionSummary",
-    "DormantQualityDecisionEngine",
+    "DeterministicQualityDecisionEngine",
     "QualityDecisionEngine",
     "QualityDecisionResult",
     "default_decision_policy",
