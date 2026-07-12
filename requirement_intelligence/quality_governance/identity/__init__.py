@@ -10,6 +10,10 @@ from requirement_intelligence.quality_governance.identity.quality_identity impor
     QualityGovernanceVersion,
     QualityPolicyId,
     QualityPolicyVersion,
+    RuleEvaluationId,
+    RuleEvaluationResultId,
+    RuleEvaluationResultVersion,
+    RuleEvaluationVersion,
 )
 
 __all__ = [
@@ -20,4 +24,8 @@ __all__ = [
     "QualityGovernanceVersion",
     "QualityPolicyId",
     "QualityPolicyVersion",
+    "RuleEvaluationId",
+    "RuleEvaluationResultId",
+    "RuleEvaluationResultVersion",
+    "RuleEvaluationVersion",
 ]

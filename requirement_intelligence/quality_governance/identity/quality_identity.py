@@ -145,6 +145,50 @@ class QualityGovernanceResultId(_StringIdentifier):
         return cls(f"qg-{digest[:12]}")
 
 
+@dataclass(frozen=True)
+class RuleEvaluationId(_StringIdentifier):
+    """The deterministic identity of one evaluated governance rule (:class:`RuleEvaluation`).
+
+    A pure function of the evaluation run and the rule evaluated, so the same rule
+    evaluated over the same run always yields the same id.
+    """
+
+    _LABEL: ClassVar[str] = "rule evaluation id"
+
+    @classmethod
+    def for_rule(cls, result_id: str, rule_id: str) -> RuleEvaluationId:
+        """Mint the deterministic id for *rule_id* under evaluation run *result_id*."""
+        result = str(result_id).strip()
+        rule = str(rule_id).strip()
+        if not result or not rule:
+            raise ValueError("Cannot mint a rule evaluation id from an empty result or rule id.")
+        digest = hashlib.sha256(f"{result}\x1f{rule}".encode()).hexdigest()
+        return cls(f"rev-{digest[:12]}")
+
+
+@dataclass(frozen=True)
+class RuleEvaluationResultId(_StringIdentifier):
+    """The deterministic identity of one :class:`RuleEvaluationResult`.
+
+    A pure function of the graded analysis and execution, so the same evaluation run
+    always yields the same id, run after run.
+    """
+
+    _LABEL: ClassVar[str] = "rule evaluation result id"
+
+    @classmethod
+    def for_run(cls, analysis_id: str, execution_id: str) -> RuleEvaluationResultId:
+        """Mint the deterministic result id for *analysis_id* / *execution_id*."""
+        analysis = str(analysis_id).strip()
+        execution = str(execution_id).strip()
+        if not analysis or not execution:
+            raise ValueError(
+                "Cannot mint a rule evaluation result id from an empty analysis or execution id."
+            )
+        digest = hashlib.sha256(f"{analysis}\x1f{execution}".encode()).hexdigest()
+        return cls(f"revr-{digest[:12]}")
+
+
 @dataclass(frozen=True, order=True)
 class _SemanticVersion:
     """Base for immutable, comparable ``MAJOR.MINOR.PATCH`` version value objects."""
@@ -250,3 +294,28 @@ class QualityGovernanceResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "quality governance result version"
+
+
+@dataclass(frozen=True, order=True)
+class RuleEvaluationVersion(_SemanticVersion):
+    """Semantic version of the ``RuleEvaluation`` **schema**.
+
+    Independent of every other axis: the shape of one evaluated rule evolves on its
+    own axis, and a change here never forces a change to the framework, policy,
+    assessment, governance-result, or rule-evaluation-result versions.
+    """
+
+    _LABEL: ClassVar[str] = "rule evaluation version"
+
+
+@dataclass(frozen=True, order=True)
+class RuleEvaluationResultVersion(_SemanticVersion):
+    """Semantic version of the ``RuleEvaluationResult`` **runtime contract** schema.
+
+    The evaluation boundary's own version — the canonical contract between the
+    ``QualityRuleEvaluator`` and the ``QualityGovernanceService``. Independent of the
+    ``RuleEvaluation`` schema version and of every quality-governance version axis; a
+    change here never forces any of those, and vice versa.
+    """
+
+    _LABEL: ClassVar[str] = "rule evaluation result version"

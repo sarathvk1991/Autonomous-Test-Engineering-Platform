@@ -1,8 +1,8 @@
 # ADR-0017 — Quality Governance Framework
 
-- **Status:** Proposed (design only — CAP-080A introduces no runtime behaviour in this milestone)
-- **Date:** 2026-07-12 (Proposed)
-- **Supersedes:** nothing. **Amends:** nothing.
+- **Status:** Proposed (design only — CAP-080A / CAP-080A.1 introduce no runtime behaviour)
+- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation freeze) 2026-07-12
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds the Rule Evaluation layer (§D17–D20).
 - **Governing design:** `docs/proposals/quality-governance-framework.md`
 - **Depends on:** ADR-0016 (Evidence Grounding & Traceability), ADR-0011 (CP1 Validation Engine), the Response Validation Framework — Quality Governance consumes their completed results.
 - **Runtime status:** Not yet implemented. This ADR governs the architecture; later CAP-080 milestones implement it and re-baseline the golden dataset.
@@ -55,6 +55,36 @@ Every canonical model is `frozen`, tuple-backed, camelCase, and free of timestam
 The subsystem exposes exactly one runtime entry point: `QualityGovernanceService`, an abstract contract with a single method — `evaluate(grounding_result, validation_result, cp1_result) -> QualityGovernanceResult`. Everything else in the package (models, identities, policy) is internal. The service depends only on the three frozen **result contracts** it consumes — never on any *implementation* class (no `GroundingStrategy`, `SupportClassificationEngine`, `ConfidenceCalculator`, `ResponseValidator`, `CP1Service`, engine, or pipeline). Fixing the boundary *before* implementing any behaviour is what lets each later milestone — rule evaluation, assessment, decision, runtime activation — land behind the unchanged `evaluate` signature, exactly as ADR-0016 §D7 did for `GroundingService.assess`.
 
 **CAP-080A establishes the boundary only.** `evaluate` is abstract and the registered `DormantQualityGovernanceService` raises `NotImplementedError`; `PlatformContext.create_quality_governance_service()` constructs it with the governed policy and **no decision engine**. It is dormant — no runtime path consumes it, guarded by a containment test that permits only `PlatformContext` to name the service outside the package — so runtime behaviour is byte-identical.
+
+---
+
+## Rule Evaluation layer (CAP-080A.1)
+
+CAP-080A froze *governance orchestration* (the service, models, policy, decision). CAP-080A.1 freezes the layer beneath it — **Rule Evaluation** — before any rule executes. It introduces a new package `requirement_intelligence/quality_governance/evaluation/`, the canonical `RuleEvaluation` / `RuleEvaluationResult` models, the typed identities `RuleEvaluationId` / `RuleEvaluationResultId` / `RuleEvaluationVersion` / `RuleEvaluationResultVersion`, and the dormant `QualityRuleEvaluator` contract. It performs no rule evaluation and wires nothing.
+
+### D17 — Why Rule Evaluation is a layer independent of governance orchestration
+
+Evaluating a governed rule ("is the grounding score ≥ the policy's failure bar?") and *deciding a release* ("given every evaluated rule, is the run releasable?") are different jobs with different owners. Fusing them would put threshold comparison, mandatory-rule logic, quality scoring, and the release decision in one class — and every rule change would become a change to the decision engine. The architecture therefore splits them: `QualityRuleEvaluator` owns **behaviour** (rule evaluation), `QualityGovernanceService` owns **sequencing** (invoke the evaluator, then assess, then decide). This mirrors how `GroundingService` orchestrates while a `GroundingStrategy` matches (ADR-0016 §D7). The four-layer sequence of Recommendation 6 — Policy → Rule Evaluation → Quality Assessment → Release Decision — is now realised with Rule Evaluation as a first-class, separately-owned layer.
+
+### D18 — What the evaluator owns, and what it must not
+
+`QualityRuleEvaluator` owns **only**: evaluating policy rules, threshold comparison, mandatory-rule evaluation, and producing a `RuleEvaluationResult`. It does **not** own governance orchestration, the release decision, quality scoring, serialization, reporting, the execution package, or builders — each a separate owner. Like the service (Recommendation 1), it is a **consumer only** of `GroundingResult` / `ValidationResult` / `CP1Result`: it never re-runs those subsystems, inspects prompts/Engineering Context/Gemini responses, or imports an upstream *implementation* class (enforced by containment tests over the `evaluation/` package; the evaluation *models* import no upstream subsystem at all, and only the evaluator module names the three result contracts).
+
+### D19 — Why `RuleEvaluationResult` is the permanent evaluation boundary
+
+The contract between Rule Evaluation and Quality Governance is fixed as `RuleEvaluationResult` — a canonical, immutable, versioned, self-contained record of every `RuleEvaluation`, a summary, statistics, and the governing `QualityPolicyVersion`. Freezing this *before* any evaluator exists is deliberate: it forces the shape to serve every future evaluator. Because the boundary is a value object (not a tuple, not a bare verdict), a richer evaluator can populate the same fields without widening the type. `RuleEvaluationResultVersion` versions the boundary schema **independently** of `RuleEvaluationVersion` (the per-rule schema) and of every quality-governance version axis (Recommendation 2). One frozen contract — `evaluate(grounding_result, validation_result, cp1_result) -> RuleEvaluationResult` — lets deterministic (CAP-080B), statistical, semantic, organization-specific, regulatory, risk-weighted, and hybrid evaluators all plug in unchanged (Recommendation 5).
+
+### D20 — Why evaluation is pure observation, explainable from the result alone
+
+`RuleEvaluationResult` carries **observations only** — status, expected/actual/threshold values, reasons, counts, distributions. It carries **no** quality score, **no** release decision, and **no** governance summary; those belong to later layers (Recommendation 4). This is what makes the explainability invariant of Recommendation 3 hold *through* the evaluation layer: every future governance decision must be explainable entirely from `RuleEvaluationResult`, with no need to re-run evaluation or inspect a policy, runtime service, Grounding, Validation, or CP1. The result's validator enforces that its summary counts and per-rule identities agree with its evaluations, so the record is internally auditable. `PlatformContext.create_quality_rule_evaluator()` constructs the dormant evaluator with the governed policy and no rule set; it is dormant — nothing consumes it, guarded by a containment test permitting only `PlatformContext` to name it outside the package — so runtime is byte-identical.
+
+### Rule Evaluation recommendations (CAP-080A.1, mandatory)
+
+- **R1 — Rule categories are frozen now.** `RuleCategory` = Grounding, Validation, CP1, Cross-Subsystem, Mandatory Release, Advisory. Future policies **extend** these categories rather than invent new evaluation mechanisms.
+- **R2 — Rules gain deterministic identity over time.** Each evaluated rule already carries a deterministic `RuleEvaluationId`; a future governed rule model (`RuleId`, `RuleVersion`, `RuleCategory`, `RuleSeverity`) will give the *rules themselves* stable identity for historical traceability and policy evolution, without changing `RuleEvaluationResult`.
+- **R3 — Evaluation strictly precedes assessment.** The sequence Policy → Rule Evaluation → Quality Assessment → Release Decision is frozen. Assessment must never evaluate rules itself; the decision must never evaluate rules itself.
+- **R4 — Pure evaluation.** `RuleEvaluationResult` contains only observations — never a quality score, release decision, or governance summary.
+- **R5 — Future evaluators reuse the identical contract.** Deterministic (CAP-080B), statistical, organization-specific, regulatory, risk-weighted, and hybrid evaluators all implement `evaluate(...) -> RuleEvaluationResult` unchanged.
 
 ---
 
@@ -123,7 +153,7 @@ The following future extensions must plug into the existing architecture **witho
 
 ## Ownership, runtime position, governance
 
-- **Owns:** governance, policy evaluation, quality assessment, release decisions, governance findings.
+- **Owns:** governance, rule evaluation, policy evaluation, quality assessment, release decisions, governance findings.
 - **Does not own:** Engineering Context, Analysis, Grounding, Validation, CP1, Execution Package, Reporting, Serialization.
-- **Runtime position:** `… → Grounding → Validation → CP1 → Quality Governance`, consuming the three completed results; non-gating and dormant in CAP-080A.
+- **Runtime position:** `… → Grounding → Validation → CP1 → QualityRuleEvaluator → RuleEvaluationResult → QualityGovernanceService → QualityGovernanceResult → Execution Package`, consuming the three completed results; non-gating and dormant in CAP-080A / CAP-080A.1.
 - **Governance:** registered as CAP-080 in the Platform Capability Matrix at implementation time; the golden baseline is re-based then. This ADR is **Proposed** until that milestone accepts it.

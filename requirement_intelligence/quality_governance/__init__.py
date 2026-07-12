@@ -16,6 +16,20 @@ Governed by ADR-0017.
 
 from __future__ import annotations
 
+from requirement_intelligence.quality_governance.evaluation import (
+    RULE_EVALUATION_RESULT_VERSION,
+    RULE_EVALUATION_VERSION,
+    DormantQualityRuleEvaluator,
+    QualityRuleEvaluator,
+    RuleCategory,
+    RuleCategoryCount,
+    RuleEvaluation,
+    RuleEvaluationResult,
+    RuleEvaluationStatistics,
+    RuleEvaluationStatus,
+    RuleEvaluationSummary,
+    RuleSeverityCount,
+)
 from requirement_intelligence.quality_governance.identity import (
     QualityAssessmentId,
     QualityAssessmentVersion,
@@ -24,6 +38,10 @@ from requirement_intelligence.quality_governance.identity import (
     QualityGovernanceVersion,
     QualityPolicyId,
     QualityPolicyVersion,
+    RuleEvaluationId,
+    RuleEvaluationResultId,
+    RuleEvaluationResultVersion,
+    RuleEvaluationVersion,
 )
 from requirement_intelligence.quality_governance.models import (
     QUALITY_ASSESSMENT_VERSION,
@@ -63,8 +81,11 @@ __all__ = [
     "QUALITY_GOVERNANCE_FRAMEWORK_VERSION",
     "QUALITY_GOVERNANCE_RESULT_VERSION",
     "QUALITY_POLICY_VERSION",
+    "RULE_EVALUATION_RESULT_VERSION",
+    "RULE_EVALUATION_VERSION",
     "ConsumedResultReference",
     "DormantQualityGovernanceService",
+    "DormantQualityRuleEvaluator",
     "QualityAssessment",
     "QualityAssessmentId",
     "QualityAssessmentVersion",
@@ -83,9 +104,22 @@ __all__ = [
     "QualityPolicyId",
     "QualityPolicyVersion",
     "QualityReleaseRules",
+    "QualityRuleEvaluator",
     "QualitySeverity",
     "QualitySeverityThresholds",
     "QualitySummary",
     "QualityThresholds",
+    "RuleCategory",
+    "RuleCategoryCount",
+    "RuleEvaluation",
+    "RuleEvaluationId",
+    "RuleEvaluationResult",
+    "RuleEvaluationResultId",
+    "RuleEvaluationResultVersion",
+    "RuleEvaluationStatistics",
+    "RuleEvaluationStatus",
+    "RuleEvaluationSummary",
+    "RuleEvaluationVersion",
+    "RuleSeverityCount",
     "default_quality_policy",
 ]

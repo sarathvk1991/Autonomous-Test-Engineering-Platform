@@ -81,6 +81,10 @@ from requirement_intelligence.prompts.framework.prompt_registry import PromptReg
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
+from requirement_intelligence.quality_governance.evaluation import (
+    DormantQualityRuleEvaluator,
+    QualityRuleEvaluator,
+)
 from requirement_intelligence.quality_governance.policy import (
     QualityPolicy,
     default_quality_policy,
@@ -304,6 +308,18 @@ class PlatformContext:
         engine is wired here in a later CAP-080 milestone.
         """
         return DormantQualityGovernanceService(policy=self.create_quality_policy())
+
+    def create_quality_rule_evaluator(self) -> QualityRuleEvaluator:
+        """Return the dormant :class:`QualityRuleEvaluator` (CAP-080A.1, ADR-0017).
+
+        The single owner of governance rule evaluation. It is constructed with the
+        governed :meth:`create_quality_policy` whose rules it will evaluate. In
+        CAP-080A.1 the evaluator is **dormant** — its ``evaluate`` raises
+        ``NotImplementedError`` and no rule set is injected. Nothing consumes it at
+        runtime, so behaviour is byte-identical; the first real evaluator is wired here
+        in CAP-080B.
+        """
+        return DormantQualityRuleEvaluator(policy=self.create_quality_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
