@@ -81,6 +81,14 @@ from requirement_intelligence.prompts.framework.prompt_registry import PromptReg
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
+from requirement_intelligence.quality_governance.policy import (
+    QualityPolicy,
+    default_quality_policy,
+)
+from requirement_intelligence.quality_governance.quality_governance_service import (
+    DormantQualityGovernanceService,
+    QualityGovernanceService,
+)
 from requirement_intelligence.registry.connector_registry import ConnectorRegistry
 from requirement_intelligence.validation.profiles import (
     ValidationProfileDefinition,
@@ -274,6 +282,28 @@ class PlatformContext:
         behaviour is unchanged.
         """
         return DeterministicConfidenceCalculator(policy=self.create_confidence_policy())
+
+    def create_quality_policy(self) -> QualityPolicy:
+        """Return the governed default :class:`QualityPolicy` (CAP-080A, ADR-0017).
+
+        The governed decision rules for *what constitutes acceptable release quality*
+        — the failure/warning numeric bars, per-source severity budgets, and mandatory
+        release rules. A future decision engine reads it; it contains no logic. **Not
+        yet wired**: no runtime path calls it, so runtime behaviour is unchanged.
+        """
+        return default_quality_policy()
+
+    def create_quality_governance_service(self) -> QualityGovernanceService:
+        """Return the dormant :class:`QualityGovernanceService` (CAP-080A, ADR-0017).
+
+        The single runtime entry point into Quality Governance. This is the
+        composition root for governance: it constructs the service with the governed
+        :meth:`create_quality_policy`. In CAP-080A the service is **dormant** — its
+        ``evaluate`` raises ``NotImplementedError`` and no decision engine is injected.
+        Nothing consumes it at runtime, so behaviour is byte-identical; the decision
+        engine is wired here in a later CAP-080 milestone.
+        """
+        return DormantQualityGovernanceService(policy=self.create_quality_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
