@@ -166,17 +166,45 @@ class AssessmentOutcome(Schema):
 
 
 class QualityAssessmentResult(Schema):
-    """The frozen runtime contract between Quality Assessment and Quality Governance.
+    """The frozen runtime contract between Quality Assessment and the Decision layer.
 
-    ``QualityAssessmentResult`` is the canonical, self-contained interpretation of one
-    :class:`RuleEvaluationResult` — the overall outcome, the summary, statistics, and
-    references to the rules that informed it. It is the **permanent assessment
-    boundary** (ADR-0017 §D21): the ``QualityGovernanceService`` consumes it (via the
-    future Decision layer), and it carries **no** release decision, quality score, or
-    governance summary — those belong to later layers (Recommendation 1/4).
+    ``QualityAssessmentResult`` is **the complete deterministic runtime assessment
+    produced from exactly one** :class:`RuleEvaluationResult` — the overall
+    :class:`AssessmentOutcome`, the :class:`AssessmentSummary`, the
+    :class:`AssessmentStatistics`, and the :class:`AssessmentFindingReference` entries
+    that cite the rules that informed it. It is the **permanent assessment boundary**
+    (ADR-0017 §D21/§D27), frozen by CAP-080B.1.1 exactly as ``MatchResult`` (CAP-077B.1)
+    and ``GroundingResult`` (CAP-077E.1) were frozen for their layers.
 
-    Deterministic, versioned independently, and round-trips. It is **not** an execution
-    artifact, a report, or a governance result.
+    What it **is**
+        the single runtime object the Decision layer consumes — nothing more.
+
+    What it is **not** (frozen, ADR-0017 §D27)
+        **not** a release decision (``PASS`` / ``PASS_WITH_WARNINGS`` / ``FAIL`` belong
+        to ``QualityDecisionResult``); **not** a report; **not** serialization or an
+        execution artifact; **not** a governance result; **not** rule evaluation. It
+        carries no quality score and no governance summary — those belong to later
+        layers (Recommendation 1/4).
+
+    Explainability invariant (frozen, ADR-0017 §D27 / Recommendation 3)
+        Every assessment observation is explainable **solely** from this object — its
+        ``references``, ``assessment_statistics``, ``assessment_summary``, and
+        ``overall_assessment``. The Decision layer never re-inspects a
+        :class:`RuleEvaluation`, the :class:`QualityAssessmentEngine`, or the
+        ``AssessmentPolicy``, and never re-runs assessment: everything it needs already
+        lives here.
+
+    Serialization invariant (frozen, ADR-0017 §D27)
+        Every future execution artifact concerning Assessment is a **pure projection**
+        of a ``QualityAssessmentResult`` — reproducible from it alone. A renderer must
+        never invoke an engine or a policy, inspect a ``RuleEvaluation``, or recompute
+        anything.
+
+    Independent runtime-contract version (frozen, ADR-0017 §D27 / Recommendation 5)
+        ``result_version`` (:class:`QualityAssessmentResultVersion`) versions **only**
+        this runtime contract — never the assessment engine, framework, or
+        ``AssessmentPolicy``, which advance on their own axes. Deterministic and
+        round-trips.
     """
 
     model_config = ConfigDict(alias_generator=to_camel)
