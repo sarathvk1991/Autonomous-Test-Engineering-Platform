@@ -1,9 +1,10 @@
-"""Unit tests for the dormant QualityAssessmentEngine and its architecture boundaries.
+"""Contract and architecture-boundary tests for the QualityAssessmentEngine (CAP-080B.1).
 
-CAP-080A.2 is a pure architecture freeze: the engine is dormant, registered but
-unconsumed, owns assessment only, and consumes only RuleEvaluationResult. These tests
-assert the dormant contract, the PlatformContext registration, and the
-containment/dependency invariants (ADR-0017 §D21).
+CAP-080B.1 replaces the dormant CAP-080A.2 engine with the real, deterministic
+:class:`DeterministicQualityAssessmentEngine`. These tests assert the permanent
+contract, the ``PlatformContext`` registration, and the containment/dependency
+invariants (ADR-0017 §D21/§D26). Behaviour is exercised in
+``test_deterministic_quality_assessment_engine.py``.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import pytest
 from requirement_intelligence.platform.platform_context import PlatformContext
 from requirement_intelligence.quality_governance.assessment import (
     AssessmentPolicy,
-    DormantQualityAssessmentEngine,
+    DeterministicQualityAssessmentEngine,
     QualityAssessmentEngine,
 )
 
@@ -27,20 +28,15 @@ _ASSESS_PKG = _QG_PKG / "assessment"
 
 
 @pytest.mark.unit
-class TestDormantEngine:
+class TestEngineContract:
     def test_contract_is_abstract(self) -> None:
         assert issubclass(QualityAssessmentEngine, ABC)
         with pytest.raises(TypeError):
             QualityAssessmentEngine()  # type: ignore[abstract]
 
-    def test_assess_is_dormant(self) -> None:
-        engine = DormantQualityAssessmentEngine(policy=PlatformContext().create_assessment_policy())
-        with pytest.raises(NotImplementedError):
-            engine.assess(None)  # type: ignore[arg-type]
-
     def test_engine_carries_its_policy(self) -> None:
         policy = PlatformContext().create_assessment_policy()
-        assert DormantQualityAssessmentEngine(policy=policy).policy == policy
+        assert DeterministicQualityAssessmentEngine(policy=policy).policy == policy
 
     def test_permanent_signature(self) -> None:
         sig = inspect.signature(QualityAssessmentEngine.assess)
@@ -53,10 +49,16 @@ class TestPlatformContextRegistration:
     def test_create_assessment_policy(self) -> None:
         assert isinstance(PlatformContext().create_assessment_policy(), AssessmentPolicy)
 
-    def test_create_engine_returns_dormant(self) -> None:
+    def test_create_engine_returns_deterministic(self) -> None:
         engine = PlatformContext().create_quality_assessment_engine()
         assert isinstance(engine, QualityAssessmentEngine)
-        assert isinstance(engine, DormantQualityAssessmentEngine)
+        assert isinstance(engine, DeterministicQualityAssessmentEngine)
+
+    def test_engine_constructed_with_policy_only(self) -> None:
+        ctx = PlatformContext()
+        engine = ctx.create_quality_assessment_engine()
+        assert isinstance(engine, DeterministicQualityAssessmentEngine)
+        assert engine.policy == ctx.create_assessment_policy()
 
 
 @pytest.mark.unit
@@ -90,11 +92,7 @@ class TestDependencyBoundaries:
                     assert "execution" not in line.lower(), f"{path.name} imports execution"
 
     def test_assessment_imports_no_upstream_or_downstream_implementation(self) -> None:
-        """Assessment imports no Grounding/Validation/CP1/evaluator/governance implementation.
-
-        It consumes only the ``RuleEvaluationResult`` contract. Docstrings may name analog
-        classes for explanation; this guard watches imports.
-        """
+        """Assessment imports no Grounding/Validation/CP1/evaluator/decision/governance impl."""
         forbidden_impl = (
             "GroundingStrategy",
             "GroundingService",
@@ -107,7 +105,8 @@ class TestDependencyBoundaries:
             "CP1Engine",
             "EngineeringContextOrchestrator",
             "QualityRuleEvaluator",
-            "DormantQualityRuleEvaluator",
+            "DeterministicQualityRuleEvaluator",
+            "QualityDecisionEngine",
             "QualityGovernanceService",
             "DormantQualityGovernanceService",
             "RequirementPromptBuilder",
@@ -119,11 +118,7 @@ class TestDependencyBoundaries:
                         assert token not in line, f"{path.name} imports {token}"
 
     def test_assessment_imports_no_raw_upstream_results(self) -> None:
-        """Assessment never reads Grounding/Validation/CP1 results directly.
-
-        Those are already interpreted into the RuleEvaluationResult; the assessment
-        layer reads only that (ADR-0017 §D21), unlike the rule evaluator.
-        """
+        """Assessment never reads Grounding/Validation/CP1 results directly (ADR-0017 §D21)."""
         forbidden = ("GroundingResult", "ValidationResult", "CP1Result")
         for path in _ASSESS_PKG.rglob("*.py"):
             for line in path.read_text(encoding="utf-8").splitlines():
@@ -131,7 +126,7 @@ class TestDependencyBoundaries:
                     for token in forbidden:
                         assert token not in line, f"{path.name} imports {token}"
 
-    def test_assessment_models_import_no_subsystem_outside_quality_governance(self) -> None:
+    def test_assessment_imports_no_subsystem_outside_quality_governance(self) -> None:
         forbidden_subsystems = (
             "requirement_intelligence.grounding",
             "requirement_intelligence.validation",
@@ -147,10 +142,6 @@ class TestDependencyBoundaries:
 
     def test_engine_consumes_only_rule_evaluation_result(self) -> None:
         source = (_ASSESS_PKG / "quality_assessment_engine.py").read_text(encoding="utf-8")
-        import_lines = [
-            line for line in source.splitlines() if line.strip().startswith(("import ", "from "))
-        ]
-        blob = "\n".join(import_lines)
-        assert "RuleEvaluationResult" in blob
-        assert "QualityAssessmentResult" in blob
-        assert "AssessmentPolicy" in blob
+        assert "RuleEvaluationResult" in source
+        assert "QualityAssessmentResult" in source
+        assert "AssessmentPolicy" in source

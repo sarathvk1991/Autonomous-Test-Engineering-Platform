@@ -1,11 +1,11 @@
 # ADR-0017 — Quality Governance Framework
 
 - **Status:** Proposed (architecture design; CAP-080B begins implementation behind the frozen contracts, still unwired from runtime)
-- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation) · CAP-080A.2 (Assessment) · CAP-080A.3 (Decision + full certification) · CAP-080B (Deterministic Rule Evaluation Engine V1 + Rule Catalogue) 2026-07-12
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds Rule Evaluation (§D17–D20); CAP-080A.2 adds Assessment (§D21) and reserves Decision (§D22); CAP-080A.3 freezes Decision (§D23) and certifies the complete subsystem; CAP-080B implements the first deterministic rule evaluator and the governed Rule Catalogue (§D25).
+- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation) · CAP-080A.2 (Assessment) · CAP-080A.3 (Decision + full certification) · CAP-080B (Deterministic Rule Evaluation Engine V1 + Rule Catalogue) · CAP-080B.1 (Deterministic Assessment Engine) 2026-07-12
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds Rule Evaluation (§D17–D20); CAP-080A.2 adds Assessment (§D21) and reserves Decision (§D22); CAP-080A.3 freezes Decision (§D23) and certifies the complete subsystem; CAP-080B implements the first deterministic rule evaluator and the governed Rule Catalogue (§D25); CAP-080B.1 implements the first deterministic assessment engine (§D26).
 - **Governing design:** `docs/proposals/quality-governance-framework.md`
 - **Depends on:** ADR-0016 (Evidence Grounding & Traceability), ADR-0011 (CP1 Validation Engine), the Response Validation Framework — Quality Governance consumes their completed results.
-- **Runtime status:** Rule Evaluation is implemented (CAP-080B) but **unwired** — no runtime path consumes it, so runtime behaviour is byte-identical and the golden baseline is unchanged. Assessment, Decision, and Governance remain dormant. This ADR governs the architecture; later CAP-080 milestones wire the pipeline and re-baseline the golden dataset.
+- **Runtime status:** Rule Evaluation (CAP-080B) and Assessment (CAP-080B.1) are implemented but **unwired** — no runtime path consumes them, so runtime behaviour is byte-identical and the golden baseline is unchanged. Decision and Governance remain dormant. This ADR governs the architecture; later CAP-080 milestones wire the pipeline and re-baseline the golden dataset.
 
 ## Problem
 
@@ -178,6 +178,26 @@ The naïve first evaluator embeds each rule as an `if` branch with a literal thr
 
 ---
 
+## Deterministic Assessment Engine (CAP-080B.1)
+
+CAP-080A.2 froze the Assessment *boundary* (§D21) with a dormant `QualityAssessmentEngine`. CAP-080B.1 implements the **first real engine** behind that unchanged boundary. Like CAP-080B it is a pure *implementation* milestone: no signature, ownership, or boundary changes; **no frozen model or policy is modified**; Decision, Governance, and the Execution Package are untouched; and the engine stays **unwired** from runtime, so runtime is byte-identical and the golden baseline is unchanged. It adds only `DeterministicQualityAssessmentEngine` and wires it as the `PlatformContext` default.
+
+### D26 — Why the deterministic assessment is entirely policy-governed and observation-only
+
+The engine interprets one `RuleEvaluationResult` into a `QualityAssessmentResult` using **only** the governed `AssessmentPolicy` — it hard-codes no precedence, no blocking semantics, and no conflict resolution:
+
+- **Consumes only `RuleEvaluationResult`.** It never reads `GroundingResult` / `ValidationResult` / `CP1Result` (already interpreted upstream) and imports no evaluator, decision, or governance implementation — enforced by containment tests over the `assessment/` package.
+- **Classification is governed.** Each *failing* rule is classified BLOCKING / WARNING / ADVISORY from the policy's `mandatory_failure_is_blocking`, `failure_severity_is_blocking`, and `treat_advisory_as_warning` levers; `include_skipped_as_warning` governs whether a `SKIPPED` rule contributes a warning signal. The observed `AssessmentLevel` (`CLEAN` / `ADVISORY_ONLY` / `WARNINGS_PRESENT` / `FAILURES_PRESENT`) is then composed under the policy's `conflict_resolution` (`MANDATORY_WINS` / `SEVERITY_WINS` / `PRECEDENCE_WINS`) over the policy's `precedence` order. Tuning any of these is a versioned policy change, never an engine change (Recommendation 2/4).
+- **Observation, never decision (Recommendation 1).** `AssessmentLevel` is a state observation, not a release verdict. The engine assigns no `PASS` / `PASS_WITH_WARNINGS` / `FAIL`; that is the dormant Decision layer's sole job (§D23). Honouring the frozen `AssessmentOutcome` invariant, a failing mandatory rule is always observed as blocking (`has_blocking_failure` ⇒ `FAILURES_PRESENT`).
+- **References, never copies (Recommendation 1/DC-analogue).** For each rule that informed the outcome the engine emits an `AssessmentFindingReference` — the evaluation id, rule id, severity, status, and a governed classification note — never duplicating the evaluation's expected/actual/threshold/reason, which remain in the consumed `RuleEvaluationResult`.
+- **Determinism & explainability (Recommendation 3).** No randomness, UUID, timestamp, or unordered iteration: the assessment id is a pure function of the evaluation it interprets (`QualityAssessmentResultId.for_evaluation`), distributions are emitted in a fixed enum order, and references preserve evaluation order. Every observation is reconstructable from `QualityAssessmentResult` alone — no re-running Rule Evaluation, no inspecting the policy, the evaluator, or any runtime.
+
+**Recommendations field constraint (Recommendation 4).** The frozen Assessment contract carries **no dedicated recommendations field** on `QualityAssessmentResult`, `AssessmentSummary`, or `AssessmentOutcome`. To avoid modifying a certified contract, the governed `emit_recommendations` flag is surfaced by appending a short, deterministic, level-keyed recommendation clause to `AssessmentOutcome.summary_text` (never free prose, never AI). A dedicated recommendations projection is deferred to the Execution Package or a future grouped metadata object rather than introducing new top-level fields now.
+
+**Extensibility (frozen, Recommendation 5).** Future risk-weighted, statistical, regulatory, and AI-assisted engines implement the identical `assess(rule_evaluation_result) -> QualityAssessmentResult` contract — reusing the same policy — with no architectural change.
+
+---
+
 ## Final Quality Governance Architecture Certification (CAP-080A.3)
 
 With the Decision layer frozen, the entire subsystem — Grounding → Rule Evaluation → Assessment → Decision → Governance → Execution Package — is certified against the platform's architectural invariants:
@@ -191,7 +211,7 @@ With the Decision layer frozen, the entire subsystem — Grounding → Rule Eval
 - **G. Determinism** — all identities are pure functions of their inputs; no UUIDs, no clocks (except the governed `started_at`/`completed_at` provenance already established on `GroundingResult` / `QualityGovernanceResult`), no randomness.
 - **H. Extensibility** — future deterministic, statistical, regulatory, organizational, and AI implementations of every engine plug in behind the frozen contracts with no architectural change.
 - **I. Separation of concerns** — no business logic in `PlatformContext` (construction only), builders (assembly only), the service (orchestration only), or the future Execution Package (projection only).
-- **J. Architecture readiness** — **certified.** CAP-080B has landed the first deterministic `QualityRuleEvaluator` and the governed Rule Catalogue behind the frozen contracts (§D25) with no architectural change. **CAP-080B.1 (Deterministic Assessment Engine)** can likewise proceed as a pure *implementation* milestone behind the frozen `assess(rule_evaluation_result) -> QualityAssessmentResult` boundary, with no further architectural work required.
+- **J. Architecture readiness** — **certified.** CAP-080B landed the first deterministic `QualityRuleEvaluator` and the governed Rule Catalogue (§D25), and CAP-080B.1 landed the first deterministic `QualityAssessmentEngine` (§D26) — both behind the frozen contracts with no architectural change. **CAP-080B.2 (Deterministic Decision Engine)** can likewise proceed as a pure *implementation* milestone behind the frozen `decide(quality_assessment_result) -> QualityDecisionResult` boundary, with no further architectural work required.
 
 ---
 

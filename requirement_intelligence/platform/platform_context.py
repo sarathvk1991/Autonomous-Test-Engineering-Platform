@@ -83,7 +83,7 @@ from requirement_intelligence.prompts.requirement_prompt_builder import (
 )
 from requirement_intelligence.quality_governance.assessment import (
     AssessmentPolicy,
-    DormantQualityAssessmentEngine,
+    DeterministicQualityAssessmentEngine,
     QualityAssessmentEngine,
     default_assessment_policy,
 )
@@ -362,16 +362,17 @@ class PlatformContext:
         return default_assessment_policy()
 
     def create_quality_assessment_engine(self) -> QualityAssessmentEngine:
-        """Return the dormant :class:`QualityAssessmentEngine` (CAP-080A.2, ADR-0017).
+        """Return the :class:`DeterministicQualityAssessmentEngine` (CAP-080B.1, ADR-0017 §D26).
 
         The single owner of quality assessment — interpreting a ``RuleEvaluationResult``
-        into a ``QualityAssessmentResult`` of observations. It is constructed with the
-        governed :meth:`create_assessment_policy`. In CAP-080A.2 the engine is
-        **dormant** — its ``assess`` raises ``NotImplementedError`` and no interpretation
-        logic is injected. Nothing consumes it at runtime, so behaviour is
-        byte-identical; the first real engine is wired here in a later CAP-080 milestone.
+        into a ``QualityAssessmentResult`` of observations. It is the composition root for
+        assessment: constructed with the governed :meth:`create_assessment_policy` (its
+        only dependency). CAP-080B.1 replaces the dormant CAP-080A.2 engine with this
+        real, deterministic one, but it remains **unwired** — no runtime path consumes it,
+        so runtime behaviour is byte-identical and the golden baseline is unchanged. The
+        governance service consumes it in a later CAP-080 milestone.
         """
-        return DormantQualityAssessmentEngine(policy=self.create_assessment_policy())
+        return DeterministicQualityAssessmentEngine(policy=self.create_assessment_policy())
 
     def create_decision_policy(self) -> DecisionPolicy:
         """Return the governed default :class:`DecisionPolicy` (CAP-080A.3, ADR-0017).

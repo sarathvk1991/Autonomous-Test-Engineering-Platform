@@ -36,7 +36,7 @@ from requirement_intelligence.quality_governance.assessment.policy_builder impor
     default_assessment_policy,
 )
 from requirement_intelligence.quality_governance.assessment.quality_assessment_engine import (
-    DormantQualityAssessmentEngine,
+    DeterministicQualityAssessmentEngine,
     QualityAssessmentEngine,
 )
 
@@ -55,7 +55,7 @@ __all__ = [
     "AssessmentStatistics",
     "AssessmentSummary",
     "AssessmentWeights",
-    "DormantQualityAssessmentEngine",
+    "DeterministicQualityAssessmentEngine",
     "QualityAssessmentEngine",
     "QualityAssessmentResult",
     "default_assessment_policy",
