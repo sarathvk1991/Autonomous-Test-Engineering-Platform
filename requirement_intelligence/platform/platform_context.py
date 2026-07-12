@@ -81,6 +81,12 @@ from requirement_intelligence.prompts.framework.prompt_registry import PromptReg
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
+from requirement_intelligence.quality_governance.assessment import (
+    AssessmentPolicy,
+    DormantQualityAssessmentEngine,
+    QualityAssessmentEngine,
+    default_assessment_policy,
+)
 from requirement_intelligence.quality_governance.evaluation import (
     DormantQualityRuleEvaluator,
     QualityRuleEvaluator,
@@ -320,6 +326,28 @@ class PlatformContext:
         in CAP-080B.
         """
         return DormantQualityRuleEvaluator(policy=self.create_quality_policy())
+
+    def create_assessment_policy(self) -> AssessmentPolicy:
+        """Return the governed default :class:`AssessmentPolicy` (CAP-080A.2, ADR-0017).
+
+        The governed rules for *how a rule evaluation is interpreted* — precedence,
+        conflict handling, blocking semantics, weighting, recommendation behaviour. The
+        future assessment engine reads it; it contains no logic and carries no release
+        decision. **Not yet wired**: no runtime path calls it, so runtime is unchanged.
+        """
+        return default_assessment_policy()
+
+    def create_quality_assessment_engine(self) -> QualityAssessmentEngine:
+        """Return the dormant :class:`QualityAssessmentEngine` (CAP-080A.2, ADR-0017).
+
+        The single owner of quality assessment — interpreting a ``RuleEvaluationResult``
+        into a ``QualityAssessmentResult`` of observations. It is constructed with the
+        governed :meth:`create_assessment_policy`. In CAP-080A.2 the engine is
+        **dormant** — its ``assess`` raises ``NotImplementedError`` and no interpretation
+        logic is injected. Nothing consumes it at runtime, so behaviour is
+        byte-identical; the first real engine is wired here in a later CAP-080 milestone.
+        """
+        return DormantQualityAssessmentEngine(policy=self.create_assessment_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

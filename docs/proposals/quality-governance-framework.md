@@ -1,8 +1,8 @@
 # Quality Governance Framework — Design Proposal
 
-- **Status:** Proposed (design only — CAP-080A / CAP-080A.1 introduce no runtime behaviour)
+- **Status:** Proposed (design only — CAP-080A / CAP-080A.1 / CAP-080A.2 introduce no runtime behaviour)
 - **Capability:** CAP-080 — Quality Governance
-- **Milestones covered:** CAP-080A (Architecture, Canonical Model & Governance Freeze) · CAP-080A.1 (Rule Evaluation Architecture Freeze — §8a)
+- **Milestones covered:** CAP-080A (Architecture, Canonical Model & Governance Freeze) · CAP-080A.1 (Rule Evaluation Architecture Freeze — §8a) · CAP-080A.2 (Assessment Architecture Freeze + Decision reservation — §8b/8c)
 - **Governed by:** ADR-0017
 - **Depends on:** ADR-0016 (Evidence Grounding & Traceability), ADR-0011 (CP1), the Response Validation Framework.
 
@@ -103,15 +103,33 @@ Between the governed policy and the governance decision sits the **Rule Evaluati
 
 In CAP-080A.1 the evaluator is **dormant**: `DormantQualityRuleEvaluator.evaluate` raises `NotImplementedError`, and `PlatformContext.create_quality_rule_evaluator()` constructs it with the governed policy and no rule set. Nothing consumes it, so runtime is byte-identical.
 
-## 9. The frozen architecture (through Rule Evaluation)
+## 8b. Quality Assessment layer (CAP-080A.2)
+
+Above Rule Evaluation and below Governance sits the **Quality Assessment** layer, frozen by CAP-080A.2 in `requirement_intelligence/quality_governance/assessment/`. It owns interpretation of a `RuleEvaluationResult`, assessment logic, and assessment explanation — and nothing else.
+
+- **`QualityAssessmentEngine`** — the single owner of assessment, an abstract contract: `assess(rule_evaluation_result) -> QualityAssessmentResult`. It consumes **only** the `RuleEvaluationResult` (not the three raw results — those are already interpreted upstream; ADR-0017 §D21). One frozen signature serves every future engine — deterministic, risk-weighted, statistical, regulatory, AI-assisted (Recommendation A5).
+- **`AssessmentOutcome`** — the overall interpreted observation: an `AssessmentLevel` (`CLEAN` / `ADVISORY_ONLY` / `WARNINGS_PRESENT` / `FAILURES_PRESENT`) plus a blocking-failure observation. It is an **observation of the evaluation state, never a release decision** (Recommendation A1): `FAILURES_PRESENT` may still be released, and `CLEAN` is not itself a `PASS`.
+- **`QualityAssessmentResult`** — the **permanent assessment boundary** (§D21): the outcome, summary, statistics, and references to the rules that informed it, plus the governing `AssessmentPolicyVersion`. Self-contained, versioned independently (`QualityAssessmentResultVersion`), and carrying **no** release decision or quality score.
+- **`AssessmentPolicy`** — governed interpretation data (precedence, conflict handling, blocking semantics, weighting, recommendations); `AssessmentPolicyBuilder` + `default_assessment_policy()` (`AssessmentPolicyVersion` 1.0.0).
+
+In CAP-080A.2 the engine is **dormant**: `DormantQualityAssessmentEngine.assess` raises `NotImplementedError`, and `PlatformContext.create_assessment_policy()` / `create_quality_assessment_engine()` construct it with the governed policy and no logic. Nothing consumes it, so runtime is byte-identical.
+
+## 8c. Decision layer — architecturally reserved (CAP-080A.2, documentation only)
+
+The **Decision** layer is reserved, not implemented (ADR-0017 §D22). The future `QualityDecisionEngine` will own **only** the release decision — deriving `PASS` / `PASS_WITH_WARNINGS` / `FAIL` from a `QualityAssessmentResult` and a governed decision policy (Recommendation A2). Assessment never derives a release status, and neither does `QualityGovernanceService` (Recommendation A1/A3). No code, model, identity, or policy for the Decision layer is introduced by this milestone.
+
+## 9. The frozen architecture (through Assessment; Decision reserved)
 
 ```
 GroundingResult ┐
-ValidationResult├─▶ QualityRuleEvaluator ─▶ RuleEvaluationResult ─▶ QualityGovernanceService ─▶ QualityGovernanceResult ─▶ Execution Package
-CP1Result       ┘
+ValidationResult├─▶ QualityRuleEvaluator ─▶ RuleEvaluationResult ─▶ QualityAssessmentEngine ─▶ QualityAssessmentResult
+CP1Result       ┘                                                                                    │
+                                                        (reserved) QualityDecisionEngine ─▶ QualityDecisionResult
+                                                                                                     │
+                                                        QualityGovernanceService ─▶ QualityGovernanceResult ─▶ Execution Package
 ```
 
-The four decision layers implement, independently and without redesign (Recommendation 6, R3 — evaluation strictly precedes assessment):
+The four layers implement, independently and without redesign (Recommendation 6, A3 — each stage strictly precedes the next; the service never absorbs their logic):
 
 ```
 Policy  →  Rule Evaluation  →  Quality Assessment  →  Release Decision
@@ -124,11 +142,12 @@ The future artifacts `quality_governance.json`, `quality_report.md`, and `qualit
 ## 11. Implementation roadmap (non-normative)
 
 1. **CAP-080A** — governance orchestration architecture: models, identities, policy, dormant service. Freeze.
-2. **CAP-080A.1** *(this milestone)* — the Rule Evaluation architecture: `RuleEvaluation` / `RuleEvaluationResult` models, identities, and the dormant `QualityRuleEvaluator`. Freeze.
-3. **CAP-080B** — the first (deterministic) `QualityRuleEvaluator`: governed rules evaluated against the three consumed results into a populated `RuleEvaluationResult`. Still non-gating.
-4. **CAP-080C** — the quality-assessment + decision layers: `QualityAssessment` and `QualityDecision` assembled from the `RuleEvaluationResult` under the two-band + mandatory-rule policy.
-5. **CAP-080D** — runtime activation and execution-package projection; golden re-baseline.
-6. **Later** — enforcement/gating, and the future extensions of Recommendation 8.
+2. **CAP-080A.1** — the Rule Evaluation architecture: `RuleEvaluation` / `RuleEvaluationResult` models, identities, and the dormant `QualityRuleEvaluator`. Freeze.
+3. **CAP-080A.2** *(this milestone)* — the Assessment architecture: `QualityAssessmentResult` / `AssessmentOutcome` models, `AssessmentPolicy`, identities, and the dormant `QualityAssessmentEngine`; the Decision layer is reserved (§8c). Freeze.
+4. **CAP-080B** — the first (deterministic) `QualityRuleEvaluator`: governed rules evaluated against the three consumed results into a populated `RuleEvaluationResult`. Still non-gating.
+5. **CAP-080C** — the first (deterministic) `QualityAssessmentEngine`, then the reserved Decision layer (`QualityDecisionEngine` → `QualityDecisionResult`): a release decision derived from the `QualityAssessmentResult` under a governed decision policy.
+6. **CAP-080D** — runtime activation (the `QualityGovernanceService` sequencing the pipeline) and execution-package projection; golden re-baseline.
+7. **Later** — enforcement/gating, and the future extensions of Recommendation 8.
 
 ## 12. Terminology
 
@@ -136,4 +155,4 @@ The future artifacts `quality_governance.json`, `quality_report.md`, and `qualit
 
 ---
 
-The full architectural decisions and invariants — the governance-orchestration recommendations (1–8) and the Rule Evaluation decisions (§D17–D20) with their recommendations (R1–R5) — are recorded in **ADR-0017**.
+The full architectural decisions and invariants — the governance-orchestration recommendations (1–8), the Rule Evaluation decisions (§D17–D20 / R1–R5), and the Assessment decisions and Decision-layer reservation (§D21–D22 / A1–A5) — are recorded in **ADR-0017**.

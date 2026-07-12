@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from requirement_intelligence.quality_governance.identity.quality_identity import (
+    AssessmentOutcomeVersion,
+    AssessmentPolicyId,
+    AssessmentPolicyVersion,
     QualityAssessmentId,
+    QualityAssessmentResultId,
+    QualityAssessmentResultVersion,
     QualityAssessmentVersion,
     QualityGovernanceResultId,
     QualityGovernanceResultVersion,
@@ -17,7 +22,12 @@ from requirement_intelligence.quality_governance.identity.quality_identity impor
 )
 
 __all__ = [
+    "AssessmentOutcomeVersion",
+    "AssessmentPolicyId",
+    "AssessmentPolicyVersion",
     "QualityAssessmentId",
+    "QualityAssessmentResultId",
+    "QualityAssessmentResultVersion",
     "QualityAssessmentVersion",
     "QualityGovernanceResultId",
     "QualityGovernanceResultVersion",

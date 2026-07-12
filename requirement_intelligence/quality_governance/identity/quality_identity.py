@@ -189,6 +189,41 @@ class RuleEvaluationResultId(_StringIdentifier):
         return cls(f"revr-{digest[:12]}")
 
 
+@dataclass(frozen=True)
+class AssessmentPolicyId(_StringIdentifier):
+    """The permanent, governed identity of an ``AssessmentPolicy``.
+
+    A policy id is an identity, never an alias: two policies may currently express
+    identical interpretation rules yet remain distinct ids, mirroring
+    ``QualityPolicyId`` and ``MatchingPolicyId``.
+    """
+
+    _LABEL: ClassVar[str] = "assessment policy id"
+
+
+@dataclass(frozen=True)
+class QualityAssessmentResultId(_StringIdentifier):
+    """The deterministic identity of one :class:`QualityAssessmentResult`.
+
+    A pure function of the :class:`RuleEvaluationResult` it interprets, so the same
+    evaluation always yields the same assessment id, run after run.
+    """
+
+    _LABEL: ClassVar[str] = "quality assessment result id"
+
+    @classmethod
+    def for_evaluation(cls, rule_evaluation_result_id: str) -> QualityAssessmentResultId:
+        """Mint the deterministic assessment id for *rule_evaluation_result_id*."""
+        evaluation = str(rule_evaluation_result_id).strip()
+        if not evaluation:
+            raise ValueError(
+                "Cannot mint a quality assessment result id from an empty rule "
+                "evaluation result id."
+            )
+        digest = hashlib.sha256(evaluation.encode()).hexdigest()
+        return cls(f"qar-{digest[:12]}")
+
+
 @dataclass(frozen=True, order=True)
 class _SemanticVersion:
     """Base for immutable, comparable ``MAJOR.MINOR.PATCH`` version value objects."""
@@ -319,3 +354,43 @@ class RuleEvaluationResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "rule evaluation result version"
+
+
+@dataclass(frozen=True, order=True)
+class AssessmentPolicyVersion(_SemanticVersion):
+    """Semantic version of a governed ``AssessmentPolicy``.
+
+    Advances independently of every other axis: tuning the governed interpretation
+    rules is a policy-version change that must never force a change to
+    ``QualityAssessmentResult`` or the engine contract (ADR-0017 Recommendation 4).
+    """
+
+    _LABEL: ClassVar[str] = "assessment policy version"
+
+
+@dataclass(frozen=True, order=True)
+class AssessmentOutcomeVersion(_SemanticVersion):
+    """Semantic version of the ``AssessmentOutcome`` **schema**.
+
+    Versions the inner assessment-observation model, independently of the assessment
+    result contract, the policy, and every quality-governance axis. This is the
+    assessment subsystem's analogue of ``RuleEvaluationVersion``; the name
+    ``QualityAssessmentVersion`` is already owned by CAP-080A's governance
+    ``QualityAssessment`` (a different model), so the subsystem uses this distinct axis
+    to stay collision-free (ADR-0017 §D21).
+    """
+
+    _LABEL: ClassVar[str] = "assessment outcome version"
+
+
+@dataclass(frozen=True, order=True)
+class QualityAssessmentResultVersion(_SemanticVersion):
+    """Semantic version of the ``QualityAssessmentResult`` **runtime contract** schema.
+
+    The assessment boundary's own version — the canonical contract between the
+    ``QualityAssessmentEngine`` and the ``QualityGovernanceService``. Independent of the
+    ``AssessmentOutcome`` schema version, the ``AssessmentPolicyVersion``, and every
+    other axis; a change here never forces any of those, and vice versa.
+    """
+
+    _LABEL: ClassVar[str] = "quality assessment result version"
