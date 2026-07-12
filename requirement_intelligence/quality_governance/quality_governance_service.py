@@ -31,14 +31,15 @@ What the service does NOT own
     decision (ADR-0017 Recommendation 6) — are **internal implementation details** of
     the service and can be added without changing this contract.
 
-Runtime status (CAP-080A)
-    ``evaluate`` is **abstract** and the registered :class:`DormantQualityGovernanceService`
-    raises :class:`NotImplementedError`. The service is **dormant** — no pipeline
-    stage, execution builder, or CLI path consumes it, and ``PlatformContext``
-    constructs it with the governed policy but **no decision engine**. Runtime
-    behaviour is byte-identical and the golden baseline is unchanged. The decision
-    engine and runtime activation land in a later CAP-080 milestone, behind this
-    unchanged ``evaluate`` signature.
+Runtime status (CAP-080C)
+    ``evaluate`` is now implemented: :class:`DefaultQualityGovernanceService` delegates
+    to a private ``QualityGovernancePipeline`` (``quality_governance.pipeline``)
+    that sequences the frozen stages — rule evaluation → assessment → decision →
+    assembly — end to end. The service is still **not wired into the Requirement
+    Intelligence execution pipeline** (nothing calls ``evaluate`` at runtime), so
+    behaviour remains byte-identical and the golden baseline is unchanged;
+    execution-package and CLI integration land in CAP-080D behind this unchanged
+    ``evaluate`` signature.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ from abc import ABC, abstractmethod
 from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from requirement_intelligence.grounding.models import GroundingResult
 from requirement_intelligence.quality_governance.models import QualityGovernanceResult
-from requirement_intelligence.quality_governance.policy import QualityPolicy
+from requirement_intelligence.quality_governance.pipeline import QualityGovernancePipeline
 from requirement_intelligence.validation.models.validation_result import ValidationResult
 
 
@@ -95,24 +96,20 @@ class QualityGovernanceService(ABC):
         raise NotImplementedError
 
 
-class DormantQualityGovernanceService(QualityGovernanceService):
-    """The registered, dormant governance service (CAP-080A).
+class DefaultQualityGovernanceService(QualityGovernanceService):
+    """The registered governance service — thin orchestration over the pipeline (CAP-080C).
 
-    It holds the governed :class:`QualityPolicy` it will evaluate but performs no
-    governance: ``evaluate`` raises :class:`NotImplementedError`. It exists so the
-    boundary and its ``PlatformContext`` registration are fixed before any behaviour,
-    exactly as the default Grounding service was dormant at CAP-077A.1. No pipeline
-    stage consumes it, so runtime is byte-identical.
+    It holds a private :class:`QualityGovernancePipeline` and delegates ``evaluate`` to it,
+    owning only the public boundary and lifecycle. It **computes nothing**: the pipeline
+    sequences the governed stages (rule evaluation → assessment → decision → assembly) and
+    the builder assembles the result. Still unwired into the Requirement Intelligence
+    execution pipeline, so runtime is byte-identical — exactly mirroring the Grounding
+    subsystem's thin service over its private pipeline.
     """
 
-    def __init__(self, policy: QualityPolicy) -> None:
-        """Store the governed policy the future decision engine will evaluate."""
-        self._policy = policy
-
-    @property
-    def policy(self) -> QualityPolicy:
-        """The governed quality policy this dormant service was constructed with."""
-        return self._policy
+    def __init__(self, pipeline: QualityGovernancePipeline) -> None:
+        """Store the private stage-sequencing pipeline to delegate to."""
+        self._pipeline = pipeline
 
     def evaluate(
         self,
@@ -120,8 +117,5 @@ class DormantQualityGovernanceService(QualityGovernanceService):
         validation_result: ValidationResult,
         cp1_result: CP1Result,
     ) -> QualityGovernanceResult:
-        """Dormant in CAP-080A — the decision engine lands in a later milestone."""
-        raise NotImplementedError(
-            "QualityGovernanceService.evaluate is dormant in CAP-080A; the decision "
-            "engine is introduced in a later CAP-080 milestone."
-        )
+        """Govern one run via the frozen pipeline — delegation only, no business logic."""
+        return self._pipeline.execute(grounding_result, validation_result, cp1_result)

@@ -87,6 +87,7 @@ from requirement_intelligence.quality_governance.assessment import (
     QualityAssessmentEngine,
     default_assessment_policy,
 )
+from requirement_intelligence.quality_governance.builder import QualityGovernanceResultBuilder
 from requirement_intelligence.quality_governance.decision import (
     DecisionPolicy,
     DeterministicQualityDecisionEngine,
@@ -97,12 +98,13 @@ from requirement_intelligence.quality_governance.evaluation import (
     DeterministicQualityRuleEvaluator,
     QualityRuleEvaluator,
 )
+from requirement_intelligence.quality_governance.pipeline import QualityGovernancePipeline
 from requirement_intelligence.quality_governance.policy import (
     QualityPolicy,
     default_quality_policy,
 )
 from requirement_intelligence.quality_governance.quality_governance_service import (
-    DormantQualityGovernanceService,
+    DefaultQualityGovernanceService,
     QualityGovernanceService,
 )
 from requirement_intelligence.quality_governance.rules import (
@@ -314,16 +316,26 @@ class PlatformContext:
         return default_quality_policy()
 
     def create_quality_governance_service(self) -> QualityGovernanceService:
-        """Return the dormant :class:`QualityGovernanceService` (CAP-080A, ADR-0017).
+        """Return the :class:`DefaultQualityGovernanceService` (CAP-080C, ADR-0017 §D29).
 
-        The single runtime entry point into Quality Governance. This is the
-        composition root for governance: it constructs the service with the governed
-        :meth:`create_quality_policy`. In CAP-080A the service is **dormant** — its
-        ``evaluate`` raises ``NotImplementedError`` and no decision engine is injected.
-        Nothing consumes it at runtime, so behaviour is byte-identical; the decision
-        engine is wired here in a later CAP-080 milestone.
+        The single runtime entry point into Quality Governance, and the **composition
+        root** for the whole subsystem: it constructs the rule evaluator, assessment
+        engine, decision engine, and result builder, injects them (with the governed
+        :meth:`create_quality_policy`) into the private
+        :class:`QualityGovernancePipeline`, and delegates the thin service to it. The
+        service and pipeline own only orchestration/sequencing; every stage is a governed
+        collaborator. **Not yet wired into the execution pipeline** (nothing calls
+        ``evaluate`` at runtime), so runtime behaviour is byte-identical and the golden
+        baseline is unchanged; CLI and execution-package integration land in CAP-080D.
         """
-        return DormantQualityGovernanceService(policy=self.create_quality_policy())
+        pipeline = QualityGovernancePipeline(
+            policy=self.create_quality_policy(),
+            rule_evaluator=self.create_quality_rule_evaluator(),
+            assessment_engine=self.create_quality_assessment_engine(),
+            decision_engine=self.create_quality_decision_engine(),
+            result_builder=QualityGovernanceResultBuilder(),
+        )
+        return DefaultQualityGovernanceService(pipeline=pipeline)
 
     def create_quality_rule_catalog(self) -> QualityRuleCatalog:
         """Return the governed default :class:`QualityRuleCatalog` (CAP-080B, ADR-0017 §D25).

@@ -1,9 +1,10 @@
-"""Unit tests for the dormant QualityGovernanceService and its architecture boundaries.
+"""Contract and architecture-boundary tests for the QualityGovernanceService (CAP-080C).
 
-CAP-080A is a pure architecture freeze: the service is dormant, registered but
-unconsumed, and the subsystem is a **consumer only** of the three peer result
-contracts. These tests assert the dormant contract, the PlatformContext
-registration, and the containment/dependency invariants (ADR-0017).
+CAP-080C activates the service: :class:`DefaultQualityGovernanceService` delegates to a
+private :class:`QualityGovernancePipeline`. These tests assert the permanent contract,
+the ``PlatformContext`` registration, and the containment/dependency invariants
+(ADR-0017 §D29). Orchestration behaviour is exercised in
+``test_quality_governance_pipeline.py``.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import pytest
 
 from requirement_intelligence.platform.platform_context import PlatformContext
 from requirement_intelligence.quality_governance import (
-    DormantQualityGovernanceService,
+    DefaultQualityGovernanceService,
     QualityGovernanceService,
     QualityPolicy,
 )
@@ -25,21 +26,11 @@ _QG_PKG = _REPO_ROOT / "requirement_intelligence" / "quality_governance"
 
 
 @pytest.mark.unit
-class TestDormantService:
+class TestServiceContract:
     def test_service_contract_is_abstract(self) -> None:
         assert issubclass(QualityGovernanceService, ABC)
         with pytest.raises(TypeError):
             QualityGovernanceService()  # type: ignore[abstract]
-
-    def test_evaluate_is_dormant(self) -> None:
-        service = DormantQualityGovernanceService(policy=PlatformContext().create_quality_policy())
-        with pytest.raises(NotImplementedError):
-            service.evaluate(None, None, None)  # type: ignore[arg-type]
-
-    def test_service_carries_its_governed_policy(self) -> None:
-        policy = PlatformContext().create_quality_policy()
-        service = DormantQualityGovernanceService(policy=policy)
-        assert service.policy == policy
 
 
 @pytest.mark.unit
@@ -48,10 +39,10 @@ class TestPlatformContextRegistration:
         policy = PlatformContext().create_quality_policy()
         assert isinstance(policy, QualityPolicy)
 
-    def test_create_service_returns_dormant_service(self) -> None:
+    def test_create_service_returns_default_service(self) -> None:
         service = PlatformContext().create_quality_governance_service()
         assert isinstance(service, QualityGovernanceService)
-        assert isinstance(service, DormantQualityGovernanceService)
+        assert isinstance(service, DefaultQualityGovernanceService)
 
 
 @pytest.mark.unit

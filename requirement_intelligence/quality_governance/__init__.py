@@ -7,11 +7,13 @@ findings. It is a **consumer only** of the three completed peer results —
 Engineering Context, Analysis, Grounding, Validation, CP1, Execution Package,
 Reporting, or Serialization upstream of it (ADR-0017).
 
-**CAP-080A is the architecture freeze only:** canonical models, typed identities,
-enumerations, the governed :class:`QualityPolicy` and its builder, and the dormant
-:class:`QualityGovernanceService` contract. It performs no policy evaluation, no
-quality calculation, and no release decision, and it is wired into no runtime path.
-Governed by ADR-0017.
+**Runtime status (CAP-080C):** every layer is implemented behind its frozen contract —
+rule evaluation (CAP-080B), assessment (CAP-080B.1), decision (CAP-080B.2), and the
+:class:`DefaultQualityGovernanceService` that sequences them via a private pipeline
+(CAP-080C). The subsystem is **not yet wired into the Requirement Intelligence execution
+pipeline** (nothing calls ``evaluate`` at runtime), so runtime behaviour is byte-identical
+and the golden baseline is unchanged; CLI and execution-package integration land in
+CAP-080D. Governed by ADR-0017.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from requirement_intelligence.quality_governance.assessment import (
     QualityAssessmentResult,
     default_assessment_policy,
 )
+from requirement_intelligence.quality_governance.builder import QualityGovernanceResultBuilder
 from requirement_intelligence.quality_governance.decision import (
     DECISION_POLICY_VERSION,
     DECISION_VERSION,
@@ -113,7 +116,7 @@ from requirement_intelligence.quality_governance.policy import (
     default_quality_policy,
 )
 from requirement_intelligence.quality_governance.quality_governance_service import (
-    DormantQualityGovernanceService,
+    DefaultQualityGovernanceService,
     QualityGovernanceService,
 )
 from requirement_intelligence.quality_governance.version import (
@@ -160,10 +163,10 @@ __all__ = [
     "DecisionStatistics",
     "DecisionSummary",
     "DecisionVersion",
+    "DefaultQualityGovernanceService",
     "DeterministicQualityAssessmentEngine",
     "DeterministicQualityDecisionEngine",
     "DeterministicQualityRuleEvaluator",
-    "DormantQualityGovernanceService",
     "QualityAssessment",
     "QualityAssessmentEngine",
     "QualityAssessmentId",
@@ -180,6 +183,7 @@ __all__ = [
     "QualityFindingCategory",
     "QualityFindingCategoryCount",
     "QualityGovernanceResult",
+    "QualityGovernanceResultBuilder",
     "QualityGovernanceResultId",
     "QualityGovernanceResultVersion",
     "QualityGovernanceService",
