@@ -94,7 +94,7 @@ from requirement_intelligence.quality_governance.decision import (
     default_decision_policy,
 )
 from requirement_intelligence.quality_governance.evaluation import (
-    DormantQualityRuleEvaluator,
+    DeterministicQualityRuleEvaluator,
     QualityRuleEvaluator,
 )
 from requirement_intelligence.quality_governance.policy import (
@@ -104,6 +104,10 @@ from requirement_intelligence.quality_governance.policy import (
 from requirement_intelligence.quality_governance.quality_governance_service import (
     DormantQualityGovernanceService,
     QualityGovernanceService,
+)
+from requirement_intelligence.quality_governance.rules import (
+    QualityRuleCatalog,
+    default_quality_rule_catalog,
 )
 from requirement_intelligence.registry.connector_registry import ConnectorRegistry
 from requirement_intelligence.validation.profiles import (
@@ -321,17 +325,31 @@ class PlatformContext:
         """
         return DormantQualityGovernanceService(policy=self.create_quality_policy())
 
-    def create_quality_rule_evaluator(self) -> QualityRuleEvaluator:
-        """Return the dormant :class:`QualityRuleEvaluator` (CAP-080A.1, ADR-0017).
+    def create_quality_rule_catalog(self) -> QualityRuleCatalog:
+        """Return the governed default :class:`QualityRuleCatalog` (CAP-080B, ADR-0017 §D25).
 
-        The single owner of governance rule evaluation. It is constructed with the
-        governed :meth:`create_quality_policy` whose rules it will evaluate. In
-        CAP-080A.1 the evaluator is **dormant** — its ``evaluate`` raises
-        ``NotImplementedError`` and no rule set is injected. Nothing consumes it at
-        runtime, so behaviour is byte-identical; the first real evaluator is wired here
-        in CAP-080B.
+        The metadata-only declaration of *which* quality rules the framework governs —
+        ordering, lookup, and grouping over the governed rules. The deterministic
+        evaluator iterates it; it evaluates nothing itself. **Not yet wired**: no runtime
+        path calls it, so runtime behaviour is unchanged.
         """
-        return DormantQualityRuleEvaluator(policy=self.create_quality_policy())
+        return default_quality_rule_catalog()
+
+    def create_quality_rule_evaluator(self) -> QualityRuleEvaluator:
+        """Return the :class:`DeterministicQualityRuleEvaluator` (CAP-080B, ADR-0017 §D25).
+
+        The single owner of governance rule evaluation. It is the composition root for
+        evaluation: constructed with the governed :meth:`create_quality_policy` (the
+        source of every threshold) and :meth:`create_quality_rule_catalog` (the source of
+        every rule). CAP-080B replaces the dormant CAP-080A.1 evaluator with this real,
+        deterministic one, but it remains **unwired** — no runtime path consumes it, so
+        runtime behaviour is byte-identical and the golden baseline is unchanged. The
+        governance service consumes it in a later CAP-080 milestone.
+        """
+        return DeterministicQualityRuleEvaluator(
+            policy=self.create_quality_policy(),
+            catalog=self.create_quality_rule_catalog(),
+        )
 
     def create_assessment_policy(self) -> AssessmentPolicy:
         """Return the governed default :class:`AssessmentPolicy` (CAP-080A.2, ADR-0017).

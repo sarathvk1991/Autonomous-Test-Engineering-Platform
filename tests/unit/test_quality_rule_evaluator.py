@@ -1,9 +1,10 @@
-"""Unit tests for the dormant QualityRuleEvaluator and its architecture boundaries.
+"""Contract and architecture-boundary tests for the QualityRuleEvaluator (CAP-080B).
 
-CAP-080A.1 is a pure architecture freeze: the evaluator is dormant, registered but
-unconsumed, owns rule evaluation only, and the evaluation layer is a consumer of the
-three peer result contracts. These tests assert the dormant contract, the
-PlatformContext registration, and the containment/dependency invariants (ADR-0017).
+CAP-080B replaces the dormant CAP-080A.1 evaluator with the real, deterministic
+:class:`DeterministicQualityRuleEvaluator`. These tests assert the permanent contract,
+the ``PlatformContext`` registration, and the containment/dependency invariants that the
+architecture freeze fixes (ADR-0017 §D25). The evaluator's *behaviour* is exercised in
+``test_deterministic_quality_rule_evaluator.py``.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import pytest
 
 from requirement_intelligence.platform.platform_context import PlatformContext
 from requirement_intelligence.quality_governance.evaluation import (
-    DormantQualityRuleEvaluator,
+    DeterministicQualityRuleEvaluator,
     QualityRuleEvaluator,
     RuleEvaluationResult,
 )
@@ -27,20 +28,19 @@ _EVAL_PKG = _QG_PKG / "evaluation"
 
 
 @pytest.mark.unit
-class TestDormantEvaluator:
+class TestEvaluatorContract:
     def test_contract_is_abstract(self) -> None:
         assert issubclass(QualityRuleEvaluator, ABC)
         with pytest.raises(TypeError):
             QualityRuleEvaluator()  # type: ignore[abstract]
 
-    def test_evaluate_is_dormant(self) -> None:
-        evaluator = DormantQualityRuleEvaluator(policy=PlatformContext().create_quality_policy())
-        with pytest.raises(NotImplementedError):
-            evaluator.evaluate(None, None, None)  # type: ignore[arg-type]
-
-    def test_evaluator_carries_its_policy(self) -> None:
-        policy = PlatformContext().create_quality_policy()
-        assert DormantQualityRuleEvaluator(policy=policy).policy == policy
+    def test_deterministic_evaluator_carries_its_policy_and_catalog(self) -> None:
+        ctx = PlatformContext()
+        policy = ctx.create_quality_policy()
+        catalog = ctx.create_quality_rule_catalog()
+        evaluator = DeterministicQualityRuleEvaluator(policy=policy, catalog=catalog)
+        assert evaluator.policy == policy
+        assert evaluator.catalog == catalog
 
     def test_permanent_signature(self) -> None:
         params = list(inspect.signature(QualityRuleEvaluator.evaluate).parameters)
@@ -53,10 +53,18 @@ class TestDormantEvaluator:
 
 @pytest.mark.unit
 class TestPlatformContextRegistration:
-    def test_create_returns_dormant_evaluator(self) -> None:
+    def test_create_returns_deterministic_evaluator(self) -> None:
         evaluator = PlatformContext().create_quality_rule_evaluator()
         assert isinstance(evaluator, QualityRuleEvaluator)
-        assert isinstance(evaluator, DormantQualityRuleEvaluator)
+        assert isinstance(evaluator, DeterministicQualityRuleEvaluator)
+
+    def test_platform_context_is_the_composition_root(self) -> None:
+        """The evaluator is constructed with the governed policy and catalogue."""
+        ctx = PlatformContext()
+        evaluator = ctx.create_quality_rule_evaluator()
+        assert isinstance(evaluator, DeterministicQualityRuleEvaluator)
+        assert evaluator.policy == ctx.create_quality_policy()
+        assert evaluator.catalog == ctx.create_quality_rule_catalog()
 
 
 @pytest.mark.unit
@@ -94,8 +102,8 @@ class TestDependencyBoundaries:
     def test_evaluation_imports_no_upstream_implementation(self) -> None:
         """The evaluation layer imports no Grounding/Validation/CP1 *implementation*.
 
-        It may import only the three frozen result contracts. Docstrings may still name
-        analog classes for explanation; this guard watches imports.
+        It may import only the three frozen result contracts (and their enums). This
+        guard watches imports, not docstrings.
         """
         forbidden_impl = (
             "GroundingStrategy",
@@ -115,24 +123,25 @@ class TestDependencyBoundaries:
                     for token in forbidden_impl:
                         assert token not in line, f"{path.name} imports {token}"
 
-    def test_evaluation_models_import_no_upstream_subsystem(self) -> None:
-        """The evaluation *models* are self-contained — no upstream subsystem at all.
+    def test_evaluator_imports_no_downstream_governance_layer(self) -> None:
+        """The evaluator depends on nothing downstream of its own boundary.
 
-        Only the evaluator module may import the three result contracts; the models
-        depend only on quality_governance identity/enums and shared.
+        Rule Catalogue → Evaluator → RuleEvaluationResult. It must not import
+        Assessment, Decision, the Governance Service, or the Execution Package.
         """
-        forbidden_subsystems = (
-            "requirement_intelligence.grounding",
-            "requirement_intelligence.validation",
-            "requirement_intelligence.cp1",
-            "requirement_intelligence.analysis",
-            "requirement_intelligence.context_orchestration",
+        forbidden = (
+            "quality_assessment_engine",
+            "QualityAssessmentEngine",
+            "quality_decision_engine",
+            "QualityDecisionEngine",
+            "quality_governance_service",
+            "QualityGovernanceService",
         )
-        source = (_EVAL_PKG / "models.py").read_text(encoding="utf-8")
+        source = (_EVAL_PKG / "quality_rule_evaluator.py").read_text(encoding="utf-8")
         for line in source.splitlines():
             if line.strip().startswith(("import ", "from ")):
-                for token in forbidden_subsystems:
-                    assert token not in line, f"models.py imports {token}"
+                for token in forbidden:
+                    assert token not in line, f"evaluator imports downstream {token}"
 
     def test_evaluator_consumes_only_the_three_result_contracts(self) -> None:
         source = (_EVAL_PKG / "quality_rule_evaluator.py").read_text(encoding="utf-8")
@@ -140,39 +149,17 @@ class TestDependencyBoundaries:
         assert "ValidationResult" in source
         assert "CP1Result" in source
 
-    def test_governance_layer_imports_only_the_result_contract_from_evaluation(self) -> None:
-        """Quality Governance (service/models) imports RuleEvaluationResult only.
-
-        No governance module reaches into evaluation internals (the evaluator, the
-        distribution entries, or the status enum) — the boundary is the result
-        contract. CAP-080A.1 wires nothing, so today no governance module imports
-        evaluation at all; this guard keeps it that way until a milestone consciously
-        consumes the contract.
-        """
-        internal_only = (
-            "quality_rule_evaluator",
-            "DormantQualityRuleEvaluator",
-            "QualityRuleEvaluator",
-            "RuleEvaluationStatus",
-        )
-        governance_modules = [
-            _QG_PKG / "quality_governance_service.py",
-            *(_QG_PKG / "models").rglob("*.py"),
-            *(_QG_PKG / "policy").rglob("*.py"),
-        ]
-        for path in governance_modules:
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if line.strip().startswith(("import ", "from ")) and "evaluation" in line:
-                    for token in internal_only:
-                        assert token not in line, f"{path.name} imports evaluation internal {token}"
+    def test_evaluator_consumes_catalog_and_policy(self) -> None:
+        source = (_EVAL_PKG / "quality_rule_evaluator.py").read_text(encoding="utf-8")
+        assert "QualityRuleCatalog" in source
+        assert "QualityPolicy" in source
 
 
 @pytest.mark.unit
 class TestResultContractSelfContained:
-    def test_result_is_self_contained_and_round_trips(self) -> None:
-        """RuleEvaluationResult reconstructs from its own serialization alone."""
-        evaluator = PlatformContext().create_quality_rule_evaluator()
-        assert isinstance(evaluator, QualityRuleEvaluator)
-        # The contract type is importable and self-describing without any runtime.
-        assert "result_version" in RuleEvaluationResult.model_fields
+    def test_result_records_evaluator_identity(self) -> None:
+        """The boundary names the evaluator that produced it, independently of versions."""
+        assert "evaluator_name" in RuleEvaluationResult.model_fields
+        assert "evaluator_version" in RuleEvaluationResult.model_fields
         assert "policy_version" in RuleEvaluationResult.model_fields
+        assert "result_version" in RuleEvaluationResult.model_fields

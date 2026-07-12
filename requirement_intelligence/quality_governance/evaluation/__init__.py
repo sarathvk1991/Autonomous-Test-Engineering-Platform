@@ -14,6 +14,8 @@ no runtime path. Governed by ADR-0017.
 from __future__ import annotations
 
 from requirement_intelligence.quality_governance.evaluation.models import (
+    DEFAULT_RULE_EVALUATOR_NAME,
+    DEFAULT_RULE_EVALUATOR_VERSION,
     RULE_EVALUATION_RESULT_VERSION,
     RULE_EVALUATION_VERSION,
     RuleCategory,
@@ -26,14 +28,20 @@ from requirement_intelligence.quality_governance.evaluation.models import (
     RuleSeverityCount,
 )
 from requirement_intelligence.quality_governance.evaluation.quality_rule_evaluator import (
-    DormantQualityRuleEvaluator,
+    RULE_EVALUATOR_NAME,
+    RULE_EVALUATOR_VERSION,
+    DeterministicQualityRuleEvaluator,
     QualityRuleEvaluator,
 )
 
 __all__ = [
+    "DEFAULT_RULE_EVALUATOR_NAME",
+    "DEFAULT_RULE_EVALUATOR_VERSION",
     "RULE_EVALUATION_RESULT_VERSION",
     "RULE_EVALUATION_VERSION",
-    "DormantQualityRuleEvaluator",
+    "RULE_EVALUATOR_NAME",
+    "RULE_EVALUATOR_VERSION",
+    "DeterministicQualityRuleEvaluator",
     "QualityRuleEvaluator",
     "RuleCategory",
     "RuleCategoryCount",

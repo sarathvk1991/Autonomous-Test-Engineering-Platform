@@ -391,6 +391,44 @@ class RuleEvaluationResultVersion(_SemanticVersion):
 
 
 @dataclass(frozen=True, order=True)
+class QualityRuleVersion(_SemanticVersion):
+    """Semantic version of one governed ``QualityRule`` (CAP-080B).
+
+    Versions a single rule's definition independently of every other axis: tuning a
+    rule's metadata (its threshold source, comparator, severity) advances this version
+    under the golden re-baseline procedure and never forces a change to the catalogue,
+    the evaluator, or any result-contract schema (ADR-0017 Recommendation 2).
+    """
+
+    _LABEL: ClassVar[str] = "quality rule version"
+
+
+@dataclass(frozen=True, order=True)
+class QualityRuleCatalogVersion(_SemanticVersion):
+    """Semantic version of the governed ``QualityRuleCatalog`` (CAP-080B).
+
+    Advances when the governed rule set changes — a rule added, removed, or retuned.
+    Independent of the individual ``QualityRuleVersion`` axis and of every
+    quality-governance version; a change here never forces any of those, and vice versa.
+    """
+
+    _LABEL: ClassVar[str] = "quality rule catalog version"
+
+
+@dataclass(frozen=True, order=True)
+class QualityRuleEvaluatorVersion(_SemanticVersion):
+    """Semantic version of a ``QualityRuleEvaluator`` implementation (CAP-080B).
+
+    The evaluator's own identity axis, recorded on every ``RuleEvaluationResult`` so a
+    result names the evaluator that produced it. Independent of the policy, catalogue,
+    ``RuleEvaluation``, and ``RuleEvaluationResult`` versions (ADR-0017 Recommendation
+    5): swapping one evaluator implementation for another advances only this axis.
+    """
+
+    _LABEL: ClassVar[str] = "quality rule evaluator version"
+
+
+@dataclass(frozen=True, order=True)
 class AssessmentPolicyVersion(_SemanticVersion):
     """Semantic version of a governed ``AssessmentPolicy``.
 

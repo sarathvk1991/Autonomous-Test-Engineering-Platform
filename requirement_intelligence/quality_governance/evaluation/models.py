@@ -27,6 +27,7 @@ from pydantic.alias_generators import to_camel
 
 from requirement_intelligence.quality_governance.identity.quality_identity import (
     QualityPolicyVersion,
+    QualityRuleEvaluatorVersion,
     RuleEvaluationId,
     RuleEvaluationResultId,
     RuleEvaluationResultVersion,
@@ -38,8 +39,19 @@ from shared.contracts.base import Schema
 #: Version of the ``RuleEvaluation`` schema (CAP-080A.1 foundation).
 RULE_EVALUATION_VERSION = RuleEvaluationVersion(1, 0, 0)
 
-#: Version of the ``RuleEvaluationResult`` runtime-contract schema (CAP-080A.1).
-RULE_EVALUATION_RESULT_VERSION = RuleEvaluationResultVersion(1, 0, 0)
+#: Version of the ``RuleEvaluationResult`` runtime-contract schema. Advanced additively
+#: to 1.1.0 by CAP-080B: the boundary now records the evaluator identity
+#: (``evaluator_name`` / ``evaluator_version``) that produced it. The addition is
+#: backwards-compatible — both fields default — so every CAP-080A.1 construction and
+#: serialization remains valid.
+RULE_EVALUATION_RESULT_VERSION = RuleEvaluationResultVersion(1, 1, 0)
+
+#: The default evaluator identity carried by a result. Populated by the evaluator that
+#: produced it (CAP-080B ships ``deterministic_quality_rule_v1``); defaults keep the
+#: CAP-080A.1 constructions valid and let a result name its producer independently of
+#: the policy and schema versions (ADR-0017 Recommendation 5).
+DEFAULT_RULE_EVALUATOR_NAME = "deterministic_quality_rule_v1"
+DEFAULT_RULE_EVALUATOR_VERSION = QualityRuleEvaluatorVersion(1, 0, 0)
 
 
 class RuleCategory(StrEnum):
@@ -179,6 +191,15 @@ class RuleEvaluationResult(Schema):
     statistics: RuleEvaluationStatistics = Field(..., description="Evaluation distributions.")
     policy_version: QualityPolicyVersion = Field(
         ..., description="Version of the QualityPolicy whose rules were evaluated."
+    )
+    evaluator_name: str = Field(
+        default=DEFAULT_RULE_EVALUATOR_NAME,
+        min_length=1,
+        description="Stable name of the evaluator that produced this result.",
+    )
+    evaluator_version: QualityRuleEvaluatorVersion = Field(
+        default=DEFAULT_RULE_EVALUATOR_VERSION,
+        description="Version of the evaluator that produced this result.",
     )
     result_version: RuleEvaluationResultVersion = Field(
         default=RULE_EVALUATION_RESULT_VERSION,

@@ -1,11 +1,11 @@
 # ADR-0017 — Quality Governance Framework
 
-- **Status:** Proposed (design only — CAP-080A / A.1 / A.2 / A.3 introduce no runtime behaviour)
-- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation) · CAP-080A.2 (Assessment) · CAP-080A.3 (Decision + full certification) 2026-07-12
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds Rule Evaluation (§D17–D20); CAP-080A.2 adds Assessment (§D21) and reserves Decision (§D22); CAP-080A.3 freezes Decision (§D23) and certifies the complete subsystem.
+- **Status:** Proposed (architecture design; CAP-080B begins implementation behind the frozen contracts, still unwired from runtime)
+- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation) · CAP-080A.2 (Assessment) · CAP-080A.3 (Decision + full certification) · CAP-080B (Deterministic Rule Evaluation Engine V1 + Rule Catalogue) 2026-07-12
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds Rule Evaluation (§D17–D20); CAP-080A.2 adds Assessment (§D21) and reserves Decision (§D22); CAP-080A.3 freezes Decision (§D23) and certifies the complete subsystem; CAP-080B implements the first deterministic rule evaluator and the governed Rule Catalogue (§D25).
 - **Governing design:** `docs/proposals/quality-governance-framework.md`
 - **Depends on:** ADR-0016 (Evidence Grounding & Traceability), ADR-0011 (CP1 Validation Engine), the Response Validation Framework — Quality Governance consumes their completed results.
-- **Runtime status:** Not yet implemented. This ADR governs the architecture; later CAP-080 milestones implement it and re-baseline the golden dataset.
+- **Runtime status:** Rule Evaluation is implemented (CAP-080B) but **unwired** — no runtime path consumes it, so runtime behaviour is byte-identical and the golden baseline is unchanged. Assessment, Decision, and Governance remain dormant. This ADR governs the architecture; later CAP-080 milestones wire the pipeline and re-baseline the golden dataset.
 
 ## Problem
 
@@ -156,6 +156,28 @@ The `QualityDecisionEngine` owns **only** the release decision, governance decis
 
 ---
 
+## Deterministic Rule Evaluation Engine + Rule Catalogue (CAP-080B)
+
+CAP-080A.1 froze the Rule Evaluation *boundary* (§D17–D20) with a dormant `QualityRuleEvaluator`. CAP-080B implements the **first real evaluator** behind that unchanged boundary and introduces the governed **Quality Rule Catalogue** it iterates. It is a pure *implementation* milestone: no signature, ownership, or boundary changes; Assessment, Decision, Governance, and the Execution Package are untouched; and the evaluator stays **unwired** from runtime, so runtime is byte-identical and the golden baseline is unchanged. It introduces a new package `requirement_intelligence/quality_governance/rules/` (`QualityRule`, `QualityRuleCatalog`, `QualityRuleBuilder`), the typed versions `QualityRuleVersion` / `QualityRuleCatalogVersion` / `QualityRuleEvaluatorVersion`, and `DeterministicQualityRuleEvaluator`.
+
+### D25 — Why rules are a governed catalogue and the evaluator carries only mechanism
+
+The naïve first evaluator embeds each rule as an `if` branch with a literal threshold. That fuses three things that must stay separate: *which* rules exist (governance), *what* they compare against (policy), and *how* comparison happens (behaviour). CAP-080B splits them:
+
+- **The Rule Catalogue owns metadata.** A `QualityRule` is immutable data — no lambda, no callable, no threshold value, no comparison. It *names* the quantity it observes (`QualityMetric`), how it is compared (`RuleComparator`), which governed `QualityPolicy` value bounds it (`QualityThresholdRef`), the severity a violation carries, and — for a mandatory gate — the governed `QualityReleaseToggle` that enforces it. `QualityRuleCatalog` owns ordering, lookup, grouping, and enabled-rule selection only. Adding, removing, or retuning a rule is a `QualityRuleBuilder` change — a versioned catalogue change under the golden re-baseline procedure — never an evaluator change (Recommendation 2). The default catalogue spans all six `RuleCategory` values (grounding, validation, CP1, cross-subsystem, mandatory-release, advisory).
+- **The `QualityPolicy` owns every threshold.** The evaluator hard-codes no number; each numeric bound is resolved from the policy field a rule names via `QualityThresholdRef`. Retuning a threshold is a policy-version change that flips outcomes without touching the evaluator or the catalogue.
+- **The evaluator owns only generic mechanism.** `DeterministicQualityRuleEvaluator` iterates the catalogue's enabled rules in canonical order and, per rule, invokes three generic mechanisms — metric extraction (the *actual*), threshold resolution (the *expected*/bound), and one of three comparators (`AT_LEAST` / `AT_MOST` / `MUST_NOT_HOLD`). It contains **no per-rule branch**: its `if`-chains dispatch on the `QualityMetric` and `QualityThresholdRef` *vocabularies*, applied uniformly to every rule.
+
+**Evaluator identity (frozen).** Every `RuleEvaluationResult` now records the evaluator that produced it — `evaluator_name` (`deterministic_quality_rule_v1`) and `evaluator_version` (`QualityRuleEvaluatorVersion` 1.0.0) — on axes independent of the policy and schema versions (Recommendation 5). The addition is additive: `RuleEvaluationResultVersion` advances to 1.1.0 with both fields defaulted, so every CAP-080A.1 construction remains valid.
+
+**Explainability (frozen, Recommendation 3).** Each `RuleEvaluation` records the expected value, the observed value, the governed threshold, the governing rule id/name, and a deterministic reason — no generated prose, no AI. The outcome of any run is reconstructable from `RuleEvaluationResult` alone, with no need to re-run the evaluator or inspect the policy.
+
+**Determinism (frozen).** No randomness, no UUID, no timestamp, no unordered iteration: ids are pure functions of the run and rule, and distributions are emitted in a fixed enum order. The same inputs yield a byte-identical result. A governed release toggle that is disabled makes its mandatory rule `SKIPPED` (not enforced by policy), distinct from a `FAIL`; a disabled rule is not evaluated at all.
+
+**Extensibility (frozen, Recommendation 5).** Future statistical, regulatory, organization-specific, risk-weighted, and AI-assisted evaluators implement the identical `evaluate(grounding_result, validation_result, cp1_result) -> RuleEvaluationResult` contract — reusing the same catalogue and policy — with no architectural change.
+
+---
+
 ## Final Quality Governance Architecture Certification (CAP-080A.3)
 
 With the Decision layer frozen, the entire subsystem — Grounding → Rule Evaluation → Assessment → Decision → Governance → Execution Package — is certified against the platform's architectural invariants:
@@ -169,7 +191,7 @@ With the Decision layer frozen, the entire subsystem — Grounding → Rule Eval
 - **G. Determinism** — all identities are pure functions of their inputs; no UUIDs, no clocks (except the governed `started_at`/`completed_at` provenance already established on `GroundingResult` / `QualityGovernanceResult`), no randomness.
 - **H. Extensibility** — future deterministic, statistical, regulatory, organizational, and AI implementations of every engine plug in behind the frozen contracts with no architectural change.
 - **I. Separation of concerns** — no business logic in `PlatformContext` (construction only), builders (assembly only), the service (orchestration only), or the future Execution Package (projection only).
-- **J. Architecture readiness** — **certified.** CAP-080B can proceed as a pure *implementation* milestone (the first deterministic `QualityRuleEvaluator`) behind the frozen contracts, with no further architectural work required.
+- **J. Architecture readiness** — **certified.** CAP-080B has landed the first deterministic `QualityRuleEvaluator` and the governed Rule Catalogue behind the frozen contracts (§D25) with no architectural change. **CAP-080B.1 (Deterministic Assessment Engine)** can likewise proceed as a pure *implementation* milestone behind the frozen `assess(rule_evaluation_result) -> QualityAssessmentResult` boundary, with no further architectural work required.
 
 ---
 
