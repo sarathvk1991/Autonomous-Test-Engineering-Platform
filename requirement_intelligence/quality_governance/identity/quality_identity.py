@@ -224,6 +224,40 @@ class QualityAssessmentResultId(_StringIdentifier):
         return cls(f"qar-{digest[:12]}")
 
 
+@dataclass(frozen=True)
+class DecisionPolicyId(_StringIdentifier):
+    """The permanent, governed identity of a ``DecisionPolicy``.
+
+    A policy id is an identity, never an alias: two policies may currently express
+    identical decision rules yet remain distinct ids, mirroring ``AssessmentPolicyId``
+    and ``QualityPolicyId``.
+    """
+
+    _LABEL: ClassVar[str] = "decision policy id"
+
+
+@dataclass(frozen=True)
+class QualityDecisionResultId(_StringIdentifier):
+    """The deterministic identity of one :class:`QualityDecisionResult`.
+
+    A pure function of the :class:`QualityAssessmentResult` it decides from, so the
+    same assessment always yields the same decision id, run after run.
+    """
+
+    _LABEL: ClassVar[str] = "quality decision result id"
+
+    @classmethod
+    def for_assessment(cls, assessment_id: str) -> QualityDecisionResultId:
+        """Mint the deterministic decision id for *assessment_id*."""
+        assessment = str(assessment_id).strip()
+        if not assessment:
+            raise ValueError(
+                "Cannot mint a quality decision result id from an empty assessment id."
+            )
+        digest = hashlib.sha256(assessment.encode()).hexdigest()
+        return cls(f"qdr-{digest[:12]}")
+
+
 @dataclass(frozen=True, order=True)
 class _SemanticVersion:
     """Base for immutable, comparable ``MAJOR.MINOR.PATCH`` version value objects."""
@@ -394,3 +428,40 @@ class QualityAssessmentResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "quality assessment result version"
+
+
+@dataclass(frozen=True, order=True)
+class DecisionPolicyVersion(_SemanticVersion):
+    """Semantic version of a governed ``DecisionPolicy``.
+
+    Advances independently of every other axis: tuning the governed release-decision
+    rules is a policy-version change that must never force a change to
+    ``QualityDecisionResult`` or the engine contract (ADR-0017 Recommendation 4/D24).
+    """
+
+    _LABEL: ClassVar[str] = "decision policy version"
+
+
+@dataclass(frozen=True, order=True)
+class DecisionVersion(_SemanticVersion):
+    """Semantic version of the ``DecisionExplanation`` **schema**.
+
+    Versions the inner decision-reasoning model, independently of the decision result
+    contract, the policy, and every other axis. This is the decision subsystem's
+    analogue of ``AssessmentOutcomeVersion`` / ``RuleEvaluationVersion``.
+    """
+
+    _LABEL: ClassVar[str] = "decision version"
+
+
+@dataclass(frozen=True, order=True)
+class QualityDecisionResultVersion(_SemanticVersion):
+    """Semantic version of the ``QualityDecisionResult`` **runtime contract** schema.
+
+    The decision boundary's own version — the canonical contract between the
+    ``QualityDecisionEngine`` and the ``QualityGovernanceService``. Independent of the
+    ``DecisionExplanation`` schema version, the ``DecisionPolicyVersion``, and every
+    other axis; a change here never forces any of those, and vice versa.
+    """
+
+    _LABEL: ClassVar[str] = "quality decision result version"

@@ -87,6 +87,12 @@ from requirement_intelligence.quality_governance.assessment import (
     QualityAssessmentEngine,
     default_assessment_policy,
 )
+from requirement_intelligence.quality_governance.decision import (
+    DecisionPolicy,
+    DormantQualityDecisionEngine,
+    QualityDecisionEngine,
+    default_decision_policy,
+)
 from requirement_intelligence.quality_governance.evaluation import (
     DormantQualityRuleEvaluator,
     QualityRuleEvaluator,
@@ -348,6 +354,28 @@ class PlatformContext:
         byte-identical; the first real engine is wired here in a later CAP-080 milestone.
         """
         return DormantQualityAssessmentEngine(policy=self.create_assessment_policy())
+
+    def create_decision_policy(self) -> DecisionPolicy:
+        """Return the governed default :class:`DecisionPolicy` (CAP-080A.3, ADR-0017).
+
+        The governed rules for *how an assessment becomes a release decision* — the base
+        ``AssessmentLevel`` → ``QualityDecision`` mapping plus the mandatory gates that
+        can force ``FAIL``. The future decision engine reads it; it contains no logic.
+        **Not yet wired**: no runtime path calls it, so runtime is unchanged.
+        """
+        return default_decision_policy()
+
+    def create_quality_decision_engine(self) -> QualityDecisionEngine:
+        """Return the dormant :class:`QualityDecisionEngine` (CAP-080A.3, ADR-0017).
+
+        The single owner of the release decision — deriving ``PASS`` /
+        ``PASS_WITH_WARNINGS`` / ``FAIL`` from a ``QualityAssessmentResult``. It is
+        constructed with the governed :meth:`create_decision_policy`. In CAP-080A.3 the
+        engine is **dormant** — its ``decide`` raises ``NotImplementedError`` and no
+        decision logic is injected. Nothing consumes it at runtime, so behaviour is
+        byte-identical; the first real engine is wired here in a later CAP-080 milestone.
+        """
+        return DormantQualityDecisionEngine(policy=self.create_decision_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

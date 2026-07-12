@@ -1,8 +1,8 @@
 # ADR-0017 — Quality Governance Framework
 
-- **Status:** Proposed (design only — CAP-080A / CAP-080A.1 / CAP-080A.2 introduce no runtime behaviour)
-- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation freeze) · CAP-080A.2 (Assessment freeze) 2026-07-12
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds the Rule Evaluation layer (§D17–D20); CAP-080A.2 adds the Assessment layer (§D21) and reserves the Decision layer (§D22).
+- **Status:** Proposed (design only — CAP-080A / A.1 / A.2 / A.3 introduce no runtime behaviour)
+- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation) · CAP-080A.2 (Assessment) · CAP-080A.3 (Decision + full certification) 2026-07-12
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds Rule Evaluation (§D17–D20); CAP-080A.2 adds Assessment (§D21) and reserves Decision (§D22); CAP-080A.3 freezes Decision (§D23) and certifies the complete subsystem.
 - **Governing design:** `docs/proposals/quality-governance-framework.md`
 - **Depends on:** ADR-0016 (Evidence Grounding & Traceability), ADR-0011 (CP1 Validation Engine), the Response Validation Framework — Quality Governance consumes their completed results.
 - **Runtime status:** Not yet implemented. This ADR governs the architecture; later CAP-080 milestones implement it and re-baseline the golden dataset.
@@ -128,6 +128,51 @@ QualityAssessmentResult → QualityDecisionEngine → QualityDecisionResult → 
 
 ---
 
+## Quality Decision layer (CAP-080A.3)
+
+CAP-080A.2 *reserved* the Decision layer (§D22). CAP-080A.3 **realises the reservation as a frozen architecture** — the final missing layer — and adds no runtime behaviour. It introduces a new package `requirement_intelligence/quality_governance/decision/`, the canonical `QualityDecisionResult` / `DecisionSummary` / `DecisionStatistics` / `DecisionExplanation` models, the governed `DecisionPolicy` (+ builder), the typed identities `DecisionPolicyId` / `DecisionPolicyVersion` / `DecisionVersion` / `QualityDecisionResultId` / `QualityDecisionResultVersion`, and the dormant `QualityDecisionEngine`. With this, every layer of Quality Governance is architecturally frozen.
+
+### D23 — Quality Decision is the sole owner of the release decision
+
+The `QualityDecisionEngine` owns **only** the release decision, governance decision explanation, and decision-policy interpretation. It is the **sole owner** of `PASS` / `PASS_WITH_WARNINGS` / `FAIL` (Recommendation 2): Assessment stays observational (its `AssessmentLevel` is a state observation, not a decision), and `QualityGovernanceService` only assembles — it never derives the decision (Recommendation 7). This closes the concern §D22 anticipated: no decision logic can leak into the service, because a distinct, separately-owned layer owns it.
+
+**Consumes only `QualityAssessmentResult` (frozen).** The engine reads **only** the assessment result — never `RuleEvaluationResult`, `GroundingResult`, `ValidationResult`, or `CP1Result`, and no upstream *implementation* class (Recommendation 1). Those are already interpreted upstream. Enforced by containment tests over the `decision/` package.
+
+**Governed entirely by `DecisionPolicy` (frozen).** The engine hard-codes no mapping and no threshold; the governed `DecisionPolicy` carries the base `AssessmentLevel → QualityDecision` mapping *and* the mandatory gates (`fail_on_blocking_failure` / `fail_on_mandatory_failure`) that can force `FAIL` regardless of the mapping (Recommendation 4). Tuning is a versioned policy change (Recommendation 4/independent versioning), never an engine change. This keeps the decision rule-based, not a percentage.
+
+**Permanent contract (frozen).** `QualityDecisionResult` is the canonical, immutable, self-contained release decision — the `QualityDecision`, a summary, statistics, a structured `DecisionExplanation`, and the governing policy identity/version, tied to the assessment it decided from. `decide(quality_assessment_result) -> QualityDecisionResult` is the permanent signature; deterministic, statistical, regulatory, organization-specific, and AI-assisted engines all implement it unchanged (Recommendation 5). `QualityDecisionResultVersion` versions the contract, `DecisionVersion` the inner explanation, `DecisionPolicyVersion` the policy — independently.
+
+**Explainability (frozen).** Every future decision is reconstructable **from `QualityDecisionResult` alone** — no re-running the engine, and no inspecting the policy, Assessment, Rule Evaluation, Grounding, Validation, or CP1 (Recommendation 3). The `DecisionExplanation` (primary reason, contributing factors, applied governed rules, recommendations) is structured data, never generated prose.
+
+### Quality Decision recommendations (CAP-080A.3, mandatory)
+
+- **DC1 — Decision consumes only `QualityAssessmentResult`.** Never `RuleEvaluationResult`, `GroundingResult`, `ValidationResult`, or `CP1Result`.
+- **DC2 — Decision is the sole owner of `PASS` / `PASS_WITH_WARNINGS` / `FAIL`.** Assessment remains observational; the service never derives them.
+- **DC3 — Every governance decision is reconstructable entirely from `QualityDecisionResult`.**
+- **DC4 — Decision behaviour is governed entirely by `DecisionPolicy`.**
+- **DC5 — Future engines (deterministic, statistical, regulatory, organization-specific, AI-assisted) reuse the identical `decide(...)` contract.**
+- **DC6 — Decision never orchestrates; `QualityGovernanceService` orchestrates.**
+- **DC7 — `QualityGovernanceService` assembles only; it never derives `PASS` / `FAIL`.**
+
+---
+
+## Final Quality Governance Architecture Certification (CAP-080A.3)
+
+With the Decision layer frozen, the entire subsystem — Grounding → Rule Evaluation → Assessment → Decision → Governance → Execution Package — is certified against the platform's architectural invariants:
+
+- **A. Ownership** — each responsibility has exactly one owner: matching→classification→confidence (Grounding), rule evaluation (`QualityRuleEvaluator`), assessment (`QualityAssessmentEngine`), release decision (`QualityDecisionEngine`), orchestration/assembly (`QualityGovernanceService`), projection (future Execution serializers). No overlap.
+- **B. Dependency direction** — strictly one-way and acyclic: `GroundingResult`/`ValidationResult`/`CP1Result` → `RuleEvaluationResult` → `QualityAssessmentResult` → `QualityDecisionResult` → `QualityGovernanceResult`. Each layer imports only the previous boundary; containment tests forbid reaching further back.
+- **C. Runtime contracts** — every layer consumes only the canonical result of the previous layer. Rule Evaluation reads the three peer results; Assessment reads only `RuleEvaluationResult`; Decision reads only `QualityAssessmentResult`; Governance assembles from `QualityDecisionResult`.
+- **D. Layer responsibilities** — Policies (`QualityPolicy`, `AssessmentPolicy`, `DecisionPolicy`) are governed data only; Engines/Evaluators are behaviour only; the Service is orchestration only; Builders are assembly only; future Serializers are projection only.
+- **E. Versioning** — every subsystem carries independent version axes (framework, policy, per-model schema, and result-contract), so any one evolves without forcing the others.
+- **F. Explainability** — each result is self-contained; a decision is reconstructable without re-running any upstream stage (Recommendations 3 / DC3).
+- **G. Determinism** — all identities are pure functions of their inputs; no UUIDs, no clocks (except the governed `started_at`/`completed_at` provenance already established on `GroundingResult` / `QualityGovernanceResult`), no randomness.
+- **H. Extensibility** — future deterministic, statistical, regulatory, organizational, and AI implementations of every engine plug in behind the frozen contracts with no architectural change.
+- **I. Separation of concerns** — no business logic in `PlatformContext` (construction only), builders (assembly only), the service (orchestration only), or the future Execution Package (projection only).
+- **J. Architecture readiness** — **certified.** CAP-080B can proceed as a pure *implementation* milestone (the first deterministic `QualityRuleEvaluator`) behind the frozen contracts, with no further architectural work required.
+
+---
+
 ## Architectural Recommendations (mandatory — frozen by this ADR)
 
 ### Recommendation 1 — Governance Scope Freeze (consumer only)
@@ -193,7 +238,7 @@ The following future extensions must plug into the existing architecture **witho
 
 ## Ownership, runtime position, governance
 
-- **Owns:** governance, rule evaluation, quality assessment, policy evaluation, release decisions (future Decision layer), governance findings.
+- **Owns:** governance, rule evaluation, quality assessment, release decision, policy evaluation, governance findings.
 - **Does not own:** Engineering Context, Analysis, Grounding, Validation, CP1, Execution Package, Reporting, Serialization.
-- **Runtime position:** `… → Grounding → Validation → CP1 → QualityRuleEvaluator → RuleEvaluationResult → QualityAssessmentEngine → QualityAssessmentResult → [QualityDecisionEngine → QualityDecisionResult] → QualityGovernanceService → QualityGovernanceResult → Execution Package`, consuming the three completed results; non-gating and dormant in CAP-080A / CAP-080A.1 / CAP-080A.2 (the Decision layer in brackets is reserved, §D22).
+- **Runtime position:** `… → Grounding → Validation → CP1 → QualityRuleEvaluator → RuleEvaluationResult → QualityAssessmentEngine → QualityAssessmentResult → QualityDecisionEngine → QualityDecisionResult → QualityGovernanceService → QualityGovernanceResult → Execution Package`, consuming the three completed results; every layer non-gating and dormant through CAP-080A.3.
 - **Governance:** registered as CAP-080 in the Platform Capability Matrix at implementation time; the golden baseline is re-based then. This ADR is **Proposed** until that milestone accepts it.
