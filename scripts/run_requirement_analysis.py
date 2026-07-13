@@ -455,6 +455,42 @@ def run_cp1_phase(
     return cp1_result
 
 
+def run_requirement_enhancement_phase(
+    context: PlatformContext,
+    engineering_context: Any,
+    analysis_result: Any,
+    console: Console,
+) -> Any:
+    """Requirement Enhancement phase — a peer capability, immediately after Analysis
+    (CAP-081C, ADR-0018 §D9).
+
+    Runs strictly downstream of Analysis and upstream of Grounding, at the
+    permanently frozen pipeline position::
+
+        Engineering Context → Analysis → Requirement Enhancement → Grounding
+            → Validation → CP1 → Quality Governance → Execution Package
+
+    It consumes **only** the completed ``EngineeringContext`` and ``AnalysisResult``
+    — the same two inputs Grounding consumes — and modifies neither. The single
+    ``RequirementEnhancementService`` comes solely from :class:`PlatformContext`;
+    this CLI is pure orchestration glue and invents no enrichment, relationship, or
+    observation logic of its own. Mirroring Grounding, a failure here is surfaced
+    but never fatal to the analysis run, and never corrupts the already-completed
+    upstream results.
+    """
+    console.action("\nRequirement Enhancement")
+    result = context.create_requirement_enhancement_service().enhance(
+        engineering_context, analysis_result
+    )
+    summary = result.summary
+    console.ok(f"Enhanced requirements: {summary.total_requirements_enhanced}")
+    console.note(f"  {summary.headline}")
+    console.note(f"  Relationships       : {summary.total_relationships}")
+    console.note(f"  Observations        : {summary.total_observations}")
+    console.note(f"  Findings            : {summary.total_findings}")
+    return result
+
+
 def run_quality_governance_phase(
     context: PlatformContext,
     grounding_result: Any,
@@ -609,6 +645,21 @@ def handle_analyze(args: argparse.Namespace) -> int:
         console.ok("Success")
         llm_request = prompt_request.to_llm_request(request_id=result.execution_id)
 
+    # Requirement Enhancement phase (CAP-081C): strictly downstream of Analysis and
+    # upstream of Grounding (Engineering Context → Analysis → Requirement Enhancement
+    # → Grounding → Validation → CP1 → Quality Governance → Execution Package). It
+    # consumes only EngineeringContext + AnalysisResult and modifies neither. Skipped
+    # for dry runs (no response to enhance). Surfaced but never fatal, mirroring
+    # Grounding/Validation/CP1.
+    requirement_enhancement_result: Any = None
+    if result is not None:
+        try:
+            requirement_enhancement_result = run_requirement_enhancement_phase(
+                context, engineering_context, result, console
+            )
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Requirement enhancement failed: {exc}")
+
     # Grounding phase (CAP-077F.2): strictly downstream of Analysis. It grades the
     # generated requirements against the evidence the reasoner actually saw and returns a
     # GroundingResult, which the execution package serialises as-is. It never modifies the
@@ -694,6 +745,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         cp1_result=cp1_result,
         grounding_result=grounding_result,
         quality_governance_result=quality_governance_result,
+        requirement_enhancement_result=requirement_enhancement_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

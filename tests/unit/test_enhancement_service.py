@@ -64,12 +64,17 @@ class TestPlatformContextRegistration:
 
 @pytest.mark.unit
 class TestRuntimeContainment:
-    def test_only_platform_context_names_the_service_externally(self) -> None:
-        """Outside the enhancement package, only PlatformContext may name the service.
+    def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
+        """Outside the enhancement package, only the sanctioned seams may name the service.
 
-        CAP-081A is architecture-only: no CLI phase, execution builder, manifest, or
-        serializer references the runtime service yet, so a future dependency cannot
-        appear silently before runtime activation is a deliberate decision.
+        CAP-081C consciously wires the service: the composition root
+        (``PlatformContext``) constructs it, and the CLI orchestration
+        (``run_requirement_analysis.py``) obtains it from there and calls ``enhance``
+        (mirroring the Quality Governance activation, ADR-0017 §D30). No other module —
+        no execution builder, manifest, or serializer — may reference the runtime
+        service, so a future dependency cannot appear silently. The Execution Package
+        in particular stays free of the runtime class name: it transports and projects
+        the ``RequirementEnhancementResult``, never the service.
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -77,7 +82,10 @@ class TestRuntimeContainment:
             _REPO_ROOT / "app",
         )
         needle = "RequirementEnhancementService"
-        permitted = {Path("requirement_intelligence/platform/platform_context.py")}
+        permitted = {
+            Path("requirement_intelligence/platform/platform_context.py"),
+            Path("scripts/run_requirement_analysis.py"),
+        }
         external_consumers: set[Path] = set()
         for root in roots:
             if not root.exists():

@@ -96,6 +96,18 @@ Service
         │
         ▼
 AnalysisResult              (raw, un-validated model output + provenance)
+        │
+        ▼
+Requirement Enhancement     (deterministic enrichment, relationships, observations —
+        │                    CAP-081C; a peer capability, upstream of Grounding)
+        ▼
+RequirementEnhancementResult (enriched requirements + relationship graph + findings)
+        │
+        ▼
+Grounding                    (evidence-support judgement per requirement — CAP-077F.2)
+        │
+        ▼
+GroundingResult              (support classification + confidence + findings)
         │  normalization
         ▼
 Validation                  (Transport → Syntax → Schema → Content → Reasoning)
@@ -108,6 +120,12 @@ CP1                         (engineering-readiness gate; CP1-0001)
         │
         ▼
 CP1Result                   (readiness verdict + findings)
+        │
+        ▼
+Quality Governance          (terminal release decision over Grounding + Validation +
+        │                     CP1 — CAP-080D)
+        ▼
+QualityGovernanceResult     (release decision + governance findings)
         │
         ▼
 Execution Package           (all artifacts + manifest written to disk)
@@ -123,8 +141,11 @@ Execution Package           (all artifacts + manifest written to disk)
 | **Engineering Context Orchestrator** | Choose which Consolidation groups a single reasoning session receives, rank them, apply the evidence budget, and compose them into one `EngineeringContext` under a governed `OrchestrationPolicy`. Answers *"what evidence should this session see?"* |
 | **Prompt Builder** | Render the `EngineeringContext` into a governed, versioned prompt. **Always consumes `EngineeringContext`** — never a `ConsolidatedArtifact` directly. |
 | **Requirement Analysis Service** | Submit the prompt to Google Gemini and carry the response into an `AnalysisResult`. Owns no validation or judgement. |
+| **Requirement Enhancement** | Deterministically enrich the generated requirements, detect relationships (the canonical `RelationshipGraph`), and generate observations/findings — before any downstream consumer judges the response. A peer capability; owns none of Analysis's or Grounding's computation. |
+| **Grounding** | Judge whether each generated requirement is supported by the evidence the reasoner actually saw, producing a `GroundingResult` (classification + confidence + findings). Owns evidence-support judgement only. |
 | **Validation** | Run the response through the ordered rule stages and produce a `ValidationResult` verdict. Owns correctness. |
 | **CP1** | Engineering-readiness gate. Opens only on a passing validation verdict; evaluates readiness criteria into a `CP1Result`. Owns readiness. |
+| **Quality Governance** | The terminal release authority: judges `GroundingResult` + `ValidationResult` + `CP1Result` together into one governed `QualityDecision`. A consumer only — it never re-runs any of the three. |
 | **Execution Package** | Serialize every runtime model and a checksummed `manifest.json` to the output directory. Owns reporting, produces no judgements. |
 
 ### Core Runtime Concepts

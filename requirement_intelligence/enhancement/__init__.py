@@ -83,6 +83,7 @@ from requirement_intelligence.enhancement.rules import (
     EnhancementRuleCategory,
     default_enhancement_rule_catalog,
 )
+from requirement_intelligence.enhancement.serialization import EnhancementSerializer
 from requirement_intelligence.enhancement.version import (
     ENHANCEMENT_FRAMEWORK_VERSION,
     ENHANCEMENT_POLICY_VERSION,
@@ -118,6 +119,7 @@ __all__ = [
     "EnhancementRuleBuilder",
     "EnhancementRuleCatalog",
     "EnhancementRuleCategory",
+    "EnhancementSerializer",
     "EnhancementSeverity",
     "EnhancementSummary",
     "EnrichmentRules",

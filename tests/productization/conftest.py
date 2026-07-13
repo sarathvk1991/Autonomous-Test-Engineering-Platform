@@ -124,6 +124,9 @@ class PipelineResult:
     # Analysis
     analysis_result: Any  # AnalysisResult
 
+    # Requirement Enhancement (strictly downstream of Analysis, upstream of Grounding)
+    requirement_enhancement_result: Any  # RequirementEnhancementResult
+
     # Normalization
     normalization_result: NormalizationResult
 
@@ -216,6 +219,14 @@ def _run_golden_pipeline(
     llm_request = prompt_request.to_llm_request(request_id=analysis_result.execution_id)
 
     # -----------------------------------------------------------------------
+    # Step 3b — Requirement Enhancement (CAP-081C): strictly downstream of Analysis,
+    # upstream of Grounding. Consumes only EngineeringContext + AnalysisResult.
+    # -----------------------------------------------------------------------
+    requirement_enhancement_result = context.create_requirement_enhancement_service().enhance(
+        engineering_context, analysis_result
+    )
+
+    # -----------------------------------------------------------------------
     # Step 4 — Normalization
     # -----------------------------------------------------------------------
     norm_registry = NormalizationRegistry()
@@ -288,6 +299,7 @@ def _run_golden_pipeline(
         cp1_result=cp1_result,
         grounding_result=grounding_result,
         quality_governance_result=quality_governance_result,
+        requirement_enhancement_result=requirement_enhancement_result,
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -299,6 +311,7 @@ def _run_golden_pipeline(
         selected=selected,
         engineering_context=engineering_context,
         analysis_result=analysis_result,
+        requirement_enhancement_result=requirement_enhancement_result,
         normalization_result=normalization_result,
         validation_result=validation_result,
         cp1_result=cp1_result,

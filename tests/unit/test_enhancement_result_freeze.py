@@ -178,9 +178,27 @@ class TestRuntimeAndExecutionPackageBoundary:
                 external.add(path.relative_to(_REPO_ROOT))
         assert external == permitted
 
-    def test_no_serializer_module_exists_yet(self) -> None:
-        """No `serialization/` package exists in `enhancement/` — reserved for a later milestone."""
-        assert not (_ENHANCEMENT_PKG / "serialization").exists()
+    def test_serializer_honours_the_frozen_projection_only_invariant(self) -> None:
+        """CAP-081C's serializer (§D8's forward-looking invariant) computes nothing.
+
+        The `serialization/` package did not exist when CAP-081B.1 froze this
+        invariant in advance; CAP-081C introduces the serializer and this test
+        confirms it honours the boundary frozen before it existed.
+        """
+        serializer_dir = _ENHANCEMENT_PKG / "serialization"
+        assert serializer_dir.exists()
+        forbidden = (
+            "DeterministicRequirementEnhancementEngine",
+            "DeterministicRequirementEnhancementService",
+            "EnhancementRuleCatalog",
+            "EnhancementPolicy",
+            "PlatformContext",
+        )
+        for path in serializer_dir.rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
 
     def test_platform_context_remains_the_sole_composition_root(self) -> None:
         """Only PlatformContext constructs the engine's governed collaborators externally."""

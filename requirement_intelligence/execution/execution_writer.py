@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from requirement_intelligence.enhancement.serialization import EnhancementSerializer
 from requirement_intelligence.execution.baseline_metrics_builder import (
     BaselineMetricsBuilder,
 )
@@ -94,6 +95,7 @@ class ExecutionWriter:
         self._engineering_context = EngineeringContextArtifactBuilder()
         self._grounding = GroundingSerializer()
         self._quality_governance = QualityGovernanceSerializer()
+        self._enhancement = EnhancementSerializer()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -231,6 +233,28 @@ class ExecutionWriter:
                 "quality_governance_result.json",
                 "quality_governance_report.md",
                 "quality_governance_summary.md",
+            ]
+        # Requirement Enhancement artifacts (CAP-081C): appended only when a
+        # RequirementEnhancementResult was produced. Pure projection — the result is
+        # serialised/rendered as-is; nothing is re-enriched, re-related, re-observed,
+        # or recomputed here.
+        if data.requirement_enhancement_result is not None:
+            _write_json(
+                target_dir / "requirement_enhancement_result.json",
+                self._enhancement.render_json(data.requirement_enhancement_result),
+            )
+            (target_dir / "requirement_enhancement_report.md").write_text(
+                self._enhancement.render_report(data.requirement_enhancement_result),
+                encoding="utf-8",
+            )
+            (target_dir / "requirement_enhancement_metrics.md").write_text(
+                self._enhancement.render_metrics(data.requirement_enhancement_result),
+                encoding="utf-8",
+            )
+            names += [
+                "requirement_enhancement_result.json",
+                "requirement_enhancement_report.md",
+                "requirement_enhancement_metrics.md",
             ]
         return tuple(names)
 

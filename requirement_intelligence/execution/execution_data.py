@@ -93,6 +93,14 @@ class ExecutionData:
         ``quality_governance_summary.md`` — a pure projection; nothing is re-evaluated,
         re-assessed, re-decided, or recomputed. The recorded ``QualityDecision`` is the
         canonical release verdict; the package consumes it and never overrides it.
+    requirement_enhancement_result:
+        The complete ``RequirementEnhancementResult`` produced by the Requirement
+        Enhancement runtime, strictly downstream of Analysis and upstream of Grounding
+        (CAP-081C, ADR-0018 §D9). ``None`` when enhancement did not execute (a dry run,
+        or a surfaced-but-non-fatal enhancement failure). When present, the execution
+        package serialises it as-is into ``requirement_enhancement_result.json`` /
+        ``requirement_enhancement_report.md`` / ``requirement_enhancement_metrics.md`` —
+        a pure projection; nothing is re-enriched, re-related, re-observed, or recomputed.
     """
 
     selected: Any
@@ -114,6 +122,7 @@ class ExecutionData:
     cp1_result: Any | None = None
     grounding_result: Any | None = None
     quality_governance_result: Any | None = None
+    requirement_enhancement_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:

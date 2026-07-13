@@ -1,11 +1,11 @@
 # ADR-0018 — Requirement Intelligence Enhancement Framework
 
-- **Status:** Proposed
-- **Date:** 2026-07-13 (CAP-081A — Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine) · CAP-081B.1 (RequirementEnhancementResult Runtime Contract Freeze) 2026-07-14
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-081B implements the first deterministic engine — enrichment, relationship construction, observation generation, findings, metrics, summary — behind the frozen contracts (§D7), mirroring how CAP-080B implemented the first deterministic Quality Governance rule evaluator behind the CAP-080A freeze (ADR-0017 §D25). CAP-081B.1 freezes `RequirementEnhancementResult` as the permanent runtime contract (§D8), mirroring CAP-077E.1 (`GroundingResult`, ADR-0016 §D16) and CAP-080B.1.1 (`QualityAssessmentResult`, ADR-0017 §D27). Future CAP-081 milestones will wire the service into the live pipeline and add the Execution Package projection, mirroring CAP-080D.
+- **Status:** Accepted (CAP-081C wires the runtime into the live pipeline immediately after Analysis; architecture unchanged and frozen)
+- **Date:** 2026-07-13 (CAP-081A — Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine) · CAP-081B.1 (RequirementEnhancementResult Runtime Contract Freeze) · CAP-081C (Runtime Integration & Execution Package) 2026-07-14
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-081B implements the first deterministic engine — enrichment, relationship construction, observation generation, findings, metrics, summary — behind the frozen contracts (§D7), mirroring how CAP-080B implemented the first deterministic Quality Governance rule evaluator behind the CAP-080A freeze (ADR-0017 §D25). CAP-081B.1 freezes `RequirementEnhancementResult` as the permanent runtime contract (§D8), mirroring CAP-077E.1 (`GroundingResult`, ADR-0016 §D16) and CAP-080B.1.1 (`QualityAssessmentResult`, ADR-0017 §D27). CAP-081C wires the service into the live pipeline immediately after Analysis and adds the Execution Package projection (§D9), mirroring CAP-080D.
 - **Governing design:** `docs/proposals/requirement-enhancement-framework.md`
 - **Depends on:** ADR-0015 (Engineering Context Orchestration Model and Policy), the Requirement Analysis Service (`docs/architecture/requirement-analysis-service.md`) — Requirement Enhancement consumes their completed outputs, `EngineeringContext` and `AnalysisResult`.
-- **Runtime status:** **Implemented, runtime contract frozen, still unwired (CAP-081B.1).** `RequirementEnhancementService.enhance` is backed by `DeterministicRequirementEnhancementService`, which delegates to `DeterministicRequirementEnhancementEngine` — deterministic enrichment, relationship construction (the canonical `RelationshipGraph`), observation generation, findings, metrics, and summary, governed by `EnhancementRuleCatalog` (§D7). `RequirementEnhancementResult` is now the permanently frozen runtime contract (§D8): the sole enhancement aggregate, projection-only for any future serializer, and the golden regression boundary once one exists. The subsystem is still **not wired into the Requirement Intelligence execution pipeline** — nothing calls `enhance` at runtime — so runtime behaviour is byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0**.
+- **Runtime status:** **Active (CAP-081C).** `RequirementEnhancementService.enhance` is backed by `DeterministicRequirementEnhancementService`, which delegates to `DeterministicRequirementEnhancementEngine` — deterministic enrichment, relationship construction (the canonical `RelationshipGraph`), observation generation, findings, metrics, and summary, governed by `EnhancementRuleCatalog` (§D7). `RequirementEnhancementResult` is the permanently frozen runtime contract (§D8). The CLI now runs Requirement Enhancement immediately after Analysis and strictly upstream of Grounding (§D9); the Execution Package projects the result into three artifacts via `EnhancementSerializer`, referenced from the manifest by name only. The golden dataset advances to `1.3.0`. The Architecture Version remains **1.2.0** and no frozen contract changed.
 
 ## Problem
 
@@ -376,6 +376,110 @@ dependency graph runs strictly `EngineeringContext`/`AnalysisResult` →
 
 ---
 
+### D9 — Runtime Integration & Execution Package (CAP-081C)
+
+CAP-081C activates the subsystem in the live runtime **without changing any
+architecture**. Every decision below is an integration, not a redesign; the frozen
+contracts (`RequirementEnhancementService.enhance`, `RequirementEnhancementResult`,
+the governed policy and rule catalogue, §D8's serialization/explainability/boundary
+invariants) are untouched — this is the same activation CAP-080D performed for
+Quality Governance and CAP-077E/F performed for Grounding.
+
+- **Runtime activation & permanently frozen order.** Requirement Enhancement executes
+  immediately after Analysis, strictly upstream of Grounding (Recommendation 1):
+
+  ```
+  Engineering Context → Analysis → Requirement Enhancement → Grounding
+      → Validation → CP1 → Quality Governance → Execution Package
+  ```
+
+  The CLI (`run_requirement_analysis.py::run_requirement_enhancement_phase`) obtains
+  the single service **only** from `PlatformContext.create_requirement_enhancement_service()`
+  and calls `enhance(engineering_context, analysis_result)` — pure orchestration glue,
+  mirroring the grounding/validation/CP1/governance phases exactly. It consumes only
+  the two completed inputs and modifies neither the `EngineeringContext` nor the
+  `AnalysisResult`; Grounding continues to consume those same original objects
+  unchanged. No optional ordering, no configuration switch: enhancement runs whenever
+  a live (non-dry-run) analysis result exists, exactly as Grounding does.
+
+- **Execution Package integration (additive).** `ExecutionData` gains one optional
+  field, `requirement_enhancement_result`, transported exactly like `grounding_result`
+  / `cp1_result` / `quality_governance_result`. No behavioural change; a run that did
+  not reach enhancement (a dry run, or a surfaced-but-non-fatal failure) carries
+  `None` and is byte-identical to before.
+
+- **Serializer boundary (projection only, confirming §D8's forward-looking
+  invariant).** `enhancement/serialization/EnhancementSerializer` renders
+  `render_json()` / `render_report()` / `render_metrics()` — pure projections of a
+  `RequirementEnhancementResult`. It evaluates no rule, enriches nothing, detects no
+  relationship, creates no observation, computes no metric, recomputes no finding,
+  modifies no summary, and invokes no engine, policy, builder, or service. Everything
+  it renders already exists inside the result; grouping already-recorded rows by a
+  field they already carry (e.g. tallying relationship edges by their recorded type)
+  is presentation only, the same category of work `GroundingSerializer._recommendations`
+  already performs. A containment test forbids it from importing any governance-runtime
+  component, and forbids `RequirementEnhancementResult` from importing the Execution
+  Package — the exact invariant §D8 froze before this serializer existed.
+
+- **Execution Writer & manifest.** When `requirement_enhancement_result` is present,
+  the writer conditionally appends `requirement_enhancement_result.json`,
+  `requirement_enhancement_report.md`, and `requirement_enhancement_metrics.md` (the
+  existing conditional-append pattern; no new flow). Those three artifacts flow into
+  `manifest.generatedArtifacts` through the same checksum mechanism as every other
+  file — the manifest schema is unchanged (`manifestSchemaVersion` stays `1.0.0`).
+  Additive, CP1/Quality-Governance-pattern manifest keys
+  (`requirementEnhancementExecuted`, `requirementEnhancementReport`,
+  `requirementEnhancementMetrics`) reference the three artifacts by name only; when
+  enhancement did not run, no key is added. **Manifest purity preserved (ADR-0017
+  §D31, applied from the outset here per §D8):** these three keys are package
+  metadata only — a flag and two filenames — never the enhancement runtime state
+  itself. The canonical enhanced requirements, relationship graph, observations,
+  findings, metrics, and summary live exclusively in
+  `requirement_enhancement_result.json`; the manifest references that artifact, it
+  never duplicates its content. Unlike CAP-080D's original cut (later hardened in
+  CAP-080D.1), no runtime-state key was ever added here — the lesson was applied
+  from the start.
+
+- **Deterministic serialization & golden integration (Recommendation 5).** Identical
+  inputs produce an identical `RequirementEnhancementResult` excluding the established
+  `started_at`/`completed_at` provenance and the ids derived from the run's
+  `analysis_id`/`execution_id` (`result_id`, `EnhancedRequirementId`,
+  `RequirementObservationId`, and the finding id it composes) — exactly the same
+  provenance class as `QualityAssessmentId`/`QualityGovernanceResultId` (ADR-0017
+  §D5). `relationship_id` is a pure function of source/target/type only and so is
+  directly comparable across independent runs. The golden regression compares the
+  canonical `RequirementEnhancementResult` content and the JSON round-trip — never
+  Markdown formatting or provenance. The golden dataset advances to `1.3.0` to include
+  the three enhancement artifacts; the nine source artifacts and the golden response
+  are unchanged.
+
+- **Failure isolation (Recommendation 4/analogue).** Enhancement remains one
+  aggregate evaluation: it either produces a complete `RequirementEnhancementResult`
+  or raises. A failure after Analysis completed is surfaced by the CLI but is never
+  fatal and never corrupts or partially rewrites the already-completed upstream
+  results — the run still writes its package with `requirement_enhancement_result =
+  None`, and Grounding/Validation/CP1/Quality Governance proceed unaffected.
+
+- **Future extensibility preserved (Recommendation 6).** Nothing in this activation
+  — the CLI phase, `ExecutionData`, the serializer, the writer, or the manifest —
+  names `DeterministicRequirementEnhancementEngine` directly outside
+  `PlatformContext`. A future semantic, statistical, graph-based, or AI-assisted
+  engine replaces the deterministic implementation entirely behind
+  `PlatformContext.create_requirement_enhancement_service()`'s unchanged return type,
+  with no change required to the CLI, the Execution Package, the serializer, or any
+  downstream consumer.
+
+**Final certification (Recommendation 7).** Requirement Enhancement now follows the
+identical maturity model Grounding (ADR-0016) and Quality Governance (ADR-0017)
+established: architecture freeze (CAP-081A) → deterministic implementation (CAP-081B)
+→ runtime-contract freeze (CAP-081B.1) → runtime integration (CAP-081C). No
+architectural redesign occurred at any step; every frozen contract from CAP-081A
+onward remains intact; every runtime boundary (Requirement Enhancement ↛ Grounding/
+Validation/CP1/Quality Governance/Execution Package; Execution Package ↛ the
+enhancement engine) stays one-way.
+
+---
+
 ### Recommendation 1 — Canonical Enhanced Requirement
 
 A single immutable `EnhancedRequirement` model is introduced. All future enrichment
@@ -462,16 +566,20 @@ These future capabilities must plug into the frozen contracts — extending
 
 ## Future evolution
 
-- **Runtime activation** — a later, deliberate decision to wire `enhance` into the
-  Requirement Intelligence execution pipeline between Analysis and Grounding (D2).
-- The execution-package projection (Recommendation 5, §D8's serialization
-  invariant) and its golden re-baseline, mirroring ADR-0016 §D16 and ADR-0017
-  §D30/§D31 — the boundary is frozen in advance by §D8, so the serializer that
-  eventually lands has no architecture left to design, only to implement.
 - **Closing the reserved parent-child gap (D7)** — true structural parent-child
   detection once a richer requirement schema exists, without changing the frozen
   `enhance` signature.
-- The non-normative extensions of Recommendation 7.
+- **Closing the recommendations gap (D7/D8)** — a structured recommendations
+  representation on `RequirementEnhancementResult`, should a future milestone need
+  one, added additively without changing any existing field.
+- The non-normative extensions of Recommendation 7 (semantic relationship detection,
+  AI-assisted enrichment, historical requirement intelligence, impact analysis,
+  change propagation, architectural dependency analysis, compliance mapping) — each
+  replaces the deterministic engine behind the unchanged
+  `RequirementEnhancementService.enhance` contract (§D9, Recommendation 6).
+- Downstream consumption of `RequirementEnhancementResult` by Grounding, Quality
+  Governance, or a future capability — a later, deliberate decision; nothing
+  downstream consumes it today (§D9 wires only the CLI/Execution Package).
 - Promotion of the shared version/identity value-objects to `shared/` (the debt
   ADR-0015 §C, ADR-0016, and ADR-0017 already name).
 
@@ -481,7 +589,6 @@ These future capabilities must plug into the frozen contracts — extending
   observations, enhancement metadata.
 - **Does not own:** Engineering Context Orchestration, Analysis, Grounding,
   Validation, CP1, Quality Governance, Execution Package, Reporting, Serialization.
-- **Runtime position (future, not yet wired):** `Engineering Context → Analysis → RequirementEnhancementService.enhance → RequirementEnhancementResult → Grounding → Validation → CP1 → Quality Governance → Execution Package`, consuming the two completed inputs; fully implemented, with a permanently frozen runtime contract, but dormant through CAP-081B.1.
-- **Governance:** registered as CAP-081 in the Platform Capability Matrix at
-  implementation time; the golden baseline is re-based then. This ADR is **Proposed**
-  until that milestone accepts it.
+- **Runtime position (active, CAP-081C):** `Engineering Context → Analysis → RequirementEnhancementService.enhance → RequirementEnhancementResult → Grounding → Validation → CP1 → Quality Governance → Execution Package`, consuming the two completed inputs and modifying neither; fully implemented, runtime contract frozen, and now active in the live pipeline.
+- **Governance:** registered as CAP-081 in the Platform Capability Matrix; the golden
+  baseline is re-based to `1.3.0` (CAP-081C). This ADR is **Accepted**.

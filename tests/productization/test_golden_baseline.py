@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -71,6 +72,13 @@ _QUALITY_GOVERNANCE_ARTIFACTS = frozenset(
         "quality_governance_summary.md",
     }
 )
+_REQUIREMENT_ENHANCEMENT_ARTIFACTS = frozenset(
+    {
+        "requirement_enhancement_result.json",
+        "requirement_enhancement_report.md",
+        "requirement_enhancement_metrics.md",
+    }
+)
 _ALL_ARTIFACTS = (
     _CORE_ARTIFACTS
     | _RESULT_ARTIFACTS
@@ -78,6 +86,7 @@ _ALL_ARTIFACTS = (
     | _CP1_ARTIFACTS
     | _GROUNDING_ARTIFACTS
     | _QUALITY_GOVERNANCE_ARTIFACTS
+    | _REQUIREMENT_ENHANCEMENT_ARTIFACTS
     | {"manifest.json"}
 )
 
@@ -273,9 +282,7 @@ class TestPhase3PipelineExecution:
         )
 
     @pytest.mark.productization
-    def test_quality_governance_result_exists(
-        self, golden_pipeline_result: PipelineResult
-    ) -> None:
+    def test_quality_governance_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
         """Quality Governance ran after CP1 (CAP-080D) and produced a QualityGovernanceResult."""
         assert golden_pipeline_result.quality_governance_result is not None, (
             "QualityGovernanceResult is None — governance did not run despite CP1 completing."
@@ -379,12 +386,35 @@ class TestPhase4OutputVerification:
         """quality_governance_result.json is a verbatim, round-trippable projection."""
         from requirement_intelligence.quality_governance import QualityGovernanceResult
 
-        on_disk = _load_json(
-            golden_pipeline_result.output_dir / "quality_governance_result.json"
-        )
+        on_disk = _load_json(golden_pipeline_result.output_dir / "quality_governance_result.json")
         assert (
             QualityGovernanceResult.model_validate(on_disk)
             == golden_pipeline_result.quality_governance_result
+        )
+
+    @pytest.mark.productization
+    def test_requirement_enhancement_artifacts_present(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Requirement Enhancement ran (CAP-081C), so all three artifacts are written."""
+        for name in _REQUIREMENT_ENHANCEMENT_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Requirement Enhancement artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Requirement Enhancement artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_requirement_enhancement_result_json_round_trips(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """requirement_enhancement_result.json is a verbatim, round-trippable projection."""
+        from requirement_intelligence.enhancement import RequirementEnhancementResult
+
+        on_disk = _load_json(
+            golden_pipeline_result.output_dir / "requirement_enhancement_result.json"
+        )
+        assert (
+            RequirementEnhancementResult.model_validate(on_disk)
+            == golden_pipeline_result.requirement_enhancement_result
         )
 
     @pytest.mark.productization
@@ -594,11 +624,43 @@ class TestPhase4OutputVerification:
         assert "qualityGovernanceScore" not in manifest
         assert "qualityGovernanceDecisionVersion" not in manifest
 
-        on_disk = _load_json(
-            golden_pipeline_result.output_dir / "quality_governance_result.json"
-        )
+        on_disk = _load_json(golden_pipeline_result.output_dir / "quality_governance_result.json")
         decision = governance.assessment.decision
         assert on_disk["assessment"]["decision"] == str(getattr(decision, "value", decision))
+
+    @pytest.mark.productization
+    def test_manifest_references_requirement_enhancement_artifacts_only(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json indexes the enhancement artifacts; it never duplicates runtime state.
+
+        Manifest purity (ADR-0017 §D31, applied here from the outset per ADR-0018
+        §D8): the manifest owns package metadata and the artifact inventory only. The
+        canonical enhanced requirements, relationship graph, observations, findings,
+        metrics, and summary are the sole runtime state and live exclusively on
+        ``RequirementEnhancementResult`` / the artifact
+        ``requirement_enhancement_result.json`` — never re-surfaced as manifest keys.
+        """
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        result = golden_pipeline_result.requirement_enhancement_result
+        assert manifest.get("requirementEnhancementExecuted") is True
+        assert manifest.get("requirementEnhancementReport") == "requirement_enhancement_report.md"
+        assert manifest.get("requirementEnhancementMetrics") == "requirement_enhancement_metrics.md"
+        for forbidden_key in (
+            "requirementEnhancementCoverage",
+            "requirementEnhancementSummary",
+            "requirementEnhancementFindings",
+            "requirementEnhancementRelationshipCount",
+            "requirementEnhancementObservationCount",
+        ):
+            assert forbidden_key not in manifest
+
+        on_disk = _load_json(
+            golden_pipeline_result.output_dir / "requirement_enhancement_result.json"
+        )
+        assert on_disk["summary"]["totalRequirementsEnhanced"] == (
+            result.summary.total_requirements_enhanced
+        )
 
     @pytest.mark.productization
     def test_manifest_registers_the_engineering_context(
@@ -966,6 +1028,148 @@ class TestPhase5Determinism:
         assert "qualityGovernanceDecision" not in m2
 
     @pytest.mark.productization
+    def test_determinism_requirement_enhancement_result_content(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same enhanced requirements, relationships, and findings.
+
+        The determinism boundary is the canonical ``RequirementEnhancementResult``
+        content, never Markdown formatting or provenance timestamps — exactly
+        mirroring Grounding and Quality Governance (ADR-0018 §D8/§D9).
+
+        ``EnhancedRequirementId`` / ``RequirementObservationId`` / the finding id /
+        ``result_id`` are each a pure function of the run's ``enhancement_id`` (in
+        turn minted from ``analysis_id``/``execution_id``) — run-scoped provenance,
+        exactly like ``QualityAssessmentId`` / ``QualityGovernanceResultId`` (ADR-0017
+        §D5). Two independent runs mint fresh execution ids even over byte-identical
+        content, so this test compares stable *content* (requirement ids, the
+        content-only ``relationship_id`` — a pure function of source/target/type,
+        Recommendation 5 — and finding category/severity/message), never those
+        run-scoped ids.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        r1 = golden_pipeline_result.requirement_enhancement_result
+        r2 = run2.requirement_enhancement_result
+        assert r1.summary.total_requirements_enhanced == r2.summary.total_requirements_enhanced
+        assert r1.summary.total_relationships == r2.summary.total_relationships
+        assert r1.summary.total_observations == r2.summary.total_observations
+        assert r1.summary.total_findings == r2.summary.total_findings
+        assert r1.metrics == r2.metrics
+        assert sorted(str(req.requirement_id) for req in r1.enhanced_requirements) == sorted(
+            str(req.requirement_id) for req in r2.enhanced_requirements
+        )
+        # relationship_id is content-derived (source + target + type only), never
+        # enhancement_id-derived, so it is directly comparable across runs.
+        assert sorted(edge.relationship_id for edge in r1.relationship_graph.relationships) == (
+            sorted(edge.relationship_id for edge in r2.relationship_graph.relationships)
+        )
+
+        def _finding_content(finding: Any) -> tuple[str, str, str]:
+            return (str(finding.category), str(finding.severity), finding.message)
+
+        assert sorted(_finding_content(f) for f in r1.findings) == sorted(
+            _finding_content(f) for f in r2.findings
+        )
+
+    @pytest.mark.productization
+    def test_determinism_requirement_enhancement_serialization(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Serializer output is deterministic on the enhancement content, excluding provenance.
+
+        The runtime mints run-specific provenance — analysis/execution ids, the
+        derived result id, consumed-input ids, and the started/completed timestamps —
+        exactly as Grounding and Quality Governance do. Because ``EnhancedRequirementId``
+        / ``RequirementObservationId`` / the finding id are each a pure function of the
+        run's ``enhancement_id`` (in turn minted from ``analysis_id``/``execution_id``),
+        they too are run-scoped provenance and are stripped alongside the top-level ids
+        before comparing, along with the governed "traceability" attribute (which
+        embeds ``analysis_id:execution_id`` verbatim by design). ``relationshipId`` is
+        content-derived (source + target + type only, Recommendation 5) and is left in
+        place. The determinism boundary is the enhancement content, not that provenance.
+        """
+        from requirement_intelligence.enhancement.serialization import EnhancementSerializer
+
+        run2 = _run_golden_pipeline(tmp_path)
+        serializer = EnhancementSerializer()
+        r1 = golden_pipeline_result.requirement_enhancement_result
+        r2 = run2.requirement_enhancement_result
+
+        def _strip_provenance(dumped: dict) -> dict:
+            dumped = dict(dumped)
+            for key in ("resultId", "analysisId", "executionId", "startedAt", "completedAt"):
+                dumped.pop(key, None)
+            dumped.pop("consumedInputs", None)
+            if "relationshipGraph" in dumped:
+                graph = dict(dumped["relationshipGraph"])
+                graph.pop("graphId", None)
+                dumped["relationshipGraph"] = graph
+            if "enhancedRequirements" in dumped:
+                dumped["enhancedRequirements"] = [
+                    {
+                        k: (
+                            # The governed "traceability" attribute embeds
+                            # analysis_id:execution_id verbatim in its value — run
+                            # provenance by design (ER-ENR-003) — so it is excluded
+                            # too; "provenance" (domain:position) is stable content.
+                            [a for a in v if a.get("key") != "traceability"]
+                            if k == "attributes"
+                            else v
+                        )
+                        for k, v in item.items()
+                        if k not in ("enhancedRequirementId", "observationIds")
+                    }
+                    for item in dumped["enhancedRequirements"]
+                ]
+            if "observations" in dumped:
+                dumped["observations"] = [
+                    {k: v for k, v in item.items() if k != "observationId"}
+                    for item in dumped["observations"]
+                ]
+            if "findings" in dumped:
+                dumped["findings"] = [
+                    {k: v for k, v in item.items() if k not in ("findingId", "observationId")}
+                    for item in dumped["findings"]
+                ]
+            return dumped
+
+        assert _strip_provenance(serializer.render_json(r1)) == _strip_provenance(
+            serializer.render_json(r2)
+        )
+
+        # Each projection is a pure function of its input — same result, same bytes.
+        assert serializer.render_report(r1) == serializer.render_report(r1)
+        assert serializer.render_metrics(r1) == serializer.render_metrics(r1)
+        assert serializer.render_json(r1) == serializer.render_json(r1)
+
+    @pytest.mark.productization
+    def test_determinism_manifest_enhancement_keys_stay_metadata_only(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """manifest enhancement keys are identical package metadata across two runs.
+
+        Content determinism itself is proven at the runtime-contract boundary by
+        ``test_determinism_requirement_enhancement_result_content``: the golden
+        regression compares ``RequirementEnhancementResult`` content, never the
+        manifest. This test only confirms the manifest's package-metadata keys are
+        stable and that no runtime-state key has leaked back into the manifest.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1.get("requirementEnhancementExecuted") == m2.get("requirementEnhancementExecuted")
+        assert m1.get("requirementEnhancementReport") == m2.get("requirementEnhancementReport")
+        assert m1.get("requirementEnhancementMetrics") == m2.get("requirementEnhancementMetrics")
+        assert "requirementEnhancementCoverage" not in m1
+        assert "requirementEnhancementCoverage" not in m2
+
+    @pytest.mark.productization
     def test_determinism_normalization_outcome(
         self,
         golden_pipeline_result: PipelineResult,
@@ -1094,7 +1298,7 @@ class TestPhase6ProductizationAssertions:
     @pytest.mark.productization
     def test_dataset_version(self) -> None:
         """The golden dataset declares a version."""
-        assert GOLDEN_DATASET_VERSION == "1.2.0"
+        assert GOLDEN_DATASET_VERSION == "1.3.0"
 
     @pytest.mark.productization
     def test_dataset_covers_all_categories(self) -> None:

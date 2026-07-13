@@ -1,8 +1,8 @@
 # Requirement Intelligence Enhancement Framework — Design Proposal
 
-- **Status:** Proposed (CAP-081A froze the architecture; CAP-081B implemented the first deterministic engine behind it; CAP-081B.1 freezes `RequirementEnhancementResult` as the permanent runtime contract — still no runtime wiring or execution artifact)
+- **Status:** Accepted (CAP-081A froze the architecture; CAP-081B implemented the first deterministic engine behind it; CAP-081B.1 froze `RequirementEnhancementResult` as the permanent runtime contract; CAP-081C wires the runtime into the live pipeline immediately after Analysis)
 - **Capability:** CAP-081 — Requirement Intelligence Enhancement
-- **Milestones covered:** CAP-081A (Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine — §8a) · CAP-081B.1 (RequirementEnhancementResult Runtime Contract Freeze — §8b)
+- **Milestones covered:** CAP-081A (Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine — §8a) · CAP-081B.1 (RequirementEnhancementResult Runtime Contract Freeze — §8b) · CAP-081C (Runtime Integration & Execution Package — §8c)
 - **Governed by:** ADR-0018
 - **Depends on:** ADR-0015 (Engineering Context Orchestration), the Requirement Analysis Service.
 
@@ -117,7 +117,7 @@ perform independent analysis.
 default at `EnhancementPolicyVersion` 1.0.0. Tuning any rule or switch is a versioned
 policy change, never an engine change (Recommendation 4).
 
-## 8. Runtime boundary (dormant, CAP-081A)
+## 8. Runtime boundary (frozen at CAP-081A; active since CAP-081C)
 
 `RequirementEnhancementService` exposes exactly one method:
 
@@ -132,9 +132,9 @@ def enhance(
 
 It depends only on the two frozen contracts it consumes — never an *implementation*
 class (`EngineeringContextOrchestrator`, `EngineeringContextBuilder`,
-`RequirementAnalysisService`). No runtime path calls `enhance`; runtime behaviour is
-byte-identical. CAP-081B (§8a) implements the method; the signature above is
-unchanged.
+`RequirementAnalysisService`). Abstract at CAP-081A; CAP-081B (§8a) implemented the
+method; CAP-081C (§8c) wires the CLI to call it in the live pipeline — the signature
+above is unchanged throughout.
 
 ## 8a. Deterministic Requirement Enhancement Engine (CAP-081B)
 
@@ -212,6 +212,42 @@ behaviour change, mirroring CAP-077E.1 (`GroundingResult`) and CAP-080B.1.1
 
 See ADR-0018 §D8 for the complete rationale.
 
+## 8c. Runtime integration & Execution Package (CAP-081C)
+
+CAP-081B.1 froze `RequirementEnhancementResult`. CAP-081C wires the subsystem into
+the live pipeline **without any architectural change** (ADR-0018 §D9). The frozen
+order becomes permanent:
+
+```
+Engineering Context → Analysis → Requirement Enhancement → Grounding
+    → Validation → CP1 → Quality Governance → Execution Package
+```
+
+- **CLI activation** — `run_requirement_enhancement_phase` obtains the single
+  service **only** from `PlatformContext.create_requirement_enhancement_service()`
+  and calls `enhance(engineering_context, analysis_result)` immediately after
+  Analysis. Pure orchestration glue, mirroring the grounding/validation/CP1/
+  governance phases; it modifies neither input, and Grounding continues to consume
+  the same original `EngineeringContext`/`AnalysisResult` unchanged.
+- **Execution Package integration (additive)** — `ExecutionData` gains one optional
+  field, `requirement_enhancement_result`, transported like `grounding_result` /
+  `cp1_result` / `quality_governance_result`.
+- **`EnhancementSerializer`** (`enhancement/serialization/`) renders `render_json()`
+  / `render_report()` / `render_metrics()` as pure projections — confirming, not
+  redesigning, the §D8 invariant frozen before it existed.
+- **Writer & manifest** — the writer conditionally appends
+  `requirement_enhancement_result.json`, `requirement_enhancement_report.md`,
+  `requirement_enhancement_metrics.md`; they enter `manifest.generatedArtifacts` via
+  the existing checksum mechanism (schema unchanged). Additive manifest keys
+  (`requirementEnhancementExecuted`, `requirementEnhancementReport`,
+  `requirementEnhancementMetrics`) reference the three artifacts by name only —
+  manifest purity (ADR-0017 §D31) is honoured from the first cut, unlike CAP-080D's
+  original manifest key that CAP-080D.1 later had to remove.
+- **Determinism & golden** — identical inputs ⇒ identical `RequirementEnhancementResult`
+  excluding provenance (`started_at`/`completed_at`, and the ids derived from
+  `analysis_id`/`execution_id`); golden regression compares canonical content and the
+  JSON round-trip, never Markdown or timestamps. Golden dataset advanced to `1.3.0`.
+
 ## 9. PlatformContext
 
 `PlatformContext` exposes three composition-root methods, construction only:
@@ -224,23 +260,23 @@ Mirroring `create_quality_policy()` / `create_quality_governance_service()`
 (ADR-0017), these are the **only** sanctioned points outside the `enhancement`
 package that may construct its objects, enforced by a containment test.
 
-## 10. Execution package (future)
+## 10. Execution package
 
-Not introduced in CAP-081A. When runtime activation lands, every enhancement
-execution artifact will be a **pure projection** of `RequirementEnhancementResult`,
-reproducible from it alone, computing nothing — the same serialization invariant
-ADR-0016 §D16 established for Grounding and ADR-0017 §D30/§D31 hardened for Quality
-Governance's manifest boundary. The manifest will reference the artifacts by name
-only; it will never duplicate `RequirementEnhancementResult`'s content (Recommendation
-5, applied from the outset rather than retrofitted).
+Introduced in CAP-081C (§8c). Every enhancement execution artifact is a **pure
+projection** of `RequirementEnhancementResult`, reproducible from it alone, computing
+nothing — the same serialization invariant ADR-0016 §D16 established for Grounding
+and ADR-0017 §D30/§D31 hardened for Quality Governance's manifest boundary. The
+manifest references the artifacts by name only; it never duplicates
+`RequirementEnhancementResult`'s content (Recommendation 5, applied from the outset
+rather than retrofitted).
 
 ## 11. Implementation roadmap (non-normative)
 
 1. ~~Deterministic enrichment engine (attributes only, no AI).~~ **Done (CAP-081B).**
 2. ~~Deterministic relationship-detection engine (structural/textual matching).~~ **Done (CAP-081B).**
 3. ~~Deterministic observation-generation engine (completeness/consistency signals).~~ **Done (CAP-081B).**
-4. Runtime activation — wire `enhance` into the pipeline between Analysis and
-   Grounding, add the Execution Package projection, golden re-baseline.
+4. ~~Runtime activation — wire `enhance` into the pipeline between Analysis and
+   Grounding, add the Execution Package projection, golden re-baseline.~~ **Done (CAP-081C).**
 5. Recommendation layer, derived strictly from recorded observations
    (Recommendation 3).
 6. The Recommendation 7 extension points: semantic relationship detection,

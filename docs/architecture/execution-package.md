@@ -26,36 +26,49 @@ Execution Package
         ▼
    manifest.json          ← root index: checksums, versions, cross-references
         │
-        ├── consolidated_artifact.json   (the primary Consolidation group)
-        ├── engineering_context.json     (the complete reasoning context)
-        ├── prompt.txt                   (the exact prompt submitted)
-        ├── llm_request.json             (the provider-agnostic request)
-        ├── analysis_result.json         (the raw, un-validated response)
-        ├── raw_llm_response.json        (the raw provider response)
-        ├── validation_result.json       (the validation verdict)   [conditional]
-        ├── validation_report.md         (human-readable validation) [conditional]
-        ├── cp1_report.md                (engineering-readiness)     [conditional]
-        ├── grounding_result.json        (grounding runtime contract) [conditional]
-        ├── grounding_report.md          (grounding projection)       [conditional]
-        ├── grounding_metrics.md         (grounding metrics projection)[conditional]
-        ├── execution_summary.md         (human-readable run summary)
-        ├── baseline_metrics.md          (engineering + AI metrics)
-        └── review.md                    (qualitative review scaffold)
+        ├── consolidated_artifact.json              (the primary Consolidation group)
+        ├── engineering_context.json                (the complete reasoning context)
+        ├── prompt.txt                               (the exact prompt submitted)
+        ├── llm_request.json                         (the provider-agnostic request)
+        ├── analysis_result.json                     (the raw, un-validated response)
+        ├── raw_llm_response.json                    (the raw provider response)
+        ├── requirement_enhancement_result.json      (enhancement runtime contract) [conditional]
+        ├── requirement_enhancement_report.md        (enhancement projection)       [conditional]
+        ├── requirement_enhancement_metrics.md       (enhancement metrics projection)[conditional]
+        ├── grounding_result.json                    (grounding runtime contract)   [conditional]
+        ├── grounding_report.md                      (grounding projection)         [conditional]
+        ├── grounding_metrics.md                      (grounding metrics projection) [conditional]
+        ├── validation_result.json                   (the validation verdict)       [conditional]
+        ├── validation_report.md                     (human-readable validation)    [conditional]
+        ├── cp1_report.md                             (engineering-readiness)        [conditional]
+        ├── quality_governance_result.json           (governance runtime contract)  [conditional]
+        ├── quality_governance_report.md              (governance projection)        [conditional]
+        ├── quality_governance_summary.md             (governance headline)          [conditional]
+        ├── execution_summary.md                     (human-readable run summary)
+        ├── baseline_metrics.md                      (engineering + AI metrics)
+        └── review.md                                (qualitative review scaffold)
 ```
 
 Every artifact the manifest lists appears in `generatedArtifacts` with its byte count and
 SHA-256, so the package is self-verifying: the golden baseline re-hashes each file and
 checks it against the manifest.
 
-**Grounding artifacts are pure projections (CAP-077F.1).** `grounding_result.json`,
-`grounding_report.md`, and `grounding_metrics.md` are written only when a `GroundingResult`
-was produced for the run, via the same conditional append mechanism as validation/CP1. They
-are **serialization projections** of the `GroundingResult` (the frozen runtime contract, ADR-0016
-§D16) — reproducible from it alone. The Execution Package computes nothing for them: it never
-matches, classifies, scores confidence, or computes metrics/summaries/findings; the
-`GroundingSerializer` renders what the runtime already computed. Grounding is not yet wired into
-the CLI run, so these artifacts are absent from a default run today; the serialization boundary
-is what CAP-077F.1 established.
+**Grounding, Requirement Enhancement, and Quality Governance artifacts are pure
+projections.** `grounding_result.json`/`grounding_report.md`/`grounding_metrics.md`
+(CAP-077F.1), `requirement_enhancement_result.json`/`requirement_enhancement_report.md`/
+`requirement_enhancement_metrics.md` (CAP-081C), and
+`quality_governance_result.json`/`quality_governance_report.md`/`quality_governance_summary.md`
+(CAP-080D) are each written only when the corresponding runtime result was produced, via
+the same conditional-append mechanism as validation/CP1. Each is a **serialization
+projection** of its own frozen runtime contract (`GroundingResult` — ADR-0016 §D16;
+`RequirementEnhancementResult` — ADR-0018 §D8; `QualityGovernanceResult` — ADR-0017 §D3) —
+reproducible from it alone. The Execution Package computes nothing for any of them: no
+matching, classification, enrichment, relationship detection, observation generation,
+rule evaluation, or decision — the respective serializer renders only what its runtime
+already computed. All three are wired into the live CLI run today, at their frozen
+pipeline positions: Requirement Enhancement immediately after Analysis (upstream of
+Grounding), Grounding after that, and Quality Governance at the terminal end of the
+pipeline (after CP1).
 
 ---
 
@@ -65,7 +78,8 @@ Artifacts fall into three groups by when they are written:
 
 - **Core** — always written (including dry runs): the inputs to reasoning.
 - **Result** — written on any non-dry run: the reasoning output and its reports.
-- **Conditional** — written only when the corresponding stage ran: validation and CP1.
+- **Conditional** — written only when the corresponding stage ran: Requirement
+  Enhancement, Grounding, Validation, CP1, and Quality Governance.
 
 | Artifact | Group | Written when | Producer (builder) | Serializes |
 |---|---|---|---|---|
@@ -79,12 +93,18 @@ Artifacts fall into three groups by when they are written:
 | `execution_summary.md` | Result | non-dry run | `ExecutionSummaryBuilder` | human-readable run summary |
 | `baseline_metrics.md` | Result | non-dry run | `BaselineMetricsBuilder` | engineering + AI metrics |
 | `review.md` | Result | non-dry run | `ReviewBuilder` | qualitative review scaffold |
-| `validation_result.json` | Conditional | validation ran | `ExecutionWriter` | the `ValidationResult` |
-| `validation_report.md` | Conditional | validation ran | `ValidationReportBuilder` | human-readable validation report |
-| `cp1_report.md` | Conditional | CP1 ran | `CP1ReportBuilder` | the `CP1Result` |
+| `requirement_enhancement_result.json` | Conditional | enhancement ran | `EnhancementSerializer` | the `RequirementEnhancementResult` (verbatim) |
+| `requirement_enhancement_report.md` | Conditional | enhancement ran | `EnhancementSerializer` | human-readable enhancement projection |
+| `requirement_enhancement_metrics.md` | Conditional | enhancement ran | `EnhancementSerializer` | enhancement metrics projection |
 | `grounding_result.json` | Conditional | grounding ran | `GroundingSerializer` | the `GroundingResult` (verbatim) |
 | `grounding_report.md` | Conditional | grounding ran | `GroundingSerializer` | human-readable grounding projection |
 | `grounding_metrics.md` | Conditional | grounding ran | `GroundingSerializer` | grounding metrics projection |
+| `validation_result.json` | Conditional | validation ran | `ExecutionWriter` | the `ValidationResult` |
+| `validation_report.md` | Conditional | validation ran | `ValidationReportBuilder` | human-readable validation report |
+| `cp1_report.md` | Conditional | CP1 ran | `CP1ReportBuilder` | the `CP1Result` |
+| `quality_governance_result.json` | Conditional | governance ran | `QualityGovernanceSerializer` | the `QualityGovernanceResult` (verbatim) |
+| `quality_governance_report.md` | Conditional | governance ran | `QualityGovernanceSerializer` | human-readable governance projection |
+| `quality_governance_summary.md` | Conditional | governance ran | `QualityGovernanceSerializer` | governance headline projection |
 
 ---
 
@@ -173,6 +193,28 @@ Artifacts fall into three groups by when they are written:
 - **Lifetime** — one run.
 - **Relationship** — the un-normalized source behind `analysis_result.json`.
 
+### `requirement_enhancement_result.json`, `requirement_enhancement_report.md`, `requirement_enhancement_metrics.md`
+
+- **Purpose** — persist the deterministic enhancement of the run's generated
+  requirements: `requirement_enhancement_result.json` is the
+  `RequirementEnhancementResult` verbatim (the frozen runtime contract, ADR-0018
+  §D8); `requirement_enhancement_report.md` and `requirement_enhancement_metrics.md`
+  are human-readable projections of it (enriched requirements, the relationship
+  graph, observations, and findings).
+- **Producer** — `EnhancementSerializer` (in `enhancement/serialization/`), invoked
+  by `ExecutionWriter`. **Written only when a `RequirementEnhancementResult` was
+  produced** — i.e. a live (non-dry-run) analysis reached the enhancement phase.
+- **Consumer** — auditors, humans, the manifest (`generatedArtifacts`,
+  `requirementEnhancementExecuted`/`Report`/`Metrics`).
+- **Lifetime** — one enhanced run.
+- **Relationship** — **pure projections** of the `RequirementEnhancementResult`
+  (ADR-0018 §D8/§D9), reproducible from it alone. The Execution Package computes
+  nothing here — it never enriches, detects a relationship, creates an observation,
+  or computes a metric/summary/finding; the runtime already did. Requirement
+  Enhancement runs immediately after Analysis and strictly upstream of Grounding
+  (`Engineering Context → Analysis → Requirement Enhancement → Grounding → ...`), so
+  it consumes only `EngineeringContext` + `AnalysisResult` and modifies neither.
+
 ### `validation_result.json`
 
 - **Purpose** — the serialized `ValidationResult`: overall verdict plus every issue found
@@ -200,8 +242,29 @@ Artifacts fall into three groups by when they are written:
   (i.e. the validation gate opened).
 - **Consumer** — humans and the manifest (`cp1Verdict`, `cp1Report`).
 - **Lifetime** — one validated run whose gate opened.
-- **Relationship** — the terminal judgement of the pipeline; also summarized in
-  `execution_summary.md` under *Engineering Readiness*.
+- **Relationship** — also summarized in `execution_summary.md` under *Engineering
+  Readiness*. No longer the terminal judgement of the pipeline — Quality Governance
+  runs after it (CAP-080D).
+
+### `quality_governance_result.json`, `quality_governance_report.md`, `quality_governance_summary.md`
+
+- **Purpose** — persist the release decision for the run: `quality_governance_result.json`
+  is the `QualityGovernanceResult` verbatim (the frozen runtime contract, ADR-0017 §D3);
+  `quality_governance_report.md` and `quality_governance_summary.md` are human-readable
+  projections of it.
+- **Producer** — `QualityGovernanceSerializer` (in `quality_governance/serialization/`),
+  invoked by `ExecutionWriter`. **Written only when a `QualityGovernanceResult` was
+  produced** — i.e. `GroundingResult` + `ValidationResult` + `CP1Result` all completed
+  (CAP-080D).
+- **Consumer** — humans, release tooling, the manifest (`generatedArtifacts`,
+  `qualityGovernanceExecuted`/`Report`/`Summary`).
+- **Lifetime** — one governed run.
+- **Relationship** — **pure projections** of the `QualityGovernanceResult` (ADR-0017
+  §D30), reproducible from it alone. The Execution Package computes nothing here — it
+  never evaluates a rule, assesses, or decides; the runtime already did. Quality
+  Governance is the **terminal release authority**, running at the permanently frozen
+  end of the pipeline, after CP1. The manifest references these artifacts by name
+  only — it never duplicates the `QualityDecision` itself (ADR-0017 §D31).
 
 ### `grounding_result.json`, `grounding_report.md`, `grounding_metrics.md`
 
@@ -209,14 +272,14 @@ Artifacts fall into three groups by when they are written:
   `GroundingResult` verbatim (the frozen runtime contract); `grounding_report.md` and
   `grounding_metrics.md` are human-readable projections of it.
 - **Producer** — `GroundingSerializer` (in `grounding/serialization/`), invoked by
-  `ExecutionWriter`. **Written only when a `GroundingResult` was produced.**
+  `ExecutionWriter`. **Written only when a `GroundingResult` was produced** — i.e.
+  a live (non-dry-run) analysis reached the grounding phase (CAP-077F.2).
 - **Consumer** — auditors, humans, downstream phases, the manifest (`generatedArtifacts`).
 - **Lifetime** — one grounded run.
 - **Relationship** — **pure projections** of the `GroundingResult` (ADR-0016 §D16),
   reproducible from it alone. The Execution Package computes nothing here — it never matches,
   classifies, scores confidence, or computes metrics/summaries/findings; the runtime already
-  did. Grounding is not yet wired into the CLI run, so these are absent from a default run
-  today (`Runtime → GroundingResult → Execution Package → files` is one-way).
+  did (`Runtime → GroundingResult → Execution Package → files` is one-way).
 
 ### `execution_summary.md`, `baseline_metrics.md`, `review.md`
 
@@ -268,10 +331,19 @@ Gemini                      ← Requirement Analysis Service
 AnalysisResult              ← raw, un-validated response + provenance
         │
         ▼
+Requirement Enhancement     → RequirementEnhancementResult (enrichment, relationships,
+        │                     observations, findings — CAP-081C)
+        ▼
+Grounding                    → GroundingResult (evidence-support verdict — CAP-077F.2)
+        │
+        ▼
 Validation                  → ValidationResult (verdict)
         │
         ▼
 CP1                         → CP1Result (readiness verdict)
+        │
+        ▼
+Quality Governance          → QualityGovernanceResult (release decision — CAP-080D)
         │
         ▼
 Execution Package           ← ExecutionWriter serializes every model + manifest
@@ -289,8 +361,12 @@ the package — this section only names where):
 | EngineeringContext evidence counts | `engineering_context.json → evidenceCounts` (functional/security/quality/total) |
 | Prompt version | `manifest.json → promptVersion`; `execution_summary.md` |
 | Policy version | `engineering_context.json → orchestration.policyVersion` |
+| Requirement Enhancement ran | `manifest.json → requirementEnhancementExecuted` / `requirementEnhancementReport` / `requirementEnhancementMetrics` |
+| Enhancement content (enriched requirements, relationships, observations, findings) | `requirement_enhancement_result.json` only — never the manifest (ADR-0018 §D8) |
+| Grounding score / verdict | `grounding_report.md`; never the manifest — read `grounding_result.json` |
 | Validation profile | `manifest.json → commandLineArguments.validation_profile` |
 | CP1 version | `cp1_report.md`; `manifest.json → cp1Verdict` / `cp1Report` |
+| Quality Governance decision | `manifest.json → qualityGovernanceExecuted` / `Report` / `Summary` (never the decision itself — read `quality_governance_result.json`, ADR-0017 §D31) |
 
 > **Note on `execution_summary.md`.** The execution summary is generated by
 > `ExecutionSummaryBuilder`, whose output is part of the byte-identical execution-artifact

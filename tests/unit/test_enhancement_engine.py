@@ -903,11 +903,18 @@ class TestPlatformContextIntegration:
         # The default catalogue's duplicate-detection rule is active by default.
         assert len(result.relationship_graph.relationships) == 1
 
-    def test_runtime_remains_unwired_from_the_cli(self) -> None:
+    def test_cli_obtains_the_service_only_from_platform_context(self) -> None:
+        """CAP-081C wires the CLI to the service — but only via PlatformContext.
+
+        The CLI's ``run_requirement_enhancement_phase`` is pure orchestration glue:
+        it must construct nothing itself, obtaining the single service from the
+        composition root, exactly mirroring Grounding/Quality Governance (ADR-0018 §D9).
+        """
         cli_script = _REPO_ROOT / "scripts" / "run_requirement_analysis.py"
         source = cli_script.read_text(encoding="utf-8")
-        assert "RequirementEnhancementService" not in source
-        assert "create_requirement_enhancement_service" not in source
+        assert "create_requirement_enhancement_service" in source
+        assert "DeterministicRequirementEnhancementService(" not in source
+        assert "DeterministicRequirementEnhancementEngine(" not in source
 
 
 # ===========================================================================

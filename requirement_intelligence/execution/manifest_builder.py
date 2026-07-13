@@ -110,4 +110,20 @@ class ManifestBuilder:
             manifest["qualityGovernanceReport"] = "quality_governance_report.md"
             manifest["qualityGovernanceSummary"] = "quality_governance_summary.md"
 
+        # Requirement Enhancement references (CAP-081C): additive, and only when
+        # enhancement ran. When it did not, the manifest is byte-identical to before —
+        # no key is added, no schema change (manifestSchemaVersion stays 1.0.0). The
+        # three enhancement artifacts already appear in ``generatedArtifacts`` via the
+        # same checksum mechanism as every other file. These three keys are package
+        # metadata only — a flag and two artifact filenames — never the enhancement
+        # runtime state itself. The canonical enhanced requirements, relationship
+        # graph, observations, findings, metrics, and summary live exclusively in
+        # ``requirement_enhancement_result.json`` (ADR-0018 §D8/§D9): the manifest
+        # references that artifact, it never duplicates its content.
+        enhancement = data.requirement_enhancement_result
+        if enhancement is not None:
+            manifest["requirementEnhancementExecuted"] = True
+            manifest["requirementEnhancementReport"] = "requirement_enhancement_report.md"
+            manifest["requirementEnhancementMetrics"] = "requirement_enhancement_metrics.md"
+
         return manifest
