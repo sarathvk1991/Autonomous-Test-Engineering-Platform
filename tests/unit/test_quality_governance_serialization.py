@@ -2,7 +2,8 @@
 
 Covers the JSON round-trip invariant, deterministic Markdown/summary rendering, the
 ExecutionWriter integration (conditional artifacts + manifest registration + absence when no
-QualityGovernanceResult), the release-authority manifest field, and the frozen boundaries
+QualityGovernanceResult), the manifest purity boundary (the manifest references the governance
+artifacts but never duplicates the verdict, ADR-0017 §D31), and the frozen boundaries
 (serializer imports no governance runtime; the runtime contract imports no execution package).
 """
 
@@ -148,12 +149,15 @@ class TestExecutionWriterIntegration:
             assert name in write_result.generated_artifacts
         manifest_names = {a["name"] for a in write_result.manifest["generatedArtifacts"]}
         assert set(_QUALITY_GOVERNANCE_ARTIFACTS) <= manifest_names
-        # Release authority: the manifest records the canonical decision, read verbatim.
-        decision = result.assessment.decision
+        # Manifest purity (ADR-0017 §D31): the manifest is package metadata only — it
+        # names the artifact, it never carries the verdict. The canonical decision lives
+        # exclusively in quality_governance_result.json / QualityGovernanceResult.
         assert write_result.manifest["qualityGovernanceExecuted"] is True
-        assert write_result.manifest["qualityGovernanceDecision"] == str(
-            getattr(decision, "value", decision)
-        )
+        assert "qualityGovernanceDecision" not in write_result.manifest
+        decision = result.assessment.decision
+        result_path = target / "quality_governance_result.json"
+        on_disk = json.loads(result_path.read_text(encoding="utf-8"))
+        assert on_disk["assessment"]["decision"] == str(getattr(decision, "value", decision))
 
     def test_artifacts_are_reproducible_from_governance_result_alone(
         self, tmp_path: Path

@@ -2313,10 +2313,14 @@ def test_cli_end_to_end_runs_governance_exactly_once_and_places_result(
     assert recorder.call_count == 1
     from requirement_intelligence.quality_governance import QualityGovernanceResult
 
-    assert isinstance(captured["data"].quality_governance_result, QualityGovernanceResult)
+    governance_result = captured["data"].quality_governance_result
+    assert isinstance(governance_result, QualityGovernanceResult)
     manifest = _read_manifest(tmp_path / "latest")
     assert manifest["qualityGovernanceExecuted"] is True
-    assert manifest["qualityGovernanceDecision"] == "pass"
+    # Manifest purity (ADR-0017 §D31): the manifest never duplicates the verdict —
+    # the canonical decision lives only on the QualityGovernanceResult runtime contract.
+    assert "qualityGovernanceDecision" not in manifest
+    assert str(governance_result.assessment.decision) == "pass"
 
 
 class _DelegatingGovernanceRecorder:

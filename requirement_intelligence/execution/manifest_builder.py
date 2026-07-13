@@ -95,19 +95,19 @@ class ManifestBuilder:
                 getattr(data.cp1_result.overall_verdict, "value", data.cp1_result.overall_verdict)
             )
 
-        # Quality Governance references (CAP-080D): additive, and only when governance ran.
-        # When it did not, the manifest is byte-identical to before — no key is added, no
-        # schema change (manifestSchemaVersion stays 1.0.0). The three governance artifacts
-        # already appear in ``generatedArtifacts`` via the same checksum mechanism as every
-        # other file. Quality Governance is the terminal release authority (ADR-0017 §D30):
-        # ``qualityGovernanceDecision`` is the canonical release verdict, read verbatim from
-        # the recorded ``QualityDecision`` and never computed, reinterpreted, or overridden.
+        # Quality Governance references (CAP-080D, purity boundary hardened CAP-080D.1):
+        # additive, and only when governance ran. When it did not, the manifest is
+        # byte-identical to before — no key is added, no schema change (manifestSchemaVersion
+        # stays 1.0.0). The three governance artifacts already appear in ``generatedArtifacts``
+        # via the same checksum mechanism as every other file. These three keys are package
+        # metadata only — a flag and two artifact filenames — never the verdict itself. The
+        # canonical ``QualityDecision`` lives exclusively in ``quality_governance_result.json``
+        # (ADR-0017 §D31): the manifest references that artifact, it never duplicates its
+        # content.
         governance = data.quality_governance_result
         if governance is not None:
-            decision = governance.assessment.decision
             manifest["qualityGovernanceExecuted"] = True
             manifest["qualityGovernanceReport"] = "quality_governance_report.md"
             manifest["qualityGovernanceSummary"] = "quality_governance_summary.md"
-            manifest["qualityGovernanceDecision"] = str(getattr(decision, "value", decision))
 
         return manifest

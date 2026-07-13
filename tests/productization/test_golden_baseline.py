@@ -575,20 +575,30 @@ class TestPhase4OutputVerification:
         assert manifest.get("cp1Report") == "cp1_report.md"
 
     @pytest.mark.productization
-    def test_manifest_records_the_release_authority(
+    def test_manifest_references_quality_governance_artifacts_only(
         self, golden_pipeline_result: PipelineResult
     ) -> None:
-        """manifest.json surfaces the canonical QualityDecision, read verbatim (CAP-080D)."""
+        """manifest.json indexes the governance artifacts; it never duplicates the verdict.
+
+        Manifest purity (ADR-0017 §D31): the manifest owns package metadata and the
+        artifact inventory only. The canonical ``QualityDecision`` is the sole runtime
+        state and lives exclusively on ``QualityGovernanceResult`` / the artifact
+        ``quality_governance_result.json`` — never re-surfaced as a manifest key.
+        """
         manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
         governance = golden_pipeline_result.quality_governance_result
         assert manifest.get("qualityGovernanceExecuted") is True
         assert manifest.get("qualityGovernanceReport") == "quality_governance_report.md"
         assert manifest.get("qualityGovernanceSummary") == "quality_governance_summary.md"
-        # The manifest verdict is exactly the recorded QualityDecision — never recomputed.
-        decision = governance.assessment.decision
-        assert manifest.get("qualityGovernanceDecision") == str(
-            getattr(decision, "value", decision)
+        assert "qualityGovernanceDecision" not in manifest
+        assert "qualityGovernanceScore" not in manifest
+        assert "qualityGovernanceDecisionVersion" not in manifest
+
+        on_disk = _load_json(
+            golden_pipeline_result.output_dir / "quality_governance_result.json"
         )
+        decision = governance.assessment.decision
+        assert on_disk["assessment"]["decision"] == str(getattr(decision, "value", decision))
 
     @pytest.mark.productization
     def test_manifest_registers_the_engineering_context(
@@ -933,16 +943,27 @@ class TestPhase5Determinism:
         assert serializer.render_json(g1) == serializer.render_json(g1)
 
     @pytest.mark.productization
-    def test_determinism_manifest_quality_governance_decision_field(
+    def test_determinism_manifest_governance_keys_stay_metadata_only(
         self,
         golden_pipeline_result: PipelineResult,
         tmp_path: Path,
     ) -> None:
-        """manifest.qualityGovernanceDecision is identical across two runs."""
+        """manifest governance keys are identical package metadata across two runs.
+
+        Decision determinism itself is proven at the runtime-contract boundary by
+        ``test_determinism_quality_governance_decision_and_findings`` (ADR-0017 §D31): the
+        golden regression compares ``QualityGovernanceResult`` content, never the manifest.
+        This test only confirms the manifest's package-metadata keys are stable and that no
+        runtime-state key has leaked back into the manifest.
+        """
         run2 = _run_golden_pipeline(tmp_path)
         m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
         m2 = _load_json(run2.output_dir / "manifest.json")
-        assert m1.get("qualityGovernanceDecision") == m2.get("qualityGovernanceDecision")
+        assert m1.get("qualityGovernanceExecuted") == m2.get("qualityGovernanceExecuted")
+        assert m1.get("qualityGovernanceReport") == m2.get("qualityGovernanceReport")
+        assert m1.get("qualityGovernanceSummary") == m2.get("qualityGovernanceSummary")
+        assert "qualityGovernanceDecision" not in m1
+        assert "qualityGovernanceDecision" not in m2
 
     @pytest.mark.productization
     def test_determinism_normalization_outcome(
