@@ -34,6 +34,14 @@ from requirement_intelligence.cp1.response import (
     ValidationToCP1Handoff,
     build_cp1_service,
 )
+from requirement_intelligence.enhancement.policy import (
+    EnhancementPolicy,
+    default_enhancement_policy,
+)
+from requirement_intelligence.enhancement.requirement_enhancement_service import (
+    DormantRequirementEnhancementService,
+    RequirementEnhancementService,
+)
 from requirement_intelligence.grounding.builders import (
     GroundedRequirementBuilder,
     MatchingContextBuilder,
@@ -408,6 +416,31 @@ class PlatformContext:
         CAP-080 milestone.
         """
         return DeterministicQualityDecisionEngine(policy=self.create_decision_policy())
+
+    def create_enhancement_policy(self) -> EnhancementPolicy:
+        """Return the governed default :class:`EnhancementPolicy` (CAP-081A, ADR-0018).
+
+        The governed capability switches and deterministic configuration for
+        Requirement Intelligence Enhancement — which capabilities are enabled, and the
+        bounds a future engine must respect. A future enrichment/relationship/
+        observation engine reads it; it contains no logic. **Not yet wired**: no
+        runtime path calls it, so runtime behaviour is unchanged.
+        """
+        return default_enhancement_policy()
+
+    def create_requirement_enhancement_service(self) -> RequirementEnhancementService:
+        """Return the :class:`DormantRequirementEnhancementService` (CAP-081A, ADR-0018).
+
+        The single runtime entry point into Requirement Intelligence Enhancement, and
+        the **composition root** for the subsystem — currently constructing only the
+        governed :meth:`create_enhancement_policy`, since no engine exists yet.
+        **Not wired into the execution pipeline** (nothing calls ``enhance`` at
+        runtime), so runtime behaviour is byte-identical and the golden baseline is
+        unchanged. A later CAP-081 milestone replaces the dormant implementation with a
+        real one behind this unchanged ``create_requirement_enhancement_service``
+        signature, exactly as CAP-080B replaced the dormant CAP-080A governance engine.
+        """
+        return DormantRequirementEnhancementService(policy=self.create_enhancement_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

@@ -836,6 +836,13 @@ def test_platform_context_returns_independent_instances() -> None:
 #: ``MatchingContext`` so that no grounding *strategy* ever depends on it. Both
 #: dependencies are on the model only, and grounding stays dormant; each widening
 #: is the conscious consumer registration this guard exists to force.
+#:
+#: ``enhancement/requirement_enhancement_service.py`` joined in CAP-081A: its
+#: permanent ``enhance(engineering_context, analysis_result)`` contract takes an
+#: ``EngineeringContext`` as one of the two inputs it will enhance. The dependency is
+#: on the model only (a consumed contract, never an implementation class), and the
+#: enhancement subsystem stays dormant — this is the conscious registration, not a
+#: runtime wiring.
 _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/platform/platform_context.py"),
     Path("requirement_intelligence/prompts/requirement_prompt_builder.py"),
@@ -844,6 +851,7 @@ _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/grounding/grounding_service.py"),
     Path("requirement_intelligence/grounding/builders/matching_context_builder.py"),
     Path("requirement_intelligence/grounding/pipeline.py"),
+    Path("requirement_intelligence/enhancement/requirement_enhancement_service.py"),
     Path("scripts/run_requirement_analysis.py"),
 }
 
