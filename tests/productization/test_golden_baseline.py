@@ -64,12 +64,20 @@ _CP1_ARTIFACTS = frozenset({"cp1_report.md"})
 _GROUNDING_ARTIFACTS = frozenset(
     {"grounding_result.json", "grounding_report.md", "grounding_metrics.md"}
 )
+_QUALITY_GOVERNANCE_ARTIFACTS = frozenset(
+    {
+        "quality_governance_result.json",
+        "quality_governance_report.md",
+        "quality_governance_summary.md",
+    }
+)
 _ALL_ARTIFACTS = (
     _CORE_ARTIFACTS
     | _RESULT_ARTIFACTS
     | _VALIDATION_ARTIFACTS
     | _CP1_ARTIFACTS
     | _GROUNDING_ARTIFACTS
+    | _QUALITY_GOVERNANCE_ARTIFACTS
     | {"manifest.json"}
 )
 
@@ -265,6 +273,34 @@ class TestPhase3PipelineExecution:
         )
 
     @pytest.mark.productization
+    def test_quality_governance_result_exists(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Quality Governance ran after CP1 (CAP-080D) and produced a QualityGovernanceResult."""
+        assert golden_pipeline_result.quality_governance_result is not None, (
+            "QualityGovernanceResult is None — governance did not run despite CP1 completing."
+        )
+
+    @pytest.mark.productization
+    def test_quality_governance_runs_strictly_after_cp1(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The frozen order: governance only exists because all three peer results do.
+
+        Governance consumes exactly GroundingResult + ValidationResult + CP1Result, and its
+        recorded provenance names those three consumed inputs — never a prompt, an
+        EngineeringContext, or a Gemini response.
+        """
+        governance = golden_pipeline_result.quality_governance_result
+        assert golden_pipeline_result.grounding_result is not None
+        assert golden_pipeline_result.validation_result is not None
+        assert golden_pipeline_result.cp1_result is not None
+        consumed = {str(ref.source) for ref in governance.consumed_inputs}
+        assert consumed == {"grounding", "validation", "cp1"}
+        # Governance completes after the CP1 result it consumed was produced.
+        assert governance.started_at <= governance.completed_at
+
+    @pytest.mark.productization
     def test_execution_package_written(self, golden_pipeline_result: PipelineResult) -> None:
         """ExecutionWriter completed without raising."""
         assert golden_pipeline_result.write_result is not None
@@ -325,6 +361,31 @@ class TestPhase4OutputVerification:
 
         on_disk = _load_json(golden_pipeline_result.output_dir / "grounding_result.json")
         assert GroundingResult.model_validate(on_disk) == golden_pipeline_result.grounding_result
+
+    @pytest.mark.productization
+    def test_quality_governance_artifacts_present(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Quality Governance ran (CAP-080D), so all three governance artifacts are written."""
+        for name in _QUALITY_GOVERNANCE_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Quality Governance artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Quality Governance artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_quality_governance_result_json_round_trips(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """quality_governance_result.json is a verbatim, round-trippable projection."""
+        from requirement_intelligence.quality_governance import QualityGovernanceResult
+
+        on_disk = _load_json(
+            golden_pipeline_result.output_dir / "quality_governance_result.json"
+        )
+        assert (
+            QualityGovernanceResult.model_validate(on_disk)
+            == golden_pipeline_result.quality_governance_result
+        )
 
     @pytest.mark.productization
     def test_manifest_present(self, golden_pipeline_result: PipelineResult) -> None:
@@ -512,6 +573,22 @@ class TestPhase4OutputVerification:
         assert manifest.get("cp1Executed") is True
         assert manifest.get("cp1Verdict") is not None
         assert manifest.get("cp1Report") == "cp1_report.md"
+
+    @pytest.mark.productization
+    def test_manifest_records_the_release_authority(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json surfaces the canonical QualityDecision, read verbatim (CAP-080D)."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        governance = golden_pipeline_result.quality_governance_result
+        assert manifest.get("qualityGovernanceExecuted") is True
+        assert manifest.get("qualityGovernanceReport") == "quality_governance_report.md"
+        assert manifest.get("qualityGovernanceSummary") == "quality_governance_summary.md"
+        # The manifest verdict is exactly the recorded QualityDecision — never recomputed.
+        decision = governance.assessment.decision
+        assert manifest.get("qualityGovernanceDecision") == str(
+            getattr(decision, "value", decision)
+        )
 
     @pytest.mark.productization
     def test_manifest_registers_the_engineering_context(
@@ -786,6 +863,88 @@ class TestPhase5Determinism:
         assert ids1 == ids2
 
     @pytest.mark.productization
+    def test_determinism_quality_governance_decision_and_findings(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same QualityDecision, score, counts and finding ids.
+
+        The determinism boundary is the canonical QualityGovernanceResult content, never
+        the Markdown formatting or the provenance timestamps — exactly mirroring Grounding
+        (ADR-0017 §D30, Recommendation 5).
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        a1 = golden_pipeline_result.quality_governance_result.assessment
+        a2 = run2.quality_governance_result.assessment
+        assert str(a1.decision) == str(a2.decision)
+        assert a1.summary.overall_quality_score == a2.summary.overall_quality_score
+        assert a1.summary.total_findings == a2.summary.total_findings
+        assert a1.summary.warning_count == a2.summary.warning_count
+        assert a1.summary.failure_count == a2.summary.failure_count
+        assert sorted(f.finding_id for f in a1.findings) == sorted(
+            f.finding_id for f in a2.findings
+        )
+
+    @pytest.mark.productization
+    def test_determinism_quality_governance_serialization(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Serializer output is deterministic on the governed content, excluding provenance.
+
+        The runtime mints run-specific provenance — analysis/execution ids, the derived
+        result/assessment ids, consumed-input ids, and the started/completed timestamps —
+        exactly as Grounding does. The determinism boundary is the governed content, not
+        that provenance (ADR-0017 §D30, Recommendation 5). The summary projection carries no
+        provenance and so is byte-identical across runs; the JSON projection is identical
+        once provenance is dropped; and each projection is a pure function of its input.
+        """
+        from requirement_intelligence.quality_governance.serialization import (
+            QualityGovernanceSerializer,
+        )
+
+        run2 = _run_golden_pipeline(tmp_path)
+        serializer = QualityGovernanceSerializer()
+        g1 = golden_pipeline_result.quality_governance_result
+        g2 = run2.quality_governance_result
+
+        # The summary carries no provenance — byte-identical across two runs.
+        assert serializer.render_summary(g1) == serializer.render_summary(g2)
+
+        # The JSON projection is identical once run-specific provenance is dropped.
+        def _strip_provenance(dumped: dict) -> dict:
+            for key in ("resultId", "analysisId", "executionId", "startedAt", "completedAt"):
+                dumped.pop(key, None)
+            dumped.pop("consumedInputs", None)
+            assessment = dict(dumped["assessment"])
+            for key in ("assessmentId", "analysisId", "executionId"):
+                assessment.pop(key, None)
+            dumped["assessment"] = assessment
+            return dumped
+
+        assert _strip_provenance(serializer.render_json(g1)) == _strip_provenance(
+            serializer.render_json(g2)
+        )
+
+        # Each projection is a pure function of its input — same result, same bytes.
+        assert serializer.render_report(g1) == serializer.render_report(g1)
+        assert serializer.render_json(g1) == serializer.render_json(g1)
+
+    @pytest.mark.productization
+    def test_determinism_manifest_quality_governance_decision_field(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """manifest.qualityGovernanceDecision is identical across two runs."""
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1.get("qualityGovernanceDecision") == m2.get("qualityGovernanceDecision")
+
+    @pytest.mark.productization
     def test_determinism_normalization_outcome(
         self,
         golden_pipeline_result: PipelineResult,
@@ -914,7 +1073,7 @@ class TestPhase6ProductizationAssertions:
     @pytest.mark.productization
     def test_dataset_version(self) -> None:
         """The golden dataset declares a version."""
-        assert GOLDEN_DATASET_VERSION == "1.1.0"
+        assert GOLDEN_DATASET_VERSION == "1.2.0"
 
     @pytest.mark.productization
     def test_dataset_covers_all_categories(self) -> None:

@@ -83,6 +83,16 @@ class ExecutionData:
         grounding is not yet wired into the CLI run). When present, the execution package
         serialises it as-is into ``grounding_result.json`` / ``grounding_report.md`` /
         ``grounding_metrics.md`` — a pure projection; nothing is recomputed (CAP-077F.1).
+    quality_governance_result:
+        The complete ``QualityGovernanceResult`` produced by the Quality Governance
+        runtime — the terminal governance authority — when Quality Governance ran for this run
+        (CAP-080D). Governance runs only when all three consumed peer results are present
+        (a live, validated, CP1-gate-open run), so this is ``None`` for any run that did not
+        reach that point. When present, the execution package serialises it as-is into
+        ``quality_governance_result.json`` / ``quality_governance_report.md`` /
+        ``quality_governance_summary.md`` — a pure projection; nothing is re-evaluated,
+        re-assessed, re-decided, or recomputed. The recorded ``QualityDecision`` is the
+        canonical release verdict; the package consumes it and never overrides it.
     """
 
     selected: Any
@@ -103,6 +113,7 @@ class ExecutionData:
     validation_profile: Any | None = None
     cp1_result: Any | None = None
     grounding_result: Any | None = None
+    quality_governance_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:

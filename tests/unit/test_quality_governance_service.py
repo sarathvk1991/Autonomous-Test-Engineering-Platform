@@ -1,10 +1,10 @@
-"""Contract and architecture-boundary tests for the QualityGovernanceService (CAP-080C).
+"""Contract and architecture-boundary tests for the QualityGovernanceService (CAP-080C/D).
 
-CAP-080C activates the service: :class:`DefaultQualityGovernanceService` delegates to a
-private :class:`QualityGovernancePipeline`. These tests assert the permanent contract,
-the ``PlatformContext`` registration, and the containment/dependency invariants
-(ADR-0017 §D29). Orchestration behaviour is exercised in
-``test_quality_governance_pipeline.py``.
+CAP-080C activated the service (:class:`DefaultQualityGovernanceService` delegating to a
+private :class:`QualityGovernancePipeline`); CAP-080D wired it into the live runtime as the
+terminal release authority. These tests assert the permanent contract, the ``PlatformContext``
+registration, and the containment/dependency invariants (ADR-0017 §D29/§D30). Orchestration
+behaviour is exercised in ``test_quality_governance_pipeline.py``.
 """
 
 from __future__ import annotations
@@ -47,12 +47,17 @@ class TestPlatformContextRegistration:
 
 @pytest.mark.unit
 class TestRuntimeContainment:
-    def test_only_platform_context_names_the_service_externally(self) -> None:
-        """Outside the quality_governance package, only PlatformContext may name it.
+    def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
+        """Outside the quality_governance package, only the sanctioned seams may name it.
 
-        The service is a dormant boundary — no pipeline stage, execution builder, or
-        CLI path may reference it yet, so a later milestone must consciously wire it
-        rather than let an external dependency appear silently.
+        CAP-080D consciously wires the service: the composition root
+        (``PlatformContext``) constructs it, and the CLI orchestration
+        (``run_requirement_analysis.py``) obtains it from there and calls ``evaluate``.
+        No other module — no execution builder, manifest, serializer, or API route — may
+        reference the runtime service, so a future dependency cannot appear silently.
+        The Execution Package in particular stays free of the runtime class name
+        (Recommendation 3): it transports and projects the ``QualityGovernanceResult``,
+        never the service.
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -60,7 +65,10 @@ class TestRuntimeContainment:
             _REPO_ROOT / "app",
         )
         needle = "QualityGovernanceService"
-        permitted = {Path("requirement_intelligence/platform/platform_context.py")}
+        permitted = {
+            Path("requirement_intelligence/platform/platform_context.py"),
+            Path("scripts/run_requirement_analysis.py"),
+        }
         external_consumers: set[Path] = set()
         for root in roots:
             if not root.exists():

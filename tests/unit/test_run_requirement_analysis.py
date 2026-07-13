@@ -2169,3 +2169,197 @@ def test_profile_registry_selection_is_deterministic() -> None:
             ctx.get_validation_profile(profile_name)
         )._registry.list_rule_ids()
         assert first == second
+
+
+# ===========================================================================
+# Quality Governance integration (CAP-080D) — terminal release authority
+# ===========================================================================
+#
+# Quality Governance runs immediately after CP1 at the permanently frozen end of
+# the pipeline (Grounding → Validation → CP1 → Quality Governance → Execution
+# Package). The single QualityGovernanceService comes solely from PlatformContext;
+# the CLI is pure orchestration glue. It consumes exactly the three completed peer
+# results and evaluates exactly once; its QualityDecision is the release authority.
+
+
+class _RecordingGovernanceService:
+    """A fake QualityGovernanceService recording each evaluate call."""
+
+    def __init__(self, result: Any) -> None:
+        self.calls: list[tuple[Any, Any, Any]] = []
+        self._result = result
+
+    def evaluate(self, grounding_result: Any, validation_result: Any, cp1_result: Any) -> Any:
+        self.calls.append((grounding_result, validation_result, cp1_result))
+        return self._result
+
+
+class _FakeGovernanceResult:
+    """A stand-in QualityGovernanceResult exposing only what the phase reads."""
+
+    class _Assessment:
+        class _Summary:
+            verdict = "All governed quality rules are satisfied."
+
+        def __init__(self) -> None:
+            self.decision = "pass"
+            self.summary = self._Summary()
+            self.findings: tuple[Any, ...] = ()
+
+    def __init__(self) -> None:
+        self.assessment = self._Assessment()
+
+
+class _QGCtx:
+    """A minimal context exposing only create_quality_governance_service."""
+
+    def __init__(self, service: Any) -> None:
+        self._service = service
+
+    def create_quality_governance_service(self) -> Any:
+        return self._service
+
+
+@pytest.mark.unit
+def test_governance_phase_evaluates_exactly_once_on_the_three_peer_results() -> None:
+    sentinel = _FakeGovernanceResult()
+    service = _RecordingGovernanceService(sentinel)
+    ctx = _QGCtx(service)
+    grounding, validation, cp1 = object(), object(), object()
+
+    result = cli.run_quality_governance_phase(ctx, grounding, validation, cp1, cli.Console())
+
+    assert result is sentinel
+    # Exactly one evaluation, on exactly the three consumed peer results, in order.
+    assert service.calls == [(grounding, validation, cp1)]
+
+
+@pytest.mark.unit
+def test_governance_phase_obtains_service_only_from_context() -> None:
+    real = PlatformContext()
+
+    class HubContext:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def create_quality_governance_service(self) -> Any:
+            self.calls += 1
+            return real.create_quality_governance_service()
+
+    ctx = HubContext()
+    grounding = _grounding_result_for_governance()
+    validation, _normalization = _real_validation_and_normalization()
+    cp1 = _cp1_result()
+    cli.run_quality_governance_phase(ctx, grounding, validation, cp1, cli.Console())
+    assert ctx.calls == 1
+
+
+@pytest.mark.unit
+def test_governance_phase_reports_release_decision(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ctx = _QGCtx(_RecordingGovernanceService(_FakeGovernanceResult()))
+    cli.run_quality_governance_phase(ctx, object(), object(), object(), cli.Console())
+    out = capsys.readouterr().out
+    assert "Running Quality Governance" in out
+    assert "Release Decision : pass" in out
+
+
+def _grounding_result_for_governance() -> Any:
+    """A real GroundingResult keyed to the same run ids as the real CP1/validation results."""
+    from tests.unit.quality_governance_helpers import make_grounding_result
+
+    return make_grounding_result(analysis_id="AN-1", execution_id="EX-1")
+
+
+@pytest.mark.unit
+def test_cli_end_to_end_runs_governance_exactly_once_and_places_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A live --validate run reaches Quality Governance only when grounding, validation
+    # and CP1 all completed. We stub grounding onto the FakeContext and wrap the *real*
+    # governance service in a recorder, so the writer serialises a genuine
+    # QualityGovernanceResult while we prove the CLI evaluates governance exactly once.
+    captured: dict[str, Any] = {}
+    real_writer_cls = cli.ExecutionWriter
+    recorder = _DelegatingGovernanceRecorder(
+        PlatformContext().create_quality_governance_service()
+    )
+
+    class _RecordingWriter:
+        def write(self, target_dir: Path, data: Any) -> Any:
+            captured["data"] = data
+            return real_writer_cls().write(target_dir, data)
+
+    monkeypatch.setattr(cli, "ExecutionWriter", _RecordingWriter)
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result())
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    # Patch the FakeContext instance the CLI builds so grounding + governance are present.
+    original_platform_context = cli.PlatformContext
+
+    def _patched() -> Any:
+        ctx = original_platform_context()
+        ctx.create_grounding_service = _StubGroundingService  # type: ignore[attr-defined]
+        ctx.create_quality_governance_service = lambda: recorder  # type: ignore[attr-defined]
+        return ctx
+
+    monkeypatch.setattr(cli, "PlatformContext", _patched)
+
+    assert cli.main(["analyze", "--validate", "--output-dir", str(tmp_path / "ex")]) == 0
+
+    # Governance evaluated exactly once, and its (real) result rode onto ExecutionData and
+    # into the manifest as the canonical release verdict.
+    assert recorder.call_count == 1
+    from requirement_intelligence.quality_governance import QualityGovernanceResult
+
+    assert isinstance(captured["data"].quality_governance_result, QualityGovernanceResult)
+    manifest = _read_manifest(tmp_path / "latest")
+    assert manifest["qualityGovernanceExecuted"] is True
+    assert manifest["qualityGovernanceDecision"] == "pass"
+
+
+class _DelegatingGovernanceRecorder:
+    """Wraps the real QualityGovernanceService, counting evaluate calls."""
+
+    def __init__(self, delegate: Any) -> None:
+        self._delegate = delegate
+        self.call_count = 0
+
+    def evaluate(self, grounding_result: Any, validation_result: Any, cp1_result: Any) -> Any:
+        self.call_count += 1
+        return self._delegate.evaluate(grounding_result, validation_result, cp1_result)
+
+
+class _StubGroundingService:
+    """A grounding service returning a real GroundingResult for the run's ids."""
+
+    def assess(self, engineering_context: Any, analysis_result: Any) -> Any:
+        from tests.unit.quality_governance_helpers import make_grounding_result
+
+        return make_grounding_result(
+            analysis_id=analysis_result.analysis_id,
+            execution_id=analysis_result.execution_id,
+        )
+
+
+@pytest.mark.unit
+def test_cli_default_run_carries_no_governance_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # No --validate → no validation → no CP1 → governance's three inputs are not all
+    # present, so governance never runs and no result is carried.
+    captured: dict[str, Any] = {}
+    real_writer_cls = cli.ExecutionWriter
+
+    class _RecordingWriter:
+        def write(self, target_dir: Path, data: Any) -> Any:
+            captured["data"] = data
+            return real_writer_cls().write(target_dir, data)
+
+    monkeypatch.setattr(cli, "ExecutionWriter", _RecordingWriter)
+    _use_context(monkeypatch, [FakeArtifact("cons-a", quality=3)], result=FakeResult())
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    assert cli.main(["analyze", "--output-dir", str(tmp_path / "ex")]) == 0
+    assert captured["data"].quality_governance_result is None

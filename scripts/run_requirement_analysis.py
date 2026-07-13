@@ -232,6 +232,7 @@ def _print_startup_banner(
     console.field("Registered Sources", ", ".join(source_names) or "none")
     console.field("Validation", enabled)
     console.field("CP1", enabled)
+    console.field("Quality Governance", enabled)
     console.field("Execution Package", "ENABLED")
     console.rule()
     for name in source_names:
@@ -454,6 +455,44 @@ def run_cp1_phase(
     return cp1_result
 
 
+def run_quality_governance_phase(
+    context: PlatformContext,
+    grounding_result: Any,
+    validation_result: Any,
+    cp1_result: Any,
+    console: Console,
+) -> Any:
+    """Quality Governance phase — the terminal release authority (CAP-080D, ADR-0017 §D30).
+
+    Runs immediately after CP1, at the permanently frozen end of the pipeline::
+
+        Engineering Context → Analysis → Grounding → Validation → CP1
+            → Quality Governance → Execution Package
+
+    It consumes **only** the three completed peer results — ``GroundingResult``,
+    ``ValidationResult``, ``CP1Result`` — and modifies nothing upstream. The single
+    ``QualityGovernanceService`` comes solely from :class:`PlatformContext`; this CLI is
+    pure orchestration glue and invents no governance logic, evaluates no rule, and derives
+    no decision of its own. The returned ``QualityDecision`` is the canonical release
+    verdict; the CLI records it and never reinterprets or overrides it (ADR-0017 §D30,
+    Recommendation 6).
+
+    Governance is **one aggregate evaluation** (ADR-0017 §D29): it either returns a complete
+    ``QualityGovernanceResult`` or raises. Mirroring grounding/validation/CP1, a governance
+    failure is surfaced by the caller but is never fatal to the analysis run, and never
+    corrupts the already-completed upstream results.
+    """
+    console.action("\nRunning Quality Governance")
+    governance_result = context.create_quality_governance_service().evaluate(
+        grounding_result, validation_result, cp1_result
+    )
+    assessment = governance_result.assessment
+    console.ok(f"Release Decision : {assessment.decision}")
+    console.note(f"  {assessment.summary.verdict}")
+    console.note(f"  Findings            : {len(assessment.findings)}")
+    return governance_result
+
+
 # ===========================================================================
 # Subcommand handlers
 # ===========================================================================
@@ -617,6 +656,25 @@ def handle_analyze(args: argparse.Namespace) -> int:
             except Exception as exc:  # surface but never fail the analysis run
                 console.error(f"CP1 engineering-readiness evaluation failed: {exc}")
 
+    # Quality Governance phase (CAP-080D): the terminal release authority, immediately after
+    # CP1 and at the permanently frozen end of the pipeline (Grounding → Validation → CP1 →
+    # Quality Governance → Execution Package). It consumes only the three completed peer
+    # results and runs exactly when all three exist — a live, validated, CP1-gate-open run.
+    # It modifies nothing upstream. Mirroring grounding/validation/CP1, a governance failure
+    # is surfaced but never fatal, and never corrupts the already-completed upstream results.
+    quality_governance_result: Any = None
+    if (
+        grounding_result is not None
+        and validation_result is not None
+        and cp1_result is not None
+    ):
+        try:
+            quality_governance_result = run_quality_governance_phase(
+                context, grounding_result, validation_result, cp1_result, console
+            )
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Quality governance evaluation failed: {exc}")
+
     data = ExecutionData(
         selected=selected,
         engineering_context=engineering_context,
@@ -635,6 +693,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         validation_profile=validation_profile if validation_result is not None else None,
         cp1_result=cp1_result,
         grounding_result=grounding_result,
+        quality_governance_result=quality_governance_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

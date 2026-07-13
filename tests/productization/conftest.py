@@ -136,6 +136,9 @@ class PipelineResult:
     # Grounding
     grounding_result: Any  # GroundingResult
 
+    # Quality Governance (terminal release authority)
+    quality_governance_result: Any  # QualityGovernanceResult
+
     # Execution package
     execution_data: ExecutionData
     write_result: ExecutionWriteResult
@@ -251,6 +254,18 @@ def _run_golden_pipeline(
     )
 
     # -----------------------------------------------------------------------
+    # Step 6c — Quality Governance (CAP-080D): the terminal release authority, run
+    # immediately after CP1 on the three completed peer results. It consumes only
+    # GroundingResult + ValidationResult + CP1Result and modifies nothing upstream. Its
+    # QualityDecision is the canonical release verdict the execution package records.
+    # -----------------------------------------------------------------------
+    quality_governance_result = None
+    if cp1_result is not None:
+        quality_governance_result = context.create_quality_governance_service().evaluate(
+            grounding_result, validation_result, cp1_result
+        )
+
+    # -----------------------------------------------------------------------
     # Step 7 — Execution package
     # -----------------------------------------------------------------------
     execution_data = ExecutionData(
@@ -272,6 +287,7 @@ def _run_golden_pipeline(
         validation_profile=validation_profile,
         cp1_result=cp1_result,
         grounding_result=grounding_result,
+        quality_governance_result=quality_governance_result,
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -287,6 +303,7 @@ def _run_golden_pipeline(
         validation_result=validation_result,
         cp1_result=cp1_result,
         grounding_result=grounding_result,
+        quality_governance_result=quality_governance_result,
         execution_data=execution_data,
         write_result=write_result,
         output_dir=tmp_dir,

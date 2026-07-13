@@ -1,8 +1,8 @@
 # Quality Governance Framework — Design Proposal
 
-- **Status:** Proposed (architecture design; CAP-080B → C implement the full subsystem behind the frozen contracts, unwired from runtime)
+- **Status:** Accepted (CAP-080B → C implemented the full subsystem behind the frozen contracts; CAP-080D wired it into the live runtime as the terminal release authority)
 - **Capability:** CAP-080 — Quality Governance
-- **Milestones covered:** CAP-080A (Governance Freeze) · CAP-080A.1 (Rule Evaluation — §8a) · CAP-080A.2 (Assessment — §8b) · CAP-080A.3 (Decision — §8c; full architecture certification) · CAP-080B (Deterministic Rule Evaluation + Rule Catalogue — §8a.1) · CAP-080B.1 (Deterministic Assessment — §8b.1) · CAP-080B.1.1 (QualityAssessmentResult runtime-contract freeze — §8b.2) · CAP-080B.2 (Deterministic Decision — §8c.1) · CAP-080C (Governance runtime orchestration — §8d). Every layer is implemented end to end; the subsystem is executable but unwired from runtime.
+- **Milestones covered:** CAP-080A (Governance Freeze) · CAP-080A.1 (Rule Evaluation — §8a) · CAP-080A.2 (Assessment — §8b) · CAP-080A.3 (Decision — §8c; full architecture certification) · CAP-080B (Deterministic Rule Evaluation + Rule Catalogue — §8a.1) · CAP-080B.1 (Deterministic Assessment — §8b.1) · CAP-080B.1.1 (QualityAssessmentResult runtime-contract freeze — §8b.2) · CAP-080B.2 (Deterministic Decision — §8c.1) · CAP-080C (Governance runtime orchestration — §8d) · CAP-080D (Runtime integration + release authority — §8e). Every layer is implemented end to end; the subsystem is wired into the live runtime as the terminal release authority.
 - **Governed by:** ADR-0017
 - **Depends on:** ADR-0016 (Evidence Grounding & Traceability), ADR-0011 (CP1), the Response Validation Framework.
 
@@ -89,9 +89,9 @@ A `QualityFinding` records that a governed `QualityPolicy` rule is violated. Cat
 
 `QualityPolicy` is immutable governed data — the "policy is data" discipline of ADR-0015/0016. It prepares for governance of: minimum grounding score, maximum hallucination rate, minimum confidence, minimum evidence coverage, validation severity thresholds, CP1 severity thresholds, required engineering readiness, warning thresholds, failure thresholds, and release rules. Crucially it carries **two threshold bands** (`failure_thresholds`, `warning_thresholds`) plus mandatory `release_rules`, so the decision is rule-based, not score-based (Recommendation 7). `QualityPolicyBuilder` constructs it; `default_quality_policy()` returns the versioned default (`QualityPolicyVersion` 1.0.0). It calculates nothing.
 
-## 8. Runtime boundary (activated CAP-080C, unwired)
+## 8. Runtime boundary (activated CAP-080C, wired CAP-080D)
 
-`QualityGovernanceService` is the single runtime entry point — an abstract contract with one method, `evaluate(grounding_result, validation_result, cp1_result) -> QualityGovernanceResult`. CAP-080C **activates** it: `DefaultQualityGovernanceService` delegates to the private `QualityGovernancePipeline` (see §8d). `PlatformContext.create_quality_governance_service()` constructs the evaluator, assessment engine, decision engine, and result builder, injects them (with the governed policy) into the pipeline, and wraps it in the service — `PlatformContext` remains the only composition root. The service is fully executable but **not wired into the Requirement Intelligence execution pipeline** (nothing calls `evaluate` at runtime), so runtime is byte-identical.
+`QualityGovernanceService` is the single runtime entry point — an abstract contract with one method, `evaluate(grounding_result, validation_result, cp1_result) -> QualityGovernanceResult`. CAP-080C **activates** it: `DefaultQualityGovernanceService` delegates to the private `QualityGovernancePipeline` (see §8d). `PlatformContext.create_quality_governance_service()` constructs the evaluator, assessment engine, decision engine, and result builder, injects them (with the governed policy) into the pipeline, and wraps it in the service — `PlatformContext` remains the only composition root. CAP-080D **wires** the service into the live Requirement Intelligence pipeline immediately after CP1 (see §8e), as the terminal release authority; the contract is unchanged.
 
 ## 8a. Rule Evaluation layer (CAP-080A.1)
 
@@ -180,6 +180,21 @@ CAP-080C activates the service by adding the private `QualityGovernancePipeline`
 - **`PlatformContext.create_quality_governance_service()`** — the sole composition root: constructs the three engines + builder, injects them into the pipeline, wraps it in the service. No globals or singletons.
 - **Failure semantics** — one aggregate evaluation: any stage failure fails the whole `evaluate`; exactly one `QualityGovernanceResult` or an exception.
 
+## 8e. Runtime integration & release authority (CAP-080D)
+
+CAP-080D wires the service into the live pipeline **without any architectural change** (ADR-0017 §D30). The frozen order becomes permanent:
+
+```
+Engineering Context → Analysis → Grounding → Validation → CP1 → Quality Governance → Execution Package
+```
+
+- **CLI activation** — `run_quality_governance_phase` obtains the single service **only** from `PlatformContext.create_quality_governance_service()` and calls `evaluate(grounding_result, validation_result, cp1_result)` immediately after CP1. Pure orchestration glue, mirroring the grounding/validation/CP1 phases; it runs exactly when all three peer results exist and modifies nothing upstream.
+- **Execution Package** — `ExecutionData` gains one additive optional field, `quality_governance_result`, transported like `grounding_result` / `cp1_result`.
+- **Projection-only serializer** — `QualityGovernanceSerializer` (`quality_governance/serialization/`) renders `render_json()` / `render_report()` / `render_summary()` as pure projections of a `QualityGovernanceResult`; it evaluates/assesses/decides/computes nothing and imports no governance runtime.
+- **Writer & manifest** — the writer conditionally appends `quality_governance_result.json`, `quality_governance_report.md`, `quality_governance_summary.md`; they enter `manifest.generatedArtifacts` via the existing checksum mechanism (schema unchanged). Additive CP1-pattern keys surface the canonical verdict; `qualityGovernanceDecision` is read **verbatim** from the recorded `QualityDecision`.
+- **Release authority** — `QualityDecision` is the repository's **only** release verdict; no CLI, writer, serializer, manifest, or downstream tool recomputes or overrides it.
+- **Determinism & golden** — identical inputs ⇒ identical `QualityGovernanceResult` excluding provenance (timestamps/ids); golden regression compares canonical content and the JSON round-trip, never Markdown or timestamps. Golden dataset advanced to `1.2.0`.
+
 ## 9. The complete frozen architecture
 
 Every layer of Quality Governance is now architecturally frozen (ADR-0017 certification, CAP-080A.3):
@@ -213,8 +228,8 @@ The future artifacts `quality_governance.json`, `quality_report.md`, and `qualit
 6. **CAP-080B.1** — the first deterministic `QualityAssessmentEngine`, behind the frozen `assess(...)` contract; policy-governed interpretation, references-not-copies, unwired from runtime. Done.
 7. **CAP-080B.1.1** — pure architectural refinement: freeze `QualityAssessmentResult` as the Assessment→Decision runtime contract (§8b.2); docs, invariants, architecture-only tests; no runtime change. Done.
 8. **CAP-080B.2** — the first deterministic `QualityDecisionEngine`, behind the frozen `decide(...)` contract; policy-governed mapping + mandatory/blocking gates, structured explanation, unwired from runtime. Done.
-9. **CAP-080C** *(this milestone)* — the `QualityGovernanceService` orchestration: `DefaultQualityGovernanceService` over a private `QualityGovernancePipeline` sequencing evaluate → assess → decide and a single-assembly `QualityGovernanceResultBuilder`, behind the frozen service contract; unwired from runtime. Done.
-10. **CAP-080D** — runtime activation (the service wired into a run) and execution-package projection; golden re-baseline.
+9. **CAP-080C** — the `QualityGovernanceService` orchestration: `DefaultQualityGovernanceService` over a private `QualityGovernancePipeline` sequencing evaluate → assess → decide and a single-assembly `QualityGovernanceResultBuilder`, behind the frozen service contract; unwired from runtime. Done.
+10. **CAP-080D** *(this milestone)* — runtime activation: the service wired into the live pipeline immediately after CP1 (the terminal release authority), the projection-only `QualityGovernanceSerializer` and its three execution artifacts, additive manifest release-authority keys, `QualityDecision` frozen as the sole release verdict, and the golden re-baseline to `1.2.0`. No architectural change. Done.
 11. **Later** — enforcement/gating, and the future extensions of Recommendation 8.
 
 ## 12. Terminology

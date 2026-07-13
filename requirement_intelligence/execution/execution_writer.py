@@ -33,6 +33,9 @@ from requirement_intelligence.execution.validation_report_builder import (
     ValidationReportBuilder,
 )
 from requirement_intelligence.grounding.serialization import GroundingSerializer
+from requirement_intelligence.quality_governance.serialization import (
+    QualityGovernanceSerializer,
+)
 
 _CORE_ARTIFACTS = (
     "consolidated_artifact.json",
@@ -90,6 +93,7 @@ class ExecutionWriter:
         self._cp1_report = CP1ReportBuilder()
         self._engineering_context = EngineeringContextArtifactBuilder()
         self._grounding = GroundingSerializer()
+        self._quality_governance = QualityGovernanceSerializer()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -205,6 +209,29 @@ class ExecutionWriter:
                 self._grounding.render_metrics(data.grounding_result), encoding="utf-8"
             )
             names += ["grounding_result.json", "grounding_report.md", "grounding_metrics.md"]
+        # Quality Governance artifacts (CAP-080D): appended only when a
+        # QualityGovernanceResult was produced — the terminal release authority. Pure
+        # projection — the QualityGovernanceResult is serialised/rendered as-is; no rule is
+        # evaluated, no assessment or decision is made, and the recorded QualityDecision is
+        # never reinterpreted or overridden here.
+        if data.quality_governance_result is not None:
+            _write_json(
+                target_dir / "quality_governance_result.json",
+                self._quality_governance.render_json(data.quality_governance_result),
+            )
+            (target_dir / "quality_governance_report.md").write_text(
+                self._quality_governance.render_report(data.quality_governance_result),
+                encoding="utf-8",
+            )
+            (target_dir / "quality_governance_summary.md").write_text(
+                self._quality_governance.render_summary(data.quality_governance_result),
+                encoding="utf-8",
+            )
+            names += [
+                "quality_governance_result.json",
+                "quality_governance_report.md",
+                "quality_governance_summary.md",
+            ]
         return tuple(names)
 
     @staticmethod

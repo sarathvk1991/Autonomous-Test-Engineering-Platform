@@ -1,11 +1,11 @@
 # ADR-0017 — Quality Governance Framework
 
-- **Status:** Proposed (architecture design; CAP-080B begins implementation behind the frozen contracts, still unwired from runtime)
-- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation) · CAP-080A.2 (Assessment) · CAP-080A.3 (Decision + full certification) · CAP-080B (Deterministic Rule Evaluation Engine V1 + Rule Catalogue) · CAP-080B.1 (Deterministic Assessment Engine) · CAP-080B.1.1 (QualityAssessmentResult runtime-contract freeze) · CAP-080B.2 (Deterministic Decision Engine) · CAP-080C (Governance runtime activation) 2026-07-12
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds Rule Evaluation (§D17–D20); CAP-080A.2 adds Assessment (§D21) and reserves Decision (§D22); CAP-080A.3 freezes Decision (§D23) and certifies the complete subsystem; CAP-080B implements the first deterministic rule evaluator and the governed Rule Catalogue (§D25); CAP-080B.1 implements the first deterministic assessment engine (§D26); CAP-080B.1.1 freezes `QualityAssessmentResult` as the Assessment→Decision runtime contract (§D27); CAP-080B.2 implements the first deterministic decision engine (§D28); CAP-080C activates the governance runtime orchestration (§D29).
+- **Status:** Accepted (CAP-080D wires the governance runtime into the live pipeline as the terminal release authority; architecture unchanged and frozen)
+- **Date:** 2026-07-12 (Proposed) · CAP-080A.1 (Rule Evaluation) · CAP-080A.2 (Assessment) · CAP-080A.3 (Decision + full certification) · CAP-080B (Deterministic Rule Evaluation Engine V1 + Rule Catalogue) · CAP-080B.1 (Deterministic Assessment Engine) · CAP-080B.1.1 (QualityAssessmentResult runtime-contract freeze) · CAP-080B.2 (Deterministic Decision Engine) · CAP-080C (Governance runtime activation) · CAP-080D (Runtime integration + release authority) 2026-07-13
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-080A.1 adds Rule Evaluation (§D17–D20); CAP-080A.2 adds Assessment (§D21) and reserves Decision (§D22); CAP-080A.3 freezes Decision (§D23) and certifies the complete subsystem; CAP-080B implements the first deterministic rule evaluator and the governed Rule Catalogue (§D25); CAP-080B.1 implements the first deterministic assessment engine (§D26); CAP-080B.1.1 freezes `QualityAssessmentResult` as the Assessment→Decision runtime contract (§D27); CAP-080B.2 implements the first deterministic decision engine (§D28); CAP-080C activates the governance runtime orchestration (§D29); CAP-080D wires the runtime into the execution pipeline and freezes `QualityDecision` as the sole release authority (§D30).
 - **Governing design:** `docs/proposals/quality-governance-framework.md`
 - **Depends on:** ADR-0016 (Evidence Grounding & Traceability), ADR-0011 (CP1 Validation Engine), the Response Validation Framework — Quality Governance consumes their completed results.
-- **Runtime status:** The full subsystem is implemented — Rule Evaluation (CAP-080B), Assessment (CAP-080B.1), Decision (CAP-080B.2), and the `DefaultQualityGovernanceService` orchestration (CAP-080C) — but **unwired**: no runtime path calls `evaluate`, so runtime behaviour is byte-identical and the golden baseline is unchanged. This ADR governs the architecture; CAP-080D wires the service into the execution pipeline and re-baselines the golden dataset.
+- **Runtime status:** **Active (CAP-080D).** The full subsystem — Rule Evaluation (CAP-080B), Assessment (CAP-080B.1), Decision (CAP-080B.2), and the `DefaultQualityGovernanceService` orchestration (CAP-080C) — is now wired into the live Requirement Intelligence pipeline immediately after CP1, as the terminal release authority (§D30). It consumes only `GroundingResult`, `ValidationResult`, `CP1Result`; the Execution Package projects its `QualityGovernanceResult` into three artifacts and surfaces the canonical `QualityDecision` in the manifest; the golden dataset was re-baselined to `1.2.0`. The Architecture Version remains **1.2.0** and no frozen contract changed.
 
 ## Problem
 
@@ -251,6 +251,32 @@ The activation mirrors the Grounding subsystem exactly (Recommendation 1): a thi
 - **Failure semantics.** Governance is one aggregate evaluation: a failure in any stage propagates and fails the whole `evaluate` call. There is no partial result, no recovery, no fallback — exactly one `QualityGovernanceResult` or an exception (mirroring Grounding).
 
 **Runtime dormancy (Recommendation 5).** Although `evaluate` is now fully executable, it is wired into no runtime path — not the CLI, the Requirement Intelligence run, the Execution Package, manifest generation, the release pipeline, the golden dataset, or productization. Those integrations belong to CAP-080D. Containment tests keep the service and pipeline named only by `PlatformContext` outside the package (Recommendation 6).
+
+---
+
+### D30 — Runtime Integration & Release Authority (CAP-080D)
+
+CAP-080D activates the subsystem in the live runtime **without changing any architecture**. Every decision below is an integration, not a redesign; the frozen contracts (`QualityGovernanceService.evaluate`, `QualityGovernanceResult`, the four governed policies, the execution order) are untouched.
+
+- **Runtime activation & permanently frozen order.** Quality Governance executes immediately after CP1, at the terminal end of the pipeline (Recommendation 1):
+
+  ```
+  Engineering Context → Analysis → Grounding → Validation → CP1 → Quality Governance → Execution Package
+  ```
+
+  The CLI (`run_requirement_analysis.py::run_quality_governance_phase`) obtains the single service **only** from `PlatformContext.create_quality_governance_service()` and calls `evaluate(grounding_result, validation_result, cp1_result)` — pure orchestration glue, mirroring the grounding/validation/CP1 phases. It consumes only the three completed peer results and modifies nothing upstream. Governance runs exactly when all three exist (a live, validated, CP1-gate-open run); the CLI stays orchestration-only and invents no governance logic.
+
+- **Execution Package integration (additive).** `ExecutionData` gains one optional field, `quality_governance_result`, transported exactly like `validation_result` / `cp1_result` / `grounding_result`. No behavioural change; a run that did not reach governance carries `None` and is byte-identical to before.
+
+- **Serializer boundary (projection only, Recommendation 2/4).** A new `quality_governance/serialization/QualityGovernanceSerializer` renders `render_json()` / `render_report()` / `render_summary()` — pure projections of a `QualityGovernanceResult`. It evaluates no rule, assesses nothing, decides nothing, computes no metric or summary, derives no finding, and invokes no engine, policy, builder, or service. Everything it renders already exists inside the result. A containment test forbids it from importing any governance-runtime component, and forbids `QualityGovernanceResult` from importing the Execution Package.
+
+- **Execution Writer & manifest.** When `quality_governance_result` is present, the writer conditionally appends `quality_governance_result.json`, `quality_governance_report.md`, and `quality_governance_summary.md` (the existing conditional-append pattern; no new flow). Those three artifacts flow into `manifest.generatedArtifacts` through the same checksum mechanism as every other file — the manifest schema is unchanged (`manifestSchemaVersion` stays `1.0.0`). Additive, CP1-pattern manifest keys (`qualityGovernanceExecuted`, `qualityGovernanceReport`, `qualityGovernanceSummary`, `qualityGovernanceDecision`) surface the canonical verdict; when governance did not run, no key is added.
+
+- **Release authority (Recommendation 6).** `QualityDecision` is now the repository's **only** release authority. The manifest's `qualityGovernanceDecision` is read **verbatim** from the recorded `QualityDecision`; no CLI logic, execution writer, serializer, manifest builder, release script, or downstream tool recomputes, reinterprets, or overrides it. They consume it only.
+
+- **Deterministic serialization & golden re-baseline (Recommendation 5).** Identical inputs produce an identical `QualityGovernanceResult` excluding the established `started_at`/`completed_at` provenance (and the run-specific ids the runtime mints), exactly as Grounding does. The golden regression compares the canonical `QualityGovernanceResult` content and the JSON round-trip — never Markdown formatting or provenance timestamps. The golden dataset advances to `1.2.0` to include the three governance artifacts; the nine source artifacts and the golden response are unchanged.
+
+- **Failure isolation (Recommendation 4).** Governance remains one aggregate evaluation: it either produces a complete `QualityGovernanceResult` or raises. A governance failure after Grounding/Validation/CP1 completed is surfaced by the CLI but is never fatal and never corrupts or partially rewrites the already-completed upstream results — the run still writes its package with `quality_governance_result = None`.
 
 ---
 
