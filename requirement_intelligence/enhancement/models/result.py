@@ -153,6 +153,13 @@ class RequirementEnhancementResult(Schema):
         if len(finding_ids) != len(set(finding_ids)):
             raise ValueError("findings must not contain duplicate ids.")
 
+        # EnhancedRequirement.observation_ids is a plain ``tuple[str, ...]`` (references
+        # only, Recommendation 2), while RequirementObservation.observation_id is the
+        # typed RequirementObservationId. A frozen dataclass never compares equal to a
+        # plain string even when the underlying value matches, so this check compares
+        # stringified forms on both sides.
+        observation_id_strings = {str(oid) for oid in observation_ids}
+
         relationship_ids = {
             relationship.relationship_id for relationship in self.relationship_graph.relationships
         }
@@ -165,7 +172,7 @@ class RequirementEnhancementResult(Schema):
                         f"result's relationship graph."
                     )
             for observation_id in enhanced.observation_ids:
-                if observation_id not in observation_ids:
+                if observation_id not in observation_id_strings:
                     raise ValueError(
                         f"EnhancedRequirement {enhanced.enhanced_requirement_id!r} references "
                         f"observation {observation_id!r}, which is not present in this "

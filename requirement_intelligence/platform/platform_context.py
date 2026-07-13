@@ -39,8 +39,12 @@ from requirement_intelligence.enhancement.policy import (
     default_enhancement_policy,
 )
 from requirement_intelligence.enhancement.requirement_enhancement_service import (
-    DormantRequirementEnhancementService,
+    DeterministicRequirementEnhancementService,
     RequirementEnhancementService,
+)
+from requirement_intelligence.enhancement.rules import (
+    EnhancementRuleCatalog,
+    default_enhancement_rule_catalog,
 )
 from requirement_intelligence.grounding.builders import (
     GroundedRequirementBuilder,
@@ -428,19 +432,31 @@ class PlatformContext:
         """
         return default_enhancement_policy()
 
+    def create_enhancement_rule_catalog(self) -> EnhancementRuleCatalog:
+        """Return the governed default :class:`EnhancementRuleCatalog` (CAP-081B, ADR-0018).
+
+        The metadata-only declaration of *which* deterministic enhancement mechanisms
+        the framework governs — ordering, lookup, and grouping over the governed
+        rules. The deterministic engine iterates it; it evaluates nothing itself.
+        **Not yet wired**: no runtime path calls it, so runtime behaviour is unchanged.
+        """
+        return default_enhancement_rule_catalog()
+
     def create_requirement_enhancement_service(self) -> RequirementEnhancementService:
-        """Return the :class:`DormantRequirementEnhancementService` (CAP-081A, ADR-0018).
+        """Return the :class:`DeterministicRequirementEnhancementService` (CAP-081B, ADR-0018).
 
         The single runtime entry point into Requirement Intelligence Enhancement, and
-        the **composition root** for the subsystem — currently constructing only the
-        governed :meth:`create_enhancement_policy`, since no engine exists yet.
-        **Not wired into the execution pipeline** (nothing calls ``enhance`` at
-        runtime), so runtime behaviour is byte-identical and the golden baseline is
-        unchanged. A later CAP-081 milestone replaces the dormant implementation with a
-        real one behind this unchanged ``create_requirement_enhancement_service``
-        signature, exactly as CAP-080B replaced the dormant CAP-080A governance engine.
+        the **composition root** for the subsystem: it constructs the deterministic
+        engine, injecting the governed :meth:`create_enhancement_policy` and
+        :meth:`create_enhancement_rule_catalog`. CAP-081B replaces the dormant CAP-081A
+        service with this real, deterministic one, but it remains **unwired into the
+        execution pipeline** — nothing calls ``enhance`` at runtime, so runtime
+        behaviour is byte-identical and the golden baseline is unchanged.
         """
-        return DormantRequirementEnhancementService(policy=self.create_enhancement_policy())
+        return DeterministicRequirementEnhancementService(
+            policy=self.create_enhancement_policy(),
+            rule_catalog=self.create_enhancement_rule_catalog(),
+        )
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

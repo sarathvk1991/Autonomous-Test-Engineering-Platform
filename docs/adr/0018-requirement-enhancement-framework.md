@@ -1,11 +1,11 @@
 # ADR-0018 — Requirement Intelligence Enhancement Framework
 
 - **Status:** Proposed
-- **Date:** 2026-07-13 (CAP-081A — Architecture & Governance Freeze)
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** future CAP-081 milestones will implement the enrichment, relationship-detection, and observation engines behind the contracts this ADR freezes, mirroring how ADR-0017 (CAP-080A) froze Quality Governance before CAP-080B/C/D implemented and wired it.
+- **Date:** 2026-07-13 (CAP-081A — Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine) 2026-07-14
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-081B implements the first deterministic engine — enrichment, relationship construction, observation generation, findings, metrics, summary — behind the frozen contracts (§D7), mirroring how CAP-080B implemented the first deterministic Quality Governance rule evaluator behind the CAP-080A freeze (ADR-0017 §D25). Future CAP-081 milestones will freeze `RequirementEnhancementResult` as a certified runtime contract and wire the service into the live pipeline, mirroring CAP-080B.1.1/CAP-080D.
 - **Governing design:** `docs/proposals/requirement-enhancement-framework.md`
 - **Depends on:** ADR-0015 (Engineering Context Orchestration Model and Policy), the Requirement Analysis Service (`docs/architecture/requirement-analysis-service.md`) — Requirement Enhancement consumes their completed outputs, `EngineeringContext` and `AnalysisResult`.
-- **Runtime status:** **Dormant (CAP-081A).** No enrichment, relationship detection, observation generation, consistency analysis, completeness analysis, graph construction, recommendation, or runtime wiring exists. `RequirementEnhancementService.enhance` is abstract; the registered `DormantRequirementEnhancementService` raises `NotImplementedError`. Nothing calls `enhance` at runtime, so runtime behaviour is byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0**.
+- **Runtime status:** **Implemented, still unwired (CAP-081B).** `RequirementEnhancementService.enhance` is now backed by `DeterministicRequirementEnhancementService`, which delegates to `DeterministicRequirementEnhancementEngine` — deterministic enrichment, relationship construction (the canonical `RelationshipGraph`), observation generation, findings, metrics, and summary, governed by the new `EnhancementRuleCatalog` (§D7). The subsystem is still **not wired into the Requirement Intelligence execution pipeline** — nothing calls `enhance` at runtime — so runtime behaviour is byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0**.
 
 ## Problem
 
@@ -178,6 +178,114 @@ outside the package — so runtime behaviour is byte-identical.
 
 ---
 
+## D7 — The Deterministic Requirement Enhancement Engine (CAP-081B)
+
+CAP-081B implements the **first real engine** behind the CAP-081A boundary — no
+signature, ownership, or contract change; `RequirementEnhancementResult` and every
+canonical model are unmodified in shape. `DeterministicRequirementEnhancementEngine`
+replaces `DormantRequirementEnhancementService` (now
+`DeterministicRequirementEnhancementService`, a thin wrapper delegating to the
+engine, mirroring `DefaultQualityGovernanceService` over its private pipeline,
+ADR-0017 §D29) as the `PlatformContext` default. The engine remains **unwired** from
+the execution pipeline — nothing calls `enhance` at runtime — so runtime behaviour is
+byte-identical and the golden baseline is unchanged.
+
+**A new governed rule catalogue (additive, not frozen by CAP-081A).** `enhancement/rules/`
+introduces `EnhancementRule` (metadata only — a governed mechanism, capability
+switch, and policy reference; no lambda, no embedded threshold), `EnhancementRuleCatalog`
+(ordering/lookup/grouping/enabled-selection only), and `EnhancementRuleBuilder`,
+exactly mirroring `QualityRule` / `QualityRuleCatalog` / `QualityRuleBuilder`
+(ADR-0017 §D25). Three new, additive version axes — `EnhancementRuleVersion`,
+`EnhancementRuleCatalogVersion`, `EnhancementEngineVersion` — are introduced without
+touching the five version axes CAP-081A froze, the same precedent CAP-080B set when
+it additively introduced `QualityRuleVersion` / `QualityRuleCatalogVersion` /
+`QualityRuleEvaluatorVersion` behind the CAP-080A freeze.
+
+**Requirement extraction — duplicated, not coupled.** `AnalysisResult` carries only
+the raw AI response text; the generated requirements live in its strict-JSON body.
+Grounding's `MatchingContextBuilder` already recovers this same array shape, but it
+is a Grounding-owned implementation class Requirement Enhancement must not import
+(Recommendation 1 / D1: peer-subsystem scope). The engine therefore performs the
+identical, minimal extraction **independently**, minting its own plain-string
+requirement ids (`"functional-001"`, …) rather than reusing Grounding's
+`GroundedRequirementId` scheme. This is the same "duplicate rather than couple"
+precedent already established for the identity primitives (ADR-0015 §C, ADR-0016
+§D6) applied to a second concern.
+
+**Deterministic mechanisms only — no semantic inference (Stage 3/4/5).** Every
+mechanism the governed catalogue names is either exact string comparison or
+keyword-triggered substring containment — never embeddings, statistical similarity,
+or AI:
+
+- **Enrichment** — a deterministic `EnhancedRequirementId` per requirement, plus
+  governed `provenance` (domain + position) and `traceability` (analysis/execution
+  id) attributes, bounded by the policy's `max_attributes_per_requirement` and
+  `attribute_key_vocabulary`.
+- **Relationships** (Recommendation 6, into the one canonical `RelationshipGraph`) —
+  `DUPLICATES` from exact normalized-text equality; `DEPENDS_ON` / `REFINES` /
+  `DERIVED_FROM` from a governed keyword (e.g. "depends on", "refines", "child of")
+  co-occurring with another requirement's text verbatim embedded in the same string.
+  Conservative by construction: text that merely resembles another requirement, with
+  no keyword and no verbatim embedding, never produces an edge.
+- **Observations** (Recommendation 3, derived only from the enhanced requirements and
+  the graph) — isolated requirement (no edges at all), orphan requirement
+  (target-only), duplicate requirement (one per `DUPLICATES` edge), disconnected
+  graph (more than one connected component, via deterministic BFS), missing
+  dependency (a dependency keyword present but unresolved to any edge), and
+  relationship inconsistency (a cycle in the `DEPENDS_ON` subgraph, via deterministic
+  DFS).
+- **Findings** — one per `WARNING` / `CRITICAL` observation, by reference to the
+  observation's id only (Recommendation 2); `INFO` observations stay
+  observation-only, exactly as `QualityFinding` surfaces only `WARNING` / `FAILURE`
+  rule violations (ADR-0017 `_SURFACED_SEVERITIES`).
+
+**Relationship identity (Recommendation 5, frozen for this engine).**
+`relationship_id` is a pure function of `(source_requirement_id,
+target_requirement_id, relationship_type)` — a SHA-256 digest, no UUID, no clock —
+so the same pair and type always mint the same edge id across runs.
+
+**Internal execution order (Recommendation 3, frozen for this engine).**
+
+```
+Enhanced requirements (core) → Relationship graph → Observations
+    → Findings → Metrics → Summary → RequirementEnhancementResult
+```
+
+`EnhancedRequirement` objects are constructed once relationships and observations are
+known, so their `relationship_ids` / `observation_ids` are always resolvable
+references (Recommendation 2) — the enrichment *content* (attributes) is still
+decided first; only the Pydantic object's construction is deferred to the point every
+reference it names already exists, which the result's own validator requires.
+
+**Internal modularity (Recommendation 4).** The engine is decomposed into one private
+method per responsibility — extraction, enrichment, graph construction, observation
+generation, finding surfacing, metrics, summary — so a future semantic, statistical,
+graph-based, or AI-assisted engine can reuse the decomposition without changing
+`enhance`'s public signature.
+
+**A defect found and fixed during implementation (not a redesign).** CAP-081A's
+`RequirementEnhancementResult` validator compared `EnhancedRequirement.observation_ids`
+(a plain `tuple[str, ...]`, by design — Recommendation 2) against a set built from
+`RequirementObservation.observation_id` (the typed `RequirementObservationId`). A
+frozen dataclass never compares equal to a plain string even when the underlying
+value matches, so the cross-reference check always failed once any observation
+reference was actually populated — a path CAP-081A's own tests never exercised,
+since nothing was wired until this milestone's engine did. The fix compares
+stringified forms on both sides of that one check; no field, type, or serialization
+changed, so it is a validator-logic fix, not a contract redesign.
+
+**One capability genuinely deferred (Recommendation 6, honestly reserved).** A
+deterministic "parent-child" reference beyond the keyword-triggered mechanism above
+would need a structural parent field the current flat `functional_requirements` /
+`security_requirements` / `quality_requirements` string arrays do not carry. Rather
+than fabricate a heuristic on data that cannot deterministically justify it (Stage 4:
+"populate only relationships that can be deterministically justified"), CAP-081B ships
+the keyword-triggered `PARENT_CHILD_REFERENCE` mechanism only, and reserves true
+structural parent-child detection for a future milestone with a richer requirement
+schema.
+
+---
+
 ## Architectural Recommendations (mandatory — frozen by this ADR)
 
 ### Recommendation 1 — Canonical Enhanced Requirement
@@ -248,23 +356,34 @@ These future capabilities must plug into the frozen contracts — extending
   CP1, and Quality Governance each judge a different lane, and none enriches,
   relates, or observes the requirement set as a whole. That capability was missing,
   not redundant with any of them.
-- **Governed defaults are illustrative until calibrated.** The CAP-081A default
-  policy's capability switches and bounds are governed data, not yet exercised by any
-  engine. Accepted: tuning is a versioned policy change, and no runtime consumes the
-  values yet.
+- **Governed defaults are calibrated conservatively, not empirically.** The CAP-081B
+  default rule catalogue and policy bounds are governed data reflecting a
+  deliberately conservative first pass (Stage 4: "populate only relationships that
+  can be deterministically justified"), not yet tuned against a real corpus.
+  Accepted: tuning is a versioned catalogue/policy change under a future golden
+  re-baseline, never an engine code change.
 - **A re-baseline will be required at runtime activation.** Adding artifacts and
   pipeline stages in a later milestone will change golden checksums. Accepted: the
   golden baseline's re-baseline procedure exists precisely for intentional additive
-  change; CAP-081A changes nothing.
+  change; CAP-081A/CAP-081B change nothing about the golden dataset, since the
+  subsystem stays unwired.
+- **Keyword-triggered relationship detection may find little on typical prose.**
+  Accepted, deliberately: Stage 4 required "conservative and deterministic" — a low
+  hit rate on ordinary generated text is the correct behaviour of an engine that
+  refuses to fabricate a relationship it cannot verbatim-justify, not a defect.
 
 ## Future evolution
 
-- The enrichment, relationship-detection, and observation engines (Recommendation 4),
-  landing behind the unchanged `enhance` contract.
 - **Runtime activation** — a later, deliberate decision to wire `enhance` into the
   Requirement Intelligence execution pipeline between Analysis and Grounding (D2).
+- **`RequirementEnhancementResult` runtime-contract freeze** — a CAP-081B.1-style
+  milestone strengthening docstrings and invariants before the result crosses into
+  serialization, mirroring ADR-0017 §D27 (`QualityAssessmentResult` freeze).
 - The execution-package projection (Recommendation 5) and its golden re-baseline,
   mirroring ADR-0016 §D16 and ADR-0017 §D30/§D31.
+- **Closing the reserved parent-child gap (D7)** — true structural parent-child
+  detection once a richer requirement schema exists, without changing the frozen
+  `enhance` signature.
 - The non-normative extensions of Recommendation 7.
 - Promotion of the shared version/identity value-objects to `shared/` (the debt
   ADR-0015 §C, ADR-0016, and ADR-0017 already name).
@@ -275,7 +394,7 @@ These future capabilities must plug into the frozen contracts — extending
   observations, enhancement metadata.
 - **Does not own:** Engineering Context Orchestration, Analysis, Grounding,
   Validation, CP1, Quality Governance, Execution Package, Reporting, Serialization.
-- **Runtime position (future, not yet wired):** `Engineering Context → Analysis → RequirementEnhancementService.enhance → RequirementEnhancementResult → Grounding → Validation → CP1 → Quality Governance → Execution Package`, consuming the two completed inputs; dormant through CAP-081A.
+- **Runtime position (future, not yet wired):** `Engineering Context → Analysis → RequirementEnhancementService.enhance → RequirementEnhancementResult → Grounding → Validation → CP1 → Quality Governance → Execution Package`, consuming the two completed inputs; fully implemented but dormant through CAP-081B.
 - **Governance:** registered as CAP-081 in the Platform Capability Matrix at
   implementation time; the golden baseline is re-based then. This ADR is **Proposed**
   until that milestone accepts it.

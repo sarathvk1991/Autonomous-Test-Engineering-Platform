@@ -119,8 +119,7 @@ class RequirementEnhancementId(_StringIdentifier):
         execution = str(execution_id).strip()
         if not analysis or not execution:
             raise ValueError(
-                "Cannot mint a requirement enhancement id from an empty analysis or "
-                "execution id."
+                "Cannot mint a requirement enhancement id from an empty analysis or execution id."
             )
         digest = hashlib.sha256(f"{analysis}:{execution}".encode()).hexdigest()
         return cls(f"re-{digest[:12]}")
@@ -137,9 +136,7 @@ class EnhancedRequirementId(_StringIdentifier):
     _LABEL: ClassVar[str] = "enhanced requirement id"
 
     @classmethod
-    def for_requirement(
-        cls, enhancement_id: str, requirement_id: str
-    ) -> EnhancedRequirementId:
+    def for_requirement(cls, enhancement_id: str, requirement_id: str) -> EnhancedRequirementId:
         """Mint the deterministic id for *requirement_id* within *enhancement_id*."""
         enhancement = str(enhancement_id).strip()
         requirement = str(requirement_id).strip()
@@ -212,8 +209,7 @@ class RequirementEnhancementResultId(_StringIdentifier):
         enhancement = str(enhancement_id).strip()
         if not enhancement:
             raise ValueError(
-                "Cannot mint a requirement enhancement result id from an empty "
-                "enhancement id."
+                "Cannot mint a requirement enhancement result id from an empty enhancement id."
             )
         digest = hashlib.sha256(enhancement.encode()).hexdigest()
         return cls(f"rer-{digest[:12]}")
@@ -335,3 +331,37 @@ class ObservationVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "observation version"
+
+
+#: The five version axes above are the ones ADR-0018 (CAP-081A) froze. The three below
+#: are new, additive axes introduced by CAP-081B — the first implementation milestone
+#: — mirroring how CAP-080B additively introduced the Quality Governance rule,
+#: catalogue, and evaluator version axes behind the CAP-080A freeze without touching
+#: any of that milestone's frozen axes (ADR-0017 §D25).
+
+
+@dataclass(frozen=True, order=True)
+class EnhancementRuleVersion(_SemanticVersion):
+    """Semantic version of one governed :class:`EnhancementRule` definition (CAP-081B)."""
+
+    _LABEL: ClassVar[str] = "enhancement rule version"
+
+
+@dataclass(frozen=True, order=True)
+class EnhancementRuleCatalogVersion(_SemanticVersion):
+    """Semantic version of the governed default :class:`EnhancementRuleCatalog` (CAP-081B)."""
+
+    _LABEL: ClassVar[str] = "enhancement rule catalog version"
+
+
+@dataclass(frozen=True, order=True)
+class EnhancementEngineVersion(_SemanticVersion):
+    """Semantic version of the engine that produced a :class:`RequirementEnhancementResult`.
+
+    Independent of ``EnhancementResultVersion`` (the runtime-contract schema): the
+    schema can stay 1.0.0 while a new engine implementation advances this axis, exactly
+    as the Quality Governance rule evaluator's own version axis versions it
+    independently of ``RuleEvaluationResultVersion`` (ADR-0017 §D25).
+    """
+
+    _LABEL: ClassVar[str] = "enhancement engine version"

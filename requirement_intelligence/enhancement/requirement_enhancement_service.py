@@ -32,13 +32,18 @@ What the service does NOT own
     implementation details** of the service and can be added without changing this
     contract.
 
-Runtime status (CAP-081A)
-    ``enhance`` is **abstract**. The registered :class:`DormantRequirementEnhancementService`
-    raises :class:`NotImplementedError`. It is dormant — no runtime path consumes it,
-    and only ``PlatformContext`` may construct it outside this package — so runtime
-    behaviour is byte-identical and the golden baseline is unchanged. Runtime
-    integration is future work, exactly as CAP-080A froze the Quality Governance
-    service boundary years (in capability terms) before CAP-080D wired it in.
+Runtime status (CAP-081B)
+    ``enhance`` is now implemented: :class:`DeterministicRequirementEnhancementService`
+    delegates to a private
+    :class:`~requirement_intelligence.enhancement.engine.DeterministicRequirementEnhancementEngine`
+    that performs deterministic enrichment, relationship construction, observation
+    generation, findings, metrics, and summary end to end. The service is still **not
+    wired into the Requirement Intelligence execution pipeline** (nothing calls
+    ``enhance`` at runtime) and only ``PlatformContext`` may construct it outside this
+    package — so runtime behaviour is byte-identical and the golden baseline is
+    unchanged. Runtime integration is future work, exactly as CAP-080B implemented the
+    first deterministic Quality Governance rule evaluator years (in capability terms)
+    before CAP-080D wired the subsystem in.
 """
 
 from __future__ import annotations
@@ -49,8 +54,12 @@ from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.context_orchestration.models.engineering_context import (
     EngineeringContext,
 )
+from requirement_intelligence.enhancement.engine import DeterministicRequirementEnhancementEngine
 from requirement_intelligence.enhancement.models.result import RequirementEnhancementResult
 from requirement_intelligence.enhancement.policy.enhancement_policy import EnhancementPolicy
+from requirement_intelligence.enhancement.rules.enhancement_rule_catalog import (
+    EnhancementRuleCatalog,
+)
 
 
 class RequirementEnhancementService(ABC):
@@ -94,28 +103,27 @@ class RequirementEnhancementService(ABC):
         raise NotImplementedError
 
 
-class DormantRequirementEnhancementService(RequirementEnhancementService):
-    """The registered, dormant service (CAP-081A). Raises on every call.
+class DeterministicRequirementEnhancementService(RequirementEnhancementService):
+    """The registered default service (CAP-081B) — thin orchestration over the engine.
 
-    Exists so :meth:`PlatformContext.create_requirement_enhancement_service` has a
-    concrete class to construct — proving the composition root and the frozen
-    signature are wired — without performing any enhancement. Mirrors the pattern
-    ADR-0016 §D7 and ADR-0017 §D6 established for the dormant Grounding and Quality
-    Governance runtime services before their first real engines landed.
+    Holds a private :class:`DeterministicRequirementEnhancementEngine` and delegates
+    ``enhance`` to it, owning only the public boundary and construction. It **computes
+    nothing itself**: the engine performs enrichment, relationship construction,
+    observation generation, findings, metrics, and summary. Mirrors how the
+    registered Quality Governance runtime service delegates to its private pipeline
+    (ADR-0017 §D29) — a thin service, real behaviour one layer down.
     """
 
-    def __init__(self, policy: EnhancementPolicy) -> None:
-        """Store the governed policy a future engine will read."""
-        self._policy = policy
+    def __init__(self, *, policy: EnhancementPolicy, rule_catalog: EnhancementRuleCatalog) -> None:
+        """Construct the private deterministic engine this service delegates to."""
+        self._engine = DeterministicRequirementEnhancementEngine(
+            policy=policy, rule_catalog=rule_catalog
+        )
 
     def enhance(
         self,
         engineering_context: EngineeringContext,
         analysis_result: AnalysisResult,
     ) -> RequirementEnhancementResult:
-        """Raise: no enhancement engine exists yet (CAP-081A is architecture only)."""
-        raise NotImplementedError(
-            "RequirementEnhancementService.enhance has no implementation yet "
-            "(CAP-081A froze the architecture only); a later CAP-081 milestone wires "
-            "a real engine behind this unchanged signature."
-        )
+        """Enhance one run via the deterministic engine — delegation only."""
+        return self._engine.enhance(engineering_context, analysis_result)

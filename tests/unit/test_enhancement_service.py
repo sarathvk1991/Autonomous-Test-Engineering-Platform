@@ -1,10 +1,12 @@
-"""Contract and architecture-boundary tests for RequirementEnhancementService (CAP-081A).
+"""Contract and architecture-boundary tests for RequirementEnhancementService.
 
-CAP-081A freezes the service boundary only — abstract contract, dormant
-implementation, PlatformContext registration. These tests assert the permanent
+CAP-081A froze the service boundary — abstract contract, PlatformContext
+registration. CAP-081B replaces the dormant implementation with
+``DeterministicRequirementEnhancementService``. These tests assert the permanent
 contract, the ``PlatformContext`` composition root, and the containment/dependency
 invariants (ADR-0018 §D6), mirroring ``test_quality_governance_service.py``
-(ADR-0017 §D6/§D29).
+(ADR-0017 §D6/§D29). Behavioural coverage of the engine itself lives in
+``test_enhancement_engine.py``.
 """
 
 from __future__ import annotations
@@ -14,12 +16,14 @@ from pathlib import Path
 
 import pytest
 
+from requirement_intelligence.enhancement.models.result import RequirementEnhancementResult
 from requirement_intelligence.enhancement.policy import EnhancementPolicy
 from requirement_intelligence.enhancement.requirement_enhancement_service import (
-    DormantRequirementEnhancementService,
+    DeterministicRequirementEnhancementService,
     RequirementEnhancementService,
 )
 from requirement_intelligence.platform.platform_context import PlatformContext
+from tests.productization.conftest import _run_golden_pipeline
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ENHANCEMENT_PKG = _REPO_ROOT / "requirement_intelligence" / "enhancement"
@@ -34,12 +38,16 @@ class TestServiceContract:
 
 
 @pytest.mark.unit
-class TestDormantService:
-    def test_dormant_service_raises_not_implemented(self) -> None:
-        policy = PlatformContext().create_enhancement_policy()
-        service = DormantRequirementEnhancementService(policy=policy)
-        with pytest.raises(NotImplementedError):
-            service.enhance(None, None)  # type: ignore[arg-type]
+class TestDeterministicService:
+    def test_service_delegates_to_the_engine_and_returns_a_real_result(
+        self, tmp_path: Path
+    ) -> None:
+        pipeline = _run_golden_pipeline(tmp_path)
+        ctx = PlatformContext()
+        service = ctx.create_requirement_enhancement_service()
+        result = service.enhance(pipeline.engineering_context, pipeline.analysis_result)
+        assert isinstance(result, RequirementEnhancementResult)
+        assert result.analysis_id == pipeline.analysis_result.analysis_id
 
 
 @pytest.mark.unit
@@ -48,10 +56,10 @@ class TestPlatformContextRegistration:
         policy = PlatformContext().create_enhancement_policy()
         assert isinstance(policy, EnhancementPolicy)
 
-    def test_create_service_returns_dormant_service(self) -> None:
+    def test_create_service_returns_deterministic_service(self) -> None:
         service = PlatformContext().create_requirement_enhancement_service()
         assert isinstance(service, RequirementEnhancementService)
-        assert isinstance(service, DormantRequirementEnhancementService)
+        assert isinstance(service, DeterministicRequirementEnhancementService)
 
 
 @pytest.mark.unit

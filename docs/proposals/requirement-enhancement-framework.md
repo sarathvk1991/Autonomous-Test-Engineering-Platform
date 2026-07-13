@@ -1,8 +1,8 @@
 # Requirement Intelligence Enhancement Framework — Design Proposal
 
-- **Status:** Proposed (CAP-081A freezes the architecture only; no engine, wiring, or execution artifact)
+- **Status:** Proposed (CAP-081A froze the architecture; CAP-081B implements the first deterministic engine behind it — still no runtime wiring or execution artifact)
 - **Capability:** CAP-081 — Requirement Intelligence Enhancement
-- **Milestones covered:** CAP-081A (Architecture & Governance Freeze — this document)
+- **Milestones covered:** CAP-081A (Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine — §8a)
 - **Governed by:** ADR-0018
 - **Depends on:** ADR-0015 (Engineering Context Orchestration), the Requirement Analysis Service.
 
@@ -130,17 +130,59 @@ def enhance(
     ...
 ```
 
-Abstract in this milestone. The registered `DormantRequirementEnhancementService`
-raises `NotImplementedError`. It depends only on the two frozen contracts it consumes
-— never an *implementation* class (`EngineeringContextOrchestrator`,
-`EngineeringContextBuilder`, `RequirementAnalysisService`). No runtime path calls
-`enhance`; runtime behaviour is byte-identical.
+It depends only on the two frozen contracts it consumes — never an *implementation*
+class (`EngineeringContextOrchestrator`, `EngineeringContextBuilder`,
+`RequirementAnalysisService`). No runtime path calls `enhance`; runtime behaviour is
+byte-identical. CAP-081B (§8a) implements the method; the signature above is
+unchanged.
+
+## 8a. Deterministic Requirement Enhancement Engine (CAP-081B)
+
+CAP-081A froze the service boundary (§8) dormant. CAP-081B implements the **first
+real engine** behind it: `DeterministicRequirementEnhancementEngine`, wrapped by
+`DeterministicRequirementEnhancementService` (replacing
+`DormantRequirementEnhancementService` as the `PlatformContext` default). No
+signature, ownership, or contract change; the engine remains **unwired** from the
+execution pipeline, so runtime is byte-identical and the golden baseline is
+unchanged.
+
+- **A new governed rule catalogue** (`enhancement/rules/`) — `EnhancementRule`
+  (metadata only: a governed mechanism, capability switch, and policy reference; no
+  lambda, no embedded threshold), `EnhancementRuleCatalog` (ordering/lookup/
+  grouping/enabled-selection only), `EnhancementRuleBuilder` — mirrors
+  `QualityRule` / `QualityRuleCatalog` / `QualityRuleBuilder` exactly (ADR-0017
+  §D25). Three new, additive version axes (`EnhancementRuleVersion`,
+  `EnhancementRuleCatalogVersion`, `EnhancementEngineVersion`) do not touch the five
+  CAP-081A froze.
+- **Requirement extraction, duplicated rather than coupled.** The engine
+  independently recovers the generated-requirement arrays from `AnalysisResult`'s
+  strict-JSON body — the same shape Grounding's `MatchingContextBuilder` reads, but
+  never that Grounding-owned class. Enhancement mints its own plain-string
+  requirement ids.
+- **Deterministic mechanisms only.** Enrichment: stable ids, `provenance` and
+  `traceability` attributes. Relationships: `DUPLICATES` via exact normalized-text
+  equality; `DEPENDS_ON` / `REFINES` / `DERIVED_FROM` via a governed keyword
+  co-occurring with another requirement's text embedded verbatim. Observations
+  (derived only from enhanced requirements + the graph): isolated, orphan,
+  duplicate, disconnected-graph, missing-dependency, relationship-inconsistency
+  (cycle). Findings surface only `WARNING`/`CRITICAL` observations, by reference.
+  See ADR-0018 §D7 for the complete mechanism-by-mechanism rationale.
+- **A validator defect found and fixed (not a redesign).** CAP-081A's
+  `RequirementEnhancementResult` validator compared `EnhancedRequirement.observation_ids`
+  (plain strings) against a set of typed `RequirementObservationId` objects — never
+  equal, so the check silently always failed once populated. Fixed by comparing
+  stringified forms; no field or contract changed. See ADR-0018 §D7.
+- **One capability honestly reserved.** True structural parent-child detection needs
+  a requirement schema field the current flat string arrays don't carry; CAP-081B
+  ships the keyword-triggered variant only rather than fabricate an unjustified
+  heuristic (Recommendation 6 / Stage 4).
 
 ## 9. PlatformContext
 
-`PlatformContext` gains two composition-root methods, construction only:
+`PlatformContext` exposes three composition-root methods, construction only:
 
 - `create_enhancement_policy() -> EnhancementPolicy`
+- `create_enhancement_rule_catalog() -> EnhancementRuleCatalog` (CAP-081B)
 - `create_requirement_enhancement_service() -> RequirementEnhancementService`
 
 Mirroring `create_quality_policy()` / `create_quality_governance_service()`
@@ -159,9 +201,9 @@ only; it will never duplicate `RequirementEnhancementResult`'s content (Recommen
 
 ## 11. Implementation roadmap (non-normative)
 
-1. Deterministic enrichment engine (attributes only, no AI).
-2. Deterministic relationship-detection engine (structural/textual matching).
-3. Deterministic observation-generation engine (completeness/consistency signals).
+1. ~~Deterministic enrichment engine (attributes only, no AI).~~ **Done (CAP-081B).**
+2. ~~Deterministic relationship-detection engine (structural/textual matching).~~ **Done (CAP-081B).**
+3. ~~Deterministic observation-generation engine (completeness/consistency signals).~~ **Done (CAP-081B).**
 4. Runtime activation — wire `enhance` into the pipeline between Analysis and
    Grounding, add the Execution Package projection, golden re-baseline.
 5. Recommendation layer, derived strictly from recorded observations

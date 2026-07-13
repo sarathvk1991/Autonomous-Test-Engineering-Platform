@@ -843,6 +843,12 @@ def test_platform_context_returns_independent_instances() -> None:
 #: on the model only (a consumed contract, never an implementation class), and the
 #: enhancement subsystem stays dormant — this is the conscious registration, not a
 #: runtime wiring.
+#:
+#: ``enhancement/engine.py`` joined in CAP-081B: the deterministic engine behind that
+#: service reads the same ``EngineeringContext`` contract directly (it takes the
+#: parameter the service signature already declared) to recover the evidence corpus.
+#: Still a dependency on the model only, and the subsystem stays unwired from the
+#: execution pipeline.
 _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/platform/platform_context.py"),
     Path("requirement_intelligence/prompts/requirement_prompt_builder.py"),
@@ -852,6 +858,7 @@ _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/grounding/builders/matching_context_builder.py"),
     Path("requirement_intelligence/grounding/pipeline.py"),
     Path("requirement_intelligence/enhancement/requirement_enhancement_service.py"),
+    Path("requirement_intelligence/enhancement/engine.py"),
     Path("scripts/run_requirement_analysis.py"),
 }
 
