@@ -1,15 +1,45 @@
 """The :class:`RequirementEnhancementResult` — the frozen runtime contract of the
-Requirement Intelligence Enhancement Framework.
+Requirement Intelligence Enhancement Framework (CAP-081B.1 freeze, ADR-0018 §D8).
 
-``RequirementEnhancementResult`` is the canonical repository-level aggregate the
-Requirement Enhancement runtime will produce and
-``RequirementEnhancementService.enhance`` will return — a peer to ``GroundingResult`` /
-``ValidationResult`` / ``CP1Result`` / ``QualityGovernanceResult``. It ties the
-enhancement to the run it enriched and **names the exact upstream inputs it consumed**
-(:class:`EnhancementInputReference`), so the result is a complete, self-contained
-record: every enriched requirement, relationship, and observation is explainable from
-this object alone, with no need to re-run enhancement or inspect any runtime service
-(Recommendation 5).
+CAP-081B implemented the first deterministic engine behind the CAP-081A boundary.
+Before any pipeline wiring, serialization, Execution Package integration, or
+downstream subsystem depends on it, CAP-081B.1 freezes ``RequirementEnhancementResult``
+as *the complete, deterministic enhancement assessment for exactly one Requirement
+Intelligence execution* — the same freeze CAP-077E.1 gave ``GroundingResult`` and
+CAP-080B.1.1 gave ``QualityAssessmentResult``. No behaviour changes; this milestone
+strengthens documentation and invariants only.
+
+It **is**:
+
+* the runtime contract — the single object that will cross from the runtime into
+  serialization, exactly as it crosses from ``RequirementEnhancementService.enhance``
+  today;
+* the only enhancement aggregate — a peer to ``GroundingResult`` / ``ValidationResult``
+  / ``CP1Result`` / ``QualityGovernanceResult``;
+* the canonical enhancement boundary — every enriched requirement, relationship,
+  observation, finding, summary, metric, and consumed-input reference already lives
+  here, so the result is self-contained and reproducible with no need to re-run
+  enhancement or inspect any runtime service (Recommendation 5).
+
+It is **not**:
+
+* a report;
+* Markdown;
+* an execution artifact;
+* a renderer;
+* a serializer;
+* an Execution Package object;
+* a graph builder;
+* a metrics calculator;
+* an observation generator;
+* a relationship detector;
+* the enhancement engine;
+* a service;
+* a policy;
+* a builder.
+
+Each of those is a separate, later owner that *consumes* this object; none of them
+computes anything this object doesn't already carry.
 
 The validators enforce cross-referential integrity only. No enrichment, relationship,
 observation, or metric is computed here (Stage 2/3, ADR-0018).
@@ -43,8 +73,15 @@ from requirement_intelligence.enhancement.models.summary import (
 from shared.contracts.base import Schema
 
 #: Version of the ``RequirementEnhancementResult`` **runtime contract** schema.
-#: Independent of the framework, policy, relationship, and observation versions; a
-#: change here never forces any of those to change, and vice versa.
+#: Independent of every other enhancement version axis — ``EnhancementFrameworkVersion``,
+#: ``EnhancementPolicyVersion``, ``EnhancementRuleVersion``, ``EnhancementRuleCatalogVersion``,
+#: ``EnhancementEngineVersion``, ``RelationshipVersion``, and ``ObservationVersion`` — a
+#: change here never forces any of those to change, and vice versa (frozen, CAP-081B.1,
+#: ADR-0018 §D8). A future execution artifact evolves without a ``RequirementEnhancementResult``
+#: change, and a new engine implementation (``EnhancementEngineVersion``) evolves without
+#: forcing this schema to change either — the same independence ``GroundingResultVersion``
+#: gives Grounding (ADR-0016 §D16) and ``QualityAssessmentResultVersion`` gives Quality
+#: Governance (ADR-0017 §D27).
 ENHANCEMENT_RESULT_VERSION = EnhancementResultVersion(1, 0, 0)
 
 
@@ -77,16 +114,36 @@ class RequirementEnhancementResult(Schema):
     surfaced findings, the summary, the metrics, the governing policy identity/
     version, and the consumed-input provenance) any downstream projection needs.
 
-    **Serialization invariant (frozen, mirrors ADR-0017 §D3/CAP-080A).** Every future
-    execution artifact concerning Requirement Enhancement will be a **pure
-    projection** of a ``RequirementEnhancementResult`` — reproducible from it alone,
-    computing nothing.
+    **Serialization invariant (frozen, mirrors ADR-0016 §D16 / ADR-0017 §D3/CAP-080A).**
+    Every future execution artifact concerning Requirement Enhancement will be a
+    **pure projection** of a ``RequirementEnhancementResult`` — reproducible from it
+    alone, computing nothing. A renderer must never call the enhancement engine,
+    ``PlatformContext``, detect a relationship, create an observation, compute a
+    metric, recompute a finding, modify the summary, or invoke a policy.
 
-    Ownership (frozen, Stage 3). This is the **sole** owner of every enriched
-    requirement, relationship, observation, finding, summary, and metric produced by
-    Requirement Enhancement. No execution artifact, manifest, or downstream subsystem
-    may duplicate that ownership (mirroring ADR-0017 §D31's manifest-purity rule,
-    applied here from the outset rather than retrofitted).
+    **Ownership (frozen, CAP-081B.1, ADR-0018 §D8).** This is the **sole** owner of
+    every enriched requirement, relationship graph, observation, finding, summary
+    metric, policy identity/version, and consumed-input provenance produced by
+    Requirement Enhancement. Nothing upstream and nothing downstream owns these — no
+    execution artifact, manifest, or other subsystem may duplicate that ownership
+    (mirroring ADR-0017 §D31's manifest-purity rule, applied here from the outset
+    rather than retrofitted).
+
+    **Explainability (frozen, CAP-081B.1).** Every enhancement decision is explainable
+    entirely from this object's ``enhanced_requirements``, ``relationship_graph``,
+    ``observations``, ``findings``, ``metrics``, and ``summary`` — no downstream
+    consumer should ever need to re-run enhancement or inspect the engine, the
+    service, or ``PlatformContext``.
+
+    **Runtime/Execution Package boundary (frozen, one-way).** ``Engineering Context →
+    Analysis → Requirement Enhancement → RequirementEnhancementResult → Execution
+    Package → JSON / Markdown / reports``. The Execution Package formats only; the
+    runtime computes only; neither depends on the other.
+
+    **Golden regression boundary (frozen).** A future golden dataset compares this
+    object's content, never Markdown or JSON formatting. A presentation change must
+    never invalidate a runtime regression baseline; only a change to this object's
+    content (or its ``result_version``) is a runtime regression.
     """
 
     model_config = ConfigDict(alias_generator=to_camel)

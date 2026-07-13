@@ -1,11 +1,11 @@
 # ADR-0018 — Requirement Intelligence Enhancement Framework
 
 - **Status:** Proposed
-- **Date:** 2026-07-13 (CAP-081A — Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine) 2026-07-14
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-081B implements the first deterministic engine — enrichment, relationship construction, observation generation, findings, metrics, summary — behind the frozen contracts (§D7), mirroring how CAP-080B implemented the first deterministic Quality Governance rule evaluator behind the CAP-080A freeze (ADR-0017 §D25). Future CAP-081 milestones will freeze `RequirementEnhancementResult` as a certified runtime contract and wire the service into the live pipeline, mirroring CAP-080B.1.1/CAP-080D.
+- **Date:** 2026-07-13 (CAP-081A — Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine) · CAP-081B.1 (RequirementEnhancementResult Runtime Contract Freeze) 2026-07-14
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-081B implements the first deterministic engine — enrichment, relationship construction, observation generation, findings, metrics, summary — behind the frozen contracts (§D7), mirroring how CAP-080B implemented the first deterministic Quality Governance rule evaluator behind the CAP-080A freeze (ADR-0017 §D25). CAP-081B.1 freezes `RequirementEnhancementResult` as the permanent runtime contract (§D8), mirroring CAP-077E.1 (`GroundingResult`, ADR-0016 §D16) and CAP-080B.1.1 (`QualityAssessmentResult`, ADR-0017 §D27). Future CAP-081 milestones will wire the service into the live pipeline and add the Execution Package projection, mirroring CAP-080D.
 - **Governing design:** `docs/proposals/requirement-enhancement-framework.md`
 - **Depends on:** ADR-0015 (Engineering Context Orchestration Model and Policy), the Requirement Analysis Service (`docs/architecture/requirement-analysis-service.md`) — Requirement Enhancement consumes their completed outputs, `EngineeringContext` and `AnalysisResult`.
-- **Runtime status:** **Implemented, still unwired (CAP-081B).** `RequirementEnhancementService.enhance` is now backed by `DeterministicRequirementEnhancementService`, which delegates to `DeterministicRequirementEnhancementEngine` — deterministic enrichment, relationship construction (the canonical `RelationshipGraph`), observation generation, findings, metrics, and summary, governed by the new `EnhancementRuleCatalog` (§D7). The subsystem is still **not wired into the Requirement Intelligence execution pipeline** — nothing calls `enhance` at runtime — so runtime behaviour is byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0**.
+- **Runtime status:** **Implemented, runtime contract frozen, still unwired (CAP-081B.1).** `RequirementEnhancementService.enhance` is backed by `DeterministicRequirementEnhancementService`, which delegates to `DeterministicRequirementEnhancementEngine` — deterministic enrichment, relationship construction (the canonical `RelationshipGraph`), observation generation, findings, metrics, and summary, governed by `EnhancementRuleCatalog` (§D7). `RequirementEnhancementResult` is now the permanently frozen runtime contract (§D8): the sole enhancement aggregate, projection-only for any future serializer, and the golden regression boundary once one exists. The subsystem is still **not wired into the Requirement Intelligence execution pipeline** — nothing calls `enhance` at runtime — so runtime behaviour is byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0**.
 
 ## Problem
 
@@ -286,7 +286,95 @@ schema.
 
 ---
 
-## Architectural Recommendations (mandatory — frozen by this ADR)
+## D8 — `RequirementEnhancementResult` is the frozen runtime contract; serialization is projection (CAP-081B.1)
+
+CAP-081B implemented the first deterministic engine. Before any pipeline wiring,
+serialization, Execution Package integration, Grounding consumption, or downstream
+subsystem depends on it, CAP-081B.1 freezes `RequirementEnhancementResult` as the
+**runtime contract** — the single object that will cross from the runtime into
+serialization. No behaviour changed; this is the same freeze CAP-077E.1 gave
+`GroundingResult` (ADR-0016 §D16) and CAP-080B.1.1 gave `QualityAssessmentResult`
+(ADR-0017 §D27).
+
+**`RequirementEnhancementResult` semantics (frozen).** It is *the complete
+deterministic enhancement assessment for exactly one Requirement Intelligence
+execution*. It **is** the runtime contract, the only enhancement aggregate, and the
+canonical enhancement boundary. It is **not** a report, Markdown, an execution
+artifact, a renderer, a serializer, an Execution Package object, a graph builder, a
+metrics calculator, an observation generator, a relationship detector, the
+enhancement engine, a service, a policy, or a builder — each of those is a separate,
+later owner that *consumes* this object; none of them computes anything this object
+doesn't already carry.
+
+**Versioned independently (frozen).** `EnhancementResultVersion` (carried as
+`result_version`, `ENHANCEMENT_RESULT_VERSION` = 1.0.0) versions the
+**runtime-contract schema** only, decoupled from every other enhancement version
+axis: `EnhancementFrameworkVersion`, `EnhancementPolicyVersion`,
+`EnhancementRuleVersion`, `EnhancementRuleCatalogVersion`, `EnhancementEngineVersion`,
+`RelationshipVersion`, and `ObservationVersion`. Each evolves independently — a new
+engine implementation advances `EnhancementEngineVersion` without forcing the result
+schema to change; a future execution artifact evolves without a
+`RequirementEnhancementResult` change; a policy retune advances
+`EnhancementPolicyVersion` without touching any of the above. No new version axis is
+introduced by this milestone — none is genuinely necessary; the eight axes CAP-081A
+and CAP-081B already established are sufficient.
+
+**Runtime ownership (frozen).** `RequirementEnhancementResult` owns every enriched
+requirement, the relationship graph, every observation, every finding, the metrics,
+the summary, the governing policy identity/version, and the consumed-input
+provenance. Nothing upstream (Engineering Context, Analysis) and nothing downstream
+(a future Execution Package, Grounding, Validation, CP1, Quality Governance) owns any
+of these — `RequirementEnhancementResult` is the single owner, exactly the discipline
+ADR-0017 §D31 froze for Quality Governance's manifest boundary, applied here from the
+outset rather than retrofitted after a violation was found.
+
+**Serialization invariant (frozen).** Every future Requirement Enhancement execution
+artifact must be reproducible solely from a `RequirementEnhancementResult`. A
+renderer must never call the enhancement engine, call `PlatformContext`, detect a
+relationship, create an observation, compute a metric, recompute a finding, modify
+the summary, or invoke a policy. Rendering is projection only — exactly the
+`GroundingResult` (ADR-0016 §D16) and `QualityAssessmentResult` (ADR-0017 §D27)
+serialization rule, extended here before any serializer exists.
+
+**Explainability (frozen).** Every enhancement decision is explainable entirely from
+`EnhancedRequirement`, `RelationshipGraph`, `RequirementObservation`,
+`EnhancementFinding`, `EnhancementMetrics`, and `EnhancementSummary` — the six fields
+`RequirementEnhancementResult` carries. Nothing outside the result is required to
+explain an enhancement; no downstream consumer should ever inspect the engine, the
+service, or `PlatformContext`.
+
+**Runtime/Execution Package boundary (frozen, one-way).**
+
+```
+Engineering Context → Analysis → Requirement Enhancement
+    → RequirementEnhancementResult → Execution Package → JSON / Markdown / reports
+```
+
+The Execution Package formats only; the runtime computes only; neither depends on the
+other. When a serializer is eventually introduced it must never import an
+enhancement-engine implementation class, and `RequirementEnhancementResult` must
+never import the Execution Package — enforced by containment tests from this
+milestone forward, even though no serializer exists yet.
+
+**Golden regression boundary (frozen, forward-looking).** A future golden dataset
+must compare `RequirementEnhancementResult` content, never Markdown or JSON
+formatting. A presentation change must never invalidate a runtime regression
+baseline; only a change to the result's content (or its `result_version`) is a
+runtime regression. No golden dataset covers Requirement Enhancement yet (the
+subsystem is unwired), so this is a frozen invariant for the milestone that
+eventually adds one, not a currently-enforced golden comparison.
+
+**Subsystem architecture review (Stage 8, confirmed, no overlap).** `EnhancementRule`
+/ `EnhancementRuleCatalog` own metadata only; `EnhancementPolicy` owns governance data
+only; `DeterministicRequirementEnhancementEngine` owns behaviour only;
+`DeterministicRequirementEnhancementService` owns orchestration only (a thin
+delegator); a future builder would own assembly only, and a future serializer would
+own projection only. No responsibility overlaps, no cyclic dependency exists (the
+dependency graph runs strictly `EngineeringContext`/`AnalysisResult` →
+`EnhancementPolicy`/`EnhancementRuleCatalog` → engine → `RequirementEnhancementResult`
+→ future consumers), and no ownership is ambiguous.
+
+---
 
 ### Recommendation 1 — Canonical Enhanced Requirement
 
@@ -376,11 +464,10 @@ These future capabilities must plug into the frozen contracts — extending
 
 - **Runtime activation** — a later, deliberate decision to wire `enhance` into the
   Requirement Intelligence execution pipeline between Analysis and Grounding (D2).
-- **`RequirementEnhancementResult` runtime-contract freeze** — a CAP-081B.1-style
-  milestone strengthening docstrings and invariants before the result crosses into
-  serialization, mirroring ADR-0017 §D27 (`QualityAssessmentResult` freeze).
-- The execution-package projection (Recommendation 5) and its golden re-baseline,
-  mirroring ADR-0016 §D16 and ADR-0017 §D30/§D31.
+- The execution-package projection (Recommendation 5, §D8's serialization
+  invariant) and its golden re-baseline, mirroring ADR-0016 §D16 and ADR-0017
+  §D30/§D31 — the boundary is frozen in advance by §D8, so the serializer that
+  eventually lands has no architecture left to design, only to implement.
 - **Closing the reserved parent-child gap (D7)** — true structural parent-child
   detection once a richer requirement schema exists, without changing the frozen
   `enhance` signature.
@@ -394,7 +481,7 @@ These future capabilities must plug into the frozen contracts — extending
   observations, enhancement metadata.
 - **Does not own:** Engineering Context Orchestration, Analysis, Grounding,
   Validation, CP1, Quality Governance, Execution Package, Reporting, Serialization.
-- **Runtime position (future, not yet wired):** `Engineering Context → Analysis → RequirementEnhancementService.enhance → RequirementEnhancementResult → Grounding → Validation → CP1 → Quality Governance → Execution Package`, consuming the two completed inputs; fully implemented but dormant through CAP-081B.
+- **Runtime position (future, not yet wired):** `Engineering Context → Analysis → RequirementEnhancementService.enhance → RequirementEnhancementResult → Grounding → Validation → CP1 → Quality Governance → Execution Package`, consuming the two completed inputs; fully implemented, with a permanently frozen runtime contract, but dormant through CAP-081B.1.
 - **Governance:** registered as CAP-081 in the Platform Capability Matrix at
   implementation time; the golden baseline is re-based then. This ADR is **Proposed**
   until that milestone accepts it.

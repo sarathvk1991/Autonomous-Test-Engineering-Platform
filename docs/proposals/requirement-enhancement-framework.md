@@ -1,8 +1,8 @@
 # Requirement Intelligence Enhancement Framework — Design Proposal
 
-- **Status:** Proposed (CAP-081A froze the architecture; CAP-081B implements the first deterministic engine behind it — still no runtime wiring or execution artifact)
+- **Status:** Proposed (CAP-081A froze the architecture; CAP-081B implemented the first deterministic engine behind it; CAP-081B.1 freezes `RequirementEnhancementResult` as the permanent runtime contract — still no runtime wiring or execution artifact)
 - **Capability:** CAP-081 — Requirement Intelligence Enhancement
-- **Milestones covered:** CAP-081A (Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine — §8a)
+- **Milestones covered:** CAP-081A (Architecture & Governance Freeze) · CAP-081B (Deterministic Requirement Enhancement Engine — §8a) · CAP-081B.1 (RequirementEnhancementResult Runtime Contract Freeze — §8b)
 - **Governed by:** ADR-0018
 - **Depends on:** ADR-0015 (Engineering Context Orchestration), the Requirement Analysis Service.
 
@@ -176,6 +176,41 @@ unchanged.
   a requirement schema field the current flat string arrays don't carry; CAP-081B
   ships the keyword-triggered variant only rather than fabricate an unjustified
   heuristic (Recommendation 6 / Stage 4).
+
+## 8b. RequirementEnhancementResult runtime contract freeze (CAP-081B.1)
+
+CAP-081B implemented the engine. Before any pipeline wiring, serialization,
+Execution Package integration, or downstream subsystem depends on it, CAP-081B.1
+permanently freezes `RequirementEnhancementResult` as the runtime contract — no
+behaviour change, mirroring CAP-077E.1 (`GroundingResult`) and CAP-080B.1.1
+(`QualityAssessmentResult`).
+
+- **Semantics.** *The complete deterministic enhancement assessment for exactly one
+  Requirement Intelligence execution.* It **is** the runtime contract, the only
+  enhancement aggregate, and the canonical enhancement boundary. It is **not** a
+  report, Markdown, an execution artifact, a renderer, a serializer, an Execution
+  Package object, a graph builder, a metrics calculator, an observation generator, a
+  relationship detector, the enhancement engine, a service, a policy, or a builder.
+- **Version independence.** `EnhancementResultVersion` versions the runtime-contract
+  schema only, independent of `EnhancementFrameworkVersion`, `EnhancementPolicyVersion`,
+  `EnhancementRuleVersion`, `EnhancementRuleCatalogVersion`, `EnhancementEngineVersion`,
+  `RelationshipVersion`, and `ObservationVersion`. No new axis was introduced — the
+  eight that already exist are sufficient.
+- **Runtime ownership.** The sole owner of enhanced requirements, the relationship
+  graph, observations, findings, metrics, summary, policy identity/version, and
+  consumed-input provenance. Nothing upstream or downstream owns any of these.
+- **Serialization invariant.** Every future execution artifact is a pure projection,
+  reproducible from the result alone. A renderer never calls the engine,
+  `PlatformContext`, or a policy, and never recomputes anything.
+- **Explainability.** Every enhancement decision is explainable entirely from the
+  result's six content fields — no downstream consumer inspects runtime components.
+- **Runtime/Execution Package boundary (one-way).** `Engineering Context → Analysis →
+  Requirement Enhancement → RequirementEnhancementResult → Execution Package → JSON /
+  Markdown / reports`. Formatting and computation never depend on each other.
+- **Golden regression boundary.** A future golden dataset compares the result's
+  content, never formatting — frozen in advance of the milestone that adds one.
+
+See ADR-0018 §D8 for the complete rationale.
 
 ## 9. PlatformContext
 
