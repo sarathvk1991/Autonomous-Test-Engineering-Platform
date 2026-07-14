@@ -123,6 +123,14 @@ from requirement_intelligence.quality_governance.rules import (
     QualityRuleCatalog,
     default_quality_rule_catalog,
 )
+from requirement_intelligence.recommendation.policy import (
+    RecommendationPolicy,
+    default_recommendation_policy,
+)
+from requirement_intelligence.recommendation.recommendation_service import (
+    DormantRecommendationService,
+    RecommendationService,
+)
 from requirement_intelligence.registry.connector_registry import ConnectorRegistry
 from requirement_intelligence.validation.profiles import (
     ValidationProfileDefinition,
@@ -457,6 +465,31 @@ class PlatformContext:
             policy=self.create_enhancement_policy(),
             rule_catalog=self.create_enhancement_rule_catalog(),
         )
+
+    def create_recommendation_policy(self) -> RecommendationPolicy:
+        """Return the governed default :class:`RecommendationPolicy` (CAP-082A, ADR-0019).
+
+        The governed capability switches and deterministic configuration for the
+        Recommendation Framework — which capabilities are enabled, and the bounds a
+        future engine must respect. A future deterministic/ML/LLM recommendation
+        engine reads it; it contains no logic. **Not yet wired**: no runtime path
+        calls it, so runtime behaviour is unchanged.
+        """
+        return default_recommendation_policy()
+
+    def create_recommendation_service(self) -> RecommendationService:
+        """Return the :class:`DormantRecommendationService` (CAP-082A, ADR-0019).
+
+        The single runtime entry point into the Recommendation Framework —
+        registered here so the composition root and the frozen ``recommend``
+        signature are provably wired, without performing any recommendation
+        generation. **Dormant**: every call raises ``NotImplementedError``, no
+        runtime path consumes it, and only ``PlatformContext`` may construct it
+        outside the ``recommendation`` package — so runtime behaviour is
+        byte-identical and the golden baseline is unchanged. A later CAP-082
+        milestone replaces this with a real engine behind the unchanged contract.
+        """
+        return DormantRecommendationService(policy=self.create_recommendation_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
