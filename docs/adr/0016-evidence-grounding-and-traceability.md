@@ -1,11 +1,11 @@
 # ADR-0016 — Evidence Grounding & Traceability Framework
 
-- **Status:** Proposed (design only — CAP-077 introduces no runtime behaviour in this milestone)
-- **Date:** 2026-07-11 (Proposed)
+- **Status:** Accepted (CAP-077E activated the deterministic runtime; CAP-077E.1 froze `GroundingResult` as the runtime contract; CAP-077F.2 wired Grounding into the live pipeline immediately after Analysis, with the Execution Package projecting its three artifacts; architecture unchanged and frozen). *Header corrected under ADR-0020 Stage 0 — this line was left at its original CAP-077 design-only wording after the runtime was activated in later milestones; no runtime behaviour changed by this correction.*
+- **Date:** 2026-07-11 (Proposed); 2026-07-15 (Status corrected to reflect completed runtime integration)
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** `docs/proposals/evidence-grounding-and-traceability.md`
 - **Depends on:** ADR-0015 (Engineering Context Orchestration) — grounding consumes the `EngineeringContext` evidence corpus.
-- **Runtime status:** Not yet implemented. This ADR governs the architecture; a later milestone implements it and re-baselines the golden dataset.
+- **Runtime status:** Live. `GroundingService.assess` runs immediately after Analysis for every live run; `GroundingResult` is the frozen runtime contract; `GroundingSerializer` projects it into `grounding_result.json` / `grounding_report.md` / `grounding_metrics.md` in the Execution Package. The golden dataset was re-baselined when this activated.
 
 ## Problem
 
