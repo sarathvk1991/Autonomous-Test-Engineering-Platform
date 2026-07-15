@@ -18,9 +18,37 @@ Determinism
 -----------
 Every ``for_*`` factory below is a **pure function** of its inputs — no UUID, no
 clock. The same historical dataset always mints the same ids, which is what lets a
-future ``ContinuousImprovementResult`` be compared and reproduced across runs over
-the same dataset (mirroring ADR-0019 Recommendation 2/3 precedent, lifted to a
-cross-execution scope per ADR-0021).
+``ContinuousImprovementResult`` be compared and reproduced across runs over the same
+dataset (mirroring ADR-0019 Recommendation 2/3 precedent, lifted to a cross-execution
+scope per ADR-0021).
+
+Version axis independence (frozen, CAP-083B.1, ADR-0022 §D10)
+----------------------------------------------------------------
+Eight distinct version types exist, each evolving on its own axis — tuning one never
+forces a change to any other, and vice versa:
+
+* :class:`ContinuousImprovementFrameworkVersion` — the framework's code/contract.
+* :class:`ImprovementPolicyVersion` — one governed ``ImprovementPolicy``.
+* :class:`ImprovementRuleVersion` — the governed ``ImprovementRule`` schema.
+* :class:`ImprovementRuleCatalogVersion` — the governed default rule catalogue.
+* :class:`ImprovementTrendVersion` — the ``ImprovementTrend`` schema (reserved; not
+  yet stamped onto a model field, exactly as ``RelationshipVersion`` /
+  ``ObservationVersion`` were reserved by ADR-0018 and ``RecommendationVersion`` by
+  ADR-0019).
+* :class:`ImprovementAssessmentVersion` — a future ``ImprovementAssessment`` layer
+  (reserved; no model in this framework carries this id or version yet).
+* :class:`ImprovementEngineVersion` — the engine implementation (reserved; not
+  stamped onto ``ContinuousImprovementResult``, which carries no engine-version
+  field).
+* :class:`ContinuousImprovementResultVersion` — the ``ContinuousImprovementResult``
+  runtime contract (the only axis actually stamped onto a model today,
+  ``ContinuousImprovementResult.result_version``).
+
+``ImprovementFinding``, ``ImprovementOpportunity``, and ``ImprovementSummary`` /
+``ImprovementMetrics`` carry no version field of their own by the same design choice
+ADR-0019 made for ``RecommendationGroup`` and ``RecommendationSummary`` — no new
+version type is invented here to cover them; this is a documentation freeze, not a
+model change (CAP-083B.1 introduces no new version class).
 """
 
 from __future__ import annotations
