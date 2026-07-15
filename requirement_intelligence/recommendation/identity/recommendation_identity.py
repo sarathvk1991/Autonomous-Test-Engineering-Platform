@@ -18,6 +18,38 @@ Determinism
 no UUID, no clock. The same execution always mints the same ids, which is what lets a
 future recommendation result be compared and reproduced across runs (ADR-0019
 Recommendation 2/3 precedent).
+
+Version axis independence (frozen, CAP-082B.1, ADR-0019 §D9)
+--------------------------------------------------------------
+Seven distinct version types exist, each evolving on its own axis — tuning one never
+forces a change to any other, and vice versa:
+
+* :class:`RecommendationFrameworkVersion` — the framework's code/contract.
+* :class:`RecommendationPolicyVersion` — one governed ``RecommendationPolicy``.
+* :class:`RecommendationRuleVersion` — the governed ``RecommendationRule`` schema.
+* :class:`RecommendationRuleCatalogVersion` — the governed default rule catalogue.
+* :class:`RecommendationVersion` — the ``Recommendation`` schema (reserved; not yet
+  stamped onto a model field, exactly as ``RelationshipVersion`` /
+  ``ObservationVersion`` were reserved by ADR-0018).
+* :class:`RecommendationEngineVersion` — the engine implementation (reserved; not
+  stamped onto ``RecommendationResult``, which carries no engine-version field).
+* :class:`RecommendationResultVersion` — the ``RecommendationResult`` runtime
+  contract (the only axis actually stamped onto a model today,
+  ``RecommendationResult.result_version``).
+
+Two version concepts named in earlier design notes are **deliberately not** separate
+types, by design rather than by omission:
+
+* ``RecommendationGroup`` carries no version field of its own — it shares the
+  reserved :class:`RecommendationVersion` axis with ``Recommendation`` (both are "the
+  recommendation vocabulary and shape," per that class's docstring), exactly as
+  originally specified in ADR-0019 §D5.
+* ``RecommendationReference`` carries no dedicated schema-version type — its
+  ``referenced_version`` field is a plain string recording the *referenced upstream
+  result's* version (provenance data), never its own shape version, mirroring every
+  sibling subsystem's atomic finding/issue model (``EnhancementFinding``,
+  ``GroundingFinding``, ``ValidationIssue``, ``CP1Finding``, ``QualityFinding``), none
+  of which carry a dedicated version type either.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 # ADR-0019 — Recommendation Framework
 
-- **Status:** Accepted (CAP-082A — Architecture & Governance Freeze; CAP-082B — Deterministic Recommendation Engine implemented behind the frozen contracts)
-- **Date:** 2026-07-14 (CAP-082A — Architecture & Governance Freeze); 2026-07-15 (CAP-082B — Deterministic Recommendation Engine)
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-082B (Deterministic Recommendation Engine — implements the first real engine behind the frozen contracts, mirroring how CAP-081B implemented the first deterministic Requirement Enhancement engine behind ADR-0018, and CAP-080B implemented the first deterministic Quality Governance rule evaluator behind ADR-0017).
+- **Status:** Accepted (CAP-082A — Architecture & Governance Freeze; CAP-082B — Deterministic Recommendation Engine implemented behind the frozen contracts; CAP-082B.1 — RecommendationResult Runtime Contract permanently certified, no behaviour change)
+- **Date:** 2026-07-14 (CAP-082A); 2026-07-15 (CAP-082B; CAP-082B.1)
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-082B (Deterministic Recommendation Engine — implements the first real engine behind the frozen contracts, mirroring how CAP-081B implemented the first deterministic Requirement Enhancement engine behind ADR-0018, and CAP-080B implemented the first deterministic Quality Governance rule evaluator behind ADR-0017); CAP-082B.1 (permanent `RecommendationResult` runtime-contract certification, mirroring CAP-081B.1 and CAP-080B.1.1 — no behaviour change).
 - **Governing design:** `docs/proposals/recommendation-framework.md`
 - **Depends on:** ADR-0018 (Requirement Enhancement Framework), ADR-0016 (Evidence Grounding and Traceability), ADR-0017 (Quality Governance Framework), and the Validation and CP1 subsystems — the Recommendation Framework consumes their five completed outputs: `RequirementEnhancementResult`, `GroundingResult`, `ValidationResult`, `CP1Result`, `QualityGovernanceResult`.
 - **Runtime status:** **Implemented, still dormant (CAP-082B).** `DeterministicRecommendationEngine` generates, prioritizes, groups, confidence-scores, and summarizes recommendations entirely from the governed `RecommendationRuleCatalog` and `RecommendationPolicy`. `RecommendationService.recommend` is no longer abstract-only — `DeterministicRecommendationService` (replacing CAP-082A's `DormantRecommendationService`) delegates to the engine. `PlatformContext.create_recommendation_service()` now returns the deterministic implementation; `create_recommendation_rule_catalog()` is added alongside it. Nothing is wired into the Requirement Intelligence execution pipeline — no CLI phase calls `recommend` — so runtime behaviour is byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0**, `RecommendationResult`'s shape is unchanged, and no frozen contract of any upstream subsystem changed. See "CAP-082B — Deterministic Recommendation Engine (Implementation)" below.
@@ -248,6 +248,72 @@ rendering will be projection only. This is documented now, before any serializer
 is written, so the first serializer is built *inside* the invariant rather than
 retrofitted to satisfy it later.
 
+## D9 — RecommendationResult Runtime Contract (CAP-082B.1 permanent certification)
+
+CAP-082B.1 makes **no runtime behaviour change whatsoever**. It permanently
+certifies `RecommendationResult` as the canonical runtime contract of the
+Recommendation Framework, exactly as CAP-080B.1.1 certified
+`QualityAssessmentResult` and CAP-081B.1 certified `RequirementEnhancementResult` —
+each *before* its subsystem's own runtime activation. This section is the permanent
+reference for that certification; nothing here changes a field, a computation, or a
+signature.
+
+**Frozen definition.** `RecommendationResult` is *the complete deterministic
+runtime recommendation produced from exactly one execution of*
+`RecommendationService.recommend()`.
+
+**Ownership (frozen, no overlap).**
+
+| Component | Owns | Owns *not* |
+|---|---|---|
+| `DeterministicRecommendationEngine` | generation, prioritization, grouping, confidence, summary | orchestration, runtime state, projection, packaging |
+| `RecommendationService` | orchestration only | any computation the engine performs |
+| `RecommendationResult` | runtime state only | orchestration, projection, packaging |
+| Serializer (future) | projection only | generation, orchestration, packaging |
+| Execution Package (future) | packaging only | generation, orchestration, projection logic |
+| CLI (future) | orchestration (of the pipeline call) only | generation, projection, packaging |
+| `PlatformContext` | composition only | generation, orchestration, projection, packaging |
+
+**Explainability (frozen).** Every recommendation must be reconstructable solely
+from `RecommendationResult`. No upstream subsystem needs to be inspected. No engine
+rerun is required. No policy inspection is required. No runtime inspection is
+required. `RecommendationResult` is the complete explanation.
+
+**Runtime boundary (frozen).** Runtime ends at `RecommendationResult`. Everything
+after it is projection. Future serializers, reports, dashboards, Markdown, HTML, PDF,
+and the Execution Package must consume `RecommendationResult` only — never the
+engine, never the service, never `PlatformContext`.
+
+**Runtime vs. Execution boundary (frozen, mirrors CAP-081B.1 exactly).**
+
+```
+Recommendation Runtime (engine + service)
+    → RecommendationResult
+    → Serializer (future)
+    → Execution Package (future)
+    → Manifest (future)
+    → Release
+```
+
+No reverse dependency: nothing later in this chain is ever imported by anything
+earlier in it.
+
+**Golden boundary (frozen, forward-looking).** Recommendation is not yet wired into
+the runtime pipeline. When golden integration eventually occurs,
+`RecommendationResult` — never a report or rendered projection of it — becomes the
+canonical regression artifact. Reports are projections only.
+
+**Version-axis independence (frozen; full detail in
+`recommendation/identity/recommendation_identity.py`'s module docstring).** Seven
+distinct version types exist — `RecommendationFrameworkVersion`,
+`RecommendationPolicyVersion`, `RecommendationRuleVersion`,
+`RecommendationRuleCatalogVersion`, `RecommendationVersion` (reserved),
+`RecommendationEngineVersion` (reserved), `RecommendationResultVersion` (the only
+axis stamped onto a model today) — each evolving independently. `RecommendationGroup`
+shares the reserved `RecommendationVersion` axis with `Recommendation` (by design,
+per §D5, not a gap); `RecommendationReference` carries no dedicated schema-version
+type of its own, mirroring every sibling subsystem's atomic finding/issue model.
+
 ---
 
 ### Recommendation 1 — Recommendation Framework is a consumer only
@@ -423,12 +489,16 @@ implementation milestone** — no redesign.
 - **Does not own:** Engineering Context Orchestration, Analysis, Requirement
   Enhancement, Grounding, Validation, CP1, Quality Governance, Execution Package,
   Reporting, Serialization.
-- **Runtime position (implemented, still dormant, CAP-082B):**
-  `RequirementEnhancementResult` / `GroundingResult` / `ValidationResult` /
-  `CP1Result` / `QualityGovernanceResult` → `RecommendationService.recommend`
-  (`DeterministicRecommendationService` → `DeterministicRecommendationEngine`) →
-  `RecommendationResult` → (future) Execution Package. Architecture frozen; a real
-  deterministic engine exists; nothing wired into the runtime pipeline.
+- **Runtime position (implemented, still dormant, CAP-082B; contract permanently
+  certified, CAP-082B.1):** `RequirementEnhancementResult` / `GroundingResult` /
+  `ValidationResult` / `CP1Result` / `QualityGovernanceResult` →
+  `RecommendationService.recommend` (`DeterministicRecommendationService` →
+  `DeterministicRecommendationEngine`) → `RecommendationResult` → (future)
+  Serializer → (future) Execution Package. Architecture frozen; a real deterministic
+  engine exists; the result contract is permanently certified; nothing wired into
+  the runtime pipeline.
 - **Governance:** registered as CAP-082 for the Requirement Intelligence Layer. This
   ADR is **Accepted** for its architecture scope; CAP-082B is **Accepted** as the
-  first deterministic engine under the unchanged contract.
+  first deterministic engine under the unchanged contract; CAP-082B.1 is **Accepted**
+  as the permanent runtime-contract certification, ready for CAP-082C runtime
+  integration.

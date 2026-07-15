@@ -1,8 +1,8 @@
 # Recommendation Framework — Design Proposal
 
-- **Status:** Accepted (CAP-082A froze the architecture; CAP-082B implements the first deterministic engine behind it, unchanged)
+- **Status:** Accepted (CAP-082A froze the architecture; CAP-082B implemented the first deterministic engine behind it, unchanged; CAP-082B.1 permanently certified the runtime contract, no behaviour change)
 - **Capability:** CAP-082 — Recommendation Framework
-- **Milestones covered:** CAP-082A (Architecture & Governance Freeze), CAP-082B (Deterministic Recommendation Engine — see §13)
+- **Milestones covered:** CAP-082A (Architecture & Governance Freeze), CAP-082B (Deterministic Recommendation Engine — see §13), CAP-082B.1 (RecommendationResult Runtime Contract Freeze — see §8b)
 - **Governed by:** ADR-0019
 - **Depends on:** ADR-0016 (Evidence Grounding and Traceability), ADR-0017 (Quality Governance Framework), ADR-0018 (Requirement Enhancement Framework), the Validation and CP1 subsystems.
 
@@ -157,6 +157,60 @@ delegates to the private `DeterministicRecommendationEngine`, exactly as CAP-081
 implemented `RequirementEnhancementService.enhance` behind the ADR-0018 boundary.
 The signature is unchanged; the subsystem remains unwired into the runtime
 pipeline. See §13.
+
+## 8b. Recommendation Runtime Contract (CAP-082B.1)
+
+CAP-082B.1 permanently certifies `RecommendationResult` as the runtime contract of
+the Recommendation Framework, before the subsystem is activated in the live
+pipeline — mirroring CAP-080B.1.1 (`QualityAssessmentResult`) and CAP-081B.1
+(`RequirementEnhancementResult`). **No runtime behaviour changes.** No field, no
+computation, no signature changed; only documentation and architecture-only tests
+were added. Full detail lives in ADR-0019 §D9; summarised here:
+
+**Frozen definition.** `RecommendationResult` is *the complete deterministic runtime
+recommendation produced from exactly one execution of*
+`RecommendationService.recommend()`.
+
+- **IS:** the runtime contract; the recommendation boundary; independently
+  versioned; deterministic; immutable; self-contained; explainable; serialization
+  independent.
+- **IS NOT:** a report; Markdown; HTML; an execution package; a manifest; a CLI
+  object; a renderer; a serializer; a transport object; a projection.
+
+**Ownership (no overlap).** Engine owns generation/prioritization/grouping/
+confidence/summary. Service owns orchestration only. `RecommendationResult` owns
+runtime state only. A future serializer owns projection only. A future Execution
+Package owns packaging only. A future CLI owns orchestration only. `PlatformContext`
+owns composition only.
+
+**Explainability.** Every recommendation is reconstructable solely from
+`RecommendationResult` — no upstream subsystem, no engine rerun, no policy
+inspection, no runtime inspection required.
+
+**Runtime boundary.** Runtime ends at `RecommendationResult`. Everything after it —
+serializers, reports, dashboards, Markdown, HTML, PDF, the Execution Package — is
+projection, and must consume `RecommendationResult` only, never the engine, the
+service, or `PlatformContext`:
+
+```
+Recommendation Runtime (engine + service)
+    → RecommendationResult
+    → Serializer (future)
+    → Execution Package (future)
+    → Manifest (future)
+    → Release
+```
+
+**Golden boundary (forward-looking).** When golden integration eventually occurs,
+`RecommendationResult` — not reports — becomes the canonical regression artifact.
+
+**Version-axis independence.** Seven distinct version types, each evolving on its
+own axis (see the identity module's docstring for the full list). Two version
+*concepts* named in earlier design notes were confirmed, not newly introduced, as
+shared/absent by design: `RecommendationGroup` shares the reserved
+`RecommendationVersion` axis with `Recommendation` (per §5, not a gap);
+`RecommendationReference` carries no dedicated schema-version type, mirroring every
+sibling subsystem's atomic finding/issue model.
 
 ## 9. PlatformContext
 

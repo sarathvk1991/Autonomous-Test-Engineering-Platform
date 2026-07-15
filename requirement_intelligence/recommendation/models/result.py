@@ -1,36 +1,50 @@
 """The :class:`RecommendationResult` — the frozen runtime contract of the
-Recommendation Framework (CAP-082A, ADR-0019 §D3/§D4).
+Recommendation Framework (CAP-082A architecture freeze; CAP-082B.1 permanent
+runtime-contract certification, ADR-0019 §D3/§D4/§D9).
 
-CAP-082A is a pure architecture milestone: no recommendation is generated, no
-heuristic runs, no scoring is performed. ``RecommendationResult`` is nonetheless
-frozen now, before any engine exists, exactly as CAP-081A froze
-``RequirementEnhancementResult`` and CAP-080A froze ``QualityAssessmentResult`` ahead
-of their own first implementations.
+CAP-082A froze the architecture before any engine existed. CAP-082B implemented the
+first deterministic engine behind that unchanged contract. CAP-082B.1 makes no
+behavioural change whatsoever — it permanently certifies ``RecommendationResult`` as
+*the complete, deterministic runtime recommendation produced from exactly one
+execution of* ``RecommendationService.recommend()``, exactly as CAP-081B.1 certified
+``RequirementEnhancementResult`` and CAP-080B.1.1 certified ``QualityAssessmentResult``
+ahead of their own runtime activations.
 
 It **is**:
 
-* the runtime contract — the single object that will cross from a future runtime
-  into serialization, exactly as ``RequirementEnhancementResult`` crosses from the
-  Requirement Enhancement runtime service's ``enhance`` method today;
-* the only recommendation aggregate — a peer to ``RequirementEnhancementResult`` /
-  ``GroundingResult`` / ``ValidationResult`` / ``CP1Result`` /
-  ``QualityGovernanceResult``;
-* the canonical recommendation boundary — every recommendation, group, summary,
-  metric, and consumed-input reference already lives here, so the result is
-  self-contained and reproducible with no need to re-run recommendation generation
-  or inspect any runtime service (Recommendation 7).
+* the runtime contract — the single object that crosses from the runtime into
+  serialization, exactly as ``RequirementEnhancementResult`` crosses from the
+  Requirement Enhancement runtime service's ``enhance`` method;
+* the recommendation boundary — the only recommendation aggregate, a peer to
+  ``RequirementEnhancementResult`` / ``GroundingResult`` / ``ValidationResult`` /
+  ``CP1Result`` / ``QualityGovernanceResult``;
+* independently versioned — ``result_version`` (:class:`RecommendationResultVersion`)
+  evolves on its own axis, never forcing (or forced by) the framework, policy, rule,
+  rule-catalogue, or recommendation-schema versions, and vice versa (ADR-0019 §D5/§D9);
+* deterministic — a pure function of its five upstream inputs and the governed
+  policy/catalogue; no randomness, no wall-clock dependence beyond the injected clock;
+* immutable — ``frozen=True``, tuple-backed collections, no field can change after
+  construction;
+* self-contained — every recommendation, group, summary metric, and consumed-input
+  reference already lives here (Recommendation 7);
+* explainable — every recommendation is reconstructable from this object alone; no
+  upstream subsystem, engine, policy, or service need ever be inspected or re-run;
+* serialization independent — a future serializer projects this object; this object
+  never depends on a serializer existing (Recommendation 8).
 
 It is **not**:
 
-* a report; Markdown; an execution artifact; a renderer; a serializer; an Execution
-  Package object; a scorer; a prioritizer; a grouping engine; the recommendation
-  engine itself; a service; a policy; a builder.
+* a report; Markdown; HTML; an execution artifact; a manifest; a CLI object; a
+  renderer; a serializer; a transport object; a projection; an Execution Package
+  object; a scorer; a prioritizer; a grouping engine; the recommendation engine
+  itself; a service; a policy; a builder.
 
 Each of those is a separate, later owner that *consumes* this object; none of them
 computes anything this object doesn't already carry.
 
 The validators enforce cross-referential integrity only. No recommendation, group,
-score, or metric is computed here (CAP-082A, ADR-0019).
+score, or metric is computed here (CAP-082A architecture; CAP-082B implementation;
+CAP-082B.1 freeze, ADR-0019).
 """
 
 from __future__ import annotations
@@ -88,14 +102,17 @@ class RecommendationInputReference(Schema):
 
 
 class RecommendationResult(Schema):
-    """The complete, deterministic set of recommendations for one run.
+    """The complete, deterministic runtime recommendation for one run.
 
-    ``RecommendationResult`` is the **runtime contract** — the only recommendation
-    object that will cross into serialization. It is **not** a report, an execution
-    artifact, serialization, a renderer, or a calculator: it already contains
-    everything (every recommendation, every group, the summary, the metrics, the
-    governing policy identity/version, and the consumed-input provenance) any
-    downstream projection needs.
+    Frozen definition (CAP-082B.1): ``RecommendationResult`` is *the complete
+    deterministic runtime recommendation produced from exactly one execution of*
+    ``RecommendationService.recommend()``. It is the **runtime contract** — the only
+    recommendation object that crosses into serialization. It is **not** a report,
+    Markdown, HTML, an execution artifact, a manifest, a CLI object, a renderer, a
+    serializer, a transport object, a projection, or a calculator: it already
+    contains everything (every recommendation, every group, the summary, the
+    metrics, the governing policy identity/version, and the consumed-input
+    provenance) any downstream projection needs.
 
     **Serialization invariant (frozen, mirrors ADR-0018 §D8 / ADR-0017 §D3/CAP-080A).**
     Every future execution artifact concerning recommendations will be a **pure
@@ -103,31 +120,48 @@ class RecommendationResult(Schema):
     nothing. A renderer must never call a recommendation engine, ``PlatformContext``,
     generate a recommendation, form a group, compute a metric, or invoke a policy.
 
-    **Ownership (frozen, CAP-082A, ADR-0019 §D3).** This is the **sole** owner of
-    every recommendation, group, summary metric, policy identity/version, and
-    consumed-input provenance produced by the Recommendation Framework. Nothing
-    upstream and nothing downstream owns these — no execution artifact, manifest, or
-    other subsystem may duplicate that ownership (mirroring ADR-0017 §D31's
+    **Ownership (frozen, CAP-082A, reaffirmed CAP-082B.1, ADR-0019 §D3/§D9).** This is
+    the **sole** owner of every recommendation, group, summary metric, policy
+    identity/version, and consumed-input provenance produced by the Recommendation
+    Framework. The engine owns generation/prioritization/grouping/confidence/summary;
+    the service owns orchestration only; this object owns runtime *state* only; a
+    future serializer will own projection only; a future Execution Package will own
+    packaging only; the CLI will own orchestration only; ``PlatformContext`` owns
+    composition only. No ownership overlaps — no execution artifact, manifest, or
+    other subsystem may duplicate what this object owns (mirroring ADR-0017 §D31's
     manifest-purity rule, applied here from the outset rather than retrofitted).
 
-    **Explainability (frozen, CAP-082A, Recommendation 7).** Every recommendation is
-    explainable entirely from this object's ``recommendations``, ``groups``,
-    ``summary``, and ``metrics`` — no downstream consumer should ever need to re-run
-    recommendation generation or inspect the engine, the service, or
-    ``PlatformContext``.
+    **Explainability (frozen, CAP-082A, reaffirmed CAP-082B.1, Recommendation 7).**
+    Every recommendation is explainable entirely from this object's
+    ``recommendations``, ``groups``, ``summary``, and ``metrics`` — no downstream
+    consumer should ever need to re-run recommendation generation, rerun the engine,
+    or inspect the service, the policy, or ``PlatformContext``.
 
     **Runtime/Execution Package boundary (frozen, one-way, Recommendation 8).**
-    ``Enhancement/Grounding/Validation/CP1/Quality Governance results →
-    RecommendationService.recommend → RecommendationResult → Execution Package →
-    JSON / Markdown / reports``. The Execution Package formats only; the runtime
-    computes only; neither depends on the other. This milestone freezes the contract
-    before any serializer, Execution Package integration, dashboard, or reporting
-    work exists (Recommendation 8).
+    Runtime ends at this object; everything after it is projection::
 
-    **Golden regression boundary (frozen).** A future golden dataset compares this
-    object's content, never Markdown or JSON formatting. A presentation change must
-    never invalidate a runtime regression baseline; only a change to this object's
-    content (or its ``result_version``) is a runtime regression.
+        Recommendation Runtime (engine + service)
+            → RecommendationResult
+            → Serializer (future)
+            → Execution Package (future)
+            → Manifest (future)
+            → Release
+
+    Concretely: ``Enhancement/Grounding/Validation/CP1/Quality Governance results →
+    RecommendationService.recommend → RecommendationResult → Execution Package →
+    JSON / Markdown / reports``. A future serializer, report, dashboard, Markdown,
+    HTML, or PDF projection must consume this object only — never the engine, never
+    the service, never ``PlatformContext``. The Execution Package formats only; the
+    runtime computes only; neither depends on the other. This milestone freezes the
+    contract before any serializer, Execution Package integration, dashboard, or
+    reporting work exists (Recommendation 8).
+
+    **Golden regression boundary (frozen).** When golden integration eventually
+    occurs, this object — never a report or rendered projection of it — becomes the
+    canonical regression artifact. A future golden dataset compares this object's
+    content, never Markdown or JSON formatting. A presentation change must never
+    invalidate a runtime regression baseline; only a change to this object's content
+    (or its ``result_version``) is a runtime regression.
     """
 
     model_config = ConfigDict(alias_generator=to_camel)
