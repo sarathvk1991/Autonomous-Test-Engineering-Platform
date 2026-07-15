@@ -1,8 +1,8 @@
 # Knowledge Graph Framework — Design Proposal
 
-- **Status:** Proposed (CAP-084A freezes the architecture only)
+- **Status:** Proposed (CAP-084A froze the architecture; CAP-084B implemented the first deterministic engine behind it, unchanged)
 - **Capability:** CAP-084 — Knowledge Graph Framework
-- **Milestones covered:** CAP-084A (Architecture & Governance Freeze — this document)
+- **Milestones covered:** CAP-084A (Architecture & Governance Freeze), CAP-084B (Deterministic Knowledge Graph Engine — see §8a)
 - **Governed by:** ADR-0023
 - **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution), ADR-0022 (Continuous Improvement Framework — the first Layer 2 capability and this framework's direct architectural precedent).
 
@@ -98,16 +98,39 @@ def build(
     ...
 ```
 
-It depends only on the `HistoricalDatasetReference` it consumes — never an *implementation* class, never a Layer 1 subsystem, and never Continuous Improvement (a stricter boundary than any Layer 1 subsystem imposes on its peers — Recommendation 1). Abstract at CAP-084A; `DormantKnowledgeGraphService` raises `NotImplementedError`. A later CAP-084 milestone implements the method behind this unchanged signature, exactly as CAP-083B implemented `ContinuousImprovementService.improve` behind the ADR-0022 boundary.
+It depends only on the `HistoricalDatasetReference` it consumes — never an *implementation* class, never a Layer 1 subsystem, and never Continuous Improvement (a stricter boundary than any Layer 1 subsystem imposes on its peers — Recommendation 1). Abstract at CAP-084A; `DormantKnowledgeGraphService` raised `NotImplementedError`. CAP-084B implements the method behind this unchanged signature, exactly as CAP-083B implemented `ContinuousImprovementService.improve` behind the ADR-0022 boundary.
+
+## 8a. CAP-084B — Deterministic Knowledge Graph Engine
+
+CAP-084B is that later milestone: it implements `build` behind the unchanged signature above, exactly as ADR-0023 §D10 describes.
+
+**Modular architecture (new discipline).** Unlike every prior engine in this platform, `DeterministicKnowledgeGraphEngine` is not one large class — it is a thin pipeline orchestrator over independent, single-responsibility collaborators, none exported, none a runtime contract: `NodeProjector` / `EdgeProjector` (`engine/projection/`), `SubgraphDetector` / `ObservationEngine` / `FindingEngine` (`engine/analysis/`), and `SummaryBuilder` / `MetricsBuilder` / `ResultBuilder` (`engine/builders/`).
+
+**Rule catalogue.** `knowledge_graph/rules/` introduces `KnowledgeGraphRule` (metadata only — id, `KnowledgeGraphRuleFamily`, the governed node/edge type or finding category + severity it names, a policy reference, an enable switch), `KnowledgeGraphRuleCatalog` (ordering/lookup only), and `KnowledgeGraphRuleBuilder`/`default_knowledge_graph_rule_catalog()` shipping 22 governed rules: 7 NODE, 9 EDGE, 6 STRUCTURAL.
+
+**Historical Dataset Resolution Principle (Recommendation 9).** `HistoricalDatasetReference` still carries provenance only — no Historical Dataset implementation exists. `DeterministicKnowledgeGraphEngine` resolves it through a private, constructor-injected `HistoricalDatasetProvider` into an engine-internal `HistoricalDataset`: not a runtime contract, not Historical Truth, not Derived Knowledge, never exported past the package boundary — the identical pattern CAP-083B established for Continuous Improvement, deliberately replicated (never imported across the two packages). The CAP-084B default, `DeterministicHistoricalDatasetProvider`, synthesizes reproducible per-execution facts as a pure function of the reference's own fields (SHA-256 digests — no UUID, no clock).
+
+**Deterministic algorithms.** Node/edge projection: direct lookup-and-construct from named entity ids. Subgraph detection: connected-component BFS. Observation/finding detection: arithmetic, set operations, and graph traversal (longest-chain search, iterative cycle detection). No AI, no prediction, no statistics beyond these.
+
+**Policy governance.** Every capability the engine exercises is read from `KnowledgeGraphPolicy` via each rule's `policy_reference` — never hard-coded. `KnowledgePolicyVersion` advances 1.0.0 → 1.1.0 for this value change (Recommendation 5); the policy's *shape* is unchanged.
+
+**Explainability.** Every node/edge/observation/finding names the exact ids it concerns — reaffirming Recommendation 8, now exercised by a real engine.
+
+**Derived Knowledge principle.** Every execution of `build` derives its graph directly from the resolved `HistoricalDataset` — never from a prior `KnowledgeGraphResult` or any of its constituents (mirrors ADR-0022 Recommendation 11).
+
+**Still not activated.** `PlatformContext.create_knowledge_graph_service()` now returns `DeterministicKnowledgeGraphService`, replacing `DormantKnowledgeGraphService` (which CAP-084B removes). `create_knowledge_graph_rule_catalog()` is added alongside `create_knowledge_graph_policy()`. Still unwired: nothing calls `build()` at runtime, so the golden baseline, Architecture Version, and Platform Version are all unchanged.
+
+**Tests.** New deterministic tests cover rule catalogue construction, projection determinism, subgraph detection, observation generation, every finding category (including cycle detection), builder single-computation guarantees, end-to-end engine determinism and explainability, policy gating, and containment (no Layer 1 imports, no Continuous Improvement import, no serializer, no Execution Package, no CLI, no graph database, provider stays private).
 
 ## 9. PlatformContext
 
-`PlatformContext` exposes two composition-root methods, construction only:
+`PlatformContext` exposes three composition-root methods, construction only:
 
 - `create_knowledge_graph_policy() -> KnowledgeGraphPolicy`
-- `create_knowledge_graph_service() -> KnowledgeGraphService`
+- `create_knowledge_graph_rule_catalog() -> KnowledgeGraphRuleCatalog` (CAP-084B)
+- `create_knowledge_graph_service() -> KnowledgeGraphService` (now returns `DeterministicKnowledgeGraphService`, CAP-084B)
 
-Mirroring `create_improvement_policy()` / `create_continuous_improvement_service()` (ADR-0022), these are the **only** sanctioned points outside the `knowledge_graph` package that may construct its objects, enforced by a containment test.
+Mirroring `create_improvement_policy()` / `create_improvement_rule_catalog()` / `create_continuous_improvement_service()` (ADR-0022), these are the **only** sanctioned points outside the `knowledge_graph` package that may construct its objects, enforced by a containment test.
 
 ## 10. Execution package
 
@@ -116,8 +139,8 @@ Not introduced by CAP-084A. When a future milestone activates the runtime, every
 ## 11. Implementation roadmap (non-normative)
 
 1. **Done (CAP-084A).** Architecture & governance freeze: canonical models, typed identities, independent version axes, governed policy, dormant service contract, `PlatformContext` registration.
-2. Deterministic Knowledge Graph Engine (CAP-084B, reserved) — derive nodes/edges/subgraphs/observations/findings strictly from a resolved Historical Dataset (Recommendation 2), projecting subsystem-local structures (e.g. `RelationshipGraph`) by reference, never re-implementing their reasoning.
-3. Historical Dataset implementation (reserved, ADR-0021 §Stage 6) — the actual storage/ordering/lineage/retention/indexing/search `HistoricalDatasetReference` currently only names.
+2. **Done (CAP-084B).** Deterministic Knowledge Graph Engine: derive nodes/edges/subgraphs/observations/findings strictly from a resolved Historical Dataset (Recommendation 2), projecting subsystem-local structures (e.g. `RelationshipGraph`) by reference, never re-implementing their reasoning — via independent, modular collaborators. See §8a.
+3. Historical Dataset implementation (reserved, ADR-0021 §Stage 6) — the actual storage/ordering/lineage/retention/indexing/search `HistoricalDatasetReference` currently only names, and that a future `HistoricalDatasetProvider` may resolve against instead of the CAP-084B deterministic synthesis.
 4. Graph storage (reserved) — a future Neo4j, RDF, property graph, SQL, or in-memory implementation behind the unchanged `build` signature (Recommendation 5).
 5. Runtime activation (CAP-084C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-083C's activation of Continuous Improvement.
 6. Future AI graph reasoning, graph embeddings, graph traversal, and Graph RAG (reserved), behind the unchanged `KnowledgeGraphResult` contract — never a redesign of it.

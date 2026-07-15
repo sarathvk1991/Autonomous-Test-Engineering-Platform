@@ -1,9 +1,10 @@
-"""Unit tests for the governed KnowledgeGraphPolicy and its builder (CAP-084A).
+"""Unit tests for the governed KnowledgeGraphPolicy and its builder (CAP-084B).
 
 The policy is governed data only — immutable, versioned, deterministic. The
 builder constructs; it ingests no node, ingests no edge, partitions no subgraph,
-observes no fact, detects no finding. These tests assert construction and shape,
-never a computation, because no engine exists yet.
+observes no fact, detects no finding itself. These tests assert construction
+and shape, never a computation — the engine (tested separately) is what reads
+these values.
 """
 
 from __future__ import annotations
@@ -37,24 +38,22 @@ class TestDefaultPolicy:
         with pytest.raises(ValidationError):
             policy.description = "changed"  # type: ignore[misc]
 
-    def test_construction_capabilities_enabled_engine_families_reserved_off(self) -> None:
-        # No engine exists yet (CAP-084A): the governed intent switches (node/edge
-        # ingestion, subgraph partitioning, observation/finding generation) are
-        # enabled as data, but no code reads them; the deterministic/ML/LLM engine
-        # families all remain reserved off until CAP-084B (mirrors ADR-0022
-        # Recommendation 5).
+    def test_deterministic_engine_enabled_ml_llm_families_reserved_off(self) -> None:
+        # CAP-084B implements the deterministic engine, so its governed switch
+        # flips to True; the ML/LLM engine families remain reserved off
+        # (mirrors ADR-0022 Recommendation 5).
         switches = default_knowledge_graph_policy().capability_switches
         assert switches.enable_node_ingestion
         assert switches.enable_edge_ingestion
         assert switches.enable_subgraph_partitioning
         assert switches.enable_observation_generation
         assert switches.enable_finding_detection
-        assert not switches.enable_deterministic_engine
+        assert switches.enable_deterministic_engine
         assert not switches.enable_ml_engine
         assert not switches.enable_llm_engine
 
-    def test_policy_version_is_the_cap_084a_foundation(self) -> None:
-        assert str(default_knowledge_graph_policy().policy_version) == "1.0.0"
+    def test_policy_version_advanced_for_cap_084b(self) -> None:
+        assert str(default_knowledge_graph_policy().policy_version) == "1.1.0"
 
     def test_default_thresholds(self) -> None:
         thresholds = default_knowledge_graph_policy().thresholds

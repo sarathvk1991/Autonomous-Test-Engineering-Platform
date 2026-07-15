@@ -25,16 +25,22 @@ be compared and reproduced across builds over the same dataset (mirroring ADR-00
 ``ContinuousImprovementResultId.for_dataset`` precedent, itself lifted from ADR-0019
 Recommendation 2/3 to a cross-execution scope per ADR-0021).
 
-Version axis independence (frozen, CAP-084A, ADR-0023 §D5/§D6)
-----------------------------------------------------------------
-Six distinct version types exist, each evolving on its own axis — tuning one never
+Version axis independence (frozen, CAP-084A; extended CAP-084B, ADR-0023 §D5/§D6/§D9)
+----------------------------------------------------------------------------------------
+Eight distinct version types exist, each evolving on its own axis — tuning one never
 forces a change to any other, and vice versa:
 
 * :class:`KnowledgeGraphFrameworkVersion` — the framework's code/contract.
 * :class:`KnowledgePolicyVersion` — one governed ``KnowledgeGraphPolicy``.
+* :class:`KnowledgeGraphRuleVersion` — the governed ``KnowledgeGraphRule`` schema
+  (CAP-084B, mirroring the Continuous Improvement Framework's own governed rule
+  version axis, ADR-0022).
+* :class:`KnowledgeGraphRuleCatalogVersion` — the governed default rule
+  catalogue (CAP-084B, mirroring the Continuous Improvement Framework's own
+  rule catalogue version axis, ADR-0022).
 * :class:`KnowledgeNodeVersion` — the ``KnowledgeNode`` schema (reserved; not yet
-  stamped onto a model field, exactly as ``ImprovementTrendVersion`` was reserved by
-  ADR-0022 before any model carried it).
+  stamped onto a model field, exactly as a sibling reserved schema axis was
+  reserved by ADR-0022 before any model carried it).
 * :class:`KnowledgeEdgeVersion` — the ``KnowledgeEdge`` schema (reserved).
 * :class:`KnowledgeObservationVersion` — the ``KnowledgeObservation`` schema
   (reserved).
@@ -406,3 +412,29 @@ class KnowledgeGraphResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "knowledge graph result version"
+
+
+@dataclass(frozen=True, order=True)
+class KnowledgeGraphRuleVersion(_SemanticVersion):
+    """Semantic version of the governed ``KnowledgeGraphRule`` schema (CAP-084B).
+
+    Added additively alongside the ``knowledge_graph/rules/`` package, mirroring
+    how ``ImprovementRuleVersion`` was added in CAP-083B — after CAP-084A's
+    architecture-freeze milestone, never during it. Advances independently of
+    every other Knowledge Graph version axis.
+    """
+
+    _LABEL: ClassVar[str] = "knowledge graph rule version"
+
+
+@dataclass(frozen=True, order=True)
+class KnowledgeGraphRuleCatalogVersion(_SemanticVersion):
+    """Semantic version of the governed default :class:`KnowledgeGraphRuleCatalog`.
+
+    Added additively in CAP-084B, mirroring the analogous rule-catalogue version
+    type the Continuous Improvement Framework added alongside its own rule
+    package (CAP-083B). Tuning the catalogue (adding, removing, or retuning a
+    rule) advances this version, never the engine or framework version.
+    """
+
+    _LABEL: ClassVar[str] = "knowledge graph rule catalog version"

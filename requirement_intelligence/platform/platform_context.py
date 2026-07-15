@@ -99,12 +99,16 @@ from requirement_intelligence.grounding.normalization import (
 from requirement_intelligence.grounding.pipeline import GroundingPipeline
 from requirement_intelligence.grounding.strategies import DeterministicTextMatchingStrategy
 from requirement_intelligence.knowledge_graph.knowledge_graph_service import (
-    DormantKnowledgeGraphService,
+    DeterministicKnowledgeGraphService,
     KnowledgeGraphService,
 )
 from requirement_intelligence.knowledge_graph.policy import (
     KnowledgeGraphPolicy,
     default_knowledge_graph_policy,
+)
+from requirement_intelligence.knowledge_graph.rules import (
+    KnowledgeGraphRuleCatalog,
+    default_knowledge_graph_rule_catalog,
 )
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
@@ -574,25 +578,41 @@ class PlatformContext:
 
         The governed capability switches and deterministic thresholds for the
         Knowledge Graph Framework — which capabilities are enabled, and the
-        bounds a future engine must respect. A future deterministic/ML/LLM
-        Knowledge Graph engine reads it; it contains no logic. **Not yet
-        wired**: no runtime path calls it, so runtime behaviour is unchanged.
+        bounds the engine must respect. The deterministic Knowledge Graph
+        engine reads it; it contains no logic. **Not yet wired**: no runtime
+        path calls it, so runtime behaviour is unchanged.
         """
         return default_knowledge_graph_policy()
 
+    def create_knowledge_graph_rule_catalog(self) -> KnowledgeGraphRuleCatalog:
+        """Return the governed default :class:`KnowledgeGraphRuleCatalog` (CAP-084B, ADR-0023).
+
+        The metadata-only declaration of *which* deterministic node, edge, and
+        structural rules the framework governs — ordering, lookup, and grouping
+        over the governed rules. The deterministic engine's projectors and
+        analyzers iterate it; it generates no node, edge, observation, or
+        finding itself. **Not yet wired**: no runtime path calls it, so runtime
+        behaviour is unchanged.
+        """
+        return default_knowledge_graph_rule_catalog()
+
     def create_knowledge_graph_service(self) -> KnowledgeGraphService:
-        """Return the :class:`DormantKnowledgeGraphService` (CAP-084A, ADR-0023).
+        """Return the :class:`DeterministicKnowledgeGraphService` (CAP-084B, ADR-0023).
 
         The single runtime entry point into the Knowledge Graph Framework — the
         second Layer 2 capability (ADR-0020) — and the **composition root** for
-        the subsystem. CAP-084A registers only the dormant service: ``build``
-        raises ``NotImplementedError`` on every call, exactly mirroring how
-        ``DormantContinuousImprovementService`` stood in for
-        ``DeterministicContinuousImprovementService`` ahead of CAP-083B. Nothing
-        calls ``build`` at runtime, so runtime behaviour is byte-identical and
-        the golden baseline is unchanged.
+        the subsystem: it constructs the deterministic engine, injecting the
+        governed :meth:`create_knowledge_graph_policy` and
+        :meth:`create_knowledge_graph_rule_catalog`. CAP-084B replaces the
+        dormant CAP-084A service with this real, deterministic one, but it
+        remains **unwired into any execution pipeline** — nothing calls
+        ``build`` at runtime, so runtime behaviour is byte-identical and the
+        golden baseline is unchanged.
         """
-        return DormantKnowledgeGraphService()
+        return DeterministicKnowledgeGraphService(
+            policy=self.create_knowledge_graph_policy(),
+            rule_catalog=self.create_knowledge_graph_rule_catalog(),
+        )
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

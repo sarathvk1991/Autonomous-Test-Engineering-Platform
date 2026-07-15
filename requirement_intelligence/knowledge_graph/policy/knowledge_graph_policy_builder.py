@@ -5,11 +5,12 @@ deterministic, immutable value — and rejects nothing beyond the model's own fi
 constraints. It ingests no node, ingests no edge, partitions no subgraph, observes
 no fact, detects no finding, and has no runtime consumers.
 
-CAP-084A ships the governed default at ``KnowledgePolicyVersion`` 1.0.0 with
-``enable_deterministic_engine`` reserved off — no engine exists yet. The values
-are **governed data**: tuning them is a versioned policy change, never an engine
-code change, and no future engine hard-codes any of them (mirrors ADR-0022
-Recommendation 5).
+CAP-084A shipped the governed default at ``KnowledgePolicyVersion`` 1.0.0 with
+``enable_deterministic_engine`` reserved off — no engine existed yet. CAP-084B
+advances it to 1.1.0 and flips that switch to ``True`` now that
+``DeterministicKnowledgeGraphEngine`` exists. The values are **governed data**:
+tuning them is a versioned policy change, never an engine code change, and no
+future engine hard-codes any of them (mirrors ADR-0022 Recommendation 5).
 """
 
 from __future__ import annotations
@@ -35,9 +36,9 @@ class KnowledgeGraphPolicyBuilder:
             policy_id=DEFAULT_KNOWLEDGE_GRAPH_POLICY_ID,
             policy_version=KNOWLEDGE_POLICY_VERSION,
             description=(
-                "Default knowledge graph policy (CAP-084A): governed capability "
-                "switches and deterministic thresholds. No engine exists yet; the "
-                "framework is architecture-only and unwired into any runtime pipeline."
+                "Default knowledge graph policy (CAP-084B): governed capability "
+                "switches and deterministic thresholds. The deterministic engine "
+                "is enabled; the framework remains unwired into any runtime pipeline."
             ),
             capability_switches=KnowledgeGraphCapabilitySwitches(
                 enable_node_ingestion=True,
@@ -45,7 +46,7 @@ class KnowledgeGraphPolicyBuilder:
                 enable_subgraph_partitioning=True,
                 enable_observation_generation=True,
                 enable_finding_detection=True,
-                enable_deterministic_engine=False,
+                enable_deterministic_engine=True,
                 enable_ml_engine=False,
                 enable_llm_engine=False,
             ),

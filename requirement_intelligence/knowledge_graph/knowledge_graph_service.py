@@ -25,34 +25,44 @@ or ``.execution`` at all. The dependency direction is one-way:
     HistoricalDatasetReference ─▶ KnowledgeGraphService.build
         ─▶ KnowledgeGraphResult
 
-What the service will OWN
-    orchestration, lifecycle, dependency coordination, execution ordering, and (in
-    a later milestone) assembly of the final :class:`KnowledgeGraphResult`.
+What the service OWNS
+    orchestration, lifecycle, dependency coordination, and execution ordering.
 
 What the service does NOT own
     the Historical Dataset itself (ADR-0021 §Stage 6 names its owner), any Layer 1
     subsystem, Continuous Improvement, and the Execution Package. Each is a
-    separate owner. A future deterministic, statistical, ML, or LLM Knowledge
-    Graph engine is an **internal implementation detail** of the service and can
-    be added without changing this contract.
+    separate owner. The deterministic engine (and any future statistical, ML, or
+    LLM Knowledge Graph engine) is an **internal implementation detail** of the
+    service and can be replaced without changing this contract.
 
-Runtime status (CAP-084A)
-    ``build`` is **abstract and dormant** — :class:`DormantKnowledgeGraphService`
-    raises :class:`NotImplementedError` on every call. No node is ingested, no
-    edge is ingested, no subgraph is partitioned, no observation is recorded, no
-    finding is detected, and no historical dataset access exists. A later
-    milestone (CAP-084B, mirroring CAP-083B) implements the method behind this
-    unchanged signature.
+Runtime status (CAP-084B)
+    ``build`` is now implemented: :class:`DeterministicKnowledgeGraphService`
+    delegates to a private :class:`~requirement_intelligence.knowledge_graph.
+    engine.DeterministicKnowledgeGraphEngine` that performs deterministic node
+    projection, edge projection, subgraph detection, observation generation, and
+    finding detection end to end — via independent, modular collaborators, never
+    one large engine. The service is still **not wired into any execution
+    pipeline** (nothing calls ``build`` at runtime) and only ``PlatformContext``
+    may construct it outside this package — so runtime behaviour is byte-identical
+    and the golden baseline is unchanged. Runtime integration is future work,
+    exactly as CAP-083B implemented the first deterministic Continuous
+    Improvement engine before a later milestone activated it.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from requirement_intelligence.knowledge_graph.engine import (
+    DeterministicKnowledgeGraphEngine,
+    HistoricalDatasetProvider,
+)
 from requirement_intelligence.knowledge_graph.models.historical_dataset_reference import (
     HistoricalDatasetReference,
 )
 from requirement_intelligence.knowledge_graph.models.result import KnowledgeGraphResult
+from requirement_intelligence.knowledge_graph.policy import KnowledgeGraphPolicy
+from requirement_intelligence.knowledge_graph.rules import KnowledgeGraphRuleCatalog
 
 
 class KnowledgeGraphService(ABC):
@@ -87,31 +97,40 @@ class KnowledgeGraphService(ABC):
 
         Notes
         -----
-        Abstract in CAP-084A; a future engine (CAP-084B) implements it behind
-        this unchanged signature, exactly as the Continuous Improvement
-        Framework's own deterministic engine was implemented in CAP-083B behind
-        an unchanged ``improve`` signature.
+        Abstract in CAP-084A; :class:`DeterministicKnowledgeGraphService`
+        (CAP-084B) implements it behind this unchanged signature.
         """
         raise NotImplementedError
 
 
-class DormantKnowledgeGraphService(KnowledgeGraphService):
-    """The CAP-084A registered default — architecture only, no behaviour.
+class DeterministicKnowledgeGraphService(KnowledgeGraphService):
+    """The registered default service (CAP-084B) — thin orchestration over the engine.
 
-    Every call to ``build`` raises :class:`NotImplementedError`. This is the
-    Knowledge Graph Framework's counterpart to CAP-083A's own dormant service
-    (later replaced by CAP-083B's deterministic one) — a placeholder that proves
-    the contract is constructible and registered with :class:`PlatformContext`
-    before any behaviour exists.
+    Holds a private :class:`~requirement_intelligence.knowledge_graph.engine.
+    DeterministicKnowledgeGraphEngine` and delegates ``build`` to it, owning
+    only the public boundary and construction. It **computes nothing itself**:
+    the engine's modular projectors, analyzers, and builders perform node
+    projection, edge projection, subgraph detection, observation generation,
+    finding detection, and result assembly. Mirrors how the Continuous
+    Improvement subsystem's own deterministic runtime service delegates to its
+    private engine (ADR-0022) — a thin service, real behaviour one layer down.
     """
+
+    def __init__(
+        self,
+        *,
+        policy: KnowledgeGraphPolicy,
+        rule_catalog: KnowledgeGraphRuleCatalog | None = None,
+        provider: HistoricalDatasetProvider | None = None,
+    ) -> None:
+        """Construct the private deterministic engine this service delegates to."""
+        self._engine = DeterministicKnowledgeGraphEngine(
+            policy=policy, rule_catalog=rule_catalog, provider=provider
+        )
 
     def build(
         self,
         historical_dataset: HistoricalDatasetReference,
     ) -> KnowledgeGraphResult:
-        """Always raise — no Knowledge Graph engine exists yet (CAP-084A)."""
-        raise NotImplementedError(
-            "KnowledgeGraphService is architecture-only (CAP-084A): no engine "
-            "exists yet. A future milestone (CAP-084B) implements 'build' behind "
-            "this unchanged signature."
-        )
+        """Build the platform graph via the deterministic engine — delegation only."""
+        return self._engine.build(historical_dataset)

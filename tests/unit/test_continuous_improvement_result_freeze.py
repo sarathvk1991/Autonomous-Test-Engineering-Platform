@@ -293,12 +293,26 @@ class TestRuntimeBoundary:
         assert external == permitted
 
     def test_no_module_outside_the_package_names_the_provider(self) -> None:
-        """HistoricalDatasetProvider stays private to the continuous_improvement package."""
+        """HistoricalDatasetProvider stays private to the continuous_improvement package.
+
+        ``knowledge_graph/`` is also excluded: CAP-084B independently reuses the
+        identical, generic ``HistoricalDatasetProvider`` name for its own,
+        unrelated private class — the same Historical Dataset Resolution
+        Principle pattern (ADR-0022 §D9), deliberately replicated per Layer 2
+        subsystem, never imported across them (ADR-0023 §D9). This guard still
+        catches a real leak: an accidental import of *this* package's provider
+        anywhere outside it (Knowledge Graph included).
+        """
         needle = "HistoricalDatasetProvider"
+        knowledge_graph_pkg = _REPO_ROOT / "requirement_intelligence" / "knowledge_graph"
         permitted: set[Path] = set()
         external: set[Path] = set()
         for path in (_REPO_ROOT / "requirement_intelligence").rglob("*.py"):
-            if "tests" in path.parts or path.is_relative_to(_CONTINUOUS_IMPROVEMENT_PKG):
+            if (
+                "tests" in path.parts
+                or path.is_relative_to(_CONTINUOUS_IMPROVEMENT_PKG)
+                or path.is_relative_to(knowledge_graph_pkg)
+            ):
                 continue
             if needle in path.read_text(encoding="utf-8"):
                 external.add(path.relative_to(_REPO_ROOT))

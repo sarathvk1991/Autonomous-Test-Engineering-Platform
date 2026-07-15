@@ -1,16 +1,18 @@
-"""Contract and architecture-boundary tests for KnowledgeGraphService (CAP-084A).
+"""Contract and architecture-boundary tests for KnowledgeGraphService (CAP-084B).
 
-ADR-0023 froze the service boundary: abstract contract, dormant implementation,
-``PlatformContext`` registration. These tests assert the permanent contract, the
-``PlatformContext`` composition root, and the containment/dependency invariants
-(ADR-0023 §D6), mirroring ``test_continuous_improvement_service.py`` (ADR-0022
-§D6) as it stood at CAP-083A.
+ADR-0023 froze the service boundary (CAP-084A: abstract contract, dormant
+implementation, PlatformContext registration). CAP-084B replaces the dormant
+implementation with ``DeterministicKnowledgeGraphService``. These tests assert
+the permanent contract, the ``PlatformContext`` composition root, and the
+containment/dependency invariants (ADR-0023 §D6/§D9), mirroring
+``test_continuous_improvement_service.py`` (ADR-0022 §D6) as it stood at
+CAP-083B.
 
 Knowledge Graph is the second Layer 2 capability (ADR-0020) and consumes
-Historical Truth only (ADR-0021 §Stage 8) — it imports **no** Layer 1 subsystem,
-and — unlike a Layer 1 peer such as Recommendation — it also imports no other
-Layer 2 capability (Continuous Improvement), a stricter boundary than any Layer 1
-subsystem imposes on its peers.
+Historical Truth only (ADR-0021 §Stage 8) — it imports **no** Layer 1
+subsystem, and — unlike a Layer 1 peer such as Recommendation — it also
+imports no other Layer 2 capability (Continuous Improvement), a stricter
+boundary than any Layer 1 subsystem imposes on its peers.
 """
 
 from __future__ import annotations
@@ -22,13 +24,16 @@ from pathlib import Path
 import pytest
 
 from requirement_intelligence.knowledge_graph.knowledge_graph_service import (
-    DormantKnowledgeGraphService,
+    DeterministicKnowledgeGraphService,
     KnowledgeGraphService,
 )
 from requirement_intelligence.knowledge_graph.models import HistoricalDatasetReference
+from requirement_intelligence.knowledge_graph.models.result import KnowledgeGraphResult
 from requirement_intelligence.knowledge_graph.policy import (
     KnowledgeGraphPolicy,
+    default_knowledge_graph_policy,
 )
+from requirement_intelligence.knowledge_graph.rules import default_knowledge_graph_rule_catalog
 from requirement_intelligence.platform.platform_context import PlatformContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -76,19 +81,20 @@ class TestServiceContract:
 
 
 @pytest.mark.unit
-class TestDormantService:
-    def test_dormant_service_raises_not_implemented(self) -> None:
-        service = DormantKnowledgeGraphService()
-        with pytest.raises(NotImplementedError):
-            service.build(_reference())
-
-    def test_platform_context_dormant_service_raises_not_implemented(self) -> None:
+class TestDeterministicService:
+    def test_service_delegates_to_the_engine_and_returns_a_real_result(self) -> None:
         service = PlatformContext().create_knowledge_graph_service()
-        with pytest.raises(NotImplementedError):
-            service.build(_reference())
+        result = service.build(_reference())
+        assert isinstance(result, KnowledgeGraphResult)
+        assert result.historical_dataset.dataset_id == "ds-1"
 
-    def test_dormant_service_is_a_knowledge_graph_service(self) -> None:
-        assert isinstance(DormantKnowledgeGraphService(), KnowledgeGraphService)
+    def test_service_accepts_an_explicit_rule_catalog(self) -> None:
+        catalog = default_knowledge_graph_rule_catalog()
+        service = DeterministicKnowledgeGraphService(
+            policy=default_knowledge_graph_policy(), rule_catalog=catalog
+        )
+        result = service.build(_reference())
+        assert isinstance(result, KnowledgeGraphResult)
 
 
 @pytest.mark.unit
@@ -97,18 +103,26 @@ class TestPlatformContextRegistration:
         policy = PlatformContext().create_knowledge_graph_policy()
         assert isinstance(policy, KnowledgeGraphPolicy)
 
-    def test_create_knowledge_graph_service_returns_dormant_service(self) -> None:
+    def test_create_knowledge_graph_rule_catalog_returns_catalog(self) -> None:
+        from requirement_intelligence.knowledge_graph.rules import KnowledgeGraphRuleCatalog
+
+        catalog = PlatformContext().create_knowledge_graph_rule_catalog()
+        assert isinstance(catalog, KnowledgeGraphRuleCatalog)
+
+    def test_create_knowledge_graph_service_returns_deterministic_service(self) -> None:
         service = PlatformContext().create_knowledge_graph_service()
         assert isinstance(service, KnowledgeGraphService)
-        assert isinstance(service, DormantKnowledgeGraphService)
+        assert isinstance(service, DeterministicKnowledgeGraphService)
 
     def test_repeated_calls_return_independent_but_equal_policies(self) -> None:
         ctx = PlatformContext()
         assert ctx.create_knowledge_graph_policy() == ctx.create_knowledge_graph_policy()
 
-    def test_repeated_calls_return_independent_service_instances(self) -> None:
+    def test_repeated_calls_return_independent_but_equal_catalogs(self) -> None:
         ctx = PlatformContext()
-        assert ctx.create_knowledge_graph_service() is not ctx.create_knowledge_graph_service()
+        assert (
+            ctx.create_knowledge_graph_rule_catalog() == ctx.create_knowledge_graph_rule_catalog()
+        )
 
 
 @pytest.mark.unit
@@ -116,8 +130,8 @@ class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
         """Outside the knowledge_graph package, only PlatformContext may name it.
 
-        CAP-084A registers the dormant implementation, but the subsystem remains
-        entirely unwired: no CLI phase, execution builder, manifest, or serializer
+        CAP-084B registers the deterministic implementation, but the subsystem
+        remains unwired: no CLI phase, execution builder, manifest, or serializer
         may reference the runtime service, so a future dependency cannot appear
         silently (mirroring ADR-0022 §D6's containment test for Continuous
         Improvement, before its own CAP-083C activation).
@@ -142,21 +156,20 @@ class TestRuntimeContainment:
                     external_consumers.add(path.relative_to(_REPO_ROOT))
         assert external_consumers == permitted
 
-    def test_dormant_service_is_not_named_outside_the_package(self) -> None:
-        """``DormantKnowledgeGraphService`` is an internal implementation detail.
+    def test_engine_is_not_named_outside_the_package(self) -> None:
+        """``DeterministicKnowledgeGraphEngine`` is an internal implementation detail.
 
-        Only the service module and ``PlatformContext`` construct it; no other
-        module needs to know it exists.
+        Only the service module may construct it; ``PlatformContext`` talks to
+        the service, never the engine directly (mirrors the enhancement/
+        quality-governance/recommendation/continuous-improvement
+        service-over-engine seam).
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
             _REPO_ROOT / "scripts",
             _REPO_ROOT / "app",
         )
-        needle = "DormantKnowledgeGraphService"
-        permitted = {
-            Path("requirement_intelligence/platform/platform_context.py"),
-        }
+        needle = "DeterministicKnowledgeGraphEngine"
         external_consumers: set[Path] = set()
         for root in roots:
             if not root.exists():
@@ -166,14 +179,14 @@ class TestRuntimeContainment:
                     continue
                 if needle in path.read_text(encoding="utf-8"):
                     external_consumers.add(path.relative_to(_REPO_ROOT))
-        assert external_consumers == permitted
+        assert external_consumers == set()
 
 
 @pytest.mark.unit
 class TestDependencyBoundaries:
-    def test_models_policy_identity_are_self_contained(self) -> None:
-        """Canonical models, policy, and identity depend on no Layer 1 subsystem."""
-        data_dirs = ("models", "policy", "identity")
+    def test_models_policy_identity_rules_are_self_contained(self) -> None:
+        """Canonical models, policy, identity, and rules depend on no Layer 1 subsystem."""
+        data_dirs = ("models", "policy", "identity", "rules")
         for sub in data_dirs:
             for path in (_KNOWLEDGE_GRAPH_PKG / sub).rglob("*.py"):
                 for line in path.read_text(encoding="utf-8").splitlines():
@@ -241,10 +254,17 @@ class TestDependencyBoundaries:
         source = (_KNOWLEDGE_GRAPH_PKG / "knowledge_graph_service.py").read_text(encoding="utf-8")
         assert "HistoricalDatasetReference" in source
 
+    def test_engine_consumes_only_the_historical_dataset_reference(self) -> None:
+        """The engine imports HistoricalDatasetReference and nothing heavier."""
+        source = (
+            _KNOWLEDGE_GRAPH_PKG / "engine" / "deterministic_engine.py"
+        ).read_text(encoding="utf-8")
+        assert "HistoricalDatasetReference" in source
+
     def test_no_execution_package_or_pipeline_dependency(self) -> None:
         """The Knowledge Graph Framework never imports the Execution Package or CLI.
 
-        CAP-084A adds no execution artifact and no pipeline wiring — this is the
+        CAP-084B adds no execution artifact and no pipeline wiring — this is the
         structural guarantee that holds until a deliberate future milestone
         changes it.
         """
@@ -256,40 +276,74 @@ class TestDependencyBoundaries:
                         assert token not in line, f"{path.name} imports {token}"
 
     def test_no_serializer_execution_package_or_cli_integration_exists_yet(self) -> None:
-        """CAP-084A freezes the contract before any of these exist (Stage 1)."""
+        """CAP-084B introduces no serializer or Execution Package integration (Stage 1 scope)."""
         assert not (_KNOWLEDGE_GRAPH_PKG / "serialization").exists()
         assert not any(
             "knowledge_graph" in path.read_text(encoding="utf-8")
             for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py")
         )
 
-    def test_no_engine_module_exists_yet(self) -> None:
-        """CAP-084A introduces no engine — the service is abstract and dormant only."""
-        assert not (_KNOWLEDGE_GRAPH_PKG / "engine.py").exists()
+    def test_engine_package_is_self_contained(self) -> None:
+        """The engine/ package (projectors, analyzers, builders) imports no Layer 1/2 peer,
+        no execution package, and no CLI — mirroring the same discipline the rest of the
+        subsystem observes."""
+        engine_dir = _KNOWLEDGE_GRAPH_PKG / "engine"
+        assert engine_dir.exists()
+        forbidden = (
+            *_LAYER_1_SUBSYSTEMS,
+            *_LAYER_2_PEERS,
+            "requirement_intelligence.execution",
+            "scripts.run_requirement_analysis",
+        )
+        for path in engine_dir.rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
 
-    def test_no_rules_module_exists_yet(self) -> None:
-        """CAP-084A introduces no governed rule catalogue — that is engine-adjacent,
-        reserved for a future implementation milestone (mirrors how
-        continuous_improvement/rules/ was added only in CAP-083B, not CAP-083A)."""
-        assert not (_KNOWLEDGE_GRAPH_PKG / "rules").exists()
+    def test_rules_package_carries_metadata_only(self) -> None:
+        """The rules/ package imports no engine, service, or PlatformContext.
+
+        A rule is metadata (id, family, governed vocabulary member, policy
+        reference) — it never imports the collaborators that act on it.
+        """
+        rules_dir = _KNOWLEDGE_GRAPH_PKG / "rules"
+        assert rules_dir.exists()
+        forbidden = (
+            "DeterministicKnowledgeGraphEngine",
+            "DeterministicKnowledgeGraphService",
+            "NodeProjector",
+            "EdgeProjector",
+            "SubgraphDetector",
+            "ObservationEngine",
+            "FindingEngine",
+            "PlatformContext",
+        )
+        for path in rules_dir.rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
 
     def test_no_historical_dataset_storage_implementation_exists(self) -> None:
-        """CAP-084A introduces no Historical Dataset storage of any kind.
+        """CAP-084B introduces no Historical Dataset storage — resolution only.
 
-        No dedicated storage module exists; ``HistoricalDatasetReference`` remains
-        provenance only (ADR-0021 §Stage 6).
+        The engine's internal ``HistoricalDataset`` / ``HistoricalExecutionRecord``
+        are plain, unexported-as-contracts dataclasses resolved fresh on every
+        call by ``HistoricalDatasetProvider`` — never persisted, never a runtime
+        contract, never crossing this package's boundary (the Historical Dataset
+        Resolution Principle, ADR-0023 §D9). No dedicated storage module exists.
         """
         forbidden_names = (
             "historical_dataset_store.py",
             "historical_dataset_repository.py",
-            "historical_dataset_provider.py",
         )
         existing = {path.name for path in _KNOWLEDGE_GRAPH_PKG.rglob("*.py")}
         for name in forbidden_names:
             assert name not in existing
 
     def test_no_graph_storage_implementation_exists(self) -> None:
-        """CAP-084A introduces no graph database or query surface (Recommendation 5)."""
+        """CAP-084B introduces no graph database or query surface (Recommendation 5)."""
         forbidden_names = ("graph_store.py", "graph_database.py", "graph_query.py")
         existing = {path.name for path in _KNOWLEDGE_GRAPH_PKG.rglob("*.py")}
         for name in forbidden_names:

@@ -18,7 +18,11 @@ from requirement_intelligence.knowledge_graph.identity import (
 #: policy and its builder, and the dormant Knowledge Graph service contract.
 KNOWLEDGE_GRAPH_FRAMEWORK_VERSION = KnowledgeGraphFrameworkVersion(1, 0, 0)
 
-#: Version of the governed default knowledge graph policy. 1.0.0 is the CAP-084A
+#: Version of the governed default knowledge graph policy. 1.0.0 was the CAP-084A
 #: foundation policy (capability switches and deterministic thresholds as data
-#: only, no capability exercised — ``enable_deterministic_engine`` reserved off).
-KNOWLEDGE_POLICY_VERSION = KnowledgePolicyVersion(1, 0, 0)
+#: only, no capability exercised). 1.1.0 is the CAP-084B tuning: the governed
+#: ``enable_deterministic_engine`` switch flips to ``True`` now that
+#: ``DeterministicKnowledgeGraphEngine`` exists — a versioned policy *value*
+#: change, never a policy *shape* change and never an engine code change
+#: (mirrors ADR-0022 Recommendation 5).
+KNOWLEDGE_POLICY_VERSION = KnowledgePolicyVersion(1, 1, 0)
