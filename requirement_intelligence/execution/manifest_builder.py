@@ -142,4 +142,20 @@ class ManifestBuilder:
             manifest["recommendationReport"] = "recommendation_report.md"
             manifest["recommendationMetrics"] = "recommendation_metrics.md"
 
+        # Continuous Improvement references (CAP-083C): additive, and only when
+        # continuous improvement ran. When it did not, the manifest is byte-identical
+        # to before — no key is added, no schema change (manifestSchemaVersion stays
+        # 1.0.0). The three continuous improvement artifacts already appear in
+        # ``generatedArtifacts`` via the same checksum mechanism as every other file.
+        # These three keys are package metadata only — a flag and two artifact
+        # filenames — never the continuous improvement runtime state itself. The
+        # canonical findings, trends, opportunities, metrics, and summary live
+        # exclusively in ``continuous_improvement_result.json`` (ADR-0022 §D10/§D11):
+        # the manifest references that artifact, it never duplicates its content.
+        continuous_improvement = data.continuous_improvement_result
+        if continuous_improvement is not None:
+            manifest["continuousImprovementExecuted"] = True
+            manifest["continuousImprovementReport"] = "continuous_improvement_report.md"
+            manifest["continuousImprovementMetrics"] = "continuous_improvement_metrics.md"
+
         return manifest

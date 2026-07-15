@@ -1,8 +1,8 @@
 # Continuous Improvement Framework — Design Proposal
 
-- **Status:** Proposed (CAP-083A freezes the architecture only)
+- **Status:** Accepted (CAP-083A froze the architecture; CAP-083B implemented the first deterministic engine behind it, unchanged; CAP-083B.1 permanently certified the runtime contract, no behaviour change; CAP-083C activated the runtime and Execution Package in the live pipeline)
 - **Capability:** CAP-083 — Continuous Improvement Framework
-- **Milestones covered:** CAP-083A (Architecture & Governance Freeze — this document)
+- **Milestones covered:** CAP-083A (Architecture & Governance Freeze), CAP-083B (Deterministic Continuous Improvement Engine — see §8a), CAP-083B.1 (ContinuousImprovementResult Runtime Contract Freeze — see §8b), CAP-083C (Runtime Integration & Execution Package Activation — see §8c)
 - **Governed by:** ADR-0022
 - **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution).
 
@@ -189,6 +189,77 @@ Architecture Freeze (CAP-083A) → Deterministic Implementation (CAP-083B) → R
 Contract Freeze (CAP-083B.1). Runtime Integration (CAP-083C, reserved) is the only
 remaining step before this framework is live.
 
+## 8c. Continuous Improvement Runtime, Serializer, Execution Package, Golden Integration (CAP-083C)
+
+CAP-083C activates the already-complete Continuous Improvement Framework in the live
+Requirement Intelligence runtime — Layer 2's first capability going live. No redesign:
+no frozen contract, policy shape, or engine behaviour changed. Full detail lives in
+ADR-0022 §D11; summarised here:
+
+**Continuous Improvement Runtime.** Continuous Improvement executes exactly once,
+immediately after Recommendation, at the permanently frozen end of the pipeline:
+
+```
+... Quality Governance → Recommendation → Historical Dataset
+    → Continuous Improvement → Execution Package
+```
+
+Unlike Recommendation (five consumed peer results), Continuous Improvement consumes
+exactly one `HistoricalDatasetReference` — never a Layer 1 peer result, including any
+of the results this same pipeline run just produced (Recommendation 1). No real,
+multi-execution Historical Dataset implementation exists yet (ADR-0021 §Stage 6,
+reserved), so the CLI mints the minimal, deterministic reference the Historical
+Dataset of exactly this one execution would produce (`execution_count` = `history_window`
+= 1, `first_execution_id` = `last_execution_id` = this run's own `execution_id`,
+`generated_at` = this run's own `completed_at` — never the wall clock). The CLI's
+`run_continuous_improvement_phase` obtains `ContinuousImprovementService` exclusively
+from `PlatformContext` and calls `improve(historical_dataset)` — identical failure
+semantics to Grounding/Quality Governance/Recommendation (surfaced, never fatal), and
+runs whenever this is a live run. No observation, detection, generation, policy, or
+rule-catalogue logic exists in the CLI. Because a single-execution reference can
+satisfy neither the governed recurring-finding floor (`minimum_occurrences`) nor the
+trend floor (at least two data points), the golden dataset deterministically observes
+an empty — but genuine — `ContinuousImprovementResult`.
+
+**Continuous Improvement Serializer (`continuous_improvement/serialization/`).**
+`ContinuousImprovementSerializer` renders `continuous_improvement_result.json`
+(canonical `model_dump`), `continuous_improvement_report.md`, and
+`continuous_improvement_metrics.md` — a pure projection computing nothing; every
+rendered value already exists inside `ContinuousImprovementResult`. It imports no
+engine, service, policy, rule catalogue, or `HistoricalDatasetProvider`
+implementation.
+
+**Execution Package.** `ExecutionData.continuous_improvement_result` is
+additive-only (no existing field changed). `ExecutionWriter` appends the three
+continuous improvement artifacts only when `continuous_improvement_result` is
+present — the same conditional-append mechanism as every other peer subsystem, no
+special case.
+
+**Manifest purity (mirrors ADR-0017 §D31, ADR-0019 §D10).** The manifest gains
+exactly three additive keys — `continuousImprovementExecuted`,
+`continuousImprovementReport`, `continuousImprovementMetrics` — a flag and two
+artifact filenames. No finding, trend, opportunity, summary, or metric value is ever
+copied into the manifest; that runtime state lives exclusively in
+`ContinuousImprovementResult` / `continuous_improvement_result.json`.
+
+**Golden integration.** `_run_golden_pipeline()` now improves immediately after
+Recommendation; `PipelineResult` carries `continuous_improvement_result`. The golden
+dataset re-baselines `GOLDEN_DATASET_VERSION` `1.4.0` → `1.5.0` — the nine source
+artifacts and the golden response are unchanged; only the generated artifact set
+grows by the three continuous improvement files. The Architecture Version remains
+`1.2.0`; the Platform Version is unchanged.
+
+**One-way dependency chain (frozen).**
+
+```
+Continuous Improvement Runtime (engine + service)
+    → ContinuousImprovementResult
+    → Continuous Improvement Serializer
+    → Execution Package
+    → Manifest
+    → Release
+```
+
 ## 9. PlatformContext
 
 `PlatformContext` exposes two composition-root methods, construction only:
@@ -200,15 +271,15 @@ Mirroring `create_recommendation_policy()` / `create_recommendation_service()` (
 
 ## 10. Execution package
 
-Not introduced by CAP-083A. When a future milestone activates the runtime, every Continuous Improvement execution artifact will be a **pure projection** of `ContinuousImprovementResult`, reproducible from it alone, computing nothing — the same serialization invariant ADR-0019 §D8 established for Recommendation (Recommendation 8: runtime before reporting).
+Activated by CAP-083C (§8c). Every Continuous Improvement execution artifact is a **pure projection** of `ContinuousImprovementResult`, reproducible from it alone, computing nothing — the same serialization invariant ADR-0019 §D8 established for Recommendation (Recommendation 8: runtime before reporting).
 
 ## 11. Implementation roadmap (non-normative)
 
 1. **Done (CAP-083A).** Architecture & governance freeze: canonical models, typed identities, independent version axes, governed policy, dormant service contract, `PlatformContext` registration.
 2. **Done (CAP-083B).** Deterministic Continuous Improvement Engine: derive findings/trends/opportunities strictly from a resolved Historical Dataset (Recommendation 7), never independent analysis. See §8a.
 3. **Done (CAP-083B.1).** `ContinuousImprovementResult` Runtime Contract Freeze: permanent certification, no behaviour change. See §8b.
-4. Historical Dataset implementation (reserved, ADR-0021 §Stage 6) — the actual storage/ordering/lineage/retention/indexing/search `HistoricalDatasetReference` currently only names, and that a future `HistoricalDatasetProvider` may resolve against.
-5. Runtime activation (CAP-083C, reserved) — wire `improve` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline.
+4. **Done (CAP-083C).** Runtime activation — `improve` wired into the pipeline after Recommendation, the Execution Package projection added, golden dataset re-baselined `1.4.0` → `1.5.0`. See §8c.
+5. Historical Dataset implementation (reserved, ADR-0021 §Stage 6) — the actual storage/ordering/lineage/retention/indexing/search `HistoricalDatasetReference` currently only names, and that a future `HistoricalDatasetProvider` may resolve against instead of the single-execution reference CAP-083C mints.
 6. CAP-084 (Knowledge Graph), CAP-085 (Organizational Memory), CAP-086 (Learning Framework) — the remaining reserved Layer 2 capabilities.
 
 Each lands behind the unchanged `improve` signature and the unchanged `ContinuousImprovementResult` contract — no architectural change required.

@@ -86,6 +86,13 @@ _RECOMMENDATION_ARTIFACTS = frozenset(
         "recommendation_metrics.md",
     }
 )
+_CONTINUOUS_IMPROVEMENT_ARTIFACTS = frozenset(
+    {
+        "continuous_improvement_result.json",
+        "continuous_improvement_report.md",
+        "continuous_improvement_metrics.md",
+    }
+)
 _ALL_ARTIFACTS = (
     _CORE_ARTIFACTS
     | _RESULT_ARTIFACTS
@@ -95,6 +102,7 @@ _ALL_ARTIFACTS = (
     | _QUALITY_GOVERNANCE_ARTIFACTS
     | _REQUIREMENT_ENHANCEMENT_ARTIFACTS
     | _RECOMMENDATION_ARTIFACTS
+    | _CONTINUOUS_IMPROVEMENT_ARTIFACTS
     | {"manifest.json"}
 )
 
@@ -366,6 +374,58 @@ class TestPhase3PipelineExecution:
         assert str(rec.priority) == "medium"
 
     @pytest.mark.productization
+    def test_continuous_improvement_result_exists(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Continuous Improvement ran after Recommendation (CAP-083C) and produced a result."""
+        assert golden_pipeline_result.continuous_improvement_result is not None, (
+            "ContinuousImprovementResult is None — continuous improvement did not run "
+            "despite recommendation completing."
+        )
+
+    @pytest.mark.productization
+    def test_continuous_improvement_runs_strictly_after_recommendation(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The frozen order: continuous improvement only exists once recommendation does.
+
+        Continuous Improvement consumes exactly one ``HistoricalDatasetReference`` —
+        never a Layer 1 peer result (Recommendation 1, ADR-0022) — minted from this
+        run's own ``AnalysisResult`` (no real, multi-execution Historical Dataset
+        implementation exists yet, ADR-0021 §Stage 6).
+        """
+        continuous_improvement = golden_pipeline_result.continuous_improvement_result
+        assert golden_pipeline_result.recommendation_result is not None
+        reference = continuous_improvement.historical_dataset
+        assert reference.first_execution_id == golden_pipeline_result.analysis_result.execution_id
+        assert reference.last_execution_id == golden_pipeline_result.analysis_result.execution_id
+        # Continuous Improvement completes after the reference it consumed was minted.
+        assert continuous_improvement.started_at <= continuous_improvement.completed_at
+
+    @pytest.mark.productization
+    def test_continuous_improvement_produces_the_golden_datasets_known_shape(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """A long-term regression guard: the golden dataset's fixed, deterministic shape.
+
+        The reference this milestone mints spans exactly one execution
+        (``execution_count=1``), and the governed default policy requires at least
+        three recurring executions before it emits a finding and at least two data
+        points before it emits a trend (ADR-0022 §D9). A single-execution reference
+        can satisfy neither floor, so the golden dataset deterministically observes
+        nothing — an empty, but genuine, ``ContinuousImprovementResult``. A change to
+        this shape is a genuine regression signal and must be re-baselined
+        deliberately, never silently.
+        """
+        continuous_improvement = golden_pipeline_result.continuous_improvement_result
+        assert continuous_improvement.findings == ()
+        assert continuous_improvement.trends == ()
+        assert continuous_improvement.opportunities == ()
+        assert continuous_improvement.summary.total_findings == 0
+        assert continuous_improvement.summary.total_trends == 0
+        assert continuous_improvement.summary.total_opportunities == 0
+
+    @pytest.mark.productization
     def test_execution_package_written(self, golden_pipeline_result: PipelineResult) -> None:
         """ExecutionWriter completed without raising."""
         assert golden_pipeline_result.write_result is not None
@@ -494,6 +554,33 @@ class TestPhase4OutputVerification:
         assert (
             RecommendationResult.model_validate(on_disk)
             == golden_pipeline_result.recommendation_result
+        )
+
+    @pytest.mark.productization
+    def test_continuous_improvement_artifacts_present(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Continuous Improvement ran (CAP-083C), so all three artifacts are written."""
+        for name in _CONTINUOUS_IMPROVEMENT_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Continuous Improvement artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Continuous Improvement artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_continuous_improvement_result_json_round_trips(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """continuous_improvement_result.json is a verbatim, round-trippable projection."""
+        from requirement_intelligence.continuous_improvement.models import (
+            ContinuousImprovementResult,
+        )
+
+        on_disk = _load_json(
+            golden_pipeline_result.output_dir / "continuous_improvement_result.json"
+        )
+        assert (
+            ContinuousImprovementResult.model_validate(on_disk)
+            == golden_pipeline_result.continuous_improvement_result
         )
 
     @pytest.mark.productization
@@ -812,6 +899,80 @@ class TestPhase4OutputVerification:
         assert (
             golden_pipeline_result.execution_data.recommendation_result
             is golden_pipeline_result.recommendation_result
+        )
+
+    @pytest.mark.productization
+    def test_manifest_references_continuous_improvement_artifacts_only(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json indexes the continuous improvement artifacts; it never duplicates state.
+
+        Manifest purity (ADR-0017 §D31, applied here per ADR-0022 §D10/§D11): the
+        manifest owns package metadata and the artifact inventory only. The canonical
+        findings, trends, opportunities, metrics, and summary are the sole runtime
+        state and live exclusively on ``ContinuousImprovementResult`` / the artifact
+        ``continuous_improvement_result.json`` — never re-surfaced as manifest keys.
+        """
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        result = golden_pipeline_result.continuous_improvement_result
+        assert manifest.get("continuousImprovementExecuted") is True
+        assert manifest.get("continuousImprovementReport") == "continuous_improvement_report.md"
+        assert manifest.get("continuousImprovementMetrics") == "continuous_improvement_metrics.md"
+        for forbidden_key in (
+            "continuousImprovementResult",
+            "continuousImprovementSummary",
+            "continuousImprovementFindings",
+            "continuousImprovementTrends",
+            "continuousImprovementOpportunities",
+        ):
+            assert forbidden_key not in manifest
+
+        on_disk = _load_json(
+            golden_pipeline_result.output_dir / "continuous_improvement_result.json"
+        )
+        assert on_disk["summary"]["totalFindings"] == result.summary.total_findings
+
+    @pytest.mark.productization
+    def test_manifest_checksums_the_continuous_improvement_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """continuous_improvement_result.json is checksummed like every other artifact."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        entries = {a["name"]: a for a in manifest["generatedArtifacts"]}
+        entry = entries["continuous_improvement_result.json"]
+        path = golden_pipeline_result.output_dir / "continuous_improvement_result.json"
+        assert entry["sha256"] == _sha256(path)
+        assert entry["bytes"] == path.stat().st_size
+
+    @pytest.mark.productization
+    def test_continuous_improvement_report_contains_the_summary_headline(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """continuous_improvement_report.md is a projection — it shows the result's own headline."""
+        report = (
+            golden_pipeline_result.output_dir / "continuous_improvement_report.md"
+        ).read_text(encoding="utf-8")
+        assert golden_pipeline_result.continuous_improvement_result.summary.headline in report
+
+    @pytest.mark.productization
+    def test_continuous_improvement_metrics_contains_the_finding_density(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """continuous_improvement_metrics.md is a projection — it shows the result's own metrics."""
+        metrics_md = (
+            golden_pipeline_result.output_dir / "continuous_improvement_metrics.md"
+        ).read_text(encoding="utf-8")
+        density = golden_pipeline_result.continuous_improvement_result.metrics.finding_density
+        assert f"{density:.3f}" in metrics_md
+
+    @pytest.mark.productization
+    def test_execution_data_continuous_improvement_result_matches_pipeline_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The object transported into the Execution Package is the same one returned."""
+        assert (
+            golden_pipeline_result.execution_data.continuous_improvement_result
+            is golden_pipeline_result.continuous_improvement_result
         )
 
     @pytest.mark.productization
@@ -1454,6 +1615,91 @@ class TestPhase5Determinism:
         assert "recommendationPriority" not in m2
 
     @pytest.mark.productization
+    def test_determinism_continuous_improvement_result_content(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same findings, trends, opportunities, and metrics.
+
+        The determinism boundary is the canonical ``ContinuousImprovementResult``
+        content, never Markdown formatting or provenance timestamps/ids — exactly
+        mirroring Recommendation (ADR-0019 §D9/§D10). Two independent runs mint a
+        fresh, execution-scoped ``HistoricalDatasetReference`` (a random
+        ``execution_id``) even over byte-identical golden input, so this test
+        compares stable *content* (counts and metrics), never the run-scoped
+        reference or any id derived from it.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        r1 = golden_pipeline_result.continuous_improvement_result
+        r2 = run2.continuous_improvement_result
+        assert r1.summary.total_findings == r2.summary.total_findings
+        assert r1.summary.total_trends == r2.summary.total_trends
+        assert r1.summary.total_opportunities == r2.summary.total_opportunities
+        assert r1.metrics == r2.metrics
+
+    @pytest.mark.productization
+    def test_determinism_continuous_improvement_serialization(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Serializer output is deterministic on the continuous improvement content.
+
+        The runtime mints run-specific provenance — the result id, the referenced
+        dataset's identity/execution ids, and the started/completed timestamps —
+        exactly as Recommendation does. The determinism boundary is the content,
+        not that provenance.
+        """
+        from requirement_intelligence.continuous_improvement.serialization import (
+            ContinuousImprovementSerializer,
+        )
+
+        run2 = _run_golden_pipeline(tmp_path)
+        serializer = ContinuousImprovementSerializer()
+        r1 = golden_pipeline_result.continuous_improvement_result
+        r2 = run2.continuous_improvement_result
+
+        def _strip_provenance(dumped: dict) -> dict:
+            dumped = dict(dumped)
+            for key in ("resultId", "startedAt", "completedAt"):
+                dumped.pop(key, None)
+            dumped.pop("historicalDataset", None)
+            return dumped
+
+        assert _strip_provenance(serializer.render_json(r1)) == _strip_provenance(
+            serializer.render_json(r2)
+        )
+
+        # Each projection is a pure function of its input — same result, same bytes.
+        assert serializer.render_report(r1) == serializer.render_report(r1)
+        assert serializer.render_metrics(r1) == serializer.render_metrics(r1)
+        assert serializer.render_json(r1) == serializer.render_json(r1)
+
+    @pytest.mark.productization
+    def test_determinism_manifest_continuous_improvement_keys_stay_metadata_only(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """manifest continuous improvement keys are identical package metadata across two runs.
+
+        Content determinism itself is proven at the runtime-contract boundary by
+        ``test_determinism_continuous_improvement_result_content``: the golden
+        regression compares ``ContinuousImprovementResult`` content, never the
+        manifest. This test only confirms the manifest's package-metadata keys are
+        stable and that no runtime-state key has leaked back into the manifest.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1.get("continuousImprovementExecuted") == m2.get("continuousImprovementExecuted")
+        assert m1.get("continuousImprovementReport") == m2.get("continuousImprovementReport")
+        assert m1.get("continuousImprovementMetrics") == m2.get("continuousImprovementMetrics")
+        assert "continuousImprovementSummary" not in m1
+        assert "continuousImprovementSummary" not in m2
+
+    @pytest.mark.productization
     def test_determinism_normalization_outcome(
         self,
         golden_pipeline_result: PipelineResult,
@@ -1582,7 +1828,7 @@ class TestPhase6ProductizationAssertions:
     @pytest.mark.productization
     def test_dataset_version(self) -> None:
         """The golden dataset declares a version."""
-        assert GOLDEN_DATASET_VERSION == "1.4.0"
+        assert GOLDEN_DATASET_VERSION == "1.5.0"
 
     @pytest.mark.productization
     def test_dataset_covers_all_categories(self) -> None:

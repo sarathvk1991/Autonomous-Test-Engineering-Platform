@@ -111,9 +111,9 @@ Layer 1 reasons over **one execution at a time** and never looks backward across
 
 ### Layer 2 — Continuous Learning
 
-**Introduces (reserved, not yet built):**
+**Introduces (CAP-083 now live — its full lifecycle post-dates this ADR, see ADR-0022; CAP-084–086 remain reserved, not yet built):**
 
-- **CAP-083 — Continuous Improvement**
+- **CAP-083 — Continuous Improvement** — Accepted, live (ADR-0022; CAP-083A architecture freeze → CAP-083B deterministic engine → CAP-083B.1 runtime contract freeze → CAP-083C runtime integration). The first Layer 2 capability to complete its lifecycle.
 - **CAP-084 — Knowledge Graph**
 - **CAP-085 — Organizational Memory**
 - **CAP-086 — Learning Framework**

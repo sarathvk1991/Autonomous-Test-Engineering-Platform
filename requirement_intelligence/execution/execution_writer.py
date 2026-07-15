@@ -15,6 +15,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from requirement_intelligence.continuous_improvement.serialization import (
+    ContinuousImprovementSerializer,
+)
 from requirement_intelligence.enhancement.serialization import EnhancementSerializer
 from requirement_intelligence.execution.baseline_metrics_builder import (
     BaselineMetricsBuilder,
@@ -98,6 +101,7 @@ class ExecutionWriter:
         self._quality_governance = QualityGovernanceSerializer()
         self._enhancement = EnhancementSerializer()
         self._recommendation = RecommendationSerializer()
+        self._continuous_improvement = ContinuousImprovementSerializer()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -280,6 +284,30 @@ class ExecutionWriter:
                 "recommendation_result.json",
                 "recommendation_report.md",
                 "recommendation_metrics.md",
+            ]
+        # Continuous Improvement artifacts (CAP-083C): appended only when a
+        # ContinuousImprovementResult was produced — Layer 2's first capability,
+        # immediately after Recommendation, at the permanently frozen end of the
+        # pipeline. Pure projection — the ContinuousImprovementResult is
+        # serialised/rendered as-is; no finding is observed, no trend is detected,
+        # no opportunity is generated or scored here.
+        if data.continuous_improvement_result is not None:
+            _write_json(
+                target_dir / "continuous_improvement_result.json",
+                self._continuous_improvement.render_json(data.continuous_improvement_result),
+            )
+            (target_dir / "continuous_improvement_report.md").write_text(
+                self._continuous_improvement.render_report(data.continuous_improvement_result),
+                encoding="utf-8",
+            )
+            (target_dir / "continuous_improvement_metrics.md").write_text(
+                self._continuous_improvement.render_metrics(data.continuous_improvement_result),
+                encoding="utf-8",
+            )
+            names += [
+                "continuous_improvement_result.json",
+                "continuous_improvement_report.md",
+                "continuous_improvement_metrics.md",
             ]
         return tuple(names)
 

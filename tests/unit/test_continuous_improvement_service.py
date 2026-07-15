@@ -121,13 +121,17 @@ class TestPlatformContextRegistration:
 @pytest.mark.unit
 class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
-        """Outside the continuous_improvement package, only PlatformContext may name it.
+        """Outside the continuous_improvement package, only the sanctioned seams may name it.
 
-        CAP-083B registers the deterministic implementation, but the subsystem
-        remains unwired: no CLI phase, execution builder, manifest, or serializer
+        CAP-083C consciously wires the service: the composition root
+        (``PlatformContext``) constructs it, and the CLI orchestration
+        (``run_requirement_analysis.py``) obtains it from there and calls
+        ``improve`` exactly once (mirroring the Recommendation activation, ADR-0019
+        §D10). No other module — no execution builder, manifest, or serializer —
         may reference the runtime service, so a future dependency cannot appear
-        silently (mirroring ADR-0019 §D6's containment test for Recommendation,
-        before its own CAP-082C activation).
+        silently. The Execution Package in particular stays free of the runtime
+        class name: it transports and projects the ``ContinuousImprovementResult``,
+        never the service.
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -137,6 +141,7 @@ class TestRuntimeContainment:
         needle = "ContinuousImprovementService"
         permitted = {
             Path("requirement_intelligence/platform/platform_context.py"),
+            Path("scripts/run_requirement_analysis.py"),
         }
         external_consumers: set[Path] = set()
         for root in roots:
@@ -254,9 +259,28 @@ class TestDependencyBoundaries:
                     for token in forbidden:
                         assert token not in line, f"{path.name} imports {token}"
 
-    def test_no_serializer_module_exists_yet(self) -> None:
-        """CAP-083B introduces no serialization module."""
-        assert not (_CONTINUOUS_IMPROVEMENT_PKG / "serialization").exists()
+    def test_serializer_honours_the_frozen_projection_only_invariant(self) -> None:
+        """CAP-083C's serializer (Recommendation 8's forward-looking invariant) computes nothing.
+
+        The ``serialization/`` package did not exist when CAP-083B.1 froze this
+        invariant in advance; CAP-083C introduces the serializer and this test
+        confirms it honours the boundary frozen before it existed.
+        """
+        serializer_dir = _CONTINUOUS_IMPROVEMENT_PKG / "serialization"
+        assert serializer_dir.exists()
+        forbidden = (
+            "DeterministicContinuousImprovementEngine",
+            "DeterministicContinuousImprovementService",
+            "ImprovementRuleCatalog",
+            "ImprovementPolicy",
+            "HistoricalDatasetProvider",
+            "PlatformContext",
+        )
+        for path in serializer_dir.rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
 
     def test_no_historical_dataset_storage_implementation_exists(self) -> None:
         """CAP-083B introduces no Historical Dataset storage — resolution only.

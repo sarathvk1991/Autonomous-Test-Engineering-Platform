@@ -113,6 +113,19 @@ class ExecutionData:
         ``recommendation_report.md`` / ``recommendation_metrics.md`` — a pure
         projection; nothing is re-generated, re-prioritized, re-grouped, re-scored,
         or recomputed.
+    continuous_improvement_result:
+        The complete ``ContinuousImprovementResult`` produced by the Continuous
+        Improvement runtime — the first Layer 2 capability (ADR-0020) — immediately
+        after Recommendation and at the permanently frozen end of the pipeline
+        (CAP-083C, ADR-0022 §D11). ``None`` when continuous improvement did not
+        execute — it runs only for a live run (a completed ``AnalysisResult`` exists,
+        so a single-execution ``HistoricalDatasetReference`` can be minted), so this
+        is ``None`` for a dry run or on a surfaced-but-non-fatal continuous
+        improvement failure. When present, the execution package serialises it as-is
+        into ``continuous_improvement_result.json`` /
+        ``continuous_improvement_report.md`` / ``continuous_improvement_metrics.md``
+        — a pure projection; nothing is re-observed, re-detected, re-generated, or
+        recomputed.
     """
 
     selected: Any
@@ -136,6 +149,7 @@ class ExecutionData:
     quality_governance_result: Any | None = None
     requirement_enhancement_result: Any | None = None
     recommendation_result: Any | None = None
+    continuous_improvement_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:

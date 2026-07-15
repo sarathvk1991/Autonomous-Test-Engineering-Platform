@@ -45,6 +45,9 @@ from requirement_intelligence.connectors.connector_exceptions import ConnectorEr
 from requirement_intelligence.context_orchestration import (  # noqa: E402
     ContextOrchestrationError,
 )
+from requirement_intelligence.continuous_improvement.models import (  # noqa: E402
+    HistoricalDatasetReference,
+)
 from requirement_intelligence.execution import (  # noqa: E402
     ExecutionData,
     ExecutionHistory,
@@ -71,6 +74,10 @@ SUPPORTED_PROVIDERS = meta.supported_provider_ids()
 REASONING_CONTRACT_VERSION = meta.REASONING_CONTRACT_VERSION
 # Synthetic request id used for --dry-run, where no execution_id is generated.
 _DRY_RUN_REQUEST_ID = "dry-run"
+# Schema/organization version stamped on the single-execution HistoricalDatasetReference
+# this CLI mints (CAP-083C). No real Historical Dataset implementation exists yet
+# (ADR-0021 §Stage 6, reserved).
+_HISTORICAL_DATASET_VERSION = "1.0.0"
 # Width of the demo banner rules and the dotted status leaders.
 _BANNER_WIDTH = 52
 _LEADER_WIDTH = 22
@@ -570,6 +577,64 @@ def run_recommendation_phase(
     return recommendation_result
 
 
+def _historical_dataset_reference_for_execution(result: Any) -> HistoricalDatasetReference:
+    """Mint a single-execution ``HistoricalDatasetReference`` for *result* (CAP-083C).
+
+    No real Historical Dataset implementation exists yet (ADR-0021 §Stage 6,
+    reserved) for this CLI to reference against a real multi-execution corpus. This
+    mints the minimal, deterministic reference the Historical Dataset of exactly one
+    execution — this run's own — would produce: ``first_execution_id`` and
+    ``last_execution_id`` both name this run's ``execution_id``, ``execution_count``
+    and ``history_window`` are both 1, and ``generated_at`` is this run's own
+    ``completed_at`` (never the wall clock, so the reference — and everything
+    Continuous Improvement derives from it — stays reproducible). This performs no
+    business logic and computes nothing beyond restating identity fields the
+    ``AnalysisResult`` already carries; it is orchestration glue, exactly like
+    ``prompt_request.to_llm_request(request_id=result.execution_id)`` above.
+    """
+    return HistoricalDatasetReference(
+        dataset_id=f"single-execution:{result.execution_id}",
+        dataset_version=_HISTORICAL_DATASET_VERSION,
+        first_execution_id=result.execution_id,
+        last_execution_id=result.execution_id,
+        execution_count=1,
+        history_window=1,
+        generated_at=result.completed_at,
+    )
+
+
+def run_continuous_improvement_phase(
+    context: PlatformContext,
+    historical_dataset: HistoricalDatasetReference,
+    console: Console,
+) -> Any:
+    """Continuous Improvement phase — Layer 2's first capability, immediately after
+    Recommendation (CAP-083C, ADR-0022 §D11).
+
+    Runs at the permanently frozen end of the pipeline::
+
+        ... Quality Governance → Recommendation → Historical Dataset
+            → Continuous Improvement → Execution Package
+
+    It consumes **only** the already-minted ``HistoricalDatasetReference`` — never a
+    Layer 1 runtime contract directly, and never any of the peer results this CLI
+    just produced (Recommendation 1, ADR-0022). The single
+    ``ContinuousImprovementService`` comes solely from :class:`PlatformContext`; this
+    CLI is pure orchestration glue and invents no finding, trend, opportunity, or
+    metric of its own. Mirroring Grounding/Quality Governance/Recommendation, a
+    failure here is surfaced but never fatal to the analysis run, and never corrupts
+    the already-completed upstream results.
+    """
+    console.action("\nRunning Continuous Improvement")
+    result = context.create_continuous_improvement_service().improve(historical_dataset)
+    summary = result.summary
+    console.ok(f"{summary.headline}")
+    console.note(f"  Findings            : {summary.total_findings}")
+    console.note(f"  Trends              : {summary.total_trends}")
+    console.note(f"  Opportunities       : {summary.total_opportunities}")
+    return result
+
+
 # ===========================================================================
 # Subcommand handlers
 # ===========================================================================
@@ -792,6 +857,27 @@ def handle_analyze(args: argparse.Namespace) -> int:
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Recommendation failed: {exc}")
 
+    # Continuous Improvement phase (CAP-083C): Layer 2's first capability, immediately
+    # after Recommendation, at the permanently frozen end of the pipeline (... →
+    # Recommendation → Historical Dataset → Continuous Improvement → Execution
+    # Package). It consumes only a HistoricalDatasetReference — never any Layer 1
+    # peer result, including the ones this CLI just produced (Recommendation 1,
+    # ADR-0022) — and runs whenever this is a live run (a completed AnalysisResult
+    # exists, so a single-execution reference can be minted; no real, multi-execution
+    # Historical Dataset implementation exists yet, ADR-0021 §Stage 6). It modifies
+    # nothing upstream. Mirroring grounding/validation/CP1/quality
+    # governance/recommendation, a failure here is surfaced but never fatal, and
+    # never corrupts the already-completed upstream results.
+    continuous_improvement_result: Any = None
+    if result is not None:
+        try:
+            historical_dataset = _historical_dataset_reference_for_execution(result)
+            continuous_improvement_result = run_continuous_improvement_phase(
+                context, historical_dataset, console
+            )
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Continuous improvement failed: {exc}")
+
     data = ExecutionData(
         selected=selected,
         engineering_context=engineering_context,
@@ -813,6 +899,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         quality_governance_result=quality_governance_result,
         requirement_enhancement_result=requirement_enhancement_result,
         recommendation_result=recommendation_result,
+        continuous_improvement_result=continuous_improvement_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

@@ -29,6 +29,9 @@ from requirement_intelligence.context_orchestration import (
     LegacySelectionPolicy,
     OrchestrationPolicy,
 )
+from requirement_intelligence.continuous_improvement.models import (
+    HistoricalDatasetReference,
+)
 from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from requirement_intelligence.execution.execution_data import ExecutionData
 from requirement_intelligence.execution.execution_writer import (
@@ -144,6 +147,10 @@ class PipelineResult:
 
     # Recommendation (peer capability, immediately after Quality Governance)
     recommendation_result: Any  # RecommendationResult
+
+    # Continuous Improvement (Layer 2's first capability, immediately after
+    # Recommendation)
+    continuous_improvement_result: Any  # ContinuousImprovementResult
 
     # Execution package
     execution_data: ExecutionData
@@ -296,6 +303,29 @@ def _run_golden_pipeline(
         )
 
     # -----------------------------------------------------------------------
+    # Step 6e — Continuous Improvement (CAP-083C): Layer 2's first capability,
+    # immediately after Recommendation, at the permanently frozen end of the
+    # pipeline. It consumes only a HistoricalDatasetReference — never any Layer 1
+    # peer result (Recommendation 1, ADR-0022). No real, multi-execution Historical
+    # Dataset implementation exists yet (ADR-0021 §Stage 6), so this mints the
+    # minimal, deterministic reference a Historical Dataset of exactly this one
+    # execution would produce — never the wall clock, so the reference stays
+    # reproducible across runs.
+    # -----------------------------------------------------------------------
+    historical_dataset = HistoricalDatasetReference(
+        dataset_id=f"single-execution:{analysis_result.execution_id}",
+        dataset_version="1.0.0",
+        first_execution_id=analysis_result.execution_id,
+        last_execution_id=analysis_result.execution_id,
+        execution_count=1,
+        history_window=1,
+        generated_at=analysis_result.completed_at,
+    )
+    continuous_improvement_result = context.create_continuous_improvement_service().improve(
+        historical_dataset
+    )
+
+    # -----------------------------------------------------------------------
     # Step 7 — Execution package
     # -----------------------------------------------------------------------
     execution_data = ExecutionData(
@@ -320,6 +350,7 @@ def _run_golden_pipeline(
         quality_governance_result=quality_governance_result,
         requirement_enhancement_result=requirement_enhancement_result,
         recommendation_result=recommendation_result,
+        continuous_improvement_result=continuous_improvement_result,
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -338,6 +369,7 @@ def _run_golden_pipeline(
         grounding_result=grounding_result,
         quality_governance_result=quality_governance_result,
         recommendation_result=recommendation_result,
+        continuous_improvement_result=continuous_improvement_result,
         execution_data=execution_data,
         write_result=write_result,
         output_dir=tmp_dir,

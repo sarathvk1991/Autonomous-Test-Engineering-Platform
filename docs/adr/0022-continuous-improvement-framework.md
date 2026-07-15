@@ -1,11 +1,11 @@
 # ADR-0022 — Continuous Improvement Framework
 
-- **Status:** Proposed (CAP-083A — Architecture & Governance Freeze; CAP-083B — Deterministic Engine implemented behind the frozen contracts; CAP-083B.1 — `ContinuousImprovementResult` Runtime Contract permanently certified, no behaviour change; still unwired to any runtime pipeline)
-- **Date:** 2026-07-15 (CAP-083A — Architecture & Governance Freeze); 2026-07-15 (CAP-083B — Deterministic Continuous Improvement Engine); 2026-07-15 (CAP-083B.1 — Runtime Contract Freeze)
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-083B (Deterministic Continuous Improvement Engine — implements the first real engine behind the frozen contracts, mirroring how CAP-082B implemented the first deterministic Recommendation engine behind ADR-0019); CAP-083B.1 (permanent `ContinuousImprovementResult` runtime-contract certification, mirroring CAP-082B.1, CAP-081B.1, and CAP-080B.1.1 — no behaviour change). A future runtime-integration milestone (CAP-083C, mirroring CAP-082C) will wire `improve` into a live pipeline.
+- **Status:** Accepted (CAP-083A — Architecture & Governance Freeze; CAP-083B — Deterministic Engine implemented behind the frozen contracts; CAP-083B.1 — `ContinuousImprovementResult` Runtime Contract permanently certified, no behaviour change; CAP-083C — Runtime Integration & Execution Package Activation, live in the pipeline)
+- **Date:** 2026-07-15 (CAP-083A — Architecture & Governance Freeze); 2026-07-15 (CAP-083B — Deterministic Continuous Improvement Engine); 2026-07-15 (CAP-083B.1 — Runtime Contract Freeze); 2026-07-15 (CAP-083C — Runtime Integration)
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-083B (Deterministic Continuous Improvement Engine — implements the first real engine behind the frozen contracts, mirroring how CAP-082B implemented the first deterministic Recommendation engine behind ADR-0019); CAP-083B.1 (permanent `ContinuousImprovementResult` runtime-contract certification, mirroring CAP-082B.1, CAP-081B.1, and CAP-080B.1.1 — no behaviour change); CAP-083C (Runtime Integration & Execution Package Activation, mirroring CAP-082C's activation of Recommendation — see §D11).
 - **Governing design:** `docs/proposals/continuous-improvement-framework.md`
 - **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution — this is the first Layer 2 capability it names) and ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution — this framework's every boundary is a direct application of ADR-0021's Truth Hierarchy).
-- **Runtime status:** **Implemented, still dormant (CAP-083B).** `ContinuousImprovementService.improve` now has a real implementation, `DeterministicContinuousImprovementService`, delegating to `DeterministicContinuousImprovementEngine` (governed rule catalogue, deterministic recurrence/trend/opportunity detection, policy-gated, fully explainable — see §D9). `PlatformContext.create_continuous_improvement_service()` constructs the deterministic service by default (`ImprovementPolicy.capability_switches.enable_deterministic_engine = True`, `ImprovementPolicyVersion` 1.1.0). Nothing calls `improve` at runtime yet — no CLI phase, no Execution Package field, no historical dataset storage exists — so runtime behaviour remains byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0** and no frozen contract of any Layer 1 subsystem changed.
+- **Runtime status:** **Live (CAP-083C).** `DeterministicContinuousImprovementEngine` detects recurring findings, observes trends, and generates opportunities entirely from the governed `ImprovementRuleCatalog` and `ImprovementPolicy`. The CLI's `run_continuous_improvement_phase` obtains `DeterministicContinuousImprovementService` from `PlatformContext` and calls `improve` immediately after Recommendation, at the permanently frozen end of the pipeline, over a single-execution `HistoricalDatasetReference` this run mints (no real, multi-execution Historical Dataset implementation exists yet, ADR-0021 §Stage 6). `ContinuousImprovementSerializer` projects the result into three Execution Package artifacts (`continuous_improvement_result.json` / `continuous_improvement_report.md` / `continuous_improvement_metrics.md`), and the manifest gains three additive, package-metadata-only keys. The golden dataset re-baselined `1.4.0` → `1.5.0` to include them. The Architecture Version remains **1.2.0**, `ContinuousImprovementResult`'s shape is unchanged, and no frozen contract of any upstream subsystem changed. See §D11.
 
 ## Problem
 
@@ -160,7 +160,56 @@ No reverse dependency: nothing later in this chain is ever imported by anything 
 6. Continuous Improvement remains a pure Layer 2 consumer of Historical Truth and must never consume Layer 1 runtime contracts directly or recursively consume previous Derived Knowledge (Recommendation 1, Recommendation 9, Recommendation 11).
 7. Future ML, statistical, or LLM-based Continuous Improvement engines must implement the unchanged `improve(HistoricalDatasetReference) -> ContinuousImprovementResult` contract, ensuring long-term engine replaceability (Recommendation 5).
 
-**Certification.** `ContinuousImprovementResult` is hereby constitutionally certified as the permanent Layer 2 runtime contract for Continuous Improvement, completing the same architectural lifecycle (Architecture Freeze → Deterministic Implementation → Runtime Contract Freeze) previously established for Quality Governance (CAP-080B.1.1), Requirement Enhancement (CAP-081B.1), and Recommendation (CAP-082B.1). No field, validator, or signature changed to produce this certification. Runtime integration (CAP-083C, reserved) is the next and only remaining step before this framework is live.
+**Certification.** `ContinuousImprovementResult` is hereby constitutionally certified as the permanent Layer 2 runtime contract for Continuous Improvement, completing the same architectural lifecycle (Architecture Freeze → Deterministic Implementation → Runtime Contract Freeze) previously established for Quality Governance (CAP-080B.1.1), Requirement Enhancement (CAP-081B.1), and Recommendation (CAP-082B.1). No field, validator, or signature changed to produce this certification. Runtime integration (CAP-083C) has now activated this framework in the live pipeline — see §D11.
+
+## D11 — Runtime Integration (CAP-083C)
+
+CAP-083C activates the already-complete Continuous Improvement Framework in the live Requirement Intelligence runtime — Layer 2's first capability going live. It does not redesign Continuous Improvement, change any frozen contract, alter the policy shape, modify the deterministic engine, or introduce new observation logic — it wires the existing implementation into the live pipeline and activates the Execution Package projections, exactly as CAP-082C did for Recommendation (ADR-0019 §D10).
+
+**Activation and execution order (frozen).** Continuous Improvement executes exactly once, immediately after Recommendation, at the permanently frozen end of the pipeline:
+
+```
+Engineering Context → Analysis → Requirement Enhancement → Grounding
+    → Validation → CP1 → Quality Governance → Recommendation → Historical Dataset
+    → Continuous Improvement → Execution Package
+```
+
+Never before Recommendation, never in parallel, never conditionally reordered.
+
+**HistoricalDatasetReference minting (frozen, new to this milestone).** Unlike Recommendation, which consumes five completed Layer 1 peer results, Continuous Improvement consumes exactly one `HistoricalDatasetReference` — never a Layer 1 runtime contract directly, and never any of the peer results this same pipeline run just produced (Recommendation 1). No real, multi-execution Historical Dataset implementation exists yet (ADR-0021 §Stage 6, reserved — building it remains future work, not part of this milestone). To have anything to reference, the CLI mints the minimal, deterministic reference a Historical Dataset of exactly this one execution would produce: `first_execution_id` and `last_execution_id` both name this run's own `AnalysisResult.execution_id`, `execution_count` and `history_window` are both `1`, and `generated_at` is this run's own `completed_at` — never the wall clock, so the reference (and everything Continuous Improvement derives from it) stays reproducible. This performs no business logic and computes nothing beyond restating identity fields the `AnalysisResult` already carries — orchestration glue, not observation. Because a single-execution reference can satisfy neither the governed recurring-finding floor (`ImprovementPolicy.thresholds.minimum_occurrences`) nor the trend floor (at least two data points), the golden dataset deterministically observes an empty — but genuine — `ContinuousImprovementResult`, exactly what the engine's own governed thresholds require.
+
+**CLI (frozen).** The CLI's `run_continuous_improvement_phase` obtains `ContinuousImprovementService` exclusively from `PlatformContext` and calls `improve(historical_dataset)` — identical failure semantics to Grounding/Requirement Enhancement/Quality Governance/Recommendation: a continuous improvement failure is surfaced but never fatal to the analysis run, and it runs whenever this is a live run (a completed `AnalysisResult` exists, so a single-execution reference can be minted). The CLI orchestrates only — no observation, detection, generation, policy, or rule-catalogue logic exists in the CLI.
+
+**Execution Package (frozen, mirrors ADR-0018 §D8 / ADR-0019 §D10).** `ExecutionData.continuous_improvement_result` is an additive-only field (no existing field changed). `ContinuousImprovementSerializer` (`continuous_improvement/serialization/`) renders `continuous_improvement_result.json` (canonical `model_dump`), `continuous_improvement_report.md`, and `continuous_improvement_metrics.md` — a pure projection computing nothing; every rendered value already exists inside `ContinuousImprovementResult`. `ExecutionWriter` appends these three artifacts only when `continuous_improvement_result` is present — no special case, the same conditional-append mechanism as every peer subsystem.
+
+**Manifest purity (frozen, mirrors ADR-0017 §D31, ADR-0019 §D10).** The manifest gains exactly three additive keys — `continuousImprovementExecuted`, `continuousImprovementReport`, `continuousImprovementMetrics` — a flag and two artifact filenames. No finding, trend, opportunity, summary, or metric value is ever copied into the manifest; that runtime state lives exclusively in `ContinuousImprovementResult` / `continuous_improvement_result.json`. When continuous improvement did not run, the manifest is byte-identical to before — no key is added, no schema change (`manifestSchemaVersion` stays `1.0.0`).
+
+**Golden integration (frozen).** `_run_golden_pipeline()` now improves immediately after Recommendation; `PipelineResult` carries `continuous_improvement_result`. The golden dataset re-baselines from `GOLDEN_DATASET_VERSION` `1.4.0` to `1.5.0` — the nine source artifacts and the golden response are unchanged; only the generated artifact set grows by the three continuous improvement files, exactly as `1.3.0` and `1.4.0` did for Requirement Enhancement and Recommendation respectively. The Architecture Version remains `1.2.0`; the Platform Version is unchanged.
+
+**One-way dependency chain (frozen, mirrors §D8/§D10).**
+
+```
+Continuous Improvement Runtime (engine + service)
+    → ContinuousImprovementResult
+    → Continuous Improvement Serializer
+    → Execution Package
+    → Manifest
+    → Release
+```
+
+Nothing later in this chain imports or invokes anything earlier except through the frozen `ContinuousImprovementResult` contract. The serializer imports no engine, service, policy, rule catalogue, or `HistoricalDatasetProvider` implementation. The writer and manifest builder import only the serializer, never the engine, service, or provider. The CLI imports only `PlatformContext.create_continuous_improvement_service()`, never `DeterministicContinuousImprovementEngine`, `ImprovementRuleCatalog`, or any `HistoricalDatasetProvider` directly.
+
+**Ownership (frozen, no overlap; reaffirms §D10's table with the CLI and Execution Package now live).** Engine detects/observes/generates/computes metrics/summarizes. Service orchestrates only. `ContinuousImprovementResult` owns runtime state only. The serializer projects only. The Execution Package packages only. The CLI orchestrates (the pipeline call) only. `PlatformContext` composes only.
+
+**Historical Dataset boundary preserved (Recommendation 12, new).** Continuous Improvement never caches, duplicates, or persists historical records outside the Historical Dataset it references. The single-execution reference this milestone mints is provenance only — it names an execution, it never embeds or stores one — and CAP-083C introduces no historical storage of its own.
+
+**Derived Knowledge never rewritten (Recommendation 13, new).** `ContinuousImprovementResult` is never written back into the Historical Dataset, and no future Continuous Improvement run may consume a prior `ContinuousImprovementResult` as an input. `improve`'s only parameter remains `HistoricalDatasetReference` — unchanged by this milestone.
+
+**Execution Package remains projection-only (Recommendation 14, new).** Every continuous improvement execution artifact is reproducible solely from `ContinuousImprovementResult`. No artifact generation invokes the engine, the provider, the service, or `PlatformContext` — enforced by the same containment tests that guard every peer subsystem's serializer and Execution Package boundary.
+
+**Layer separation preserved (Recommendation 15, new).** Continuous Improvement remains a Layer 2 capability. Runtime integration introduces no direct dependency on any Layer 1 implementation class — the CLI, the serializer, and the Execution Package all reach Continuous Improvement exclusively through `PlatformContext.create_continuous_improvement_service()` and `ContinuousImprovementResult`.
+
+**Historical Dataset implementation remains replaceable (Recommendation 16, new).** The runtime pipeline consumes only `HistoricalDatasetReference`. A future Historical Dataset implementation — and a future `HistoricalDatasetProvider` backed by it — may replace the single-execution reference this milestone mints without requiring any change to the CLI, the serializer, the Execution Package, or `ContinuousImprovementResult`.
 
 ---
 
@@ -221,6 +270,26 @@ Continuous Improvement must consume **only** Historical Truth. It must **never**
 
 This is not merely a convention: `improve(historical_dataset: HistoricalDatasetReference)` and `HistoricalDatasetProvider.resolve(historical_dataset: HistoricalDatasetReference)` are the only two entry points capable of feeding data into an engine, and neither accepts any Derived Knowledge type as a parameter — verified by dedicated introspection tests (`typing.get_type_hints`, `inspect.getmembers`), not source-text scanning alone. Every future Layer 2–7 engine built under ADR-0020 must satisfy this same recommendation before it may consume anything this framework — or any other Derived Knowledge producer — emits.
 
+### Recommendation 12 — Historical Dataset remains the sole Historical Truth (mandatory, CAP-083C, frozen permanently)
+
+Continuous Improvement must never cache, duplicate, or persist historical records outside the Historical Dataset. It consumes Historical Truth but never owns it. The single-execution `HistoricalDatasetReference` the CAP-083C runtime mints is provenance only — it names an execution, it never embeds or stores one — and runtime integration introduces no historical storage of its own.
+
+### Recommendation 13 — Derived Knowledge is never rewritten into Historical Truth (mandatory, CAP-083C, frozen permanently)
+
+`ContinuousImprovementResult` must never be written back into the Historical Dataset or become an input to future Continuous Improvement runs. This reaffirms Recommendation 11 at the runtime boundary: `improve`'s only parameter remains `HistoricalDatasetReference`, unchanged by runtime activation.
+
+### Recommendation 14 — Execution Package remains projection-only (mandatory, CAP-083C, frozen permanently)
+
+Execution artifacts are reproducible solely from `ContinuousImprovementResult`. No artifact generation may invoke the engine, the provider, the service, or `PlatformContext` — enforced by dedicated containment tests over `ContinuousImprovementSerializer`, `ExecutionWriter`, and `ManifestBuilder` (§D11).
+
+### Recommendation 15 — Runtime integration must not weaken Layer separation (mandatory, CAP-083C, frozen permanently)
+
+Continuous Improvement remains a Layer 2 capability. Runtime integration must not introduce direct dependencies on any Layer 1 implementation class. The CLI, the serializer, and the Execution Package all reach Continuous Improvement exclusively through `PlatformContext.create_continuous_improvement_service()` and `ContinuousImprovementResult` — never `DeterministicContinuousImprovementEngine`, `ImprovementRuleCatalog`, or any Layer 1 subsystem directly.
+
+### Recommendation 16 — Historical Dataset implementation remains replaceable (mandatory, CAP-083C, frozen permanently)
+
+The runtime pipeline consumes only `HistoricalDatasetReference`. Future storage implementations may evolve independently without requiring changes to the CLI, the serializer, the Execution Package, or `ContinuousImprovementResult` — including replacing the single-execution reference CAP-083C mints with one backed by a real, multi-execution Historical Dataset.
+
 ---
 
 ## Trade-offs
@@ -233,8 +302,8 @@ This is not merely a convention: `improve(historical_dataset: HistoricalDatasetR
 
 - **CAP-083B — Deterministic Continuous Improvement Engine (done).** The first real engine behind the frozen `improve` signature: deterministic derivation of findings/trends/opportunities from a resolved Historical Dataset, strictly by reference (Recommendation 2), never independent analysis. A private `HistoricalDatasetProvider` (Recommendation 10) resolves `HistoricalDatasetReference` into an engine-internal dataset since no real Historical Dataset implementation exists yet.
 - **CAP-083B.1 — ContinuousImprovementResult Runtime Contract Freeze (done).** Permanently certifies `ContinuousImprovementResult` as the canonical Layer 2 runtime contract (§D10) — no field, validator, or signature change; documentation and architecture tests only, mirroring CAP-082B.1.
-- **Historical Dataset implementation** (reserved, ADR-0021 §Stage 6) — a future milestone (inside or alongside CAP-083) that actually builds the ordering/lineage/retention/indexing/search Continuous Improvement's `HistoricalDatasetReference` currently only names, and that a future `HistoricalDatasetProvider` may resolve against instead of the CAP-083B deterministic synthesis.
-- **Runtime activation (CAP-083C, reserved)** — wiring `improve` into a live cross-execution pipeline, plus a future Execution Package projection and golden re-baseline, mirroring CAP-082C's activation of Recommendation (ADR-0019 §D10).
+- **Historical Dataset implementation** (reserved, ADR-0021 §Stage 6) — a future milestone (inside or alongside CAP-083) that actually builds the ordering/lineage/retention/indexing/search Continuous Improvement's `HistoricalDatasetReference` currently only names, and that a future `HistoricalDatasetProvider` may resolve against instead of the single-execution reference CAP-083C mints.
+- **CAP-083C — Runtime Integration (done).** Wires `improve` into the live pipeline immediately after Recommendation, adds the `ContinuousImprovementSerializer` Execution Package projection, and re-baselines the golden dataset `1.4.0` → `1.5.0`, mirroring CAP-082C's activation of Recommendation (ADR-0019 §D10). See §D11.
 - **CAP-084 (Knowledge Graph), CAP-085 (Organizational Memory), CAP-086 (Learning Framework)** — the remaining reserved Layer 2 capabilities (ADR-0020), each to declare its own Truth Hierarchy level per ADR-0021 Recommendation 11.
 - Promotion of the shared version/identity value-objects to `shared/` (the debt ADR-0015 §C, ADR-0016, ADR-0017, ADR-0018 §D5, and ADR-0019 §D5 already name).
 
@@ -242,5 +311,5 @@ This is not merely a convention: `improve(historical_dataset: HistoricalDatasetR
 
 - **Owns:** recurring-finding detection, trend detection, opportunity generation, Continuous Improvement metadata.
 - **Does not own:** Engineering Context Orchestration, Analysis, Requirement Enhancement, Grounding, Validation, CP1, Quality Governance, Recommendation, the Execution Package, or the Historical Dataset itself (ADR-0021 §Stage 6 names that owner, not this ADR).
-- **Runtime position (implemented, contract certified, still dormant — CAP-083B.1):** `HistoricalDatasetReference` → (private `HistoricalDatasetProvider` → engine-internal `HistoricalDataset`) → `DeterministicContinuousImprovementEngine` → `ContinuousImprovementResult` → (future) Execution Package. Architecture frozen; the deterministic engine exists and is fully tested; `ContinuousImprovementResult` is constitutionally certified as the permanent runtime contract (§D10); nothing is wired into any execution pipeline yet.
-- **Governance:** registered as CAP-083 for the Requirement Intelligence Platform's Layer 2 — the first capability built under ADR-0020/ADR-0021. This ADR is **Proposed** for its architecture scope; CAP-083B extends it with the first deterministic engine under an unchanged contract; CAP-083B.1 permanently certifies that contract ahead of runtime activation.
+- **Runtime position (live — CAP-083C):** `HistoricalDatasetReference` → (private `HistoricalDatasetProvider` → engine-internal `HistoricalDataset`) → `DeterministicContinuousImprovementEngine` → `ContinuousImprovementResult` → `ContinuousImprovementSerializer` → Execution Package → Manifest → Release. Architecture frozen; the deterministic engine exists and is fully tested; `ContinuousImprovementResult` is constitutionally certified as the permanent runtime contract (§D10); the CLI wires `improve` into the live pipeline immediately after Recommendation, over a single-execution `HistoricalDatasetReference` (§D11).
+- **Governance:** registered as CAP-083 for the Requirement Intelligence Platform's Layer 2 — the first capability built under ADR-0020/ADR-0021, and the first to go live. This ADR is **Accepted**; CAP-083B extends it with the first deterministic engine under an unchanged contract; CAP-083B.1 permanently certifies that contract; CAP-083C activates it in the live runtime.
