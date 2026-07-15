@@ -98,6 +98,14 @@ from requirement_intelligence.grounding.normalization import (
 )
 from requirement_intelligence.grounding.pipeline import GroundingPipeline
 from requirement_intelligence.grounding.strategies import DeterministicTextMatchingStrategy
+from requirement_intelligence.knowledge_graph.knowledge_graph_service import (
+    DormantKnowledgeGraphService,
+    KnowledgeGraphService,
+)
+from requirement_intelligence.knowledge_graph.policy import (
+    KnowledgeGraphPolicy,
+    default_knowledge_graph_policy,
+)
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
@@ -560,6 +568,31 @@ class PlatformContext:
             policy=self.create_improvement_policy(),
             rule_catalog=self.create_improvement_rule_catalog(),
         )
+
+    def create_knowledge_graph_policy(self) -> KnowledgeGraphPolicy:
+        """Return the governed default :class:`KnowledgeGraphPolicy` (CAP-084A, ADR-0023).
+
+        The governed capability switches and deterministic thresholds for the
+        Knowledge Graph Framework — which capabilities are enabled, and the
+        bounds a future engine must respect. A future deterministic/ML/LLM
+        Knowledge Graph engine reads it; it contains no logic. **Not yet
+        wired**: no runtime path calls it, so runtime behaviour is unchanged.
+        """
+        return default_knowledge_graph_policy()
+
+    def create_knowledge_graph_service(self) -> KnowledgeGraphService:
+        """Return the :class:`DormantKnowledgeGraphService` (CAP-084A, ADR-0023).
+
+        The single runtime entry point into the Knowledge Graph Framework — the
+        second Layer 2 capability (ADR-0020) — and the **composition root** for
+        the subsystem. CAP-084A registers only the dormant service: ``build``
+        raises ``NotImplementedError`` on every call, exactly mirroring how
+        ``DormantContinuousImprovementService`` stood in for
+        ``DeterministicContinuousImprovementService`` ahead of CAP-083B. Nothing
+        calls ``build`` at runtime, so runtime behaviour is byte-identical and
+        the golden baseline is unchanged.
+        """
+        return DormantKnowledgeGraphService()
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
