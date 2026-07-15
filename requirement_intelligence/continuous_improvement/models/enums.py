@@ -49,6 +49,11 @@ class ImprovementFindingCategory(StrEnum):
     RECURRING_GROUNDING_CONTRADICTION = "recurring_grounding_contradiction"
     RECURRING_GOVERNANCE_FAILURE = "recurring_governance_failure"
     RECURRING_RECOMMENDATION = "recurring_recommendation"
+    #: Added additively in CAP-083B alongside the governed rule catalogue's fifth
+    #: recurrence rule (Requirement Enhancement) — a StrEnum member addition never
+    #: breaks an existing consumer, mirroring the additive-versioning discipline
+    #: used throughout this platform (e.g. ``CP1Result`` 1.0 → 1.1).
+    RECURRING_ENHANCEMENT_ISSUE = "recurring_enhancement_issue"
 
 
 class ImprovementTrendDirection(StrEnum):

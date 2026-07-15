@@ -190,12 +190,15 @@ class TestImprovementFinding:
                 message="dup",
             )
 
-    def test_all_four_finding_categories_are_governed(self) -> None:
+    def test_all_five_finding_categories_are_governed(self) -> None:
+        # RECURRING_ENHANCEMENT_ISSUE was added additively in CAP-083B alongside
+        # the fifth RECURRENCE rule (Requirement Enhancement).
         assert {c.value for c in ImprovementFindingCategory} == {
             "recurring_validation_failure",
             "recurring_grounding_contradiction",
             "recurring_governance_failure",
             "recurring_recommendation",
+            "recurring_enhancement_issue",
         }
 
     def test_all_six_source_layers_are_governed(self) -> None:

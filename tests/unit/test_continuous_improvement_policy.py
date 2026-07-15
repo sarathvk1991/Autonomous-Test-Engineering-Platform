@@ -37,18 +37,20 @@ class TestDefaultPolicy:
         with pytest.raises(ValidationError):
             policy.description = "changed"  # type: ignore[misc]
 
-    def test_near_term_capabilities_enabled_engine_families_reserved_off(self) -> None:
-        # Trend detection / recurring-finding detection / opportunity generation
-        # are the CAP-083A-governed near-term capabilities; the deterministic/
-        # ML/LLM engine families are reserved off by default until CAP-083B and
-        # beyond implement them (mirrors ADR-0019 Recommendation 5).
+    def test_deterministic_engine_enabled_ml_llm_families_reserved_off(self) -> None:
+        # CAP-083B implements the deterministic engine, so its governed switch
+        # flips to True; the ML/LLM engine families remain reserved off
+        # (mirrors ADR-0019 Recommendation 5).
         switches = default_improvement_policy().capability_switches
         assert switches.enable_trend_detection
         assert switches.enable_recurring_finding_detection
         assert switches.enable_opportunity_generation
-        assert not switches.enable_deterministic_engine
+        assert switches.enable_deterministic_engine
         assert not switches.enable_ml_engine
         assert not switches.enable_llm_engine
+
+    def test_policy_version_advanced_for_cap_083b(self) -> None:
+        assert str(default_improvement_policy().policy_version) == "1.1.0"
 
     def test_default_thresholds(self) -> None:
         thresholds = default_improvement_policy().thresholds

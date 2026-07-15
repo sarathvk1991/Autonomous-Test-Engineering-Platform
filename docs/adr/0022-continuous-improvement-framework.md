@@ -1,11 +1,11 @@
 # ADR-0022 — Continuous Improvement Framework
 
-- **Status:** Proposed (CAP-083A — Architecture & Governance Freeze only)
-- **Date:** 2026-07-15 (CAP-083A — Architecture & Governance Freeze)
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-083B (Deterministic Continuous Improvement Engine — implements the first real engine behind the frozen contracts, mirroring how CAP-082B implemented the first deterministic Recommendation engine behind ADR-0019).
+- **Status:** Proposed (CAP-083A — Architecture & Governance Freeze; CAP-083B — Deterministic Engine, still unwired to any runtime pipeline)
+- **Date:** 2026-07-15 (CAP-083A — Architecture & Governance Freeze); 2026-07-15 (CAP-083B — Deterministic Continuous Improvement Engine)
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-083B (Deterministic Continuous Improvement Engine — implements the first real engine behind the frozen contracts, mirroring how CAP-082B implemented the first deterministic Recommendation engine behind ADR-0019). A future runtime-integration milestone (mirroring CAP-082C) will wire `improve` into a live pipeline.
 - **Governing design:** `docs/proposals/continuous-improvement-framework.md`
 - **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution — this is the first Layer 2 capability it names) and ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution — this framework's every boundary is a direct application of ADR-0021's Truth Hierarchy).
-- **Runtime status:** **Dormant (CAP-083A).** `ContinuousImprovementService.improve` is abstract; the registered `DormantContinuousImprovementService` raises `NotImplementedError`. `PlatformContext` gains `create_improvement_policy()` and `create_continuous_improvement_service()`, both construction only. Nothing is wired into any execution pipeline — no CLI phase calls `improve` — so runtime behaviour is byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0** and no frozen contract of any Layer 1 subsystem changed.
+- **Runtime status:** **Implemented, still dormant (CAP-083B).** `ContinuousImprovementService.improve` now has a real implementation, `DeterministicContinuousImprovementService`, delegating to `DeterministicContinuousImprovementEngine` (governed rule catalogue, deterministic recurrence/trend/opportunity detection, policy-gated, fully explainable — see §D9). `PlatformContext.create_continuous_improvement_service()` constructs the deterministic service by default (`ImprovementPolicy.capability_switches.enable_deterministic_engine = True`, `ImprovementPolicyVersion` 1.1.0). Nothing calls `improve` at runtime yet — no CLI phase, no Execution Package field, no historical dataset storage exists — so runtime behaviour remains byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0** and no frozen contract of any Layer 1 subsystem changed.
 
 ## Problem
 
@@ -76,6 +76,38 @@ HistoricalDatasetReference → ContinuousImprovementService.improve → Continuo
 
 A future renderer must never call a Continuous Improvement engine, `PlatformContext`, generate a finding, observe a trend, name an opportunity, compute a metric, or invoke a policy — rendering will be projection only.
 
+## D9 — Deterministic Continuous Improvement Engine (CAP-083B)
+
+CAP-083B implements the first real engine behind the CAP-083A boundary. No architectural weakness was found in Stage 0 review of CAP-083A: `ContinuousImprovementResult` is the permanent runtime contract, `ContinuousImprovementService` the permanent entry point, `ImprovementPolicy` and every canonical model frozen, `PlatformContext` the sole composition root, and Continuous Improvement fully dormant. One implementation question was surfaced and resolved before writing code (see the Historical Dataset Resolution Principle below); CAP-083B otherwise proceeded as a **pure implementation milestone** — no redesign, no frozen-contract change.
+
+**Governed rule catalogue (new package, `continuous_improvement/rules/`).** Mirrors `recommendation/rules/`: `ImprovementRule` is metadata only (rule id, `ImprovementRuleFamily`, source subsystem, the governed vocabulary member(s) it names, a severity/guidance hint, an enable switch, and an `ImprovementPolicyToggle` policy reference) — no lambda, no callback, no embedded algorithm. `ImprovementRuleCatalog` owns ordering/lookup only. `ImprovementRuleBuilder`/`default_improvement_rule_catalog()` ship 16 governed rules: 5 RECURRENCE rules (one per `ImprovementFindingCategory`, including the additively introduced `RECURRING_ENHANCEMENT_ISSUE` — see below), 6 TREND rules (one per `ImprovementSourceLayer`), and 5 OPPORTUNITY rules (one per `ImprovementOpportunityCategory`, two sourced from a second subsystem).
+
+**One additive enum member (not a redesign).** `ImprovementFindingCategory` gains a fifth member, `RECURRING_ENHANCEMENT_ISSUE`, alongside the fifth RECURRENCE rule (Requirement Enhancement) the milestone brief names. A `StrEnum` member addition never breaks an existing consumer — the same additive-versioning discipline this platform already applies elsewhere (e.g. `CP1Result` 1.0 → 1.1). This enum lives in `models/enums.py`, which was not named among CAP-083B's explicitly frozen items (`ContinuousImprovementResult`, `ImprovementPolicy`, `HistoricalDatasetReference`, the `improve` signature, `PlatformContext` ownership, the Truth Hierarchy) — all of which remain byte-identical.
+
+**Historical Dataset Resolution Principle (frozen, new).** `HistoricalDatasetReference` intentionally carries provenance only (ADR-0021 §Stage 6) — it names a dataset; it never embeds one. No Historical Dataset storage implementation exists yet, and CAP-083B does not build one. To have anything to observe, `DeterministicContinuousImprovementEngine` resolves the reference through a private, constructor-injected `HistoricalDatasetProvider` into an internal `HistoricalDataset` — a plain, unexported structure that is **not** a runtime contract, **not** Historical Truth, **not** Derived Knowledge, and **never** crosses the `continuous_improvement` package boundary. Formally:
+
+> `HistoricalDatasetReference` intentionally carries provenance only. Implementations may resolve the referenced dataset through private collaborators. The resolved dataset is an implementation detail; the public runtime boundary remains `HistoricalDatasetReference → ContinuousImprovementResult`.
+
+This does **not** change `improve`'s signature, `HistoricalDatasetReference`, `ContinuousImprovementResult`, `ImprovementPolicy`, or any frozen contract — the provider is entirely internal to the engine's implementation. The CAP-083B default (`DeterministicHistoricalDatasetProvider`) synthesizes reproducible per-execution records as a **pure function of the reference's own provenance fields** (`dataset_id`, ordinal, `first_execution_id`, `last_execution_id`) via SHA-256 digests — no UUID, no clock, no randomness, no real historical storage — solely to exercise the deterministic engine end to end. A future milestone may replace it with a provider backed by a real Historical Dataset implementation without changing the engine's public contract or any other collaborator.
+
+**Engine responsibilities, in order.** (1) Resolve the `HistoricalDatasetReference` into an internal `HistoricalDataset`. (2) Recurring finding detection: for each enabled RECURRENCE rule, count executions whose resolved facts match the rule's source subsystem; emit an `ImprovementFinding` only when the count meets `ImprovementPolicy.thresholds.minimum_occurrences`. (3) Trend detection: for each enabled TREND rule, gather that source's per-execution metric values (≥ 2 required) and resolve a governed direction from consecutive deltas — monotonic non-decreasing → `IMPROVING`, monotonic non-increasing → `DEGRADING`, all-zero-within-epsilon → `STABLE`, sign-changing → `VOLATILE`. (4) Opportunity generation: for each enabled OPPORTUNITY rule, match against an already-computed finding (same category/source) or an already-computed trend recorded `DEGRADING`/`VOLATILE` (same metric/source); emit the opportunity only when a match exists, referencing it by id. (5) Metrics and (6) summary, each computed exactly once from the final findings/trends/opportunities.
+
+**Deterministic algorithms only (Stage 4).** Recurrence counting, delta-sign trend resolution, and category/direction opportunity matching are the engine's only three mechanisms — no AI, no prediction, no statistical forecasting, no clustering, no embeddings, no semantic similarity. Every outcome is explainable from arithmetic already visible in this ADR.
+
+**Policy governance (Stage 5).** Every threshold the engine reads — `minimum_occurrences`, `history_window` — comes from `ImprovementPolicy.thresholds`; every capability gate comes from `ImprovementPolicy.capability_switches`, resolved per rule via its `policy_reference`. No literal `3`, `25`, or capability boolean is hard-coded in the engine module. `_TREND_EPSILON` is a fixed floating-point comparison tolerance (like an equality guard), never a tunable improvement behaviour, and is documented as such.
+
+**Explainability (Stage 6, reaffirms §D7).** Every finding and trend already carried `contributing_execution_ids`; the engine populates them from the exact executions matched, so `occurrence_count`/`observation_count` always equals that tuple's length (the model's own invariant). Every opportunity references the finding or trend it matched. Nothing is inferred without a named, traceable historical record.
+
+**Recommendation 11 (Stage 7, mandatory — see below).** Every execution of `improve` derives its observations directly from the resolved `HistoricalDataset` — never from a prior `ContinuousImprovementResult`, `ImprovementFinding`, `ImprovementTrend`, or `ImprovementOpportunity`. Neither `improve` nor `HistoricalDatasetProvider.resolve` accepts any Derived Knowledge type as a parameter (enforced by dedicated `typing.get_type_hints`-based containment tests, not just source-grep).
+
+**PlatformContext.** `create_continuous_improvement_service()` now returns `DeterministicContinuousImprovementService` (replacing `DormantContinuousImprovementService`, which CAP-083B removes — mirroring how CAP-082B's `DeterministicRecommendationService` replaced its own dormant predecessor). `create_improvement_rule_catalog()` is added alongside `create_improvement_policy()`. Still unwired: nothing calls `improve()` at runtime, so the golden baseline, Architecture Version, and Platform Version are all unchanged.
+
+**Policy value tuning (not a shape change).** `ImprovementCapabilitySwitches.enable_deterministic_engine` flips `False → True` in the shipped default policy (`ImprovementPolicyVersion` 1.0.0 → 1.1.0) now that the engine exists — a versioned policy *value* change, exactly the kind Recommendation 5 anticipated, never a policy *shape* or engine code change.
+
+**Future ML/LLM engines.** `ImprovementCapabilitySwitches.enable_ml_engine` / `enable_llm_engine` remain reserved off. A future statistical, ML, or LLM Continuous Improvement engine implements the identical `ContinuousImprovementService.improve` contract and may resolve its own `HistoricalDatasetProvider` (or consume a real Historical Dataset implementation directly) without this ADR, `ContinuousImprovementResult`, or `ImprovementPolicy` changing shape.
+
+**Tests.** 84 new deterministic tests (`test_continuous_improvement_rules.py`, `test_continuous_improvement_engine.py`) plus updated boundary tests (`test_continuous_improvement_service.py`, `test_continuous_improvement_policy.py`, `test_continuous_improvement_models.py`) cover every rule family, recurrence/trend/opportunity behaviour, policy-governance of every threshold, explainability, determinism (including the default provider's reproducibility), containment, and dedicated Recommendation 11 verification.
+
 ---
 
 ### Recommendation 1 — Continuous Improvement Framework is a consumer of Historical Truth only
@@ -123,6 +155,18 @@ This capability explicitly declares its Truth Hierarchy level, as ADR-0021 Recom
 
 It must never blur those constitutional layers — `ContinuousImprovementResult` is never written back as Historical Truth, and `HistoricalDatasetReference` never embeds Runtime Truth directly.
 
+### Recommendation 10 — Historical Dataset Resolution Principle (mandatory, CAP-083B)
+
+`HistoricalDatasetReference` intentionally carries provenance only. Implementations may resolve the referenced dataset through private collaborators. The resolved dataset is an implementation detail; the public runtime boundary remains `HistoricalDatasetReference → ContinuousImprovementResult`.
+
+Concretely: an engine may resolve a `HistoricalDatasetReference` through a private, constructor-injected `HistoricalDatasetProvider` into an internal `HistoricalDataset` object, solely to have observable data to analyze. That resolved object is never a runtime contract, never Historical Truth, never Derived Knowledge, and must never cross the `continuous_improvement` package boundary — it is not returned by any public method, not accepted as a parameter by `improve`, and not serialized. A future engine may resolve the same reference through a different provider — including one backed by a real Historical Dataset implementation — without this ADR, `HistoricalDatasetReference`, `ContinuousImprovementResult`, or the `improve` signature changing.
+
+### Recommendation 11 — Derived Knowledge must never recursively consume Derived Knowledge (mandatory, ADR-0021 §Recommendation 11, frozen permanently)
+
+Continuous Improvement must consume **only** Historical Truth. It must **never** consume `ContinuousImprovementResult`, nor any previous `ImprovementFinding`, `ImprovementTrend`, or `ImprovementOpportunity`. Every execution must derive its observations directly from the Historical Dataset — never from previous observations.
+
+This is not merely a convention: `improve(historical_dataset: HistoricalDatasetReference)` and `HistoricalDatasetProvider.resolve(historical_dataset: HistoricalDatasetReference)` are the only two entry points capable of feeding data into an engine, and neither accepts any Derived Knowledge type as a parameter — verified by dedicated introspection tests (`typing.get_type_hints`, `inspect.getmembers`), not source-text scanning alone. Every future Layer 2–7 engine built under ADR-0020 must satisfy this same recommendation before it may consume anything this framework — or any other Derived Knowledge producer — emits.
+
 ---
 
 ## Trade-offs
@@ -133,9 +177,9 @@ It must never blur those constitutional layers — `ContinuousImprovementResult`
 
 ## Future evolution
 
-- **CAP-083B — Deterministic Continuous Improvement Engine.** The first real engine behind the frozen `improve` signature: deterministic derivation of findings/trends/opportunities from a real Historical Dataset, strictly by reference (Recommendation 2), never independent analysis.
-- **Historical Dataset implementation** (reserved, ADR-0021 §Stage 6) — a future milestone (inside or alongside CAP-083) that actually builds the ordering/lineage/retention/indexing/search Continuous Improvement's `HistoricalDatasetReference` currently only names.
-- **Runtime activation** — wiring `improve` into a live cross-execution pipeline, plus a future Execution Package projection and golden re-baseline, mirroring CAP-082C's activation of Recommendation (ADR-0019 §D10).
+- **CAP-083B — Deterministic Continuous Improvement Engine (done).** The first real engine behind the frozen `improve` signature: deterministic derivation of findings/trends/opportunities from a resolved Historical Dataset, strictly by reference (Recommendation 2), never independent analysis. A private `HistoricalDatasetProvider` (Recommendation 10) resolves `HistoricalDatasetReference` into an engine-internal dataset since no real Historical Dataset implementation exists yet.
+- **Historical Dataset implementation** (reserved, ADR-0021 §Stage 6) — a future milestone (inside or alongside CAP-083) that actually builds the ordering/lineage/retention/indexing/search Continuous Improvement's `HistoricalDatasetReference` currently only names, and that a future `HistoricalDatasetProvider` may resolve against instead of the CAP-083B deterministic synthesis.
+- **Runtime activation (CAP-083C, reserved)** — wiring `improve` into a live cross-execution pipeline, plus a future Execution Package projection and golden re-baseline, mirroring CAP-082C's activation of Recommendation (ADR-0019 §D10).
 - **CAP-084 (Knowledge Graph), CAP-085 (Organizational Memory), CAP-086 (Learning Framework)** — the remaining reserved Layer 2 capabilities (ADR-0020), each to declare its own Truth Hierarchy level per ADR-0021 Recommendation 11.
 - Promotion of the shared version/identity value-objects to `shared/` (the debt ADR-0015 §C, ADR-0016, ADR-0017, ADR-0018 §D5, and ADR-0019 §D5 already name).
 
@@ -143,5 +187,5 @@ It must never blur those constitutional layers — `ContinuousImprovementResult`
 
 - **Owns:** recurring-finding detection, trend detection, opportunity generation, Continuous Improvement metadata.
 - **Does not own:** Engineering Context Orchestration, Analysis, Requirement Enhancement, Grounding, Validation, CP1, Quality Governance, Recommendation, the Execution Package, or the Historical Dataset itself (ADR-0021 §Stage 6 names that owner, not this ADR).
-- **Runtime position (dormant, CAP-083A):** `HistoricalDatasetReference` → `ContinuousImprovementService.improve` → `ContinuousImprovementResult` → (future) Execution Package. Architecture frozen; no engine exists; nothing wired.
+- **Runtime position (implemented, still dormant — CAP-083B):** `HistoricalDatasetReference` → (private `HistoricalDatasetProvider` → engine-internal `HistoricalDataset`) → `DeterministicContinuousImprovementEngine` → `ContinuousImprovementResult` → (future) Execution Package. Architecture frozen; the deterministic engine exists and is fully tested; nothing is wired into any execution pipeline yet.
 - **Governance:** registered as CAP-083 for the Requirement Intelligence Platform's Layer 2 — the first capability built under ADR-0020/ADR-0021. This ADR is **Proposed** for its architecture scope; CAP-083B extends it with the first deterministic engine under an unchanged contract.

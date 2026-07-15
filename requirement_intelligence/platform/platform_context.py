@@ -31,11 +31,15 @@ from requirement_intelligence.context_orchestration import (
 )
 from requirement_intelligence.continuous_improvement.continuous_improvement_service import (
     ContinuousImprovementService,
-    DormantContinuousImprovementService,
+    DeterministicContinuousImprovementService,
 )
 from requirement_intelligence.continuous_improvement.policy import (
     ImprovementPolicy,
     default_improvement_policy,
+)
+from requirement_intelligence.continuous_improvement.rules import (
+    ImprovementRuleCatalog,
+    default_improvement_rule_catalog,
 )
 from requirement_intelligence.cp1.response import (
     CP1Service,
@@ -528,21 +532,34 @@ class PlatformContext:
         """
         return default_improvement_policy()
 
+    def create_improvement_rule_catalog(self) -> ImprovementRuleCatalog:
+        """Return the governed default :class:`ImprovementRuleCatalog` (CAP-083B, ADR-0022).
+
+        The metadata-only declaration of *which* deterministic recurrence/trend/
+        opportunity rules the framework governs — ordering, lookup, and grouping
+        over the governed rules. The deterministic engine iterates it; it
+        observes nothing itself. **Not yet wired**: no runtime path calls it, so
+        runtime behaviour is unchanged.
+        """
+        return default_improvement_rule_catalog()
+
     def create_continuous_improvement_service(self) -> ContinuousImprovementService:
-        """Return the :class:`DormantContinuousImprovementService` (CAP-083A, ADR-0022).
+        """Return the :class:`DeterministicContinuousImprovementService` (CAP-083B, ADR-0022).
 
         The single runtime entry point into the Continuous Improvement
-        Framework — the first Layer 2 capability (ADR-0020) — registered here so
-        the composition root and the frozen ``improve`` signature are provably
-        wired, without performing any improvement observation. **Dormant**: every
-        call raises ``NotImplementedError``, no runtime path consumes it, and
-        only ``PlatformContext`` may construct it outside the
-        ``continuous_improvement`` package — so runtime behaviour is
-        byte-identical and the golden baseline is unchanged. A later CAP-083
-        milestone replaces this with a real engine behind the unchanged
-        contract.
+        Framework — the first Layer 2 capability (ADR-0020) — and the
+        **composition root** for the subsystem: it constructs the deterministic
+        engine, injecting the governed :meth:`create_improvement_policy` and
+        :meth:`create_improvement_rule_catalog`. CAP-083B replaces the dormant
+        CAP-083A service with this real, deterministic one, but it remains
+        **unwired into any execution pipeline** — nothing calls ``improve`` at
+        runtime, so runtime behaviour is byte-identical and the golden baseline
+        is unchanged.
         """
-        return DormantContinuousImprovementService(policy=self.create_improvement_policy())
+        return DeterministicContinuousImprovementService(
+            policy=self.create_improvement_policy(),
+            rule_catalog=self.create_improvement_rule_catalog(),
+        )
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

@@ -334,3 +334,43 @@ class ContinuousImprovementResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "continuous improvement result version"
+
+
+@dataclass(frozen=True, order=True)
+class ImprovementRuleVersion(_SemanticVersion):
+    """Semantic version of the governed ``ImprovementRule`` schema (CAP-083B).
+
+    Added additively alongside the ``continuous_improvement/rules/`` package,
+    mirroring how ``RecommendationRuleVersion`` was added in CAP-082B — after
+    CAP-083A's architecture-freeze milestone, never during it. Advances
+    independently of every other Continuous Improvement version axis.
+    """
+
+    _LABEL: ClassVar[str] = "improvement rule version"
+
+
+@dataclass(frozen=True, order=True)
+class ImprovementRuleCatalogVersion(_SemanticVersion):
+    """Semantic version of the governed default :class:`ImprovementRuleCatalog`.
+
+    Added additively in CAP-083B, mirroring the analogous rule-catalogue version
+    type the Recommendation Framework added alongside its own rule package
+    (CAP-082B). Tuning the catalogue (adding, removing, or retuning a rule)
+    advances this version, never the engine or framework version.
+    """
+
+    _LABEL: ClassVar[str] = "improvement rule catalog version"
+
+
+@dataclass(frozen=True, order=True)
+class ImprovementEngineVersion(_SemanticVersion):
+    """Semantic version of the Continuous Improvement engine **implementation**.
+
+    Added additively in CAP-083B, mirroring the reserved
+    ``RecommendationEngineVersion``. Not stamped onto ``ContinuousImprovementResult``
+    (which carries no engine-version field, frozen since CAP-083A); reserved so a
+    future engine's implementation identity is independently versionable without
+    touching the frozen result contract.
+    """
+
+    _LABEL: ClassVar[str] = "improvement engine version"
