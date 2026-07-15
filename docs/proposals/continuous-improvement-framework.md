@@ -1,0 +1,121 @@
+# Continuous Improvement Framework — Design Proposal
+
+- **Status:** Proposed (CAP-083A freezes the architecture only)
+- **Capability:** CAP-083 — Continuous Improvement Framework
+- **Milestones covered:** CAP-083A (Architecture & Governance Freeze — this document)
+- **Governed by:** ADR-0022
+- **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution).
+
+---
+
+## 1. Problem
+
+ADR-0020 named Continuous Learning as Layer 2 and reserved Continuous Improvement (CAP-083) as its first capability. ADR-0021 froze the Truth Hierarchy every Layer 2 capability must obey. No Layer 2 capability exists yet.
+
+**Nothing today answers a question about many executions.** Every Layer 1 capability judges one execution; none of them notices that the same validation failure keeps recurring, that grounding quality is trending down for a module, or that the same documentation gap keeps getting flagged across dozens of runs. That capability exists nowhere in the repository today (confirmed by the Stage 0 assessment of CAP-083A, ADR-0022). Left unbuilt, the first capability to need it would have to invent an answer under deadline pressure — and every capability built after it would inherit that ad hoc answer, exactly the risk ADR-0021 §Stage 2 names.
+
+## 2. Scope of CAP-083A
+
+CAP-083A is a **pure architecture milestone**. It freezes:
+
+- the subsystem and its ownership boundary
+- the canonical runtime contract, `ContinuousImprovementResult`
+- the canonical models (`ImprovementFinding`, `ImprovementTrend`, `ImprovementOpportunity`, `ImprovementSummary`, `ImprovementMetrics`, `HistoricalDatasetReference`)
+- typed identities and independent version axes
+- the governed `ImprovementPolicy` and its builder
+- the abstract, dormant `ContinuousImprovementService` contract
+- `PlatformContext` registration
+
+It does **not** implement recurring-finding detection, trend detection, opportunity generation, historical dataset storage, runtime wiring, or execution artifacts. No pipeline change. No Execution Package change. No CLI change. No serializer. No golden re-baseline. The Architecture Version remains **1.2.0**.
+
+## 3. Stage 0 — Repository assessment (no redesign)
+
+| Surface | What it is | Why it is not Continuous Improvement |
+|---|---|---|
+| Layer 1 runtime contracts (`RequirementEnhancementResult` … `RecommendationResult`) | Immutable Runtime Truth, scoped to one execution | ADR-0021 §Stage 3: Runtime Truth is never inferred and never spans executions. |
+| `docs/architecture/execution-package.md` §3 "Execution Lineage" | The within-one-execution data flow | Describes how one execution's artifacts derive from one another, not how executions relate to each other over time. |
+| ADR-0020 Layer 2 reservation (CAP-083/084/085/086) | Names, not implementations | No code exists for any of the four reserved Layer 2 capabilities. |
+
+No dedicated historical-dataset model, identity, policy, or service exists anywhere in the repository prior to this milestone. No architectural weakness found.
+
+## 4. Subsystem & ownership
+
+`requirement_intelligence/continuous_improvement/` owns only:
+
+- recurring-finding detection
+- trend detection
+- opportunity generation
+- Continuous Improvement metadata
+
+It never owns Requirement Enhancement, Grounding, Validation, CP1, Quality Governance, Recommendation, the Execution Package, or the Historical Dataset itself (ADR-0021 §Stage 6 names that owner). It is a **consumer only** of Historical Truth — `HistoricalDatasetReference`, never a Layer 1 result directly, and never an Execution Package artifact (ADR-0021 §Stage 7/8).
+
+## 5. Canonical models
+
+| Model | Owns |
+|---|---|
+| `ImprovementFinding` | One recurring issue across many executions: category, source subsystem, severity, occurrence count, and the contributing execution ids (never copies) that ground it. |
+| `ImprovementTrend` | One observed direction (improving/degrading/stable/volatile) for a governed metric, with the contributing execution ids its data points were drawn from. Observation only — never a prediction. |
+| `ImprovementOpportunity` | One deterministic opportunity — "what should receive attention" — referencing the findings and/or trends it was derived from, by id only. Never "the optimal plan" (that is Layer 5, Optimization). |
+| `HistoricalDatasetReference` | Provenance naming one Historical Dataset — id, version, execution range, governed history window, generation timestamp. Never the dataset's content. |
+| `ImprovementSummary` | The headline: counts and a deterministic one-line description. Renders no optimization plan — Continuous Improvement is observation only. |
+| `ImprovementMetrics` | Deterministic numeric roll-ups (finding density, trend stability ratio, opportunity rate) — recorded values, never model-internal calculations. |
+| `ContinuousImprovementResult` | The runtime contract: every finding, every trend, every opportunity, the summary, the metrics, the governing policy identity/version, and the consumed `HistoricalDatasetReference`. |
+
+Every model is `frozen=True`, tuple-backed collections, `camelCase` serialisation (`alias_generator=to_camel`), and computes nothing — validators enforce cross-referential integrity and the explainability invariant only (ADR-0022 §D4/§D7).
+
+## 6. Explainability invariant
+
+`ImprovementFinding` and `ImprovementTrend` each carry `contributing_execution_ids`; their `occurrence_count` / `observation_count` must equal that tuple's length. `ImprovementOpportunity` **cannot be constructed** with zero `source_finding_ids` and zero `source_trend_ids`. Every recurrence and opportunity must be traceable to at least one upstream finding, trend, or execution from the moment the model exists — not retrofitted once an engine starts producing evidence-free conclusions (ADR-0021 §Stage 8's historical explainability chain, `Historical Dataset → Runtime Contracts → Execution Inputs`, enforced as a model invariant).
+
+## 7. Governed policy
+
+`ImprovementPolicy` is immutable, declarative, governed data — no executable logic:
+
+- `ImprovementCapabilitySwitches` — enable/disable trend detection, recurring-finding detection, opportunity generation, and the future deterministic/ML/LLM engine families (Recommendation 5 of ADR-0022).
+- `ImprovementThresholds` — `minimum_occurrences` (recurrence floor) and `history_window` (maximum executions a dataset reference may span), bounded so the floor never exceeds the window.
+
+`ImprovementPolicyBuilder` / `default_improvement_policy()` assemble the CAP-083A default at `ImprovementPolicyVersion` 1.0.0 (`minimum_occurrences=3`, `history_window=25`). Tuning any threshold or switch is a versioned policy change, never an engine change (Recommendation 5).
+
+## 8. Runtime boundary (frozen, dormant)
+
+`ContinuousImprovementService` exposes exactly one method:
+
+```python
+def improve(
+    self,
+    historical_dataset: HistoricalDatasetReference,
+) -> ContinuousImprovementResult:
+    ...
+```
+
+It depends only on `HistoricalDatasetReference` it consumes — never an *implementation* class, and never a Layer 1 subsystem at all (a stricter boundary than any Layer 1 subsystem imposes on its peers — Recommendation 1). Abstract at CAP-083A; `DormantContinuousImprovementService` raises `NotImplementedError`. A later CAP-083 milestone implements the method behind this unchanged signature, exactly as CAP-082B implemented `RecommendationService.recommend` behind the ADR-0019 boundary.
+
+## 9. PlatformContext
+
+`PlatformContext` exposes two composition-root methods, construction only:
+
+- `create_improvement_policy() -> ImprovementPolicy`
+- `create_continuous_improvement_service() -> ContinuousImprovementService`
+
+Mirroring `create_recommendation_policy()` / `create_recommendation_service()` (ADR-0019), these are the **only** sanctioned points outside the `continuous_improvement` package that may construct its objects, enforced by a containment test.
+
+## 10. Execution package
+
+Not introduced by CAP-083A. When a future milestone activates the runtime, every Continuous Improvement execution artifact will be a **pure projection** of `ContinuousImprovementResult`, reproducible from it alone, computing nothing — the same serialization invariant ADR-0019 §D8 established for Recommendation (Recommendation 8: runtime before reporting).
+
+## 11. Implementation roadmap (non-normative)
+
+1. **Done (CAP-083A).** Architecture & governance freeze: canonical models, typed identities, independent version axes, governed policy, dormant service contract, `PlatformContext` registration.
+2. CAP-083B — Deterministic Continuous Improvement Engine: derive findings/trends/opportunities strictly from a real Historical Dataset (Recommendation 7), never independent analysis.
+3. Historical Dataset implementation (reserved, ADR-0021 §Stage 6) — the actual storage/ordering/lineage/retention/indexing/search `HistoricalDatasetReference` currently only names.
+4. Runtime activation — wire `improve` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline.
+5. CAP-084 (Knowledge Graph), CAP-085 (Organizational Memory), CAP-086 (Learning Framework) — the remaining reserved Layer 2 capabilities.
+
+Each lands behind the unchanged `improve` signature and the unchanged `ContinuousImprovementResult` contract — no architectural change required.
+
+## 12. Terminology
+
+- **Improvement finding** — one recurring issue (`ImprovementFinding`), referencing the executions it was observed across, never copying them.
+- **Improvement trend** — one observed direction (`ImprovementTrend`), observation only, never a prediction.
+- **Improvement opportunity** — one deterministic "what should receive attention" (`ImprovementOpportunity`), by reference only, never "the optimal plan."
+- **Continuous Improvement Framework** is a distinct, Layer 2 capability from every Layer 1 subsystem it never touches directly — a consumer of Historical Truth, producing Derived Knowledge, per ADR-0021's Truth Hierarchy.

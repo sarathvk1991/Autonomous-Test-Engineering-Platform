@@ -29,6 +29,14 @@ from requirement_intelligence.context_orchestration import (
     LegacySelectionPolicy,
     OrchestrationPolicy,
 )
+from requirement_intelligence.continuous_improvement.continuous_improvement_service import (
+    ContinuousImprovementService,
+    DormantContinuousImprovementService,
+)
+from requirement_intelligence.continuous_improvement.policy import (
+    ImprovementPolicy,
+    default_improvement_policy,
+)
 from requirement_intelligence.cp1.response import (
     CP1Service,
     ValidationToCP1Handoff,
@@ -508,6 +516,33 @@ class PlatformContext:
             policy=self.create_recommendation_policy(),
             rule_catalog=self.create_recommendation_rule_catalog(),
         )
+
+    def create_improvement_policy(self) -> ImprovementPolicy:
+        """Return the governed default :class:`ImprovementPolicy` (CAP-083A, ADR-0022).
+
+        The governed capability switches and deterministic thresholds for the
+        Continuous Improvement Framework — which capabilities are enabled, and
+        the bounds a future engine must respect. A future deterministic/ML/LLM
+        Continuous Improvement engine reads it; it contains no logic. **Not yet
+        wired**: no runtime path calls it, so runtime behaviour is unchanged.
+        """
+        return default_improvement_policy()
+
+    def create_continuous_improvement_service(self) -> ContinuousImprovementService:
+        """Return the :class:`DormantContinuousImprovementService` (CAP-083A, ADR-0022).
+
+        The single runtime entry point into the Continuous Improvement
+        Framework — the first Layer 2 capability (ADR-0020) — registered here so
+        the composition root and the frozen ``improve`` signature are provably
+        wired, without performing any improvement observation. **Dormant**: every
+        call raises ``NotImplementedError``, no runtime path consumes it, and
+        only ``PlatformContext`` may construct it outside the
+        ``continuous_improvement`` package — so runtime behaviour is
+        byte-identical and the golden baseline is unchanged. A later CAP-083
+        milestone replaces this with a real engine behind the unchanged
+        contract.
+        """
+        return DormantContinuousImprovementService(policy=self.create_improvement_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
