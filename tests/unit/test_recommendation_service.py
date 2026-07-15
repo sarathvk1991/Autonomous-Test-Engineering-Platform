@@ -1,9 +1,12 @@
-"""Contract and architecture-boundary tests for RecommendationService (CAP-082A).
+"""Contract and architecture-boundary tests for RecommendationService (CAP-082B).
 
-ADR-0019 froze the service boundary — abstract contract, dormant implementation,
-PlatformContext registration. These tests assert the permanent contract, the
-``PlatformContext`` composition root, and the containment/dependency invariants
-(ADR-0019 §D6), mirroring ``test_enhancement_service.py`` (ADR-0018 §D6).
+ADR-0019 froze the service boundary (CAP-082A: abstract contract, dormant
+implementation, ``PlatformContext`` registration). CAP-082B replaces the dormant
+implementation with ``DeterministicRecommendationService``. These tests assert the
+permanent contract, the ``PlatformContext`` composition root, and the
+containment/dependency invariants (ADR-0019 §D6), mirroring
+``test_enhancement_service.py`` (ADR-0018 §D6). Behavioural coverage of the engine
+itself lives in ``test_recommendation_engine.py``.
 """
 
 from __future__ import annotations
@@ -14,13 +17,26 @@ from pathlib import Path
 import pytest
 
 from requirement_intelligence.platform.platform_context import PlatformContext
+from requirement_intelligence.quality_governance.models.enums import QualityDecision
+from requirement_intelligence.recommendation.models.result import RecommendationResult
 from requirement_intelligence.recommendation.policy import (
     RecommendationPolicy,
     default_recommendation_policy,
 )
 from requirement_intelligence.recommendation.recommendation_service import (
-    DormantRecommendationService,
+    DeterministicRecommendationService,
     RecommendationService,
+)
+from requirement_intelligence.recommendation.rules import (
+    RecommendationRuleCatalog,
+    default_recommendation_rule_catalog,
+)
+from tests.unit.recommendation_helpers import (
+    make_cp1_result,
+    make_enhancement_result,
+    make_grounding_result,
+    make_quality_governance_result,
+    make_validation_result,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,22 +50,34 @@ class TestServiceContract:
         with pytest.raises(TypeError):
             RecommendationService()  # type: ignore[abstract]
 
-    def test_dormant_service_is_a_recommendation_service(self) -> None:
-        service = DormantRecommendationService(policy=default_recommendation_policy())
-        assert isinstance(service, RecommendationService)
-
 
 @pytest.mark.unit
-class TestDormantService:
-    def test_recommend_raises_not_implemented(self) -> None:
+class TestDeterministicService:
+    def test_service_delegates_to_the_engine_and_returns_a_real_result(self) -> None:
         service = PlatformContext().create_recommendation_service()
-        with pytest.raises(NotImplementedError):
-            service.recommend(None, None, None, None, None)  # type: ignore[arg-type]
+        result = service.recommend(
+            make_enhancement_result(),
+            make_grounding_result(),
+            make_validation_result(),
+            make_cp1_result(),
+            make_quality_governance_result(decision=QualityDecision.PASS),
+        )
+        assert isinstance(result, RecommendationResult)
+        assert result.analysis_id == "AN-REC-1"
 
-    def test_dormant_service_stores_the_policy(self) -> None:
-        policy = PlatformContext().create_recommendation_policy()
-        service = DormantRecommendationService(policy=policy)
-        assert service._policy is policy
+    def test_service_accepts_an_explicit_rule_catalog(self) -> None:
+        catalog = default_recommendation_rule_catalog()
+        service = DeterministicRecommendationService(
+            policy=default_recommendation_policy(), rule_catalog=catalog
+        )
+        result = service.recommend(
+            make_enhancement_result(),
+            make_grounding_result(),
+            make_validation_result(),
+            make_cp1_result(),
+            make_quality_governance_result(),
+        )
+        assert isinstance(result, RecommendationResult)
 
 
 @pytest.mark.unit
@@ -58,14 +86,22 @@ class TestPlatformContextRegistration:
         policy = PlatformContext().create_recommendation_policy()
         assert isinstance(policy, RecommendationPolicy)
 
-    def test_create_recommendation_service_returns_dormant_service(self) -> None:
+    def test_create_recommendation_rule_catalog_returns_catalog(self) -> None:
+        catalog = PlatformContext().create_recommendation_rule_catalog()
+        assert isinstance(catalog, RecommendationRuleCatalog)
+
+    def test_create_recommendation_service_returns_deterministic_service(self) -> None:
         service = PlatformContext().create_recommendation_service()
         assert isinstance(service, RecommendationService)
-        assert isinstance(service, DormantRecommendationService)
+        assert isinstance(service, DeterministicRecommendationService)
 
     def test_repeated_calls_return_independent_but_equal_policies(self) -> None:
         ctx = PlatformContext()
         assert ctx.create_recommendation_policy() == ctx.create_recommendation_policy()
+
+    def test_repeated_calls_return_independent_but_equal_catalogs(self) -> None:
+        ctx = PlatformContext()
+        assert ctx.create_recommendation_rule_catalog() == ctx.create_recommendation_rule_catalog()
 
 
 @pytest.mark.unit
@@ -73,11 +109,12 @@ class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
         """Outside the recommendation package, only PlatformContext may name the service.
 
-        CAP-082A registers the composition root only; no CLI phase, execution
-        builder, manifest, or serializer may reference the runtime service, so a
-        future dependency cannot appear silently (mirroring ADR-0018 §D6's
-        containment test for Requirement Enhancement, before its own CAP-081C
-        activation added the CLI as a second permitted seam).
+        CAP-082B registers the deterministic implementation, but the subsystem
+        remains unwired: no CLI phase, execution builder, manifest, or serializer
+        may reference the runtime service, so a future dependency cannot appear
+        silently (mirroring ADR-0018 §D6's containment test for Requirement
+        Enhancement, before its own CAP-081C activation added the CLI as a second
+        permitted seam).
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -99,16 +136,40 @@ class TestRuntimeContainment:
                     external_consumers.add(path.relative_to(_REPO_ROOT))
         assert external_consumers == permitted
 
+    def test_engine_is_not_named_outside_the_package(self) -> None:
+        """``DeterministicRecommendationEngine`` is an internal implementation detail.
+
+        Only the service module may construct it; ``PlatformContext`` talks to the
+        service, never the engine directly (mirrors the enhancement/quality
+        governance service-over-engine seam).
+        """
+        roots = (
+            _REPO_ROOT / "requirement_intelligence",
+            _REPO_ROOT / "scripts",
+            _REPO_ROOT / "app",
+        )
+        needle = "DeterministicRecommendationEngine"
+        external_consumers: set[Path] = set()
+        for root in roots:
+            if not root.exists():
+                continue
+            for path in root.rglob("*.py"):
+                if "tests" in path.parts or path.is_relative_to(_RECOMMENDATION_PKG):
+                    continue
+                if needle in path.read_text(encoding="utf-8"):
+                    external_consumers.add(path.relative_to(_REPO_ROOT))
+        assert external_consumers == set()
+
 
 @pytest.mark.unit
 class TestDependencyBoundaries:
     def test_models_policy_identity_are_self_contained(self) -> None:
         """Canonical models, policy, and identity depend on no other subsystem.
 
-        The Recommendation Framework stays self-contained: its data layer imports
-        nothing from Requirement Enhancement, Grounding, Validation, CP1, Quality
-        Governance, Analysis, or Context Orchestration. Only the service module may
-        reference the five upstream *contracts* it consumes.
+        The Recommendation Framework's data layer imports nothing from
+        Requirement Enhancement, Grounding, Validation, CP1, Quality Governance,
+        Analysis, or Context Orchestration. Only the engine and service modules may
+        reference the five upstream *contracts* they consume.
         """
         forbidden_subsystems = (
             "requirement_intelligence.enhancement",
@@ -119,7 +180,7 @@ class TestDependencyBoundaries:
             "requirement_intelligence.analysis",
             "requirement_intelligence.context_orchestration",
         )
-        data_dirs = ("models", "policy", "identity")
+        data_dirs = ("models", "policy", "identity", "rules")
         for sub in data_dirs:
             for path in (_RECOMMENDATION_PKG / sub).rglob("*.py"):
                 for line in path.read_text(encoding="utf-8").splitlines():
@@ -132,7 +193,8 @@ class TestDependencyBoundaries:
 
         Consumer-only means it never touches engines, orchestrators, builders, or
         services of the subsystems it consumes (Recommendation 1). It may import
-        only the five frozen result contracts. Docstrings may still name analog
+        only the five frozen result contracts (and, within them, the plain data
+        models needed to read a finding/issue). Docstrings may still name analog
         classes for explanation; this guard watches imports.
         """
         forbidden_impl = (
@@ -164,12 +226,24 @@ class TestDependencyBoundaries:
         ):
             assert needle in source
 
+    def test_engine_consumes_only_the_five_input_contracts(self) -> None:
+        """The engine imports the five upstream result contracts and nothing heavier."""
+        source = (_RECOMMENDATION_PKG / "engine.py").read_text(encoding="utf-8")
+        for needle in (
+            "RequirementEnhancementResult",
+            "GroundingResult",
+            "ValidationResult",
+            "CP1Result",
+            "QualityGovernanceResult",
+        ):
+            assert needle in source
+
     def test_no_execution_package_or_pipeline_dependency(self) -> None:
         """The Recommendation Framework never imports the Execution Package or the CLI.
 
-        CAP-082A adds no execution artifact and no pipeline wiring (Stage 1 scope)
-        — this is the structural guarantee that holds until a deliberate future
-        milestone changes it.
+        CAP-082B adds no execution artifact and no pipeline wiring — this is the
+        structural guarantee that holds until a deliberate future milestone
+        changes it.
         """
         forbidden = ("requirement_intelligence.execution", "scripts.run_requirement_analysis")
         for path in _RECOMMENDATION_PKG.rglob("*.py"):
@@ -179,5 +253,5 @@ class TestDependencyBoundaries:
                         assert token not in line, f"{path.name} imports {token}"
 
     def test_no_serializer_module_exists_yet(self) -> None:
-        """CAP-082A introduces no serialization module (Recommendation 8)."""
+        """CAP-082B introduces no serialization module (Recommendation 8)."""
         assert not (_RECOMMENDATION_PKG / "serialization").exists()

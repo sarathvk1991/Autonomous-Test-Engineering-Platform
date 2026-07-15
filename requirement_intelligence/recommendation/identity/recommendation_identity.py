@@ -275,3 +275,42 @@ class RecommendationResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "recommendation result version"
+
+
+@dataclass(frozen=True, order=True)
+class RecommendationRuleVersion(_SemanticVersion):
+    """Semantic version of the governed ``RecommendationRule`` schema (CAP-082B).
+
+    Added additively alongside the ``recommendation/rules/`` package, mirroring how
+    ``EnhancementRuleVersion`` was added in CAP-081B and ``QualityRuleVersion`` in
+    CAP-080B — after their respective architecture-freeze milestones, never during
+    them. Advances independently of every other recommendation version axis.
+    """
+
+    _LABEL: ClassVar[str] = "recommendation rule version"
+
+
+@dataclass(frozen=True, order=True)
+class RecommendationRuleCatalogVersion(_SemanticVersion):
+    """Semantic version of the governed default :class:`RecommendationRuleCatalog`.
+
+    Added additively in CAP-082B, mirroring the analogous rule-catalogue version
+    types the Requirement Enhancement and Quality Governance subsystems added
+    alongside their own rule packages. Tuning the catalogue (adding, removing, or
+    retuning a rule) advances this version, never the engine or framework version.
+    """
+
+    _LABEL: ClassVar[str] = "recommendation rule catalog version"
+
+
+@dataclass(frozen=True, order=True)
+class RecommendationEngineVersion(_SemanticVersion):
+    """Semantic version of the recommendation engine **implementation**.
+
+    Added additively in CAP-082B, mirroring the reserved ``EnhancementEngineVersion``.
+    Not stamped onto ``RecommendationResult`` (which carries no engine-version field,
+    frozen since CAP-082A); reserved so a future engine's implementation identity is
+    independently versionable without touching the frozen result contract.
+    """
+
+    _LABEL: ClassVar[str] = "recommendation engine version"

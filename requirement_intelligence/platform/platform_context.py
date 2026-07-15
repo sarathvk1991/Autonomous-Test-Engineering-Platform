@@ -128,8 +128,12 @@ from requirement_intelligence.recommendation.policy import (
     default_recommendation_policy,
 )
 from requirement_intelligence.recommendation.recommendation_service import (
-    DormantRecommendationService,
+    DeterministicRecommendationService,
     RecommendationService,
+)
+from requirement_intelligence.recommendation.rules import (
+    RecommendationRuleCatalog,
+    default_recommendation_rule_catalog,
 )
 from requirement_intelligence.registry.connector_registry import ConnectorRegistry
 from requirement_intelligence.validation.profiles import (
@@ -477,19 +481,33 @@ class PlatformContext:
         """
         return default_recommendation_policy()
 
-    def create_recommendation_service(self) -> RecommendationService:
-        """Return the :class:`DormantRecommendationService` (CAP-082A, ADR-0019).
+    def create_recommendation_rule_catalog(self) -> RecommendationRuleCatalog:
+        """Return the governed default :class:`RecommendationRuleCatalog` (CAP-082B, ADR-0019).
 
-        The single runtime entry point into the Recommendation Framework —
-        registered here so the composition root and the frozen ``recommend``
-        signature are provably wired, without performing any recommendation
-        generation. **Dormant**: every call raises ``NotImplementedError``, no
-        runtime path consumes it, and only ``PlatformContext`` may construct it
-        outside the ``recommendation`` package — so runtime behaviour is
-        byte-identical and the golden baseline is unchanged. A later CAP-082
-        milestone replaces this with a real engine behind the unchanged contract.
+        The metadata-only declaration of *which* deterministic recommendation rules
+        the framework governs — ordering, lookup, and grouping over the governed
+        rules. The deterministic engine iterates it; it generates no recommendation
+        itself. **Not yet wired**: no runtime path calls it, so runtime behaviour is
+        unchanged.
         """
-        return DormantRecommendationService(policy=self.create_recommendation_policy())
+        return default_recommendation_rule_catalog()
+
+    def create_recommendation_service(self) -> RecommendationService:
+        """Return the :class:`DeterministicRecommendationService` (CAP-082B, ADR-0019).
+
+        The single runtime entry point into the Recommendation Framework, and the
+        **composition root** for the subsystem: it constructs the deterministic
+        engine, injecting the governed :meth:`create_recommendation_policy` and
+        :meth:`create_recommendation_rule_catalog`. CAP-082B replaces the dormant
+        CAP-082A service with this real, deterministic one, but it remains
+        **unwired into the execution pipeline** — nothing calls ``recommend`` at
+        runtime, so runtime behaviour is byte-identical and the golden baseline is
+        unchanged.
+        """
+        return DeterministicRecommendationService(
+            policy=self.create_recommendation_policy(),
+            rule_catalog=self.create_recommendation_rule_catalog(),
+        )
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from requirement_intelligence.recommendation.identity.recommendation_identity import (
+    RecommendationEngineVersion,
     RecommendationFrameworkVersion,
     RecommendationGroupId,
     RecommendationId,
@@ -10,10 +11,13 @@ from requirement_intelligence.recommendation.identity.recommendation_identity im
     RecommendationPolicyVersion,
     RecommendationResultId,
     RecommendationResultVersion,
+    RecommendationRuleCatalogVersion,
+    RecommendationRuleVersion,
     RecommendationVersion,
 )
 
 __all__ = [
+    "RecommendationEngineVersion",
     "RecommendationFrameworkVersion",
     "RecommendationGroupId",
     "RecommendationId",
@@ -21,5 +25,7 @@ __all__ = [
     "RecommendationPolicyVersion",
     "RecommendationResultId",
     "RecommendationResultVersion",
+    "RecommendationRuleCatalogVersion",
+    "RecommendationRuleVersion",
     "RecommendationVersion",
 ]

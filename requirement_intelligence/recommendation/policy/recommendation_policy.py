@@ -156,9 +156,7 @@ class RecommendationPolicy(Schema):
     model_config = ConfigDict(alias_generator=to_camel)
 
     policy_id: RecommendationPolicyId = Field(..., description="Governed policy identity.")
-    policy_version: RecommendationPolicyVersion = Field(
-        ..., description="Semantic policy version."
-    )
+    policy_version: RecommendationPolicyVersion = Field(..., description="Semantic policy version.")
     description: str = Field(..., min_length=1, description="Human-readable policy summary.")
 
     capability_switches: RecommendationCapabilitySwitches = Field(

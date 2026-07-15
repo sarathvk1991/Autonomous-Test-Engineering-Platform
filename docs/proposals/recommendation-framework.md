@@ -1,8 +1,8 @@
 # Recommendation Framework — Design Proposal
 
-- **Status:** Accepted (CAP-082A freezes the architecture only)
+- **Status:** Accepted (CAP-082A froze the architecture; CAP-082B implements the first deterministic engine behind it, unchanged)
 - **Capability:** CAP-082 — Recommendation Framework
-- **Milestones covered:** CAP-082A (Architecture & Governance Freeze — this document)
+- **Milestones covered:** CAP-082A (Architecture & Governance Freeze), CAP-082B (Deterministic Recommendation Engine — see §13)
 - **Governed by:** ADR-0019
 - **Depends on:** ADR-0016 (Evidence Grounding and Traceability), ADR-0017 (Quality Governance Framework), ADR-0018 (Requirement Enhancement Framework), the Validation and CP1 subsystems.
 
@@ -119,8 +119,18 @@ logic:
   (Recommendation 8: runtime before reporting).
 
 `RecommendationPolicyBuilder` / `default_recommendation_policy()` assemble the
-CAP-082A default at `RecommendationPolicyVersion` 1.0.0. Tuning any rule or switch
-is a versioned policy change, never an engine change (Recommendation 5).
+governed default, now at `RecommendationPolicyVersion` 1.1.0 (CAP-082B advanced it
+from CAP-082A's 1.0.0 by flipping `enable_deterministic_engine` to `True`). Tuning
+any rule or switch is a versioned policy change, never an engine change
+(Recommendation 5).
+
+CAP-082B additionally introduces `RecommendationRuleCatalog`
+(`recommendation/rules/`, mirroring `quality_governance/rules/` and
+`enhancement/rules/`): governed, metadata-only `RecommendationRule` entries naming a
+`RecommendationRuleCategory` (the shape of upstream evidence covered), a
+`RecommendationType`, priority/effort/confidence hints, and a
+`RecommendationPolicyToggle` reference. The default catalogue ships 18 rules
+covering all five sources. See §13.
 
 ## 8. Runtime boundary (frozen, dormant)
 
@@ -141,22 +151,27 @@ def recommend(
 It depends only on the five frozen contracts it consumes — never an
 *implementation* class (`DeterministicRequirementEnhancementEngine`,
 `GroundingService`, `ResponseValidator`, `CP1Service`,
-`QualityGovernanceService`). Abstract at CAP-082A; `DormantRecommendationService`
-raises `NotImplementedError` on every call. A later CAP-082 milestone implements
-the method behind this unchanged signature, exactly as CAP-081B implemented
-`RequirementEnhancementService.enhance` behind the ADR-0018 boundary.
+`QualityGovernanceService`). Abstract at CAP-082A. CAP-082B implements the method:
+`DeterministicRecommendationService` (replacing `DormantRecommendationService`)
+delegates to the private `DeterministicRecommendationEngine`, exactly as CAP-081B
+implemented `RequirementEnhancementService.enhance` behind the ADR-0018 boundary.
+The signature is unchanged; the subsystem remains unwired into the runtime
+pipeline. See §13.
 
 ## 9. PlatformContext
 
-`PlatformContext` exposes two composition-root methods, construction only:
+`PlatformContext` exposes three composition-root methods, construction only:
 
 - `create_recommendation_policy() -> RecommendationPolicy`
-- `create_recommendation_service() -> RecommendationService`
+- `create_recommendation_rule_catalog() -> RecommendationRuleCatalog` (CAP-082B)
+- `create_recommendation_service() -> RecommendationService` (now returns
+  `DeterministicRecommendationService`, CAP-082B)
 
-Mirroring `create_enhancement_policy()` / `create_requirement_enhancement_service()`
-(ADR-0018) and `create_quality_policy()` / `create_quality_governance_service()`
-(ADR-0017), these are the **only** sanctioned points outside the `recommendation`
-package that may construct its objects, enforced by a containment test.
+Mirroring `create_enhancement_policy()` / `create_enhancement_rule_catalog()` /
+`create_requirement_enhancement_service()` (ADR-0018) and `create_quality_policy()` /
+`create_quality_governance_service()` (ADR-0017), these are the **only** sanctioned
+points outside the `recommendation` package that may construct its objects,
+enforced by a containment test.
 
 ## 10. Execution package
 
@@ -172,12 +187,13 @@ reporting).
 1. **Done (CAP-082A).** Architecture & governance freeze: canonical models, typed
    identities, independent version axes, governed policy, dormant service contract,
    `PlatformContext` registration.
-2. CAP-082B — Deterministic Recommendation Engine: derive recommendations strictly
-   from recorded upstream observations/findings/issues (Recommendation 7), never
-   independent analysis.
-3. Prioritization and grouping engines, reading `PrioritizationRules` /
-   `GroupingRules`.
-4. Confidence scoring, reading `ConfidenceRules`.
+2. **Done (CAP-082B).** Deterministic Recommendation Engine: derive recommendations
+   strictly from recorded upstream observations/findings/issues (Recommendation 7),
+   never independent analysis; governed rule catalogue; policy-derived
+   prioritization; grouping; confidence surfacing; metrics; summary. See §13.
+3. Prioritization and grouping engines beyond the deterministic baseline (e.g.
+   statistical re-ranking), reading the same `PrioritizationRules` / `GroupingRules`.
+4. Confidence scoring beyond the deterministic hint-and-floor model.
 5. Runtime activation — wire `recommend` into the pipeline after Quality Governance,
    add the Execution Package projection, golden re-baseline.
 6. ML/LLM/hybrid recommendation engines, reserved by
@@ -196,3 +212,81 @@ Each lands behind the unchanged `recommend` signature and the unchanged
   Enhancement (structural observation), Grounding (evidence support), Validation
   (structural form), CP1 (engineering readiness), and Quality Governance (release
   decision) — a peer, consuming all five, extending none of them.
+
+## 13. CAP-082B — Deterministic Recommendation Engine
+
+Stage 0 of CAP-082B reviewed every CAP-082A freeze point and found no architectural
+weakness: `RecommendationResult` is the permanent runtime contract,
+`RecommendationService` the permanent entry point, `RecommendationPolicy` and every
+canonical model frozen, `PlatformContext` the sole composition root, and
+Recommendation dormant. CAP-082B proceeded as a **pure implementation milestone**.
+
+**Governed rule catalogue.** A new `recommendation/rules/` package mirrors
+`quality_governance/rules/` and `enhancement/rules/`:
+
+- `RecommendationRuleCategory` — 18 governed members, one per distinguishable shape
+  of upstream evidence (e.g. `ENHANCEMENT_DEPENDENCY_GAP`, `GROUNDING_CONTRADICTED`,
+  `VALIDATION_ISSUE_CRITICAL`, `CP1_FINDING_FAIL`, `QUALITY_DECISION_FAIL`).
+- `RecommendationPolicyToggle` — names the `RecommendationCapabilitySwitches` field
+  that gates a rule (every default rule references `ENABLE_DETERMINISTIC_ENGINE`).
+- `RecommendationRule` — metadata only: rule id, category, source subsystem,
+  recommendation type, priority/effort/confidence hints, the enable switch, the
+  policy reference, plus descriptive (`rule_name`, `guidance`) and ordering
+  (`evaluation_order`) fields in the same spirit as `QualityRule` / `EnhancementRule`.
+  No executable behaviour.
+- `RecommendationRuleCatalog` — ordering, lookup by id/category, filtering by
+  source; performs no generation itself.
+- The default catalogue (`default_recommendation_rule_catalog()`) ships 18 rules
+  covering all five `RecommendationSource` values, all nine `RecommendationType`
+  values, and all four `RecommendationPriority` values.
+
+**`DeterministicRecommendationEngine` (`recommendation/engine.py`).** Consumes only
+the five frozen result contracts (never an upstream implementation class). Pipeline:
+
+1. **Candidate collection** — dispatch each piece of upstream evidence (an
+   `EnhancementFinding`, `GroundingFinding`, `ValidationIssue`, `CP1Finding`,
+   `QualityFinding`, or the release `QualityDecision` itself) to exactly one
+   `RecommendationRuleCategory`, then look up that category's governed rule.
+2. **Confidence surfacing** — drop a candidate whose rule `confidence_hint` is below
+   `ConfidenceRules.minimum_confidence_to_surface` (or keep everything if
+   `enable_confidence_scoring` is off). No score is computed; the hint is recorded.
+3. **Priority resolution (Recommendation 9)** — every recommendation's priority is
+   the matched rule's `priority_hint`, clamped to `PrioritizationRules.
+   enabled_priorities` and capped by `max_recommendations_per_priority` (cascading
+   demotion to the next enabled priority, in fixed dispatch order). The engine never
+   branches on `recommendation_source` or `recommendation_type` to pick a priority.
+4. **Recommendation assembly** — `title`/`description` come entirely from the
+   matched rule's `rule_name`/`guidance` (never copied from the finding's message);
+   `rationale` names only the reference id; each recommendation carries exactly one
+   `RecommendationReference`.
+5. **Grouping** — one `RecommendationGroup` per populated, policy-enabled
+   `RecommendationType`, membership capped by `GroupingRules.
+   max_recommendations_per_group`.
+6. **Metrics and summary** — each computed exactly once, from the final
+   recommendation/group sets.
+
+**Determinism.** Recommendation/group ids are pure functions of
+`(execution_id, ordinal)`, where `ordinal` is a candidate's fixed position in the
+full dispatch order — established *before* confidence filtering, so a surviving
+recommendation's id never shifts because other candidates were dropped. No
+randomness, no UUID; `started_at`/`completed_at` come from an injected clock.
+
+**Policy value tuning.** `RecommendationCapabilitySwitches.
+enable_deterministic_engine` flips `False → True` in the shipped default
+(`RecommendationPolicyVersion` 1.0.0 → 1.1.0) — a versioned policy *value* change,
+never a shape or engine code change.
+
+**PlatformContext.** `create_recommendation_service()` now returns
+`DeterministicRecommendationService` (`DormantRecommendationService` is removed, not
+kept alongside — mirroring how CAP-081B replaced Requirement Enhancement's own
+dormant service). `create_recommendation_rule_catalog()` is added. Still unwired —
+nothing calls `recommend()` at runtime; the golden baseline, Architecture Version,
+and Platform Version are unchanged.
+
+**Tests.** 83 new deterministic tests across `test_recommendation_rules.py` and
+`test_recommendation_engine.py`, plus updated boundary tests in
+`test_recommendation_service.py` / `test_recommendation_policy.py`: every source,
+every dispatch category, policy-driven prioritization/grouping/confidence behaviour,
+determinism, serialization round-trips, explainability, and containment
+(no engine/service reference outside `PlatformContext`, no execution-package or
+serializer dependency, no upstream implementation import).

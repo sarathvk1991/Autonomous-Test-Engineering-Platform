@@ -43,18 +43,19 @@ class TestDefaultPolicy:
         with pytest.raises(ValidationError):
             policy.description = "changed"  # type: ignore[misc]
 
-    def test_near_term_capabilities_enabled_engine_families_reserved_off(self) -> None:
-        # Prioritization/grouping/confidence-scoring are the CAP-082A-governed
-        # near-term capabilities; the deterministic/ML/LLM engine families are
-        # reserved off by default until CAP-082B and beyond implement them
-        # (Recommendation 5).
+    def test_deterministic_engine_enabled_ml_llm_families_reserved_off(self) -> None:
+        # CAP-082B implements the deterministic engine, so its governed switch flips
+        # to True; the ML/LLM engine families remain reserved off (Recommendation 5).
         switches = default_recommendation_policy().capability_switches
         assert switches.enable_prioritization
         assert switches.enable_grouping
         assert switches.enable_confidence_scoring
-        assert not switches.enable_deterministic_engine
+        assert switches.enable_deterministic_engine
         assert not switches.enable_ml_engine
         assert not switches.enable_llm_engine
+
+    def test_policy_version_advanced_for_cap_082b(self) -> None:
+        assert str(default_recommendation_policy().policy_version) == "1.1.0"
 
     def test_prioritization_rules_cover_the_full_governed_vocabulary(self) -> None:
         policy = default_recommendation_policy()

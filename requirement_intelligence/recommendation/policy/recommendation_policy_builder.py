@@ -5,7 +5,9 @@ deterministic, immutable value — and rejects nothing beyond the model's own fi
 constraints. It generates no recommendation, prioritizes nothing, groups nothing,
 and has no runtime consumers.
 
-CAP-082A ships the governed default at ``RecommendationPolicyVersion`` 1.0.0. The
+CAP-082A shipped the governed default at ``RecommendationPolicyVersion`` 1.0.0 with
+``enable_deterministic_engine`` reserved off. CAP-082B advances it to 1.1.0 and flips
+that switch to ``True`` now that ``DeterministicRecommendationEngine`` exists. The
 values are **governed data**: tuning them is a versioned policy change, never an
 engine code change, and no future engine hard-codes any of them (Recommendation 5).
 """
@@ -38,15 +40,15 @@ class RecommendationPolicyBuilder:
             policy_id=DEFAULT_RECOMMENDATION_POLICY_ID,
             policy_version=RECOMMENDATION_POLICY_VERSION,
             description=(
-                "Default recommendation policy (CAP-082A): governed capability "
-                "switches and deterministic configuration. Architecture freeze only "
-                "— no capability is wired to a runtime engine yet."
+                "Default recommendation policy (CAP-082B): governed capability "
+                "switches and deterministic configuration. The deterministic engine "
+                "is enabled; the framework remains unwired into the runtime pipeline."
             ),
             capability_switches=RecommendationCapabilitySwitches(
                 enable_prioritization=True,
                 enable_grouping=True,
                 enable_confidence_scoring=True,
-                enable_deterministic_engine=False,
+                enable_deterministic_engine=True,
                 enable_ml_engine=False,
                 enable_llm_engine=False,
             ),

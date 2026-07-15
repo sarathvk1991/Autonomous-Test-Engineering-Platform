@@ -35,14 +35,19 @@ What the service does NOT own
     hybrid recommendation engine is an **internal implementation detail** of the
     service and can be added without changing this contract.
 
-Runtime status (CAP-082A)
-    ``recommend`` is **abstract**. The registered
-    :class:`DormantRecommendationService` raises :class:`NotImplementedError`. It is
-    dormant — no runtime path consumes it, and only ``PlatformContext`` may
-    construct it outside this package — so runtime behaviour is byte-identical and
-    the golden baseline is unchanged. Runtime integration is future work
-    (CAP-082B onward), exactly as CAP-081A froze the Requirement Enhancement service
-    boundary before CAP-081B implemented the first deterministic engine.
+Runtime status (CAP-082B)
+    ``recommend`` is now implemented: :class:`DeterministicRecommendationService`
+    delegates to a private
+    :class:`~requirement_intelligence.recommendation.engine.DeterministicRecommendationEngine`
+    that performs deterministic candidate collection, confidence surfacing, priority
+    resolution, grouping, metrics, and summary end to end. The service is still **not
+    wired into the Requirement Intelligence execution pipeline** (nothing calls
+    ``recommend`` at runtime) and only ``PlatformContext`` may construct it outside
+    this package — so runtime behaviour is byte-identical and the golden baseline is
+    unchanged. Runtime integration is future work, exactly as CAP-080B implemented the
+    first deterministic Quality Governance rule evaluator before CAP-080D wired the
+    subsystem in, and CAP-081B implemented the first deterministic Requirement
+    Enhancement engine before CAP-081C activated it.
 """
 
 from __future__ import annotations
@@ -53,9 +58,13 @@ from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from requirement_intelligence.enhancement.models.result import RequirementEnhancementResult
 from requirement_intelligence.grounding.models.assessment import GroundingResult
 from requirement_intelligence.quality_governance.models.result import QualityGovernanceResult
+from requirement_intelligence.recommendation.engine import DeterministicRecommendationEngine
 from requirement_intelligence.recommendation.models.result import RecommendationResult
 from requirement_intelligence.recommendation.policy.recommendation_policy import (
     RecommendationPolicy,
+)
+from requirement_intelligence.recommendation.rules.recommendation_rule_catalog import (
+    RecommendationRuleCatalog,
 )
 from requirement_intelligence.validation.models.validation_result import ValidationResult
 
@@ -102,26 +111,32 @@ class RecommendationService(ABC):
 
         Notes
         -----
-        Abstract in CAP-082A; a real engine is wired behind this unchanged signature
-        in a later CAP-082 milestone (CAP-082B: Deterministic Recommendation Engine).
+        Abstract in CAP-082A; :class:`DeterministicRecommendationService` (CAP-082B)
+        implements it behind this unchanged signature.
         """
         raise NotImplementedError
 
 
-class DormantRecommendationService(RecommendationService):
-    """The registered, dormant service (CAP-082A). Raises on every call.
+class DeterministicRecommendationService(RecommendationService):
+    """The registered default service (CAP-082B) — thin orchestration over the engine.
 
-    Exists so :meth:`PlatformContext.create_recommendation_service` has a concrete
-    class to construct — proving the composition root and the frozen signature are
-    wired — without performing any recommendation generation. Mirrors the pattern
-    ADR-0016 §D7, ADR-0017 §D6, and ADR-0018 §D6 established for the dormant
-    Grounding, Quality Governance, and Requirement Enhancement runtime services
-    before their first real engines landed.
+    Holds a private :class:`~requirement_intelligence.recommendation.engine.
+    DeterministicRecommendationEngine` and delegates ``recommend`` to it, owning only
+    the public boundary and construction. It **computes nothing itself**: the engine
+    performs candidate collection, confidence surfacing, priority resolution,
+    grouping, metrics, and summary. Mirrors how the Requirement Enhancement
+    subsystem's own deterministic runtime service delegates to its private engine
+    (ADR-0018) — a thin service, real behaviour one layer down.
     """
 
-    def __init__(self, policy: RecommendationPolicy) -> None:
-        """Store the governed policy a future engine will read."""
-        self._policy = policy
+    def __init__(
+        self,
+        *,
+        policy: RecommendationPolicy,
+        rule_catalog: RecommendationRuleCatalog | None = None,
+    ) -> None:
+        """Construct the private deterministic engine this service delegates to."""
+        self._engine = DeterministicRecommendationEngine(policy=policy, rule_catalog=rule_catalog)
 
     def recommend(
         self,
@@ -131,9 +146,11 @@ class DormantRecommendationService(RecommendationService):
         cp1_result: CP1Result,
         quality_governance_result: QualityGovernanceResult,
     ) -> RecommendationResult:
-        """Raise: no recommendation engine exists yet (CAP-082A is architecture only)."""
-        raise NotImplementedError(
-            "RecommendationService.recommend has no implementation yet (CAP-082A "
-            "froze the architecture only); a later CAP-082 milestone wires a real "
-            "engine behind this unchanged signature."
+        """Recommend actions for one run via the deterministic engine — delegation only."""
+        return self._engine.recommend(
+            enhancement_result,
+            grounding_result,
+            validation_result,
+            cp1_result,
+            quality_governance_result,
         )
