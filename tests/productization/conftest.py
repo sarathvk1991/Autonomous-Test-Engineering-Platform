@@ -142,6 +142,9 @@ class PipelineResult:
     # Quality Governance (terminal release authority)
     quality_governance_result: Any  # QualityGovernanceResult
 
+    # Recommendation (peer capability, immediately after Quality Governance)
+    recommendation_result: Any  # RecommendationResult
+
     # Execution package
     execution_data: ExecutionData
     write_result: ExecutionWriteResult
@@ -277,6 +280,22 @@ def _run_golden_pipeline(
         )
 
     # -----------------------------------------------------------------------
+    # Step 6d — Recommendation (CAP-082C): immediately after Quality Governance, at
+    # the permanently frozen end of the pipeline. It consumes only the five
+    # completed peer results and runs exactly when all five exist. It modifies
+    # nothing upstream.
+    # -----------------------------------------------------------------------
+    recommendation_result = None
+    if quality_governance_result is not None:
+        recommendation_result = context.create_recommendation_service().recommend(
+            requirement_enhancement_result,
+            grounding_result,
+            validation_result,
+            cp1_result,
+            quality_governance_result,
+        )
+
+    # -----------------------------------------------------------------------
     # Step 7 — Execution package
     # -----------------------------------------------------------------------
     execution_data = ExecutionData(
@@ -300,6 +319,7 @@ def _run_golden_pipeline(
         grounding_result=grounding_result,
         quality_governance_result=quality_governance_result,
         requirement_enhancement_result=requirement_enhancement_result,
+        recommendation_result=recommendation_result,
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -317,6 +337,7 @@ def _run_golden_pipeline(
         cp1_result=cp1_result,
         grounding_result=grounding_result,
         quality_governance_result=quality_governance_result,
+        recommendation_result=recommendation_result,
         execution_data=execution_data,
         write_result=write_result,
         output_dir=tmp_dir,

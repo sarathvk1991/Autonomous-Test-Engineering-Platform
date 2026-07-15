@@ -529,6 +529,47 @@ def run_quality_governance_phase(
     return governance_result
 
 
+def run_recommendation_phase(
+    context: PlatformContext,
+    enhancement_result: Any,
+    grounding_result: Any,
+    validation_result: Any,
+    cp1_result: Any,
+    quality_governance_result: Any,
+    console: Console,
+) -> Any:
+    """Recommendation phase — a peer capability, immediately after Quality Governance
+    (CAP-082C, ADR-0019 §D10).
+
+    Runs at the permanently frozen end of the pipeline::
+
+        Engineering Context → Analysis → Requirement Enhancement → Grounding
+            → Validation → CP1 → Quality Governance → Recommendation
+            → Execution Package
+
+    It consumes **only** the five completed peer results — ``RequirementEnhancementResult``,
+    ``GroundingResult``, ``ValidationResult``, ``CP1Result``, ``QualityGovernanceResult`` —
+    and modifies nothing upstream. The single ``RecommendationService`` comes solely from
+    :class:`PlatformContext`; this CLI is pure orchestration glue and invents no
+    recommendation, prioritization, grouping, or confidence logic of its own. Mirroring
+    Grounding/Quality Governance, a failure here is surfaced but never fatal to the
+    analysis run, and never corrupts the already-completed upstream results.
+    """
+    console.action("\nRunning Recommendation")
+    recommendation_result = context.create_recommendation_service().recommend(
+        enhancement_result,
+        grounding_result,
+        validation_result,
+        cp1_result,
+        quality_governance_result,
+    )
+    summary = recommendation_result.summary
+    console.ok(f"{summary.headline}")
+    console.note(f"  Recommendations     : {summary.total_recommendations}")
+    console.note(f"  Groups              : {summary.total_groups}")
+    return recommendation_result
+
+
 # ===========================================================================
 # Subcommand handlers
 # ===========================================================================
@@ -714,17 +755,42 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # It modifies nothing upstream. Mirroring grounding/validation/CP1, a governance failure
     # is surfaced but never fatal, and never corrupts the already-completed upstream results.
     quality_governance_result: Any = None
-    if (
-        grounding_result is not None
-        and validation_result is not None
-        and cp1_result is not None
-    ):
+    if grounding_result is not None and validation_result is not None and cp1_result is not None:
         try:
             quality_governance_result = run_quality_governance_phase(
                 context, grounding_result, validation_result, cp1_result, console
             )
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Quality governance evaluation failed: {exc}")
+
+    # Recommendation phase (CAP-082C): immediately after Quality Governance, at the
+    # permanently frozen end of the pipeline (Requirement Enhancement → Grounding →
+    # Validation → CP1 → Quality Governance → Recommendation → Execution Package). It
+    # consumes only the five completed peer results and runs exactly when all five
+    # exist — a live, enhanced, grounded, validated, CP1-gate-open, governed run. It
+    # modifies nothing upstream. Mirroring grounding/validation/CP1/quality governance,
+    # a recommendation failure is surfaced but never fatal, and never corrupts the
+    # already-completed upstream results.
+    recommendation_result: Any = None
+    if (
+        requirement_enhancement_result is not None
+        and grounding_result is not None
+        and validation_result is not None
+        and cp1_result is not None
+        and quality_governance_result is not None
+    ):
+        try:
+            recommendation_result = run_recommendation_phase(
+                context,
+                requirement_enhancement_result,
+                grounding_result,
+                validation_result,
+                cp1_result,
+                quality_governance_result,
+                console,
+            )
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Recommendation failed: {exc}")
 
     data = ExecutionData(
         selected=selected,
@@ -746,6 +812,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         grounding_result=grounding_result,
         quality_governance_result=quality_governance_result,
         requirement_enhancement_result=requirement_enhancement_result,
+        recommendation_result=recommendation_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

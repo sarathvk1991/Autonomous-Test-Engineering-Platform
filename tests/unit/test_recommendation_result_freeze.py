@@ -221,9 +221,27 @@ class TestRuntimeAndExecutionPackageBoundary:
                 external.add(path.relative_to(_REPO_ROOT))
         assert external == permitted
 
-    def test_no_serializer_module_exists_yet(self) -> None:
-        """CAP-082B.1 introduces no serialization module — freeze precedes projection."""
-        assert not (_RECOMMENDATION_PKG / "serialization").exists()
+    def test_serializer_honours_the_frozen_projection_only_invariant(self) -> None:
+        """CAP-082C's serializer honours the boundary CAP-082B.1 froze before it existed.
+
+        The ``serialization/`` package did not exist when this milestone froze the
+        invariant in advance; CAP-082C introduces the serializer and this test
+        confirms it computes nothing and imports no runtime implementation.
+        """
+        serializer_dir = _RECOMMENDATION_PKG / "serialization"
+        assert serializer_dir.exists()
+        forbidden = (
+            "DeterministicRecommendationEngine",
+            "DeterministicRecommendationService",
+            "RecommendationRuleCatalog",
+            "RecommendationPolicy",
+            "PlatformContext",
+        )
+        for path in serializer_dir.rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
 
     def test_platform_context_remains_the_sole_composition_root(self) -> None:
         """Only PlatformContext constructs the engine's governed collaborators externally."""

@@ -107,14 +107,17 @@ class TestPlatformContextRegistration:
 @pytest.mark.unit
 class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
-        """Outside the recommendation package, only PlatformContext may name the service.
+        """Outside the recommendation package, only the sanctioned seams may name the service.
 
-        CAP-082B registers the deterministic implementation, but the subsystem
-        remains unwired: no CLI phase, execution builder, manifest, or serializer
-        may reference the runtime service, so a future dependency cannot appear
-        silently (mirroring ADR-0018 §D6's containment test for Requirement
-        Enhancement, before its own CAP-081C activation added the CLI as a second
-        permitted seam).
+        CAP-082C consciously wires the service: the composition root
+        (``PlatformContext``) constructs it, and the CLI orchestration
+        (``run_requirement_analysis.py``) obtains it from there and calls
+        ``recommend`` (mirroring the Requirement Enhancement activation, ADR-0018
+        §D9, and the Quality Governance activation, ADR-0017 §D30). No other
+        module — no execution builder, manifest, or serializer — may reference the
+        runtime service, so a future dependency cannot appear silently. The
+        Execution Package in particular stays free of the runtime class name: it
+        transports and projects the ``RecommendationResult``, never the service.
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -124,6 +127,7 @@ class TestRuntimeContainment:
         needle = "RecommendationService"
         permitted = {
             Path("requirement_intelligence/platform/platform_context.py"),
+            Path("scripts/run_requirement_analysis.py"),
         }
         external_consumers: set[Path] = set()
         for root in roots:
@@ -241,9 +245,11 @@ class TestDependencyBoundaries:
     def test_no_execution_package_or_pipeline_dependency(self) -> None:
         """The Recommendation Framework never imports the Execution Package or the CLI.
 
-        CAP-082B adds no execution artifact and no pipeline wiring — this is the
-        structural guarantee that holds until a deliberate future milestone
-        changes it.
+        The dependency is one-way: the Execution Package (CAP-082C) imports the
+        recommendation *serializer*, but nothing inside the ``recommendation``
+        package ever imports back into ``requirement_intelligence.execution`` or
+        the CLI — this is the structural guarantee that holds even after runtime
+        activation.
         """
         forbidden = ("requirement_intelligence.execution", "scripts.run_requirement_analysis")
         for path in _RECOMMENDATION_PKG.rglob("*.py"):
@@ -252,6 +258,24 @@ class TestDependencyBoundaries:
                     for token in forbidden:
                         assert token not in line, f"{path.name} imports {token}"
 
-    def test_no_serializer_module_exists_yet(self) -> None:
-        """CAP-082B introduces no serialization module (Recommendation 8)."""
-        assert not (_RECOMMENDATION_PKG / "serialization").exists()
+    def test_serializer_honours_the_frozen_projection_only_invariant(self) -> None:
+        """CAP-082C's serializer (Recommendation 8's forward-looking invariant) computes nothing.
+
+        The ``serialization/`` package did not exist when CAP-082B.1 froze this
+        invariant in advance; CAP-082C introduces the serializer and this test
+        confirms it honours the boundary frozen before it existed.
+        """
+        serializer_dir = _RECOMMENDATION_PKG / "serialization"
+        assert serializer_dir.exists()
+        forbidden = (
+            "DeterministicRecommendationEngine",
+            "DeterministicRecommendationService",
+            "RecommendationRuleCatalog",
+            "RecommendationPolicy",
+            "PlatformContext",
+        )
+        for path in serializer_dir.rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"

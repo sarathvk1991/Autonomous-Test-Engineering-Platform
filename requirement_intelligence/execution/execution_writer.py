@@ -37,6 +37,7 @@ from requirement_intelligence.grounding.serialization import GroundingSerializer
 from requirement_intelligence.quality_governance.serialization import (
     QualityGovernanceSerializer,
 )
+from requirement_intelligence.recommendation.serialization import RecommendationSerializer
 
 _CORE_ARTIFACTS = (
     "consolidated_artifact.json",
@@ -96,6 +97,7 @@ class ExecutionWriter:
         self._grounding = GroundingSerializer()
         self._quality_governance = QualityGovernanceSerializer()
         self._enhancement = EnhancementSerializer()
+        self._recommendation = RecommendationSerializer()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -255,6 +257,29 @@ class ExecutionWriter:
                 "requirement_enhancement_result.json",
                 "requirement_enhancement_report.md",
                 "requirement_enhancement_metrics.md",
+            ]
+        # Recommendation artifacts (CAP-082C): appended only when a
+        # RecommendationResult was produced — immediately after Quality Governance,
+        # at the permanently frozen end of the pipeline. Pure projection — the
+        # RecommendationResult is serialised/rendered as-is; no recommendation is
+        # generated, prioritized, grouped, or scored here.
+        if data.recommendation_result is not None:
+            _write_json(
+                target_dir / "recommendation_result.json",
+                self._recommendation.render_json(data.recommendation_result),
+            )
+            (target_dir / "recommendation_report.md").write_text(
+                self._recommendation.render_report(data.recommendation_result),
+                encoding="utf-8",
+            )
+            (target_dir / "recommendation_metrics.md").write_text(
+                self._recommendation.render_metrics(data.recommendation_result),
+                encoding="utf-8",
+            )
+            names += [
+                "recommendation_result.json",
+                "recommendation_report.md",
+                "recommendation_metrics.md",
             ]
         return tuple(names)
 

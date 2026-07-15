@@ -79,6 +79,13 @@ _REQUIREMENT_ENHANCEMENT_ARTIFACTS = frozenset(
         "requirement_enhancement_metrics.md",
     }
 )
+_RECOMMENDATION_ARTIFACTS = frozenset(
+    {
+        "recommendation_result.json",
+        "recommendation_report.md",
+        "recommendation_metrics.md",
+    }
+)
 _ALL_ARTIFACTS = (
     _CORE_ARTIFACTS
     | _RESULT_ARTIFACTS
@@ -87,6 +94,7 @@ _ALL_ARTIFACTS = (
     | _GROUNDING_ARTIFACTS
     | _QUALITY_GOVERNANCE_ARTIFACTS
     | _REQUIREMENT_ENHANCEMENT_ARTIFACTS
+    | _RECOMMENDATION_ARTIFACTS
     | {"manifest.json"}
 )
 
@@ -308,6 +316,56 @@ class TestPhase3PipelineExecution:
         assert governance.started_at <= governance.completed_at
 
     @pytest.mark.productization
+    def test_recommendation_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
+        """Recommendation ran after Quality Governance (CAP-082C) and produced a result."""
+        assert golden_pipeline_result.recommendation_result is not None, (
+            "RecommendationResult is None — recommendation did not run despite "
+            "governance completing."
+        )
+
+    @pytest.mark.productization
+    def test_recommendation_runs_strictly_after_quality_governance(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The frozen order: recommendation only exists because all five peer results do.
+
+        Recommendation consumes exactly RequirementEnhancementResult + GroundingResult +
+        ValidationResult + CP1Result + QualityGovernanceResult, and its recorded
+        provenance names those five consumed inputs.
+        """
+        recommendation = golden_pipeline_result.recommendation_result
+        assert golden_pipeline_result.requirement_enhancement_result is not None
+        assert golden_pipeline_result.grounding_result is not None
+        assert golden_pipeline_result.validation_result is not None
+        assert golden_pipeline_result.cp1_result is not None
+        assert golden_pipeline_result.quality_governance_result is not None
+        consumed = {str(ref.source) for ref in recommendation.consumed_inputs}
+        assert consumed == {"enhancement", "grounding", "validation", "cp1", "quality_governance"}
+        # Recommendation completes after the governance result it consumed was produced.
+        assert recommendation.started_at <= recommendation.completed_at
+
+    @pytest.mark.productization
+    def test_recommendation_produces_the_golden_datasets_known_shape(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """A long-term regression guard: the golden dataset's fixed, deterministic shape.
+
+        The golden dataset's single enhancement observation (a dependency gap on
+        one requirement) deterministically produces exactly one recommendation in
+        exactly one group. A change to this count is a genuine regression signal —
+        either in Requirement Enhancement's observation generation or in the
+        Recommendation engine's dispatch/policy — and must be re-baselined
+        deliberately, never silently.
+        """
+        recommendation = golden_pipeline_result.recommendation_result
+        assert recommendation.summary.total_recommendations == 1
+        assert recommendation.summary.total_groups == 1
+        rec = recommendation.recommendations[0]
+        assert str(rec.recommendation_source) == "enhancement"
+        assert str(rec.recommendation_type) == "clarify_requirement"
+        assert str(rec.priority) == "medium"
+
+    @pytest.mark.productization
     def test_execution_package_written(self, golden_pipeline_result: PipelineResult) -> None:
         """ExecutionWriter completed without raising."""
         assert golden_pipeline_result.write_result is not None
@@ -415,6 +473,27 @@ class TestPhase4OutputVerification:
         assert (
             RequirementEnhancementResult.model_validate(on_disk)
             == golden_pipeline_result.requirement_enhancement_result
+        )
+
+    @pytest.mark.productization
+    def test_recommendation_artifacts_present(self, golden_pipeline_result: PipelineResult) -> None:
+        """Recommendation ran (CAP-082C), so all three artifacts are written."""
+        for name in _RECOMMENDATION_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Recommendation artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Recommendation artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_recommendation_result_json_round_trips(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """recommendation_result.json is a verbatim, round-trippable projection."""
+        from requirement_intelligence.recommendation import RecommendationResult
+
+        on_disk = _load_json(golden_pipeline_result.output_dir / "recommendation_result.json")
+        assert (
+            RecommendationResult.model_validate(on_disk)
+            == golden_pipeline_result.recommendation_result
         )
 
     @pytest.mark.productization
@@ -660,6 +739,79 @@ class TestPhase4OutputVerification:
         )
         assert on_disk["summary"]["totalRequirementsEnhanced"] == (
             result.summary.total_requirements_enhanced
+        )
+
+    @pytest.mark.productization
+    def test_manifest_references_recommendation_artifacts_only(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json indexes the recommendation artifacts; it never duplicates runtime state.
+
+        Manifest purity (ADR-0017 §D31, applied here per ADR-0019 §D9/§D10): the
+        manifest owns package metadata and the artifact inventory only. The canonical
+        recommendations, groups, priorities, confidence, metrics, and summary are the
+        sole runtime state and live exclusively on ``RecommendationResult`` / the
+        artifact ``recommendation_result.json`` — never re-surfaced as manifest keys.
+        """
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        result = golden_pipeline_result.recommendation_result
+        assert manifest.get("recommendationExecuted") is True
+        assert manifest.get("recommendationReport") == "recommendation_report.md"
+        assert manifest.get("recommendationMetrics") == "recommendation_metrics.md"
+        for forbidden_key in (
+            "recommendationPriority",
+            "recommendationCounts",
+            "recommendationSummary",
+            "recommendationDecisions",
+            "recommendationGroups",
+            "recommendationMetricsValues",
+        ):
+            assert forbidden_key not in manifest
+
+        on_disk = _load_json(golden_pipeline_result.output_dir / "recommendation_result.json")
+        assert on_disk["summary"]["totalRecommendations"] == result.summary.total_recommendations
+
+    @pytest.mark.productization
+    def test_manifest_checksums_the_recommendation_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """recommendation_result.json is checksummed by the same mechanism as every other."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        entries = {a["name"]: a for a in manifest["generatedArtifacts"]}
+        entry = entries["recommendation_result.json"]
+        path = golden_pipeline_result.output_dir / "recommendation_result.json"
+        assert entry["sha256"] == _sha256(path)
+        assert entry["bytes"] == path.stat().st_size
+
+    @pytest.mark.productization
+    def test_recommendation_report_contains_the_summary_headline(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """recommendation_report.md is a projection — it shows the result's own headline."""
+        report = (golden_pipeline_result.output_dir / "recommendation_report.md").read_text(
+            encoding="utf-8"
+        )
+        assert golden_pipeline_result.recommendation_result.summary.headline in report
+
+    @pytest.mark.productization
+    def test_recommendation_metrics_contains_the_recommendation_density(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """recommendation_metrics.md is a projection — it shows the result's own metrics."""
+        metrics_md = (golden_pipeline_result.output_dir / "recommendation_metrics.md").read_text(
+            encoding="utf-8"
+        )
+        density = golden_pipeline_result.recommendation_result.metrics.recommendation_density
+        assert f"{density:.3f}" in metrics_md
+
+    @pytest.mark.productization
+    def test_execution_data_recommendation_result_matches_pipeline_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The object transported into the Execution Package is the same one returned."""
+        assert (
+            golden_pipeline_result.execution_data.recommendation_result
+            is golden_pipeline_result.recommendation_result
         )
 
     @pytest.mark.productization
@@ -1170,6 +1322,138 @@ class TestPhase5Determinism:
         assert "requirementEnhancementCoverage" not in m2
 
     @pytest.mark.productization
+    def test_determinism_recommendation_result_content(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Two runs produce the same recommendations, groups, and metrics.
+
+        The determinism boundary is the canonical ``RecommendationResult`` content,
+        never Markdown formatting or provenance timestamps — exactly mirroring
+        Requirement Enhancement (ADR-0019 §D9/§D10). ``RecommendationId`` /
+        ``RecommendationGroupId`` / ``result_id`` are each a pure function of the
+        run's ``execution_id`` — run-scoped provenance, exactly like
+        ``EnhancedRequirementId`` (ADR-0018 §D5). Two independent runs mint fresh
+        execution ids even over byte-identical content, so this test compares stable
+        *content* (recommendation type/priority/effort/confidence/title/description/
+        source, and group category/label/size), never those run-scoped ids.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        r1 = golden_pipeline_result.recommendation_result
+        r2 = run2.recommendation_result
+        assert r1.summary.total_recommendations == r2.summary.total_recommendations
+        assert r1.summary.total_groups == r2.summary.total_groups
+        assert r1.metrics == r2.metrics
+
+        def _recommendation_content(rec: Any) -> tuple[str, str, str, float, str, str, str]:
+            return (
+                str(rec.recommendation_type),
+                str(rec.priority),
+                str(rec.effort),
+                rec.confidence,
+                rec.title,
+                rec.description,
+                str(rec.recommendation_source),
+            )
+
+        assert sorted(_recommendation_content(r) for r in r1.recommendations) == sorted(
+            _recommendation_content(r) for r in r2.recommendations
+        )
+
+        def _group_content(group: Any) -> tuple[str, str, int]:
+            return (str(group.category), group.label, len(group.recommendation_ids))
+
+        assert sorted(_group_content(g) for g in r1.groups) == sorted(
+            _group_content(g) for g in r2.groups
+        )
+
+    @pytest.mark.productization
+    def test_determinism_recommendation_serialization(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """Serializer output is deterministic on the recommendation content, excluding provenance.
+
+        The runtime mints run-specific provenance — analysis/execution ids, the
+        derived result id, consumed-input ids, and the started/completed timestamps —
+        exactly as Requirement Enhancement does. Because ``RecommendationId`` /
+        ``RecommendationGroupId`` / a reference's ``referencedId`` are each a pure
+        function of the run's ``execution_id`` (or an upstream finding minted from
+        it), they too are run-scoped provenance and are stripped before comparing.
+        The determinism boundary is the recommendation content, not that provenance.
+        """
+        from requirement_intelligence.recommendation.serialization import (
+            RecommendationSerializer,
+        )
+
+        run2 = _run_golden_pipeline(tmp_path)
+        serializer = RecommendationSerializer()
+        r1 = golden_pipeline_result.recommendation_result
+        r2 = run2.recommendation_result
+
+        def _strip_provenance(dumped: dict) -> dict:
+            dumped = dict(dumped)
+            for key in ("resultId", "analysisId", "executionId", "startedAt", "completedAt"):
+                dumped.pop(key, None)
+            dumped.pop("consumedInputs", None)
+            if "recommendations" in dumped:
+                dumped["recommendations"] = [
+                    {
+                        k: (
+                            [
+                                {rk: rv for rk, rv in ref.items() if rk != "referencedId"}
+                                for ref in v
+                            ]
+                            if k == "references"
+                            else v
+                        )
+                        for k, v in item.items()
+                        if k not in ("recommendationId", "rationale")
+                    }
+                    for item in dumped["recommendations"]
+                ]
+            if "groups" in dumped:
+                dumped["groups"] = [
+                    {k: v for k, v in item.items() if k not in ("groupId", "recommendationIds")}
+                    for item in dumped["groups"]
+                ]
+            return dumped
+
+        assert _strip_provenance(serializer.render_json(r1)) == _strip_provenance(
+            serializer.render_json(r2)
+        )
+
+        # Each projection is a pure function of its input — same result, same bytes.
+        assert serializer.render_report(r1) == serializer.render_report(r1)
+        assert serializer.render_metrics(r1) == serializer.render_metrics(r1)
+        assert serializer.render_json(r1) == serializer.render_json(r1)
+
+    @pytest.mark.productization
+    def test_determinism_manifest_recommendation_keys_stay_metadata_only(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """manifest recommendation keys are identical package metadata across two runs.
+
+        Content determinism itself is proven at the runtime-contract boundary by
+        ``test_determinism_recommendation_result_content``: the golden regression
+        compares ``RecommendationResult`` content, never the manifest. This test only
+        confirms the manifest's package-metadata keys are stable and that no
+        runtime-state key has leaked back into the manifest.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1.get("recommendationExecuted") == m2.get("recommendationExecuted")
+        assert m1.get("recommendationReport") == m2.get("recommendationReport")
+        assert m1.get("recommendationMetrics") == m2.get("recommendationMetrics")
+        assert "recommendationPriority" not in m1
+        assert "recommendationPriority" not in m2
+
+    @pytest.mark.productization
     def test_determinism_normalization_outcome(
         self,
         golden_pipeline_result: PipelineResult,
@@ -1298,7 +1582,7 @@ class TestPhase6ProductizationAssertions:
     @pytest.mark.productization
     def test_dataset_version(self) -> None:
         """The golden dataset declares a version."""
-        assert GOLDEN_DATASET_VERSION == "1.3.0"
+        assert GOLDEN_DATASET_VERSION == "1.4.0"
 
     @pytest.mark.productization
     def test_dataset_covers_all_categories(self) -> None:

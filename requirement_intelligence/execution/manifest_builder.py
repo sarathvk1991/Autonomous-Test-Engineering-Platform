@@ -126,4 +126,20 @@ class ManifestBuilder:
             manifest["requirementEnhancementReport"] = "requirement_enhancement_report.md"
             manifest["requirementEnhancementMetrics"] = "requirement_enhancement_metrics.md"
 
+        # Recommendation references (CAP-082C): additive, and only when recommendation
+        # ran. When it did not, the manifest is byte-identical to before — no key is
+        # added, no schema change (manifestSchemaVersion stays 1.0.0). The three
+        # recommendation artifacts already appear in ``generatedArtifacts`` via the
+        # same checksum mechanism as every other file. These three keys are package
+        # metadata only — a flag and two artifact filenames — never the recommendation
+        # runtime state itself. The canonical recommendations, groups, priorities,
+        # confidence, metrics, and summary live exclusively in
+        # ``recommendation_result.json`` (ADR-0019 §D9/§D10): the manifest references
+        # that artifact, it never duplicates its content.
+        recommendation = data.recommendation_result
+        if recommendation is not None:
+            manifest["recommendationExecuted"] = True
+            manifest["recommendationReport"] = "recommendation_report.md"
+            manifest["recommendationMetrics"] = "recommendation_metrics.md"
+
         return manifest

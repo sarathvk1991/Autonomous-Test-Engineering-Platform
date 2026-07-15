@@ -35,10 +35,12 @@ from requirement_intelligence.models.source_artifact import SourceArtifact
 # Governance artifacts now that Quality Governance is the terminal release authority in
 # the live pipeline. 1.3.0 (CAP-081C) re-baselines it again to include the three
 # Requirement Enhancement artifacts now that Requirement Enhancement is active
-# immediately after Analysis in the live pipeline; the nine source artifacts and the
-# golden response are unchanged.
+# immediately after Analysis in the live pipeline. 1.4.0 (CAP-082C) re-baselines it
+# again to include the three Recommendation artifacts now that Recommendation is
+# active immediately after Quality Governance, at the permanently frozen end of the
+# live pipeline; the nine source artifacts and the golden response are unchanged.
 # ---------------------------------------------------------------------------
-GOLDEN_DATASET_VERSION = "1.3.0"
+GOLDEN_DATASET_VERSION = "1.4.0"
 
 # ---------------------------------------------------------------------------
 # Fixed timestamps (deterministic provenance)

@@ -1,11 +1,11 @@
 # ADR-0019 — Recommendation Framework
 
-- **Status:** Accepted (CAP-082A — Architecture & Governance Freeze; CAP-082B — Deterministic Recommendation Engine implemented behind the frozen contracts; CAP-082B.1 — RecommendationResult Runtime Contract permanently certified, no behaviour change)
-- **Date:** 2026-07-14 (CAP-082A); 2026-07-15 (CAP-082B; CAP-082B.1)
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-082B (Deterministic Recommendation Engine — implements the first real engine behind the frozen contracts, mirroring how CAP-081B implemented the first deterministic Requirement Enhancement engine behind ADR-0018, and CAP-080B implemented the first deterministic Quality Governance rule evaluator behind ADR-0017); CAP-082B.1 (permanent `RecommendationResult` runtime-contract certification, mirroring CAP-081B.1 and CAP-080B.1.1 — no behaviour change).
+- **Status:** Accepted (CAP-082A — Architecture & Governance Freeze; CAP-082B — Deterministic Recommendation Engine implemented behind the frozen contracts; CAP-082B.1 — RecommendationResult Runtime Contract permanently certified, no behaviour change; CAP-082C — Runtime Integration & Execution Package Activation, live in the pipeline)
+- **Date:** 2026-07-14 (CAP-082A); 2026-07-15 (CAP-082B; CAP-082B.1; CAP-082C)
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-082B (Deterministic Recommendation Engine — implements the first real engine behind the frozen contracts, mirroring how CAP-081B implemented the first deterministic Requirement Enhancement engine behind ADR-0018, and CAP-080B implemented the first deterministic Quality Governance rule evaluator behind ADR-0017); CAP-082B.1 (permanent `RecommendationResult` runtime-contract certification, mirroring CAP-081B.1 and CAP-080B.1.1 — no behaviour change); CAP-082C (Runtime Integration & Execution Package Activation — wires the already-complete engine into the live pipeline, mirroring CAP-081C and CAP-080D).
 - **Governing design:** `docs/proposals/recommendation-framework.md`
 - **Depends on:** ADR-0018 (Requirement Enhancement Framework), ADR-0016 (Evidence Grounding and Traceability), ADR-0017 (Quality Governance Framework), and the Validation and CP1 subsystems — the Recommendation Framework consumes their five completed outputs: `RequirementEnhancementResult`, `GroundingResult`, `ValidationResult`, `CP1Result`, `QualityGovernanceResult`.
-- **Runtime status:** **Implemented, still dormant (CAP-082B).** `DeterministicRecommendationEngine` generates, prioritizes, groups, confidence-scores, and summarizes recommendations entirely from the governed `RecommendationRuleCatalog` and `RecommendationPolicy`. `RecommendationService.recommend` is no longer abstract-only — `DeterministicRecommendationService` (replacing CAP-082A's `DormantRecommendationService`) delegates to the engine. `PlatformContext.create_recommendation_service()` now returns the deterministic implementation; `create_recommendation_rule_catalog()` is added alongside it. Nothing is wired into the Requirement Intelligence execution pipeline — no CLI phase calls `recommend` — so runtime behaviour is byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0**, `RecommendationResult`'s shape is unchanged, and no frozen contract of any upstream subsystem changed. See "CAP-082B — Deterministic Recommendation Engine (Implementation)" below.
+- **Runtime status:** **Live (CAP-082C).** `DeterministicRecommendationEngine` generates, prioritizes, groups, confidence-scores, and summarizes recommendations entirely from the governed `RecommendationRuleCatalog` and `RecommendationPolicy`. The CLI's `run_recommendation_phase` obtains `DeterministicRecommendationService` from `PlatformContext` and calls `recommend` immediately after Quality Governance, at the permanently frozen end of the pipeline. `RecommendationSerializer` projects the result into three Execution Package artifacts (`recommendation_result.json` / `recommendation_report.md` / `recommendation_metrics.md`), and the manifest gains three additive, package-metadata-only keys. The golden dataset re-baselined `1.3.0` → `1.4.0` to include them. The Architecture Version remains **1.2.0**, `RecommendationResult`'s shape is unchanged, and no frozen contract of any upstream subsystem changed. See §D10.
 
 ## Problem
 
@@ -298,10 +298,11 @@ Recommendation Runtime (engine + service)
 No reverse dependency: nothing later in this chain is ever imported by anything
 earlier in it.
 
-**Golden boundary (frozen, forward-looking).** Recommendation is not yet wired into
-the runtime pipeline. When golden integration eventually occurs,
-`RecommendationResult` — never a report or rendered projection of it — becomes the
-canonical regression artifact. Reports are projections only.
+**Golden boundary (frozen at the time of writing; realised by CAP-082C, see §D10).**
+This was forward-looking when written — Recommendation was not yet wired into the
+runtime pipeline. CAP-082C activates it: `RecommendationResult` — never a report or
+rendered projection of it — is now the canonical regression artifact in the golden
+dataset (§D10). Reports remain projections only.
 
 **Version-axis independence (frozen; full detail in
 `recommendation/identity/recommendation_identity.py`'s module docstring).** Seven
@@ -313,6 +314,85 @@ axis stamped onto a model today) — each evolving independently. `Recommendatio
 shares the reserved `RecommendationVersion` axis with `Recommendation` (by design,
 per §D5, not a gap); `RecommendationReference` carries no dedicated schema-version
 type of its own, mirroring every sibling subsystem's atomic finding/issue model.
+
+## D10 — Runtime Integration (CAP-082C)
+
+CAP-082C activates the already-complete Recommendation Framework in the live
+Requirement Intelligence runtime. It does not redesign Recommendation, change any
+frozen contract, alter the policy shape, modify the deterministic engine, or
+introduce new recommendation logic — it wires the existing implementation into the
+live pipeline and activates the Execution Package projections, exactly as CAP-081C
+did for Requirement Enhancement (ADR-0018 §D9) and CAP-080D did for Quality
+Governance (ADR-0017 §D30).
+
+**Activation and execution order (frozen).** Recommendation executes exactly once,
+immediately after Quality Governance, at the permanently frozen end of the pipeline:
+
+```
+Engineering Context → Analysis → Requirement Enhancement → Grounding
+    → Validation → CP1 → Quality Governance → Recommendation → Execution Package
+```
+
+Never before Quality Governance, never in parallel, never conditionally reordered.
+The CLI's `run_recommendation_phase` obtains `RecommendationService` exclusively from
+`PlatformContext` and calls `recommend(enhancement_result, grounding_result,
+validation_result, cp1_result, quality_governance_result)` — identical failure
+semantics to Grounding/Requirement Enhancement/Quality Governance: a recommendation
+failure is surfaced but never fatal to the analysis run, and it runs only when all
+five consumed peer results are present (a live, enhanced, grounded, validated,
+CP1-gate-open, governed run). The CLI orchestrates only — no recommendation, policy,
+grouping, or prioritization logic exists in the CLI.
+
+**Execution Package (frozen, mirrors ADR-0018 §D8 / ADR-0017 §D30).**
+`ExecutionData.recommendation_result` is an additive-only field (no existing field
+changed). `RecommendationSerializer` (`recommendation/serialization/`) renders
+`recommendation_result.json` (canonical `model_dump`), `recommendation_report.md`,
+and `recommendation_metrics.md` — a pure projection computing nothing; every
+rendered value already exists inside `RecommendationResult`. `ExecutionWriter`
+appends these three artifacts only when `recommendation_result` is present — no
+special case, the same conditional-append mechanism as Grounding/Requirement
+Enhancement/Quality Governance.
+
+**Manifest purity (frozen, mirrors ADR-0017 §D31, hardened CAP-080D.1).** The
+manifest gains exactly three additive keys — `recommendationExecuted`,
+`recommendationReport`, `recommendationMetrics` — a flag and two artifact filenames.
+No recommendation priority, count, summary, decision, group, or metric value is ever
+copied into the manifest; that runtime state lives exclusively in
+`RecommendationResult` / `recommendation_result.json`. When recommendation did not
+run, the manifest is byte-identical to before — no key is added, no schema change
+(`manifestSchemaVersion` stays `1.0.0`).
+
+**Golden integration (frozen).** `_run_golden_pipeline()` now recommends immediately
+after Quality Governance; `PipelineResult` carries `recommendation_result`. The
+golden dataset re-baselines from `GOLDEN_DATASET_VERSION` `1.3.0` to `1.4.0` — the
+nine source artifacts and the golden response are unchanged; only the generated
+artifact set grows by the three recommendation files, exactly as `1.2.0` and `1.3.0`
+did for Quality Governance and Requirement Enhancement respectively. The Architecture
+Version remains `1.2.0`; the Platform Version is unchanged.
+
+**One-way dependency chain (frozen, mirrors §D8/§D9).**
+
+```
+Recommendation Runtime (engine + service)
+    → RecommendationResult
+    → Recommendation Serializer
+    → Execution Package
+    → Manifest
+    → Release
+```
+
+Nothing later in this chain imports or invokes anything earlier except through the
+frozen `RecommendationResult` contract. The serializer imports no engine, service,
+policy, or rule catalogue implementation. The writer and manifest builder import only
+the serializer, never the engine or service. The CLI imports only
+`PlatformContext.create_recommendation_service()`, never
+`DeterministicRecommendationEngine` or `RecommendationRuleCatalog` directly.
+
+**Ownership (frozen, no overlap; reaffirms §D9's table with the CLI and Execution
+Package now live).** Engine generates/prioritizes/groups/scores/summarizes. Service
+orchestrates only. `RecommendationResult` owns runtime state only. The serializer
+projects only. The Execution Package packages only. The CLI orchestrates
+(the pipeline call) only. `PlatformContext` composes only.
 
 ---
 
@@ -471,14 +551,12 @@ implementation milestone** — no redesign.
 ## Future evolution
 
 - ~~**CAP-082B — Deterministic Recommendation Engine.**~~ **Done.** See above.
+- ~~**Runtime activation.**~~ **Done (CAP-082C).** See §D10.
 - **Prioritization and grouping engines** beyond the deterministic baseline (e.g. a
   statistical or ML re-ranking) — reading the same `PrioritizationRules` /
   `GroupingRules`, without changing `RecommendationResult`'s shape.
 - **Confidence scoring** beyond the deterministic hint-and-floor model, with ML/LLM
   alternatives reserved by `RecommendationCapabilitySwitches`.
-- **Runtime activation** — wiring `recommend` into the live pipeline after Quality
-  Governance, plus the Execution Package projection and golden re-baseline,
-  mirroring CAP-081C's activation of Requirement Enhancement (ADR-0018 §D9).
 - Promotion of the shared version/identity value-objects to `shared/` (the debt
   ADR-0015 §C, ADR-0016, ADR-0017, and ADR-0018 §D5 already name).
 
@@ -488,15 +566,15 @@ implementation milestone** — no redesign.
   grouping, recommendation confidence scoring, recommendation metadata.
 - **Does not own:** Engineering Context Orchestration, Analysis, Requirement
   Enhancement, Grounding, Validation, CP1, Quality Governance, Execution Package,
-  Reporting, Serialization.
-- **Runtime position (implemented, still dormant, CAP-082B; contract permanently
-  certified, CAP-082B.1):** `RequirementEnhancementResult` / `GroundingResult` /
-  `ValidationResult` / `CP1Result` / `QualityGovernanceResult` →
+  Reporting.
+- **Runtime position (live, CAP-082C):** `RequirementEnhancementResult` /
+  `GroundingResult` / `ValidationResult` / `CP1Result` / `QualityGovernanceResult` →
   `RecommendationService.recommend` (`DeterministicRecommendationService` →
-  `DeterministicRecommendationEngine`) → `RecommendationResult` → (future)
-  Serializer → (future) Execution Package. Architecture frozen; a real deterministic
-  engine exists; the result contract is permanently certified; nothing wired into
-  the runtime pipeline.
+  `DeterministicRecommendationEngine`) → `RecommendationResult` →
+  `RecommendationSerializer` → Execution Package (`recommendation_result.json` /
+  `recommendation_report.md` / `recommendation_metrics.md`) → `manifest.json`
+  (package metadata only). Executes exactly once, immediately after Quality
+  Governance, at the permanently frozen end of the live pipeline.
 - **Governance:** registered as CAP-082 for the Requirement Intelligence Layer. This
   ADR is **Accepted** for its architecture scope; CAP-082B is **Accepted** as the
   first deterministic engine under the unchanged contract; CAP-082B.1 is **Accepted**

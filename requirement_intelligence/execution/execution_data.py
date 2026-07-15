@@ -101,6 +101,18 @@ class ExecutionData:
         package serialises it as-is into ``requirement_enhancement_result.json`` /
         ``requirement_enhancement_report.md`` / ``requirement_enhancement_metrics.md`` —
         a pure projection; nothing is re-enriched, re-related, re-observed, or recomputed.
+    recommendation_result:
+        The complete ``RecommendationResult`` produced by the Recommendation runtime,
+        immediately after Quality Governance and at the permanently frozen end of the
+        pipeline (CAP-082C, ADR-0019 §D10). ``None`` when recommendation did not
+        execute — it runs only when all five consumed peer results are present (a
+        live, enhanced, grounded, validated, CP1-gate-open, governed run), so this is
+        ``None`` for any run that did not reach that point, or on a
+        surfaced-but-non-fatal recommendation failure. When present, the execution
+        package serialises it as-is into ``recommendation_result.json`` /
+        ``recommendation_report.md`` / ``recommendation_metrics.md`` — a pure
+        projection; nothing is re-generated, re-prioritized, re-grouped, re-scored,
+        or recomputed.
     """
 
     selected: Any
@@ -123,6 +135,7 @@ class ExecutionData:
     grounding_result: Any | None = None
     quality_governance_result: Any | None = None
     requirement_enhancement_result: Any | None = None
+    recommendation_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:
