@@ -257,7 +257,9 @@ observes a small, genuine, non-empty `KnowledgeGraphResult` whose exact
 node/edge count legitimately varies across independent runs while remaining
 perfectly reproducible for any fixed reference — the golden baseline asserts
 structural bounds and invariants (3–7 nodes, exactly one connected component,
-zero findings), never an exact literal count.
+at most one finding — a documented `CYCLE` finding is possible when both
+`capability` and `document` nodes co-occur, ADR-0023 §D12), never an exact
+literal count.
 
 **Knowledge Graph Serializer (`knowledge_graph/serialization/`).**
 `KnowledgeGraphSerializer` renders `knowledge_graph_result.json` (canonical

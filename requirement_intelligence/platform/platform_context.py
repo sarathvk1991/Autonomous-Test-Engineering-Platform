@@ -112,6 +112,14 @@ from requirement_intelligence.knowledge_graph.rules import (
 )
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.organizational_memory.organizational_memory_service import (
+    DormantOrganizationalMemoryService,
+    OrganizationalMemoryService,
+)
+from requirement_intelligence.organizational_memory.policy import (
+    OrganizationalMemoryPolicy,
+    default_organizational_memory_policy,
+)
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
 from requirement_intelligence.prompts.framework.prompt_registry import PromptRegistry
 from requirement_intelligence.prompts.requirement_prompt_builder import (
@@ -613,6 +621,30 @@ class PlatformContext:
             policy=self.create_knowledge_graph_policy(),
             rule_catalog=self.create_knowledge_graph_rule_catalog(),
         )
+
+    def create_organizational_memory_policy(self) -> OrganizationalMemoryPolicy:
+        """Return the governed default :class:`OrganizationalMemoryPolicy` (CAP-085A, ADR-0027).
+
+        The governed capability switches and deterministic thresholds for the
+        Organizational Memory Framework — which capabilities are enabled, and
+        the bounds a future engine must respect. **Not yet wired**: no runtime
+        path calls it, so runtime behaviour is unchanged.
+        """
+        return default_organizational_memory_policy()
+
+    def create_organizational_memory_service(self) -> OrganizationalMemoryService:
+        """Return the :class:`DormantOrganizationalMemoryService` (CAP-085A, ADR-0027).
+
+        The single runtime entry point into the Organizational Memory
+        Framework — the third Layer 2 capability (ADR-0020), and the
+        **composition root** for the subsystem. CAP-085A registers only the
+        dormant implementation: no engine exists yet, so every call to
+        ``build`` raises ``NotImplementedError``. The framework remains
+        **unwired into any execution pipeline** — nothing calls ``build`` at
+        runtime, so runtime behaviour is byte-identical and the golden
+        baseline is unchanged.
+        """
+        return DormantOrganizationalMemoryService()
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
