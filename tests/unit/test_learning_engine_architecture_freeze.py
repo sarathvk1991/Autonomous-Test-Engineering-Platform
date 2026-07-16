@@ -2,21 +2,28 @@
 (ADR-0029 "Internal Engine Architecture" section, D9-D17, Recommendations
 15-22).
 
-CAP-086A.1 introduces no code — no collaborator class, no rule catalogue, no
-``engine/`` package exists yet. These tests therefore verify two things only:
+CAP-086A.1 itself introduced no code — no collaborator class, no rule
+catalogue, no ``engine/`` package existed yet at that milestone. CAP-086B (a
+later milestone) has since implemented the collaborator pipeline and rule
+catalogue this ADR section pre-specified. These tests therefore verify two
+things only:
 
 1. The documentation itself (ADR-0029 and the proposal) carries the frozen
    sections, the named collaborators, and the new Recommendations — the
-   permanent record a future CAP-086B implementer must build against.
+   permanent record CAP-086B was built against, and which remains true
+   regardless of engine version.
 2. The CAP-086A models *already* structurally satisfy the principles this
    milestone freezes (adjacent-only promotion, full validation provenance,
-   policy-as-data-only) — proving the freeze is not aspirational but already
-   true of the shipped contract, exactly as ADR-0027 §D10/§D11 pre-specified
-   Organizational Memory's own decomposition one milestone ahead of its
-   engine.
+   policy-as-data-only) — proving the freeze was not aspirational but
+   already true of the shipped contract, exactly as ADR-0027 §D10/§D11
+   pre-specified Organizational Memory's own decomposition one milestone
+   ahead of its engine.
 
-No behaviour is exercised — nothing is collected, clustered, generated,
-validated, institutionalized, or retired.
+``TestNoEngineCodeExistsYet`` (CAP-086A.1's own point-in-time check) has
+been superseded by ``TestEngineCodeNowFulfillsThePromise`` below, which
+verifies CAP-086B actually built every collaborator this section named —
+the natural continuation of the same regression guard, not a contradiction
+of it.
 """
 
 from __future__ import annotations
@@ -62,27 +69,37 @@ def _proposal_text() -> str:
 
 
 @pytest.mark.unit
-class TestNoEngineCodeExistsYet:
-    """CAP-086A.1 introduces documentation only — no collaborator implementation."""
+class TestEngineCodeNowFulfillsThePromise:
+    """CAP-086B built exactly the shape CAP-086A.1's D9-D17 pre-specified.
 
-    def test_no_engine_package_exists(self) -> None:
-        assert not (_LEARNING_PKG / "engine").exists()
+    Serialization remains absent — CAP-086B is a pure implementation
+    milestone and explicitly does not introduce a serializer, an Execution
+    Package integration, or a CLI phase.
+    """
 
-    def test_no_rules_package_exists(self) -> None:
-        assert not (_LEARNING_PKG / "rules").exists()
+    def test_engine_package_exists(self) -> None:
+        assert (_LEARNING_PKG / "engine").exists()
 
-    def test_no_serialization_package_exists(self) -> None:
+    def test_rules_package_exists(self) -> None:
+        assert (_LEARNING_PKG / "rules").exists()
+
+    def test_no_serialization_package_exists_yet(self) -> None:
         assert not (_LEARNING_PKG / "serialization").exists()
 
     @pytest.mark.parametrize("name", _COLLABORATOR_NAMES)
-    def test_no_collaborator_class_is_defined_in_code(self, name: str) -> None:
-        """Each frozen collaborator name is documentation-only — not yet a class."""
-        for path in _LEARNING_PKG.rglob("*.py"):
-            source = path.read_text(encoding="utf-8")
-            assert f"class {name}" not in source, f"{path.name} already defines class {name}"
+    def test_every_frozen_collaborator_is_now_defined_in_code(self, name: str) -> None:
+        """Each collaborator D9/D10 named is now a real class in engine/."""
+        matches = [
+            path
+            for path in (_LEARNING_PKG / "engine").rglob("*.py")
+            if f"class {name}" in path.read_text(encoding="utf-8")
+        ]
+        assert matches, f"no engine module defines class {name}"
 
     def test_no_learning_promotion_class_is_defined_in_code(self) -> None:
-        """PromotionRecorder's output (D10) remains reserved — no dedicated model yet."""
+        """PromotionRecorder's output (D10) remains reserved — no dedicated
+        LearningPromotion model exists; only the engine-internal PromotionEvent
+        dataclass, which is never a runtime contract."""
         for path in _LEARNING_PKG.rglob("*.py"):
             assert "class LearningPromotion" not in path.read_text(encoding="utf-8")
 
@@ -92,6 +109,14 @@ class TestNoEngineCodeExistsYet:
             source = path.read_text(encoding="utf-8")
             assert "class LearningStability" not in source
             assert "class StabilityRecord" not in source
+
+    def test_rule_catalog_class_is_now_defined_in_code(self) -> None:
+        matches = [
+            path
+            for path in (_LEARNING_PKG / "rules").rglob("*.py")
+            if "class LearningRule" in path.read_text(encoding="utf-8")
+        ]
+        assert matches, "no rules module defines class LearningRule"
 
 
 @pytest.mark.unit
@@ -303,9 +328,14 @@ class TestNoRuntimeBehaviourChange:
 
         assert str(LEARNING_RESULT_VERSION) == "1.0.0"
 
-    def test_platform_context_still_registers_the_dormant_service(self) -> None:
-        from requirement_intelligence.learning.learning_service import DormantLearningService
+    def test_platform_context_registers_a_real_service(self) -> None:
+        """CAP-086A.1 itself changed nothing here; CAP-086B (a later milestone)
+        legitimately replaced the dormant service this test originally checked
+        for — see ``test_learning_service.py`` for the dedicated CAP-086B
+        coverage of that activation. This test now only confirms
+        ``PlatformContext`` still constructs a real, valid service instance."""
+        from requirement_intelligence.learning.learning_service import LearningService
         from requirement_intelligence.platform.platform_context import PlatformContext
 
         service = PlatformContext().create_learning_service()
-        assert isinstance(service, DormantLearningService)
+        assert isinstance(service, LearningService)

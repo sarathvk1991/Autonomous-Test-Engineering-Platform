@@ -111,7 +111,7 @@ from requirement_intelligence.knowledge_graph.rules import (
     default_knowledge_graph_rule_catalog,
 )
 from requirement_intelligence.learning.learning_service import (
-    DormantLearningService,
+    DeterministicLearningService,
     LearningService,
 )
 from requirement_intelligence.learning.policy import LearningPolicy, default_learning_policy
@@ -665,18 +665,19 @@ class PlatformContext:
         return default_learning_policy()
 
     def create_learning_service(self) -> LearningService:
-        """Return the :class:`DormantLearningService` (CAP-086A, ADR-0029).
+        """Return the :class:`DeterministicLearningService` (CAP-086B, ADR-0029).
 
         The single runtime entry point into the Learning Framework — the
-        fourth and final Layer 2 capability (ADR-0020), and the
-        **composition root** for the subsystem. CAP-086A registers only the
-        dormant implementation: no engine exists yet, so every call to
-        ``build`` raises ``NotImplementedError``. The framework remains
+        fourth and final Layer 2 capability (ADR-0020) — and the
+        **composition root** for the subsystem: it constructs the
+        deterministic engine, injecting the governed
+        :meth:`create_learning_policy`. CAP-086B replaces the dormant
+        CAP-086A service with this real, deterministic one, but it remains
         **unwired into any execution pipeline** — nothing calls ``build`` at
         runtime, so runtime behaviour is byte-identical and the golden
         baseline is unchanged.
         """
-        return DormantLearningService()
+        return DeterministicLearningService(policy=self.create_learning_policy())
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

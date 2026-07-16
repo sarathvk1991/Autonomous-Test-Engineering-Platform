@@ -5,6 +5,7 @@ from __future__ import annotations
 from requirement_intelligence.learning.identity.learning_identity import (
     LearningCandidateId,
     LearningConfidenceId,
+    LearningEngineVersion,
     LearningFrameworkVersion,
     LearningId,
     LearningLifecycleId,
@@ -13,6 +14,8 @@ from requirement_intelligence.learning.identity.learning_identity import (
     LearningPolicyVersion,
     LearningResultId,
     LearningResultVersion,
+    LearningRuleCatalogVersion,
+    LearningRuleVersion,
     LearningValidationId,
     LearningValidationVersion,
     LearningVersion,
@@ -21,6 +24,7 @@ from requirement_intelligence.learning.identity.learning_identity import (
 __all__ = [
     "LearningCandidateId",
     "LearningConfidenceId",
+    "LearningEngineVersion",
     "LearningFrameworkVersion",
     "LearningId",
     "LearningLifecycleId",
@@ -29,6 +33,8 @@ __all__ = [
     "LearningPolicyVersion",
     "LearningResultId",
     "LearningResultVersion",
+    "LearningRuleCatalogVersion",
+    "LearningRuleVersion",
     "LearningValidationId",
     "LearningValidationVersion",
     "LearningVersion",

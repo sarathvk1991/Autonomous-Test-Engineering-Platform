@@ -1,8 +1,8 @@
 # Learning Framework — Design Proposal
 
-- **Status:** Proposed (CAP-086A froze the architecture; CAP-086A.1 froze the future engine's internal decomposition and governance, still no engine)
+- **Status:** Accepted, live (CAP-086A froze the architecture; CAP-086A.1 froze the future engine's internal decomposition and governance; CAP-086A.2 froze the decision-governance constitution every collaborator's decisions must satisfy; CAP-086B implemented the first deterministic engine behind it, unchanged, still unwired)
 - **Capability:** CAP-086 — Learning Framework
-- **Milestones covered:** CAP-086A (Architecture & Governance Freeze), CAP-086A.1 (Learning Architecture Refinement & Engine Governance Freeze — see §8a)
+- **Milestones covered:** CAP-086A (Architecture & Governance Freeze), CAP-086A.1 (Learning Architecture Refinement & Engine Governance Freeze — see §8a), CAP-086A.2 (Learning Decision Governance & Deterministic Execution Constitution), CAP-086B (Deterministic Learning Engine — see §8b)
 - **Governed by:** ADR-0029
 - **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution), ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the peer-independence and fan-in rules this framework's own single-input boundary is defined against), ADR-0026 (Organizational Knowledge Architecture & Learning Constitution — Learning's earliest principles), and ADR-0028 (Learning Constitution — the full constitutional definition of what this framework produces).
 
@@ -122,9 +122,27 @@ Each collaborator owns exactly one responsibility; none computes another's (Reco
 
 **Engine philosophy (D15).** The Learning Engine validates, institutionalizes, promotes, matures, and records confidence/stability/lifecycle — it never invents a technical finding, and never re-performs Continuous Improvement's, Knowledge Graph's, or Organizational Memory's own analysis (Recommendation 15).
 
-**Deterministic execution pipeline (D16).** Collect → Cluster → Generate → Evaluate institutionalization → Validate → Evaluate stability → Record confidence → Record promotion → Record lifecycle → Build summary → Build metrics → Build result. Frozen order; algorithms within a stage may vary.
+**Deterministic execution pipeline (D16, corrected by CAP-086B's own Stage 0 review — see §8b).** Collect → Cluster → Validate → Generate → Evaluate institutionalization → Evaluate stability → Record confidence → Record promotion → Record lifecycle → Build summary → Build metrics → Build result. Frozen order; algorithms within a stage may vary. Validation precedes generation because `Learning.validation_id` is a required field and `LearningGenerator` is `Learning`'s sole constructor — a `LearningValidation` must already exist, over the candidate, before the `Learning` it certifies can be built.
 
 **Result ownership (D17).** `ResultBuilder` is the sole constructor of `LearningResult`, exactly mirroring Organizational Memory's own frozen invariant (ADR-0027 §D16; Recommendation 20).
+
+## 8b. CAP-086B — Deterministic Learning Engine
+
+CAP-086B is the later milestone §8a's D9/D10/D16 pre-specified: it implements `build` behind the unchanged signature above, exactly as ADR-0029 §D27 describes. Along the way, its own Stage 0 review found a genuine contradiction between CAP-086A's required `Learning.validation_id` field and §8a's original Generate-before-Validate ordering — resolved, with the user's explicit sign-off, by reordering `LearningValidator` before `LearningGenerator` (D9/D16), never by loosening the model.
+
+**Modular architecture, exactly as pre-specified (corrected order).** `DeterministicLearningEngine` is a thin pipeline orchestrator, never a monolithic class: `LearningCandidateCollector` → `LearningCandidateClusterer` → `LearningValidator` → `LearningGenerator` → `InstitutionalizationEvaluator` → `StabilityEvaluator` → `ConfidenceRecorder` → `PromotionRecorder` → `LifecycleRecorder` → `SummaryBuilder`/`MetricsBuilder` → `ResultBuilder`, each in `learning/engine/`, each owning exactly one responsibility.
+
+**Rule catalogue.** `learning/rules/` introduces `LearningRule` (metadata only — id, `LearningRuleCategory`, title, description, priority, `capability_switch`, `supported_hierarchy_level`, `documentation_reference` — deliberately no numeric threshold field), `LearningRuleCatalog` (ordering/lookup/category/level projections only), and `LearningRuleBuilder`/`default_learning_rule_catalog()` shipping 24 governed rules across the twelve categories §8a named — one per frozen collaborator.
+
+**Deterministic algorithms.** Candidate collection: corpus-gated (ADR-0028 §Stage 6), then one candidate per Best Practice, deduplicated by deterministic id. Clustering/consolidation: byte-equality merge on `proposed_change` text — never semantic similarity — unioning source references and keeping the lowest surviving candidate id. Validation and generation: floor-gated against `LearningThresholds.minimum_confidence_for_learning`, a candidate validated (and only then generated) once its own evidence clears the governed floor. Confidence: a single shared deterministic function of evidence-count-over-threshold, called identically by the validator, the generator, and the confidence recorder so all three agree by construction. Institutionalization and stability: deterministic functions of already-computed confidence and institutionalization decisions, never a re-read of the consumed result. No ML, no LLM, no embeddings, no vector search, no semantic similarity, no probabilistic inference, no fuzzy matching, no randomness, no prediction, no statistical learning.
+
+**Ownership.** `LearningCandidateCollector` is the sole candidate authority; `LearningCandidateClusterer` the sole clustering/consolidation authority; `LearningValidator` the sole validation authority; `LearningGenerator` the sole Learning authority (from validated candidates only — never Best Practices directly); `InstitutionalizationEvaluator` the sole institutional-readiness authority; `StabilityEvaluator` the sole stability authority; `ConfidenceRecorder` the sole confidence authority; `PromotionRecorder` the sole promotion authority; `LifecycleRecorder` the sole lifecycle authority; `SummaryBuilder`/`MetricsBuilder` each compute exactly once and compute no Learning; `ResultBuilder` the sole `LearningResult` constructor.
+
+**Reserved decisions remain reserved.** `StabilityEvaluator`'s and `PromotionRecorder`'s decisions are genuinely computed and tested every build, but neither is threaded into `LearningResult` — no dedicated model exists for either, and this milestone introduces none (§8a's D10/D13 reserved-output notes, unchanged).
+
+**Still not activated.** `PlatformContext.create_learning_service()` now returns `DeterministicLearningService`, replacing `DormantLearningService` (which CAP-086B removes). Still unwired: nothing calls `build()` at runtime, so the golden baseline, Architecture Version, and Platform Version are all unchanged.
+
+**Tests.** New deterministic tests cover rule catalogue construction, each collaborator's sole-authority ownership, clustering/consolidation determinism, floor-gated validation and generation, confidence agreement across collaborators, institutionalization/stability decision correctness, lifecycle append-only recording, builder single-computation guarantees, end-to-end engine determinism and explainability, policy gating, and containment (no Layer 1 imports, no Historical Dataset touched directly, no Organizational Memory implementation class imported, only `PlatformContext` constructs the service externally).
 
 ## 9. PlatformContext
 
@@ -143,10 +161,11 @@ Not introduced by CAP-086A. When a future milestone activates the runtime, every
 
 1. **Done (CAP-086A).** Architecture & governance freeze: canonical models, typed identities, independent version axes, governed policy, dormant service contract, `PlatformContext` registration.
 2. **Done (CAP-086A.1).** Engine architecture refinement & governance freeze: the future engine's modular collaborator decomposition, adjacent-only promotion discipline, the Validation/Institutionalization/Stability distinctions, the complete explainability chain, and reserved promotion-metadata governance — no code, still architecture only. See §8a.
-3. Deterministic Learning Engine (CAP-086B, reserved) — implement the CAP-086A.1 collaborator pipeline strictly from the one resolved `OrganizationalMemoryResult` (Recommendation 6 of ADR-0029), never independent analysis.
-4. Runtime activation (CAP-086C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-085C's activation of Organizational Memory.
-5. Future AI validation — statistical, ML, LLM, GraphRAG, reinforcement learning, and neuro-symbolic engines (reserved), behind the unchanged `LearningResult` contract — never a redesign of it.
-6. Feature Engineering (Layer 3, reserved) — the first capability outside Layer 2, to consume `LearningResult` (Recommendation 8 of ADR-0029), completing the Layer 2 → Layer 3 bridge ADR-0028 §Stage 16 names.
+3. **Done (CAP-086A.2).** Decision Governance & Deterministic Execution Constitution: the six permanent properties every Learning decision must satisfy, freedom from hidden state, immutable-only collaborator communication, and whole-engine purity — no code, still architecture only.
+4. **Done (CAP-086B).** Deterministic Learning Engine: implement the CAP-086A.1 collaborator pipeline (corrected order, §8b) strictly from the one resolved `OrganizationalMemoryResult` (Recommendation 6 of ADR-0029), obeying the CAP-086A.2 decision-governance constitution, never independent analysis. See §8b.
+5. Runtime activation (CAP-086C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-085C's activation of Organizational Memory.
+6. Future AI validation — statistical, ML, LLM, GraphRAG, reinforcement learning, and neuro-symbolic engines (reserved), behind the unchanged `LearningResult` contract — never a redesign of it.
+7. Feature Engineering (Layer 3, reserved) — the first capability outside Layer 2, to consume `LearningResult` (Recommendation 8 of ADR-0029), completing the Layer 2 → Layer 3 bridge ADR-0028 §Stage 16 names.
 
 Each lands behind the unchanged `build` signature and the unchanged `LearningResult` contract — no architectural change required.
 

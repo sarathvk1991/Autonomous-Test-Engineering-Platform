@@ -43,22 +43,30 @@ What the service does NOT own
     detail** of the service and can be replaced without changing this
     contract.
 
-Runtime status (CAP-086A)
-    ``build`` is abstract and dormant: :class:`DormantLearningService` raises
-    ``NotImplementedError`` on every call. No candidate is proposed, no
-    learning is validated, no confidence is recorded, and no lifecycle is
-    recorded. Only ``PlatformContext`` may construct it outside this
-    package. A later milestone (CAP-086B, reserved) implements the method
-    behind this unchanged signature, exactly as CAP-085B implemented the
-    Organizational Memory Framework's own entry point behind the ADR-0027
-    boundary.
+Runtime status (CAP-086B)
+    ``build`` is now implemented: :class:`DeterministicLearningService`
+    delegates to a private :class:`~requirement_intelligence.learning.
+    engine.DeterministicLearningEngine` that performs deterministic
+    candidate collection, clustering, validation, generation,
+    institutionalization evaluation, stability evaluation, confidence
+    recording, promotion recording, and lifecycle recording end to end — via
+    independent, modular collaborators, never one large engine (ADR-0029
+    D9-D26). The service is still **not wired into any execution pipeline**
+    (nothing calls ``build`` at runtime) and only ``PlatformContext`` may
+    construct it outside this package — so runtime behaviour is
+    byte-identical and the golden baseline is unchanged. Runtime
+    integration is future work (CAP-086C, reserved), exactly as CAP-085B
+    implemented the Organizational Memory Framework's own entry point
+    before a later milestone activated it.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from requirement_intelligence.learning.engine import DeterministicLearningEngine
 from requirement_intelligence.learning.models.result import LearningResult
+from requirement_intelligence.learning.policy import LearningPolicy
 from requirement_intelligence.organizational_memory.models.result import (
     OrganizationalMemoryResult,
 )
@@ -94,28 +102,33 @@ class LearningService(ABC):
 
         Notes
         -----
-        Abstract in CAP-086A; a future CAP-086B milestone implements it
-        behind this unchanged signature.
+        Abstract at CAP-086A; :class:`DeterministicLearningService`
+        (CAP-086B) implements it behind this unchanged signature.
         """
         raise NotImplementedError
 
 
-class DormantLearningService(LearningService):
-    """The CAP-086A registered default — architecture only, no behaviour.
+class DeterministicLearningService(LearningService):
+    """The registered default service (CAP-086B) — thin orchestration over the engine.
 
-    Every call to ``build`` raises ``NotImplementedError``. This is the
-    intentional, permanent shape of a dormant Layer 2 service (mirrors the
-    dormant default services Continuous Improvement, Knowledge Graph, and
-    Organizational Memory each registered at their own architecture-freeze
-    milestone, all since replaced by their own deterministic successors) —
-    it exists so ``PlatformContext`` has a real, constructible object to
-    return before any engine exists, and so the abstract contract above is
-    provably instantiable.
+    Holds a private :class:`~requirement_intelligence.learning.engine.
+    DeterministicLearningEngine` and delegates ``build`` to it, owning only
+    the public boundary and construction. It **computes nothing itself**:
+    the engine's modular collaborators perform candidate collection,
+    clustering, validation, generation, institutionalization evaluation,
+    stability evaluation, confidence recording, promotion recording, and
+    lifecycle recording. Mirrors how the Organizational Memory Framework's
+    own deterministic runtime service delegates to its private engine
+    (ADR-0027) — a thin service, real behaviour one layer down. Replaces
+    ``DormantLearningService`` (CAP-086A), which CAP-086B removes, mirroring
+    how CAP-085B's own deterministic service replaced its dormant
+    predecessor.
     """
 
+    def __init__(self, *, policy: LearningPolicy) -> None:
+        """Construct the private deterministic engine this service delegates to."""
+        self._engine = DeterministicLearningEngine(policy=policy)
+
     def build(self, organizational_memory_result: OrganizationalMemoryResult) -> LearningResult:
-        """Always raises — no Learning engine exists yet (CAP-086A)."""
-        raise NotImplementedError(
-            "Learning is architecture-only (CAP-086A); no deterministic engine exists "
-            "yet. See CAP-086B."
-        )
+        """Build Learning via the deterministic engine — delegation only."""
+        return self._engine.build(organizational_memory_result)

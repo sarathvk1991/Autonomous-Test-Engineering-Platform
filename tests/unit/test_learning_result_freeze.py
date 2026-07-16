@@ -305,7 +305,7 @@ class TestRuntimeBoundary:
 
     def test_result_model_imports_no_service_or_platform_context(self) -> None:
         source = (_LEARNING_PKG / "models" / "result.py").read_text(encoding="utf-8")
-        forbidden = ("LearningService", "DormantLearningService", "PlatformContext")
+        forbidden = ("LearningService", "DeterministicLearningService", "PlatformContext")
         for line in source.splitlines():
             if line.strip().startswith(("import ", "from ")):
                 for token in forbidden:

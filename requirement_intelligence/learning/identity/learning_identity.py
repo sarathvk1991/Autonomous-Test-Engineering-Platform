@@ -396,3 +396,51 @@ class LearningResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "learning result version"
+
+
+# ---------------------------------------------------------------------------
+# CAP-086B additive version axes.
+#
+# Introduced alongside the deterministic engine and its governed rule
+# catalogue, mirroring how the Organizational Memory Framework's own rule
+# and rule-catalogue version axes were added in CAP-085B — after the
+# subsystem's own architecture-freeze milestones, never during them. None of
+# the six version axes above are modified by this addition.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, order=True)
+class LearningRuleVersion(_SemanticVersion):
+    """Semantic version of the governed ``LearningRule`` schema (CAP-086B).
+
+    Advances independently of every other Learning version axis.
+    """
+
+    _LABEL: ClassVar[str] = "learning rule version"
+
+
+@dataclass(frozen=True, order=True)
+class LearningRuleCatalogVersion(_SemanticVersion):
+    """Semantic version of the governed default :class:`LearningRuleCatalog`
+    (CAP-086B).
+
+    Tuning the catalogue (adding, removing, or retuning a rule) advances
+    this version, never the engine or framework version.
+    """
+
+    _LABEL: ClassVar[str] = "learning rule catalog version"
+
+
+@dataclass(frozen=True, order=True)
+class LearningEngineVersion(_SemanticVersion):
+    """Semantic version of the deterministic Learning engine's own
+    implementation (CAP-086B).
+
+    Independent of ``LearningFrameworkVersion`` (the frozen public contract)
+    — retuning the engine's internal algorithm is an engine-version change,
+    never a framework or result-contract change (mirrors the engine/contract
+    separation every prior subsystem's own engine freeze already
+    established).
+    """
+
+    _LABEL: ClassVar[str] = "learning engine version"

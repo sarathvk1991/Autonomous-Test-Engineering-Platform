@@ -2,18 +2,21 @@
 (ADR-0029 "Decision Governance & Deterministic Execution" section, D18-D26,
 Recommendations 23-30).
 
-CAP-086A.2 introduces no code — no collaborator class, no rule catalogue, no
-``engine/`` package exists yet, and no model, policy, contract, or version
-changes. These tests therefore verify two things only:
+CAP-086A.2 itself introduced no code — no collaborator class, no rule
+catalogue, no ``engine/`` package existed yet at that milestone, and no
+model, policy, contract, or version changes. CAP-086B (a later milestone)
+has since implemented the engine and rule catalogue this ADR section's
+decision-governance principles now bind. These tests therefore verify two
+things only:
 
 1. The documentation itself (ADR-0029) carries the frozen decision-governance
-   sections and the new Recommendations — the permanent record a future
-   CAP-086B implementer must build against.
-2. Nothing about the CAP-086A/CAP-086A.1 shipped contract drifted: the same
-   models, the same fields, the same dormant service, the same versions.
-
-No behaviour is exercised — nothing is collected, clustered, generated,
-validated, institutionalized, or retired.
+   sections and the new Recommendations — the permanent record CAP-086B was
+   built against, and which remains true regardless of engine version.
+2. Nothing about the CAP-086A/CAP-086A.1 shipped runtime *contract* drifted:
+   the same models, the same fields, the same versions — the service itself
+   has legitimately gone from dormant to deterministic (CAP-086B), which is
+   activation, not drift; see ``test_learning_service.py`` for the dedicated
+   coverage of that activation.
 """
 
 from __future__ import annotations
@@ -48,16 +51,17 @@ def _adr_text() -> str:
 
 
 @pytest.mark.unit
-class TestNoEngineCodeExistsYet:
-    """CAP-086A.2 introduces documentation only — no collaborator implementation."""
+class TestEngineCodeNowExists:
+    """CAP-086A.2's own point-in-time check (no engine/rules code yet) has
+    been superseded by CAP-086B, which built exactly what D9-D26 governs."""
 
-    def test_no_engine_package_exists(self) -> None:
-        assert not (_LEARNING_PKG / "engine").exists()
+    def test_engine_package_exists(self) -> None:
+        assert (_LEARNING_PKG / "engine").exists()
 
-    def test_no_rules_package_exists(self) -> None:
-        assert not (_LEARNING_PKG / "rules").exists()
+    def test_rules_package_exists(self) -> None:
+        assert (_LEARNING_PKG / "rules").exists()
 
-    def test_no_serialization_package_exists(self) -> None:
+    def test_no_serialization_package_exists_yet(self) -> None:
         assert not (_LEARNING_PKG / "serialization").exists()
 
 
@@ -249,9 +253,13 @@ class TestNoRuntimeBehaviourChange:
 
         assert str(LEARNING_RESULT_VERSION) == "1.0.0"
 
-    def test_platform_context_still_registers_the_dormant_service(self) -> None:
-        from requirement_intelligence.learning.learning_service import DormantLearningService
+    def test_platform_context_registers_a_real_service(self) -> None:
+        """CAP-086A.2 itself changed nothing here; CAP-086B (a later milestone)
+        legitimately replaced the dormant service this test originally checked
+        for — see ``test_learning_service.py`` for the dedicated CAP-086B
+        coverage of that activation."""
+        from requirement_intelligence.learning.learning_service import LearningService
         from requirement_intelligence.platform.platform_context import PlatformContext
 
         service = PlatformContext().create_learning_service()
-        assert isinstance(service, DormantLearningService)
+        assert isinstance(service, LearningService)

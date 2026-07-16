@@ -1,15 +1,18 @@
-"""Contract and architecture-boundary tests for LearningService (CAP-086A,
+"""Contract and architecture-boundary tests for LearningService (CAP-086B,
 ADR-0029).
 
 ADR-0029 froze the service boundary (CAP-086A: abstract contract, dormant
-implementation, PlatformContext registration). These tests assert the
+implementation, PlatformContext registration). CAP-086B replaces the dormant
+implementation with ``DeterministicLearningService``. These tests assert the
 permanent contract, the ``PlatformContext`` composition root, and the
 containment/dependency invariants (ADR-0029 §D2/§D6/§D7) — including the
 deliberate **single-input boundary** (ADR-0028 §Stage 12): unlike
 ``test_organizational_memory_service.py``, this service must never import
 ``ContinuousImprovementResult`` or ``KnowledgeGraphResult`` — only
 ``OrganizationalMemoryResult``, and never that subsystem's own service,
-engine, policy, or rule catalogue.
+policy, or rule catalogue (only its result model and, legitimately, its
+deterministic engine — used here only to build test fixtures, never imported
+by the Learning engine itself).
 
 Learning is the fourth and final Layer 2 capability (ADR-0020) and consumes
 Organizational Knowledge only (ADR-0028 §Stage 12) — it imports no Layer 1
@@ -22,19 +25,25 @@ own Layer 2 peers (Continuous Improvement, Knowledge Graph) directly
 from __future__ import annotations
 
 from abc import ABC
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from requirement_intelligence.learning.learning_service import (
-    DormantLearningService,
+    DeterministicLearningService,
     LearningService,
 )
+from requirement_intelligence.learning.models.result import LearningResult
 from requirement_intelligence.learning.policy import default_learning_policy
+from requirement_intelligence.organizational_memory.models.result import (
+    OrganizationalMemoryResult,
+)
 from requirement_intelligence.platform.platform_context import PlatformContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _LEARNING_PKG = _REPO_ROOT / "requirement_intelligence" / "learning"
+_NOW = datetime(2026, 7, 16, tzinfo=UTC)
 
 #: Every Layer 1 subsystem Learning must never import — the same stricter
 #: boundary Continuous Improvement, Knowledge Graph, and Organizational
@@ -67,6 +76,74 @@ _FORBIDDEN_PEER_IMPLEMENTATION_TOKENS = (
 )
 
 
+def _organizational_memory_result() -> OrganizationalMemoryResult:
+    """Build a real, deterministic ``OrganizationalMemoryResult`` test fixture.
+
+    Uses Organizational Memory's own deterministic engine end to end — never
+    a hand-built shortcut — so these tests exercise the Learning service
+    against a genuine consumed-input shape. This is a test-fixture concern
+    only; the Learning engine itself never imports any of these classes
+    (checked below by ``TestDependencyBoundaries``).
+    """
+    from requirement_intelligence.continuous_improvement.engine import (
+        DeterministicContinuousImprovementEngine,
+    )
+    from requirement_intelligence.continuous_improvement.models import (
+        HistoricalDatasetReference as CIHistoricalDatasetReference,
+    )
+    from requirement_intelligence.continuous_improvement.policy import default_improvement_policy
+    from requirement_intelligence.continuous_improvement.rules import (
+        default_improvement_rule_catalog,
+    )
+    from requirement_intelligence.knowledge_graph.engine import DeterministicKnowledgeGraphEngine
+    from requirement_intelligence.knowledge_graph.models import (
+        HistoricalDatasetReference as KGHistoricalDatasetReference,
+    )
+    from requirement_intelligence.knowledge_graph.policy import default_knowledge_graph_policy
+    from requirement_intelligence.knowledge_graph.rules import default_knowledge_graph_rule_catalog
+    from requirement_intelligence.organizational_memory.engine import (
+        DeterministicOrganizationalMemoryEngine,
+    )
+    from requirement_intelligence.organizational_memory.policy import (
+        default_organizational_memory_policy,
+    )
+
+    ci_reference = CIHistoricalDatasetReference(
+        dataset_id="ds-learning-service-test",
+        dataset_version="1.0.0",
+        first_execution_id="ex-1",
+        last_execution_id="ex-1",
+        execution_count=1,
+        history_window=1,
+        generated_at=_NOW,
+    )
+    ci_result = DeterministicContinuousImprovementEngine(
+        policy=default_improvement_policy(),
+        rule_catalog=default_improvement_rule_catalog(),
+        clock=lambda: _NOW,
+    ).improve(ci_reference)
+
+    kg_reference = KGHistoricalDatasetReference(
+        dataset_id="ds-learning-service-test",
+        dataset_version="1.0.0",
+        first_execution_id="ex-1",
+        last_execution_id="ex-1",
+        execution_count=1,
+        history_window=1,
+        generated_at=_NOW,
+    )
+    kg_result = DeterministicKnowledgeGraphEngine(
+        policy=default_knowledge_graph_policy(),
+        rule_catalog=default_knowledge_graph_rule_catalog(),
+        clock=lambda: _NOW,
+    ).build(kg_reference)
+
+    return DeterministicOrganizationalMemoryEngine(
+        policy=default_organizational_memory_policy(),
+        clock=lambda: _NOW,
+    ).build(ci_result, kg_result)
+
+
 @pytest.mark.unit
 class TestServiceContract:
     def test_service_contract_is_abstract(self) -> None:
@@ -83,20 +160,20 @@ class TestServiceContract:
 
 
 @pytest.mark.unit
-class TestDormantService:
-    def test_dormant_service_is_constructible(self) -> None:
-        service = DormantLearningService()
+class TestDeterministicService:
+    def test_service_is_constructible(self) -> None:
+        service = DeterministicLearningService(policy=default_learning_policy())
         assert isinstance(service, LearningService)
 
-    def test_dormant_service_raises_on_build(self) -> None:
-        service = DormantLearningService()
-        with pytest.raises(NotImplementedError):
-            service.build(None)  # type: ignore[arg-type]
+    def test_service_delegates_to_the_engine_and_returns_a_real_result(self) -> None:
+        service = PlatformContext().create_learning_service()
+        result = service.build(_organizational_memory_result())
+        assert isinstance(result, LearningResult)
 
-    def test_dormant_service_raises_with_explanatory_message(self) -> None:
-        service = DormantLearningService()
-        with pytest.raises(NotImplementedError, match="architecture-only"):
-            service.build(None)  # type: ignore[arg-type]
+    def test_service_accepts_an_explicit_policy(self) -> None:
+        service = DeterministicLearningService(policy=default_learning_policy())
+        result = service.build(_organizational_memory_result())
+        assert result.policy_id == default_learning_policy().policy_id
 
 
 @pytest.mark.unit
@@ -107,10 +184,10 @@ class TestPlatformContextRegistration:
         policy = PlatformContext().create_learning_policy()
         assert isinstance(policy, LearningPolicy)
 
-    def test_create_learning_service_returns_dormant_service(self) -> None:
+    def test_create_learning_service_returns_deterministic_service(self) -> None:
         service = PlatformContext().create_learning_service()
         assert isinstance(service, LearningService)
-        assert isinstance(service, DormantLearningService)
+        assert isinstance(service, DeterministicLearningService)
 
     def test_repeated_calls_return_independent_but_equal_policies(self) -> None:
         ctx = PlatformContext()
@@ -125,11 +202,12 @@ class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
         """Outside the learning package, only PlatformContext may name it.
 
-        CAP-086A registers the dormant implementation, but the subsystem
-        remains unwired: no CLI phase, execution builder, manifest, or
-        serializer may reference the runtime service, so a future dependency
-        cannot appear silently (mirroring ADR-0022 §D6/ADR-0023 §D6/ADR-0027
-        §D7's containment test, before any of their own runtime activation).
+        CAP-086B registers the deterministic implementation, but the
+        subsystem remains unwired: no CLI phase, execution builder, manifest,
+        or serializer may reference the runtime service, so a future
+        dependency cannot appear silently (mirroring ADR-0022 §D6/ADR-0023
+        §D6/ADR-0027 §D7's containment test, before any of their own runtime
+        activation).
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -152,7 +230,7 @@ class TestRuntimeContainment:
         assert external_consumers == permitted
 
     def test_no_serializer_execution_package_or_cli_integration_exists_yet(self) -> None:
-        """CAP-086A introduces no serializer or Execution Package integration (Stage 1 scope)."""
+        """CAP-086B introduces no serializer or Execution Package integration."""
         assert not (_LEARNING_PKG / "serialization").exists()
         assert not any(
             "learning" in path.read_text(encoding="utf-8").lower()
@@ -199,9 +277,10 @@ class TestDependencyBoundaries:
                     )
 
     def test_service_imports_no_peer_implementation_class(self) -> None:
-        """The service module imports the consumed peer's result *model* only —
-        never its engine, service, policy, or rule catalogue, and never
-        either of Organizational Memory's own consumed Layer 2 peers."""
+        """The service module imports the consumed peer's result *model* and
+        Learning's own engine only — never Organizational Memory's engine,
+        service, policy, or rule catalogue, and never either of Organizational
+        Memory's own consumed Layer 2 peers."""
         source = (_LEARNING_PKG / "learning_service.py").read_text(encoding="utf-8")
         for line in source.splitlines():
             if line.strip().startswith(("import ", "from ")):
@@ -213,6 +292,10 @@ class TestDependencyBoundaries:
     ) -> None:
         source = (_LEARNING_PKG / "learning_service.py").read_text(encoding="utf-8")
         assert "OrganizationalMemoryResult" in source
+
+    def test_service_does_legitimately_import_its_own_deterministic_engine(self) -> None:
+        source = (_LEARNING_PKG / "learning_service.py").read_text(encoding="utf-8")
+        assert "DeterministicLearningEngine" in source
 
     def test_models_and_policy_are_self_contained(self) -> None:
         """Canonical models, policy, and identity depend on no Layer 1 subsystem
@@ -257,3 +340,31 @@ class TestDependencyBoundaries:
             "organizational_memory.identity",
         ):
             assert token not in source
+
+    def test_engine_package_imports_no_layer_1_subsystem(self) -> None:
+        """The engine's collaborators depend on no Layer 1 subsystem directly."""
+        for path in (_LEARNING_PKG / "engine").rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in _LAYER_1_SUBSYSTEMS:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
+
+    def test_engine_package_never_imports_organizational_memory_implementation(self) -> None:
+        """The engine consumes only OrganizationalMemoryResult — never its
+        service, engine, policy, or rule catalogue."""
+        forbidden = (
+            "DeterministicOrganizationalMemoryEngine",
+            "DeterministicOrganizationalMemoryService",
+            "OrganizationalMemoryService",
+            "OrganizationalMemoryPolicy",
+            "PromotionRuleCatalog",
+            "ContinuousImprovementResult",
+            "KnowledgeGraphResult",
+            "HistoricalDatasetProvider",
+            "HistoricalDatasetReference",
+        )
+        for path in (_LEARNING_PKG / "engine").rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
