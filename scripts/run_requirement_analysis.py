@@ -698,6 +698,43 @@ def run_knowledge_graph_phase(
     return result
 
 
+def run_organizational_memory_phase(
+    context: PlatformContext,
+    continuous_improvement_result: Any,
+    knowledge_graph_result: Any,
+    console: Console,
+) -> Any:
+    """Organizational Memory phase — Layer 2's third capability, immediately after
+    Knowledge Graph (CAP-085C, ADR-0027 §D19).
+
+    Runs at the permanently frozen end of the pipeline::
+
+        ... Continuous Improvement → Knowledge Graph → Organizational Memory
+            → Execution Package
+
+    It consumes **only** the two already-completed Layer 2 peer results —
+    never a ``HistoricalDatasetReference`` (unlike its two peers), and never any
+    Layer 1 runtime contract directly (ADR-0025 §Stage 7/8's fan-in exception,
+    ADR-0027 §D2). The single ``OrganizationalMemoryService`` comes solely from
+    :class:`PlatformContext`; this CLI is pure orchestration glue and invents no
+    experience, lesson, best practice, promotion, or lifecycle record of its
+    own. Mirroring Continuous Improvement/Knowledge Graph, a failure here is
+    surfaced but never fatal to the analysis run, and never corrupts the
+    already-completed upstream results.
+    """
+    console.action("\nRunning Organizational Memory")
+    result = context.create_organizational_memory_service().build(
+        continuous_improvement_result, knowledge_graph_result
+    )
+    summary = result.summary
+    console.ok(f"{summary.headline}")
+    console.note(f"  Experiences         : {summary.total_experiences}")
+    console.note(f"  Lessons             : {summary.total_lessons}")
+    console.note(f"  Best Practices      : {summary.total_best_practices}")
+    console.note(f"  Promotions          : {summary.total_promotions}")
+    return result
+
+
 # ===========================================================================
 # Subcommand handlers
 # ===========================================================================
@@ -965,6 +1002,24 @@ def handle_analyze(args: argparse.Namespace) -> int:
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Knowledge graph build failed: {exc}")
 
+    # Organizational Memory phase (CAP-085C): Layer 2's third capability, immediately
+    # after Knowledge Graph, at the permanently frozen end of the pipeline (... →
+    # Continuous Improvement → Knowledge Graph → Organizational Memory → Execution
+    # Package). It consumes only the two already-completed Layer 2 peer results —
+    # never a HistoricalDatasetReference, unlike its two peers (ADR-0025 §Stage
+    # 7/8's fan-in exception, ADR-0027 §D2) — and runs only when both peer results
+    # are present. It modifies nothing upstream. Mirroring every prior phase, a
+    # failure here is surfaced but never fatal, and never corrupts the
+    # already-completed upstream results.
+    organizational_memory_result: Any = None
+    if continuous_improvement_result is not None and knowledge_graph_result is not None:
+        try:
+            organizational_memory_result = run_organizational_memory_phase(
+                context, continuous_improvement_result, knowledge_graph_result, console
+            )
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Organizational memory build failed: {exc}")
+
     data = ExecutionData(
         selected=selected,
         engineering_context=engineering_context,
@@ -988,6 +1043,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         recommendation_result=recommendation_result,
         continuous_improvement_result=continuous_improvement_result,
         knowledge_graph_result=knowledge_graph_result,
+        organizational_memory_result=organizational_memory_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

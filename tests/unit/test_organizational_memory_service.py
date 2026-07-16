@@ -98,6 +98,7 @@ def _knowledge_graph_result():
     )
     return engine.build(reference)
 
+
 #: Every Layer 1 subsystem Organizational Memory must never import — the same
 #: stricter boundary Continuous Improvement and Knowledge Graph already
 #: impose on themselves (ADR-0021 §Stage 8).
@@ -197,13 +198,16 @@ class TestPlatformContextRegistration:
 @pytest.mark.unit
 class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
-        """Outside the organizational_memory package, only PlatformContext may name it.
+        """Outside the organizational_memory package, only PlatformContext and the
+        CLI phase may name it.
 
-        CAP-085B registers the deterministic implementation, but the
-        subsystem remains unwired: no CLI phase, execution builder, manifest,
-        or serializer may reference the runtime service, so a future
-        dependency cannot appear silently (mirroring ADR-0022 §D6/ADR-0023
-        §D6's containment test, before either's own runtime activation).
+        CAP-085B registers the deterministic implementation; CAP-085C wires
+        ``run_organizational_memory_phase()`` into the live CLI, immediately
+        after Knowledge Graph. No execution builder, manifest, or serializer
+        may reference the runtime service directly — only its own projection
+        (``OrganizationalMemorySerializer``) may, and that is checked
+        separately (mirrors ADR-0022 §D6/ADR-0023 §D6/§D12's containment
+        test, post-activation).
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -213,6 +217,7 @@ class TestRuntimeContainment:
         needle = "OrganizationalMemoryService"
         permitted = {
             Path("requirement_intelligence/platform/platform_context.py"),
+            Path("scripts/run_requirement_analysis.py"),
         }
         external_consumers: set[Path] = set()
         for root in roots:
@@ -225,15 +230,33 @@ class TestRuntimeContainment:
                     external_consumers.add(path.relative_to(_REPO_ROOT))
         assert external_consumers == permitted
 
-    def test_no_serializer_execution_package_or_cli_integration_exists_yet(self) -> None:
-        """CAP-085A introduces no serializer or Execution Package integration (Stage 1 scope)."""
-        assert not (_ORGANIZATIONAL_MEMORY_PKG / "serialization").exists()
-        assert not any(
-            "organizational_memory" in path.read_text(encoding="utf-8")
-            for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py")
+    def test_serializer_and_execution_package_integration_exist_and_stay_projection_only(
+        self,
+    ) -> None:
+        """CAP-085C introduces the serializer and Execution Package integration.
+
+        The serializer package exists, and the only files outside the
+        organizational_memory package that mention "organizational_memory"
+        (besides the sanctioned PlatformContext/CLI wiring points already
+        checked above) are the Execution Package's own writer/manifest
+        builder — and those import only the projection serializer, never the
+        engine, the service, the policy, or the rule catalogue.
+        """
+        assert (_ORGANIZATIONAL_MEMORY_PKG / "serialization").exists()
+        forbidden = (
+            "DeterministicOrganizationalMemoryEngine",
+            "DeterministicOrganizationalMemoryService",
+            "OrganizationalMemoryPolicy",
+            "PromotionRuleCatalog",
         )
-        script = _REPO_ROOT / "scripts" / "run_requirement_analysis.py"
-        assert "organizational_memory" not in script.read_text(encoding="utf-8")
+        for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            if "organizational_memory" not in source:
+                continue
+            for line in source.splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
 
 
 @pytest.mark.unit

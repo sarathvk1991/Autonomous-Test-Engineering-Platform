@@ -100,6 +100,13 @@ _KNOWLEDGE_GRAPH_ARTIFACTS = frozenset(
         "knowledge_graph_metrics.md",
     }
 )
+_ORGANIZATIONAL_MEMORY_ARTIFACTS = frozenset(
+    {
+        "organizational_memory_result.json",
+        "organizational_memory_report.md",
+        "organizational_memory_metrics.md",
+    }
+)
 _ALL_ARTIFACTS = (
     _CORE_ARTIFACTS
     | _RESULT_ARTIFACTS
@@ -111,6 +118,7 @@ _ALL_ARTIFACTS = (
     | _RECOMMENDATION_ARTIFACTS
     | _CONTINUOUS_IMPROVEMENT_ARTIFACTS
     | _KNOWLEDGE_GRAPH_ARTIFACTS
+    | _ORGANIZATIONAL_MEMORY_ARTIFACTS
     | {"manifest.json"}
 )
 
@@ -515,6 +523,70 @@ class TestPhase3PipelineExecution:
         assert knowledge_graph.metrics.connected_component_count == 1
 
     @pytest.mark.productization
+    def test_organizational_memory_result_exists(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Organizational Memory ran after Knowledge Graph (CAP-085C) and produced a result."""
+        assert golden_pipeline_result.organizational_memory_result is not None, (
+            "OrganizationalMemoryResult is None — Organizational Memory did not run "
+            "despite Continuous Improvement and Knowledge Graph completing."
+        )
+
+    @pytest.mark.productization
+    def test_organizational_memory_runs_strictly_after_knowledge_graph(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The frozen order: Organizational Memory only exists once both peers do.
+
+        Organizational Memory consumes exactly the two already-completed Layer 2
+        peer results — never a ``HistoricalDatasetReference`` (unlike its two
+        peers, ADR-0025 §Stage 7/8's fan-in exception).
+        """
+        organizational_memory = golden_pipeline_result.organizational_memory_result
+        assert golden_pipeline_result.continuous_improvement_result is not None
+        assert golden_pipeline_result.knowledge_graph_result is not None
+        assert organizational_memory.continuous_improvement_result_id == str(
+            golden_pipeline_result.continuous_improvement_result.result_id
+        )
+        assert organizational_memory.knowledge_graph_result_id == str(
+            golden_pipeline_result.knowledge_graph_result.result_id
+        )
+        assert organizational_memory.started_at <= organizational_memory.completed_at
+
+    @pytest.mark.productization
+    def test_organizational_memory_produces_the_golden_datasets_known_shape(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """A long-term regression guard: the golden dataset's structurally bounded shape.
+
+        Continuous Improvement's single-execution reference always yields zero
+        findings/trends/opportunities (see
+        ``test_continuous_improvement_produces_no_findings_at_execution_count_one``
+        above), so ``ExperienceCollector`` captures nothing from that side.
+        Knowledge Graph's own golden shape is bounded but not exact (see
+        ``test_knowledge_graph_produces_the_golden_datasets_known_shape``): exactly
+        3 observations and exactly 1 subgraph unconditionally, plus 0 or 1 finding
+        digest-gated on the reference. ``ExperienceCollector`` captures one
+        Experience per Knowledge Graph observation/subgraph/finding, so this
+        golden run captures 4 or 5 experiences. ``ExperienceClusterer`` groups by
+        exact ``(source_layer, description)`` equality, and these descriptions are
+        all structurally distinct, so no cluster ever reaches the governed
+        ``minimum_experiences_for_lesson`` floor of 3 — this golden dataset
+        therefore never promotes a lesson, best practice, or promotion record. A
+        value outside these bounds is a genuine regression signal.
+        """
+        organizational_memory = golden_pipeline_result.organizational_memory_result
+        assert 4 <= len(organizational_memory.experiences) <= 5
+        assert organizational_memory.lessons == ()
+        assert organizational_memory.best_practices == ()
+        assert organizational_memory.promotions == ()
+        assert len(organizational_memory.lifecycles) == len(organizational_memory.experiences)
+        assert organizational_memory.summary.total_experiences == len(
+            organizational_memory.experiences
+        )
+        assert organizational_memory.metrics.active_count == len(organizational_memory.lifecycles)
+
+    @pytest.mark.productization
     def test_execution_package_written(self, golden_pipeline_result: PipelineResult) -> None:
         """ExecutionWriter completed without raising."""
         assert golden_pipeline_result.write_result is not None
@@ -693,6 +765,33 @@ class TestPhase4OutputVerification:
         assert (
             KnowledgeGraphResult.model_validate(on_disk)
             == golden_pipeline_result.knowledge_graph_result
+        )
+
+    @pytest.mark.productization
+    def test_organizational_memory_artifacts_present(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Organizational Memory ran (CAP-085C), so all three artifacts are written."""
+        for name in _ORGANIZATIONAL_MEMORY_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Organizational Memory artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Organizational Memory artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_organizational_memory_result_json_round_trips(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """organizational_memory_result.json is a verbatim, round-trippable projection."""
+        from requirement_intelligence.organizational_memory.models import (
+            OrganizationalMemoryResult,
+        )
+
+        on_disk = _load_json(
+            golden_pipeline_result.output_dir / "organizational_memory_result.json"
+        )
+        assert (
+            OrganizationalMemoryResult.model_validate(on_disk)
+            == golden_pipeline_result.organizational_memory_result
         )
 
     @pytest.mark.productization
@@ -1061,9 +1160,9 @@ class TestPhase4OutputVerification:
         self, golden_pipeline_result: PipelineResult
     ) -> None:
         """continuous_improvement_report.md is a projection — it shows the result's own headline."""
-        report = (
-            golden_pipeline_result.output_dir / "continuous_improvement_report.md"
-        ).read_text(encoding="utf-8")
+        report = (golden_pipeline_result.output_dir / "continuous_improvement_report.md").read_text(
+            encoding="utf-8"
+        )
         assert golden_pipeline_result.continuous_improvement_result.summary.headline in report
 
     @pytest.mark.productization
@@ -1118,6 +1217,125 @@ class TestPhase4OutputVerification:
         assert on_disk["summary"]["totalNodes"] == result.summary.total_nodes
 
     @pytest.mark.productization
+    def test_manifest_references_organizational_memory_artifacts_only(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json indexes the Organizational Memory artifacts; it never duplicates state.
+
+        Manifest purity (ADR-0017 §D31, applied here per ADR-0027 §D18/§D19): the
+        manifest owns package metadata and the artifact inventory only. The
+        canonical experiences, lessons, best practices, promotions, lifecycles,
+        metrics, and summary are the sole runtime state and live exclusively on
+        ``OrganizationalMemoryResult`` / the artifact
+        ``organizational_memory_result.json`` — never re-surfaced as manifest keys.
+        """
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        result = golden_pipeline_result.organizational_memory_result
+        assert manifest.get("organizationalMemoryExecuted") is True
+        assert manifest.get("organizationalMemoryReport") == "organizational_memory_report.md"
+        assert manifest.get("organizationalMemoryMetrics") == "organizational_memory_metrics.md"
+        for forbidden_key in (
+            "organizationalMemoryResult",
+            "organizationalMemorySummary",
+            "organizationalMemoryExperiences",
+            "organizationalMemoryLessons",
+            "organizationalMemoryBestPractices",
+            "organizationalMemoryPromotions",
+            "organizationalMemoryLifecycles",
+        ):
+            assert forbidden_key not in manifest
+
+        on_disk = _load_json(
+            golden_pipeline_result.output_dir / "organizational_memory_result.json"
+        )
+        assert on_disk["summary"]["totalExperiences"] == result.summary.total_experiences
+
+    @pytest.mark.productization
+    def test_manifest_checksums_the_organizational_memory_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """organizational_memory_result.json is checksummed like every other artifact."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        entries = {a["name"]: a for a in manifest["generatedArtifacts"]}
+        entry = entries["organizational_memory_result.json"]
+        path = golden_pipeline_result.output_dir / "organizational_memory_result.json"
+        assert entry["sha256"] == _sha256(path)
+        assert entry["bytes"] == path.stat().st_size
+
+    @pytest.mark.productization
+    def test_organizational_memory_report_contains_the_summary_headline(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """organizational_memory_report.md is a projection — it shows the result's own headline."""
+        report = (golden_pipeline_result.output_dir / "organizational_memory_report.md").read_text(
+            encoding="utf-8"
+        )
+        assert golden_pipeline_result.organizational_memory_result.summary.headline in report
+
+    @pytest.mark.productization
+    def test_organizational_memory_metrics_contains_the_experience_count(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """organizational_memory_metrics.md is a projection — it shows the result's own metrics."""
+        metrics_md = (
+            golden_pipeline_result.output_dir / "organizational_memory_metrics.md"
+        ).read_text(encoding="utf-8")
+        experience_count = (
+            golden_pipeline_result.organizational_memory_result.metrics.experience_count
+        )
+        assert str(experience_count) in metrics_md
+
+    @pytest.mark.productization
+    def test_execution_data_organizational_memory_result_matches_pipeline_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The object transported into the Execution Package is the same one returned."""
+        assert (
+            golden_pipeline_result.execution_data.organizational_memory_result
+            is golden_pipeline_result.organizational_memory_result
+        )
+
+    @pytest.mark.productization
+    def test_organizational_memory_artifacts_are_written_after_knowledge_graph_artifacts(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Artifact write order mirrors the frozen pipeline order (Knowledge
+        Graph, then Organizational Memory)."""
+        names = [
+            entry["name"]
+            for entry in golden_pipeline_result.write_result.manifest["generatedArtifacts"]
+        ]
+        last_kg_index = max(
+            index for index, name in enumerate(names) if name.startswith("knowledge_graph")
+        )
+        first_om_index = min(
+            index for index, name in enumerate(names) if name.startswith("organizational_memory")
+        )
+        assert last_kg_index < first_om_index
+
+    @pytest.mark.productization
+    def test_organizational_memory_result_is_explainable_solely_from_the_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Every experience/lesson/promotion/lifecycle the golden run produced traces
+        to the result alone.
+
+        No re-run of the engine, the service, or either consumed peer result is
+        required — the explainability invariant ADR-0027 §D18/§D19 certifies.
+        """
+        result = golden_pipeline_result.organizational_memory_result
+        known_experience_ids = {experience.experience_id for experience in result.experiences}
+        known_subject_ids = (
+            {str(i) for i in known_experience_ids}
+            | {str(lesson.lesson_id) for lesson in result.lessons}
+            | {str(bp.best_practice_id) for bp in result.best_practices}
+        )
+        for lesson in result.lessons:
+            assert set(lesson.source_experience_ids) <= known_experience_ids
+        for lifecycle in result.lifecycles:
+            assert lifecycle.subject_id in known_subject_ids
+
+    @pytest.mark.productization
     def test_manifest_checksums_the_knowledge_graph_result(
         self, golden_pipeline_result: PipelineResult
     ) -> None:
@@ -1167,9 +1385,8 @@ class TestPhase4OutputVerification:
         """Artifact write order mirrors the frozen pipeline order (Continuous
         Improvement, then Knowledge Graph)."""
         names = [
-            entry["name"] for entry in golden_pipeline_result.write_result.manifest[
-                "generatedArtifacts"
-            ]
+            entry["name"]
+            for entry in golden_pipeline_result.write_result.manifest["generatedArtifacts"]
         ]
         last_ci_index = max(
             index for index, name in enumerate(names) if name.startswith("continuous_improvement")
@@ -2005,6 +2222,93 @@ class TestPhase5Determinism:
         assert "knowledgeGraphSummary" not in m2
 
     @pytest.mark.productization
+    def test_determinism_organizational_memory_result_content(
+        self,
+        golden_pipeline_result: PipelineResult,
+    ) -> None:
+        """The same two consumed Layer 2 results, built twice, yield the same content.
+
+        Unlike its two peers, Organizational Memory consumes no
+        ``HistoricalDatasetReference`` — it consumes the two already-completed
+        Layer 2 peer results directly (ADR-0025 §Stage 7/8's fan-in exception).
+        The determinism contract (ADR-0027 §D18/§D19) is *same two results in,
+        same result out* — proven here by rebuilding directly through
+        ``OrganizationalMemoryService.build`` from the exact two results this
+        golden run already consumed, and comparing content (never the wall-clock
+        ``startedAt``/``completedAt`` timestamps or the fresh ``resultId``, since
+        that id is minted from the memory id but the object itself is rebuilt,
+        not cached).
+        """
+        from requirement_intelligence.platform.platform_context import PlatformContext
+
+        r1 = golden_pipeline_result.organizational_memory_result
+        r2 = (
+            PlatformContext()
+            .create_organizational_memory_service()
+            .build(
+                golden_pipeline_result.continuous_improvement_result,
+                golden_pipeline_result.knowledge_graph_result,
+            )
+        )
+        assert r1.experiences == r2.experiences
+        assert r1.lessons == r2.lessons
+        assert r1.best_practices == r2.best_practices
+        assert r1.promotions == r2.promotions
+        assert r1.lifecycles == r2.lifecycles
+        assert r1.summary.total_experiences == r2.summary.total_experiences
+        assert r1.metrics == r2.metrics
+        assert r1.memory_id == r2.memory_id
+        assert r1.result_id == r2.result_id
+
+    @pytest.mark.productization
+    def test_determinism_organizational_memory_serialization(
+        self,
+        golden_pipeline_result: PipelineResult,
+    ) -> None:
+        """Serializer output is a pure function of an ``OrganizationalMemoryResult`` —
+        no re-derivation.
+
+        The runtime mints run-specific provenance on the ``startedAt``/
+        ``completedAt`` fields (wall clock); the serializer must render the exact
+        same bytes given the exact same result object, exactly as every other
+        subsystem serializer in this platform does.
+        """
+        from requirement_intelligence.organizational_memory.serialization import (
+            OrganizationalMemorySerializer,
+        )
+
+        serializer = OrganizationalMemorySerializer()
+        r1 = golden_pipeline_result.organizational_memory_result
+
+        assert serializer.render_report(r1) == serializer.render_report(r1)
+        assert serializer.render_metrics(r1) == serializer.render_metrics(r1)
+        assert serializer.render_json(r1) == serializer.render_json(r1)
+
+    @pytest.mark.productization
+    def test_determinism_manifest_organizational_memory_keys_stay_metadata_only(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """manifest Organizational Memory keys are identical package metadata across two runs.
+
+        Content determinism itself is proven at the runtime-contract boundary by
+        ``test_determinism_organizational_memory_result_content``: the golden
+        regression compares ``OrganizationalMemoryResult`` content, never the
+        manifest. This test only confirms the manifest's package-metadata keys
+        are stable and that no runtime-state key has leaked back into the
+        manifest.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1.get("organizationalMemoryExecuted") == m2.get("organizationalMemoryExecuted")
+        assert m1.get("organizationalMemoryReport") == m2.get("organizationalMemoryReport")
+        assert m1.get("organizationalMemoryMetrics") == m2.get("organizationalMemoryMetrics")
+        assert "organizationalMemorySummary" not in m1
+        assert "organizationalMemorySummary" not in m2
+
+    @pytest.mark.productization
     def test_determinism_normalization_outcome(
         self,
         golden_pipeline_result: PipelineResult,
@@ -2133,7 +2437,7 @@ class TestPhase6ProductizationAssertions:
     @pytest.mark.productization
     def test_dataset_version(self) -> None:
         """The golden dataset declares a version."""
-        assert GOLDEN_DATASET_VERSION == "1.6.0"
+        assert GOLDEN_DATASET_VERSION == "1.7.0"
 
     @pytest.mark.productization
     def test_dataset_covers_all_categories(self) -> None:

@@ -1,8 +1,8 @@
 # Organizational Memory Framework — Design Proposal
 
-- **Status:** Proposed (CAP-085A froze the architecture; CAP-085A.1 froze the future engine's internal decomposition and governance; CAP-085B implemented the first deterministic engine behind it, unchanged; CAP-085B.1 permanently certified the runtime contract, no behaviour change)
+- **Status:** Accepted, live (CAP-085A froze the architecture; CAP-085A.1 froze the future engine's internal decomposition and governance; CAP-085B implemented the first deterministic engine behind it, unchanged; CAP-085B.1 permanently certified the runtime contract, no behaviour change; CAP-085C activated the runtime in the live pipeline)
 - **Capability:** CAP-085 — Organizational Memory Framework
-- **Milestones covered:** CAP-085A (Architecture & Governance Freeze), CAP-085A.1 (Engine Architecture Refinement & Governance Freeze — see §8a), CAP-085B (Deterministic Organizational Memory Engine — see §8b), CAP-085B.1 (OrganizationalMemoryResult Runtime Contract Freeze — see §8c)
+- **Milestones covered:** CAP-085A (Architecture & Governance Freeze), CAP-085A.1 (Engine Architecture Refinement & Governance Freeze — see §8a), CAP-085B (Deterministic Organizational Memory Engine — see §8b), CAP-085B.1 (OrganizationalMemoryResult Runtime Contract Freeze — see §8c), CAP-085C (Runtime Integration — see §8d)
 - **Governed by:** ADR-0027
 - **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution), ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the fan-in exception this framework is the first concrete implementation of), ADR-0026 (Organizational Knowledge Architecture & Learning Constitution — the full constitutional definition of what this framework produces).
 
@@ -239,8 +239,68 @@ contract changes.
 certified as the permanent Layer 2 runtime contract for Organizational
 Memory — completing Architecture Freeze (CAP-085A) → Engine Architecture
 Refinement (CAP-085A.1) → Deterministic Implementation (CAP-085B) → Runtime
-Contract Freeze (CAP-085B.1). Runtime Integration (CAP-085C, reserved) is
-the only remaining step before this framework is live.
+Contract Freeze (CAP-085B.1). Runtime Integration (CAP-085C) activates it in
+the live pipeline — see §8d.
+
+## 8d. Runtime Integration (CAP-085C)
+
+CAP-085C activates the already-complete Organizational Memory Framework in
+the live Requirement Intelligence runtime — Layer 2's third capability going
+live, and the first to exercise ADR-0025's fan-in exception in the live
+pipeline. **No redesign, no contract change, no engine change, no
+collaborator change, no policy change, no rule catalogue change, no identity
+change, no version change** — only runtime activation, exactly as CAP-084C
+activated Knowledge Graph. Full detail lives in ADR-0027 §D19; summarised
+here:
+
+**Execution order (frozen).** Organizational Memory runs exactly once,
+immediately after Knowledge Graph, at the permanently frozen end of the
+pipeline:
+
+```
+... → Continuous Improvement → Knowledge Graph → Organizational Memory
+    → Execution Package
+```
+
+**No reference minting.** Unlike its two peers, Organizational Memory mints
+no `HistoricalDatasetReference` — `run_organizational_memory_phase` passes
+the two already-completed peer results straight through to
+`OrganizationalMemoryService.build`, and runs only when **both**
+`continuous_improvement_result` and `knowledge_graph_result` are present.
+
+**CLI.** `run_organizational_memory_phase` obtains
+`OrganizationalMemoryService` exclusively from `PlatformContext` and calls
+`build(continuous_improvement_result, knowledge_graph_result)` — orchestration
+only, identical failure semantics to every prior phase (surfaced, never
+fatal).
+
+**Execution Package.** `ExecutionData.organizational_memory_result` is
+additive-only. `OrganizationalMemorySerializer`
+(`organizational_memory/serialization/`) renders
+`organizational_memory_result.json` (canonical `model_dump`),
+`organizational_memory_report.md`, and `organizational_memory_metrics.md` —
+pure projection, computing nothing. `ExecutionWriter` appends these three
+artifacts only when the result is present, immediately after the Knowledge
+Graph artifacts.
+
+**Manifest purity.** The manifest gains exactly three additive keys —
+`organizationalMemoryExecuted`, `organizationalMemoryReport`,
+`organizationalMemoryMetrics` — a flag and two filenames, never runtime
+state. `manifestSchemaVersion` stays `1.0.0`.
+
+**Golden integration.** `_run_golden_pipeline()` now builds Organizational
+Memory immediately after Knowledge Graph; `PipelineResult` carries
+`organizational_memory_result`. `GOLDEN_DATASET_VERSION` re-baselines
+`1.6.0` → `1.7.0` — the nine source artifacts and the golden response are
+unchanged; only the generated artifact set grows by the three Organizational
+Memory files. The Architecture Version remains `1.2.0`; the Platform Version
+is unchanged.
+
+**Ownership (unchanged, now live).** The engine's collaborators
+capture/cluster/generate/consolidate/promote/record as already frozen.
+Service orchestrates only. `OrganizationalMemoryResult` owns runtime state
+only. The serializer projects only. The Execution Package packages only. The
+CLI orchestrates (the pipeline call) only. `PlatformContext` composes only.
 
 ## 9. PlatformContext
 
@@ -249,11 +309,11 @@ the only remaining step before this framework is live.
 - `create_organizational_memory_policy() -> OrganizationalMemoryPolicy`
 - `create_organizational_memory_service() -> OrganizationalMemoryService`
 
-Mirroring `create_improvement_policy()` / `create_continuous_improvement_service()` (ADR-0022) and `create_knowledge_graph_policy()` / `create_knowledge_graph_service()` (ADR-0023), these are the **only** sanctioned points outside the `organizational_memory` package that may construct its objects, enforced by a containment test.
+Mirroring `create_improvement_policy()` / `create_continuous_improvement_service()` (ADR-0022) and `create_knowledge_graph_policy()` / `create_knowledge_graph_service()` (ADR-0023), these are the **only** sanctioned points outside the `organizational_memory` package that may construct its objects, enforced by a containment test — extended by CAP-085C to also permit `scripts/run_requirement_analysis.py`'s `run_organizational_memory_phase()` to call `create_organizational_memory_service()` (never `PlatformContext`'s composition methods bypassed).
 
 ## 10. Execution package
 
-Not introduced by CAP-085A. When a future milestone activates the runtime, every Organizational Memory execution artifact will be a **pure projection** of `OrganizationalMemoryResult`, reproducible from it alone, computing nothing — the same serialization invariant ADR-0022 §D8 and ADR-0023 §D8 established for their own subsystems (Recommendation 10 of ADR-0027).
+Activated by CAP-085C (§8d). Every Organizational Memory execution artifact is a **pure projection** of `OrganizationalMemoryResult`, reproducible from it alone, computing nothing — the same serialization invariant ADR-0022 §D8 and ADR-0023 §D8 established for their own subsystems (Recommendation 10 of ADR-0027).
 
 ## 11. Implementation roadmap (non-normative)
 
@@ -261,7 +321,7 @@ Not introduced by CAP-085A. When a future milestone activates the runtime, every
 2. **Done (CAP-085A.1).** Engine architecture refinement & governance freeze: the future engine's modular collaborator decomposition, adjacent-only promotion discipline, engine layering, the complete explainability chain, and reserved promotion-rule governance — no code, still architecture only. See §8a.
 3. **Done (CAP-085B).** Deterministic Organizational Memory Engine: implement the CAP-085A.1 collaborator pipeline strictly from the two resolved Layer 2 results (Recommendation 6 of ADR-0027), never independent analysis. See §8b.
 4. **Done (CAP-085B.1).** OrganizationalMemoryResult Runtime Contract Freeze: permanent certification, no behaviour change. See §8c.
-5. Runtime activation (CAP-085C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-083C's activation of Continuous Improvement and CAP-084C's activation of Knowledge Graph.
+5. **Done (CAP-085C).** Runtime activation — wire `build` into the live cross-execution pipeline immediately after Knowledge Graph, add the Execution Package projection, golden re-baseline `1.6.0` → `1.7.0`, mirroring CAP-083C's activation of Continuous Improvement and CAP-084C's activation of Knowledge Graph. See §8d.
 6. Future AI curation — statistical, ML, LLM, GraphRAG, and neuro-symbolic engines (reserved), behind the unchanged `OrganizationalMemoryResult` contract — never a redesign of it.
 7. CAP-086 (Learning Framework) — the remaining reserved Layer 2 capability, to consume `OrganizationalMemoryResult` (Recommendation 8 of ADR-0027).
 

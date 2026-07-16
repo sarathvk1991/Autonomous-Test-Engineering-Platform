@@ -38,6 +38,9 @@ from requirement_intelligence.execution.validation_report_builder import (
 )
 from requirement_intelligence.grounding.serialization import GroundingSerializer
 from requirement_intelligence.knowledge_graph.serialization import KnowledgeGraphSerializer
+from requirement_intelligence.organizational_memory.serialization import (
+    OrganizationalMemorySerializer,
+)
 from requirement_intelligence.quality_governance.serialization import (
     QualityGovernanceSerializer,
 )
@@ -104,6 +107,7 @@ class ExecutionWriter:
         self._recommendation = RecommendationSerializer()
         self._continuous_improvement = ContinuousImprovementSerializer()
         self._knowledge_graph = KnowledgeGraphSerializer()
+        self._organizational_memory = OrganizationalMemorySerializer()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -335,6 +339,31 @@ class ExecutionWriter:
                 "knowledge_graph_result.json",
                 "knowledge_graph_report.md",
                 "knowledge_graph_metrics.md",
+            ]
+        # Organizational Memory artifacts (CAP-085C): appended only when an
+        # OrganizationalMemoryResult was produced — Layer 2's third capability, and
+        # the first to exercise ADR-0025's fan-in exception, immediately after
+        # Knowledge Graph, at the permanently frozen end of the pipeline. Pure
+        # projection — the OrganizationalMemoryResult is serialised/rendered as-is;
+        # no experience is captured, no lesson is promoted, no best practice is
+        # institutionalized, no promotion or lifecycle record is created here.
+        if data.organizational_memory_result is not None:
+            _write_json(
+                target_dir / "organizational_memory_result.json",
+                self._organizational_memory.render_json(data.organizational_memory_result),
+            )
+            (target_dir / "organizational_memory_report.md").write_text(
+                self._organizational_memory.render_report(data.organizational_memory_result),
+                encoding="utf-8",
+            )
+            (target_dir / "organizational_memory_metrics.md").write_text(
+                self._organizational_memory.render_metrics(data.organizational_memory_result),
+                encoding="utf-8",
+            )
+            names += [
+                "organizational_memory_result.json",
+                "organizational_memory_report.md",
+                "organizational_memory_metrics.md",
             ]
         return tuple(names)
 

@@ -174,4 +174,21 @@ class ManifestBuilder:
             manifest["knowledgeGraphReport"] = "knowledge_graph_report.md"
             manifest["knowledgeGraphMetrics"] = "knowledge_graph_metrics.md"
 
+        # Organizational Memory references (CAP-085C): additive, and only when
+        # Organizational Memory ran. When it did not, the manifest is
+        # byte-identical to before — no key is added, no schema change
+        # (manifestSchemaVersion stays 1.0.0). The three Organizational Memory
+        # artifacts already appear in ``generatedArtifacts`` via the same checksum
+        # mechanism as every other file. These three keys are package metadata
+        # only — a flag and two artifact filenames — never the Organizational
+        # Memory runtime state itself. The canonical experiences, lessons, best
+        # practices, promotions, lifecycles, metrics, and summary live exclusively
+        # in ``organizational_memory_result.json`` (ADR-0027 §D18/§D19): the
+        # manifest references that artifact, it never duplicates its content.
+        organizational_memory = data.organizational_memory_result
+        if organizational_memory is not None:
+            manifest["organizationalMemoryExecuted"] = True
+            manifest["organizationalMemoryReport"] = "organizational_memory_report.md"
+            manifest["organizationalMemoryMetrics"] = "organizational_memory_metrics.md"
+
         return manifest

@@ -139,6 +139,20 @@ class ExecutionData:
         ``knowledge_graph_result.json`` / ``knowledge_graph_report.md`` /
         ``knowledge_graph_metrics.md`` — a pure projection; nothing is re-projected,
         re-partitioned, re-observed, re-detected, or recomputed.
+    organizational_memory_result:
+        The complete ``OrganizationalMemoryResult`` produced by the Organizational
+        Memory runtime — the third Layer 2 capability (ADR-0020), and the first to
+        exercise ADR-0025's fan-in exception — immediately after Knowledge Graph and
+        at the permanently frozen end of the pipeline (CAP-085C, ADR-0027 §D19).
+        Unlike its two peers, it consumes no ``HistoricalDatasetReference``: it runs
+        only when **both** ``continuous_improvement_result`` and
+        ``knowledge_graph_result`` are present, so this is ``None`` for a dry run, a
+        run where either peer did not execute, or a surfaced-but-non-fatal
+        Organizational Memory failure. When present, the execution package
+        serialises it as-is into ``organizational_memory_result.json`` /
+        ``organizational_memory_report.md`` / ``organizational_memory_metrics.md`` —
+        a pure projection; nothing is re-captured, re-promoted, re-institutionalized,
+        or recomputed.
     """
 
     selected: Any
@@ -164,6 +178,7 @@ class ExecutionData:
     recommendation_result: Any | None = None
     continuous_improvement_result: Any | None = None
     knowledge_graph_result: Any | None = None
+    organizational_memory_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:

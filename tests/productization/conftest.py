@@ -159,6 +159,10 @@ class PipelineResult:
     # Continuous Improvement)
     knowledge_graph_result: Any  # KnowledgeGraphResult
 
+    # Organizational Memory (Layer 2's third capability, immediately after
+    # Knowledge Graph — the first to exercise ADR-0025's fan-in exception)
+    organizational_memory_result: Any  # OrganizationalMemoryResult
+
     # Execution package
     execution_data: ExecutionData
     write_result: ExecutionWriteResult
@@ -350,8 +354,17 @@ def _run_golden_pipeline(
         history_window=1,
         generated_at=analysis_result.completed_at,
     )
-    knowledge_graph_result = context.create_knowledge_graph_service().build(
-        kg_historical_dataset
+    knowledge_graph_result = context.create_knowledge_graph_service().build(kg_historical_dataset)
+
+    # -----------------------------------------------------------------------
+    # Step 6g — Organizational Memory (CAP-085C): Layer 2's third capability,
+    # immediately after Knowledge Graph, at the permanently frozen end of the
+    # pipeline. It consumes exactly the two already-completed Layer 2 peer
+    # results — never a HistoricalDatasetReference, unlike its two peers
+    # (ADR-0025 §Stage 7/8's fan-in exception, ADR-0027 §D2).
+    # -----------------------------------------------------------------------
+    organizational_memory_result = context.create_organizational_memory_service().build(
+        continuous_improvement_result, knowledge_graph_result
     )
 
     # -----------------------------------------------------------------------
@@ -381,6 +394,7 @@ def _run_golden_pipeline(
         recommendation_result=recommendation_result,
         continuous_improvement_result=continuous_improvement_result,
         knowledge_graph_result=knowledge_graph_result,
+        organizational_memory_result=organizational_memory_result,
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -401,6 +415,7 @@ def _run_golden_pipeline(
         recommendation_result=recommendation_result,
         continuous_improvement_result=continuous_improvement_result,
         knowledge_graph_result=knowledge_graph_result,
+        organizational_memory_result=organizational_memory_result,
         execution_data=execution_data,
         write_result=write_result,
         output_dir=tmp_dir,

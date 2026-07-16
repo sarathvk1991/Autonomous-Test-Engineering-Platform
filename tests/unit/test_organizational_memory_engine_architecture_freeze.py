@@ -74,9 +74,12 @@ def _proposal_text() -> str:
 class TestEngineCodeNowFulfillsThePromise:
     """CAP-085B built exactly the shape CAP-085A.1's D9-D16 pre-specified.
 
-    Serialization remains absent — CAP-085B is a pure implementation
-    milestone and explicitly does not introduce a serializer, an Execution
-    Package integration, or a CLI phase (Stage 9 of the CAP-085B brief).
+    Serialization was absent through CAP-085B — a pure implementation
+    milestone that explicitly introduced no serializer, Execution Package
+    integration, or CLI phase (Stage 9 of the CAP-085B brief). CAP-085C has
+    since activated the runtime: a projection-only serializer now exists
+    (ADR-0027 §D19), so this class asserts the serializer package's presence
+    rather than its absence.
     """
 
     def test_engine_package_exists(self) -> None:
@@ -85,8 +88,9 @@ class TestEngineCodeNowFulfillsThePromise:
     def test_rules_package_exists(self) -> None:
         assert (_ORGANIZATIONAL_MEMORY_PKG / "rules").exists()
 
-    def test_no_serialization_package_exists_yet(self) -> None:
-        assert not (_ORGANIZATIONAL_MEMORY_PKG / "serialization").exists()
+    def test_serialization_package_now_exists(self) -> None:
+        """CAP-085C (ADR-0027 §D19) introduces the projection-only serializer."""
+        assert (_ORGANIZATIONAL_MEMORY_PKG / "serialization").exists()
 
     @pytest.mark.parametrize("name", _COLLABORATOR_NAMES)
     def test_every_frozen_collaborator_is_now_defined_in_code(self, name: str) -> None:

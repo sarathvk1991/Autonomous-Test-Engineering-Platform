@@ -44,10 +44,14 @@ from requirement_intelligence.models.source_artifact import SourceArtifact
 # permanently frozen end of the live pipeline. 1.6.0 (CAP-084C) re-baselines it
 # again to include the three Knowledge Graph artifacts now that Knowledge Graph —
 # Layer 2's second capability — is active immediately after Continuous
-# Improvement, at the permanently frozen end of the live pipeline; the nine
+# Improvement, at the permanently frozen end of the live pipeline. 1.7.0
+# (CAP-085C) re-baselines it again to include the three Organizational Memory
+# artifacts now that Organizational Memory — Layer 2's third capability, and the
+# first to exercise ADR-0025's fan-in exception — is active immediately after
+# Knowledge Graph, at the permanently frozen end of the live pipeline; the nine
 # source artifacts and the golden response are unchanged.
 # ---------------------------------------------------------------------------
-GOLDEN_DATASET_VERSION = "1.6.0"
+GOLDEN_DATASET_VERSION = "1.7.0"
 
 # ---------------------------------------------------------------------------
 # Fixed timestamps (deterministic provenance)
