@@ -1,9 +1,14 @@
 """The :class:`KnowledgeGraphResult` — the frozen runtime contract of the Knowledge
-Graph Framework (CAP-084A architecture freeze, ADR-0023 §D3/§D4).
+Graph Framework (CAP-084A architecture freeze, ADR-0023 §D3/§D4; permanently
+certified as the sole runtime contract by CAP-084B.1, ADR-0023 §D11).
 
 CAP-084A freezes the architecture before any engine exists — exactly as CAP-083A
 did for ``ContinuousImprovementResult`` before CAP-083B's deterministic engine, and
-CAP-082A did for ``RecommendationResult`` before CAP-082B's.
+CAP-082A did for ``RecommendationResult`` before CAP-082B's. CAP-084B then
+implements the first real engine behind this unchanged contract, and CAP-084B.1
+permanently certifies ``KnowledgeGraphResult`` as the canonical runtime contract —
+no field, computation, or signature changes for that certification, exactly as
+CAP-083B.1 certified ``ContinuousImprovementResult`` (ADR-0022 §D10).
 
 It **is**:
 
@@ -148,11 +153,16 @@ class KnowledgeGraphResult(Schema):
     Recommendation 11 of ADR-0022: Derived Knowledge must never recursively
     consume Derived Knowledge).
 
-    **Runtime boundary (frozen, CAP-084A).** Runtime ends at this object:
-    ``HistoricalDatasetReference`` → (future engine, future graph storage) →
-    ``KnowledgeGraphResult``. Everything after that — serialization, reports,
-    Markdown, JSON, the Execution Package — is projection only, and does not exist
-    yet (CAP-084A introduces none of it).
+    **Runtime boundary (frozen, CAP-084A; permanently certified, CAP-084B.1,
+    ADR-0023 §D11).** Runtime ends at this object: ``HistoricalDatasetReference``
+    → (private ``HistoricalDatasetProvider`` → engine-internal ``HistoricalDataset``)
+    → ``DeterministicKnowledgeGraphEngine`` → ``KnowledgeGraphResult``. Everything
+    after that — serialization, reports, Markdown, JSON, graph storage, the
+    Execution Package — is projection only and must compute nothing; none of it
+    exists yet (CAP-084A/CAP-084B introduce none of it). This boundary is now
+    permanently frozen: future serializers, reports, and Execution Package
+    integrations must consume ``KnowledgeGraphResult`` only, never the engine,
+    the provider, the service, or ``PlatformContext``.
 
     **Golden regression boundary (frozen).** A future golden dataset compares this
     object's content, never Markdown or JSON formatting. A presentation change

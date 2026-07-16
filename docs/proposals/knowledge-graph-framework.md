@@ -1,10 +1,10 @@
 # Knowledge Graph Framework — Design Proposal
 
-- **Status:** Proposed (CAP-084A froze the architecture; CAP-084B implemented the first deterministic engine behind it, unchanged)
+- **Status:** Proposed (CAP-084A froze the architecture; CAP-084B implemented the first deterministic engine behind it, unchanged; CAP-084B.1 permanently certified the runtime contract, no behaviour change)
 - **Capability:** CAP-084 — Knowledge Graph Framework
-- **Milestones covered:** CAP-084A (Architecture & Governance Freeze), CAP-084B (Deterministic Knowledge Graph Engine — see §8a)
+- **Milestones covered:** CAP-084A (Architecture & Governance Freeze), CAP-084B (Deterministic Knowledge Graph Engine — see §8a), CAP-084B.1 (KnowledgeGraphResult Runtime Contract Freeze — see §8b)
 - **Governed by:** ADR-0023
-- **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution), ADR-0022 (Continuous Improvement Framework — the first Layer 2 capability and this framework's direct architectural precedent).
+- **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution), ADR-0022 (Continuous Improvement Framework — the first Layer 2 capability and this framework's direct architectural precedent, including its own CAP-083B.1 runtime contract freeze).
 
 ---
 
@@ -122,6 +122,99 @@ CAP-084B is that later milestone: it implements `build` behind the unchanged sig
 
 **Tests.** New deterministic tests cover rule catalogue construction, projection determinism, subgraph detection, observation generation, every finding category (including cycle detection), builder single-computation guarantees, end-to-end engine determinism and explainability, policy gating, and containment (no Layer 1 imports, no Continuous Improvement import, no serializer, no Execution Package, no CLI, no graph database, provider stays private).
 
+## 8b. Runtime Contract Freeze (CAP-084B.1)
+
+CAP-084B.1 permanently certifies `KnowledgeGraphResult` as the runtime contract
+of the Knowledge Graph Framework, before the subsystem is activated in the live
+pipeline — mirroring CAP-080B.1.1 (`QualityAssessmentResult`), CAP-081B.1
+(`RequirementEnhancementResult`), CAP-082B.1 (`RecommendationResult`), and
+CAP-083B.1 (`ContinuousImprovementResult`). **No runtime behaviour changes.** No
+field, no computation, no signature changed; only documentation and
+architecture-only tests were added. Full detail lives in ADR-0023 §D11;
+summarised here:
+
+**Frozen definition.** `KnowledgeGraphResult` is *the complete deterministic
+runtime record produced from exactly one execution of*
+`KnowledgeGraphService.build()`.
+
+- **IS:** the complete runtime output of one Knowledge Graph build; the
+  canonical Layer 2 structural representation; Derived Knowledge;
+  self-contained; independently versioned; deterministic; explainable;
+  projection-independent.
+- **IS NOT:** Historical Truth; graph storage; a graph database; execution
+  history; an execution package; a report; a renderer; a serializer; a CLI
+  object; a mutable graph.
+
+**Ownership (no overlap).** `NodeProjector`/`EdgeProjector` own projection only.
+`SubgraphDetector` owns partitioning only. `ObservationEngine`/`FindingEngine`
+own structural analysis only. `SummaryBuilder`/`MetricsBuilder` own aggregation
+only. The private `HistoricalDatasetProvider` owns resolving a reference into
+an internal `HistoricalDataset` only — never a runtime contract.
+`DeterministicKnowledgeGraphEngine` owns pipeline orchestration of those
+collaborators only. `KnowledgeGraphService` owns orchestration only.
+`KnowledgeGraphResult` owns nodes, edges, subgraphs, observations, findings,
+summary, metrics, provenance, and governing policy identity/version only — it
+never owns runtime engines, the Historical Dataset, graph storage, the
+execution package, reports, serialization, a graph database, or future graph
+embeddings/Graph RAG/ML reasoning. A future serializer owns projection only. A
+future Execution Package owns packaging only. `PlatformContext` owns
+composition only.
+
+**Explainability.** Every node, edge, subgraph, observation, finding, and
+summary/metrics value is reconstructable solely from `KnowledgeGraphResult` —
+no provider inspection, no engine rerun, no graph storage inspection required.
+
+**Runtime boundary.** Runtime ends at `KnowledgeGraphResult`. Everything after
+it — serializers, reports, dashboards, Markdown, graph storage, the Execution
+Package — is projection, and must consume `KnowledgeGraphResult` only, never
+the engine, the provider, the service, or `PlatformContext`:
+
+```
+HistoricalDatasetReference
+    → (private HistoricalDatasetProvider → engine-internal HistoricalDataset)
+    → DeterministicKnowledgeGraphEngine
+    → KnowledgeGraphResult
+    → Serializer (future)
+    → Execution Package (future)
+    → Manifest (future)
+    → Graph storage (future)
+    → Release
+```
+
+**Historical Dataset Resolution Principle (frozen permanently, mirrors
+ADR-0022 Recommendation 10).** `HistoricalDatasetReference` intentionally
+carries provenance only. Implementations may resolve the referenced dataset
+through private collaborators. The resolved dataset is an implementation
+detail; the public runtime boundary remains `HistoricalDatasetReference →
+KnowledgeGraphResult`. `HistoricalDatasetProvider` remains private,
+replaceable, and constructor-injected.
+
+**Derived Knowledge principle (frozen permanently, Recommendation 11).**
+`KnowledgeGraphResult` is Derived Knowledge. It never becomes Historical
+Truth. Historical Truth never becomes Runtime Truth. Knowledge Graph must
+never recursively consume its own prior Derived Knowledge.
+
+**Version-axis independence.** Eight distinct version types exist —
+`KnowledgeGraphFrameworkVersion`, `KnowledgePolicyVersion`,
+`KnowledgeGraphRuleVersion`, `KnowledgeGraphRuleCatalogVersion`,
+`KnowledgeNodeVersion` (reserved), `KnowledgeEdgeVersion` (reserved),
+`KnowledgeObservationVersion` (reserved), `KnowledgeGraphResultVersion` (the
+only axis stamped onto a model today) — each evolving independently.
+`KnowledgeSubgraph`, `KnowledgeFinding`, and `KnowledgeSummary`/
+`KnowledgeMetrics` carry no dedicated schema-version type of their own — a
+deliberate architectural consolidation, not a gap. No new version type was
+invented for this certification.
+
+**Future engine compatibility.** Future deterministic, ML, LLM, Graph Neural
+Network, graph database, and Graph RAG engines must all reuse
+`KnowledgeGraphResult` without contract changes.
+
+**Certification.** `KnowledgeGraphResult` is constitutionally certified as
+the permanent Layer 2 runtime contract for Knowledge Graph — completing
+Architecture Freeze (CAP-084A) → Deterministic Implementation (CAP-084B) →
+Runtime Contract Freeze (CAP-084B.1). Runtime Integration (CAP-084C,
+reserved) is the only remaining step before this framework is live.
+
 ## 9. PlatformContext
 
 `PlatformContext` exposes three composition-root methods, construction only:
@@ -140,11 +233,12 @@ Not introduced by CAP-084A. When a future milestone activates the runtime, every
 
 1. **Done (CAP-084A).** Architecture & governance freeze: canonical models, typed identities, independent version axes, governed policy, dormant service contract, `PlatformContext` registration.
 2. **Done (CAP-084B).** Deterministic Knowledge Graph Engine: derive nodes/edges/subgraphs/observations/findings strictly from a resolved Historical Dataset (Recommendation 2), projecting subsystem-local structures (e.g. `RelationshipGraph`) by reference, never re-implementing their reasoning — via independent, modular collaborators. See §8a.
-3. Historical Dataset implementation (reserved, ADR-0021 §Stage 6) — the actual storage/ordering/lineage/retention/indexing/search `HistoricalDatasetReference` currently only names, and that a future `HistoricalDatasetProvider` may resolve against instead of the CAP-084B deterministic synthesis.
-4. Graph storage (reserved) — a future Neo4j, RDF, property graph, SQL, or in-memory implementation behind the unchanged `build` signature (Recommendation 5).
-5. Runtime activation (CAP-084C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-083C's activation of Continuous Improvement.
-6. Future AI graph reasoning, graph embeddings, graph traversal, and Graph RAG (reserved), behind the unchanged `KnowledgeGraphResult` contract — never a redesign of it.
-7. CAP-085 (Organizational Memory), CAP-086 (Learning Framework) — the remaining reserved Layer 2 capabilities.
+3. **Done (CAP-084B.1).** `KnowledgeGraphResult` Runtime Contract Freeze: permanent certification, no behaviour change. See §8b.
+4. Historical Dataset implementation (reserved, ADR-0021 §Stage 6) — the actual storage/ordering/lineage/retention/indexing/search `HistoricalDatasetReference` currently only names, and that a future `HistoricalDatasetProvider` may resolve against instead of the CAP-084B deterministic synthesis.
+5. Graph storage (reserved) — a future Neo4j, RDF, property graph, SQL, or in-memory implementation behind the unchanged `build` signature (Recommendation 5).
+6. Runtime activation (CAP-084C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-083C's activation of Continuous Improvement.
+7. Future AI graph reasoning, graph embeddings, graph traversal, and Graph RAG (reserved), behind the unchanged `KnowledgeGraphResult` contract — never a redesign of it.
+8. CAP-085 (Organizational Memory), CAP-086 (Learning Framework) — the remaining reserved Layer 2 capabilities.
 
 Each lands behind the unchanged `build` signature and the unchanged `KnowledgeGraphResult` contract — no architectural change required.
 
