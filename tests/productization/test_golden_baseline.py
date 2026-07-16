@@ -93,6 +93,13 @@ _CONTINUOUS_IMPROVEMENT_ARTIFACTS = frozenset(
         "continuous_improvement_metrics.md",
     }
 )
+_KNOWLEDGE_GRAPH_ARTIFACTS = frozenset(
+    {
+        "knowledge_graph_result.json",
+        "knowledge_graph_report.md",
+        "knowledge_graph_metrics.md",
+    }
+)
 _ALL_ARTIFACTS = (
     _CORE_ARTIFACTS
     | _RESULT_ARTIFACTS
@@ -103,6 +110,7 @@ _ALL_ARTIFACTS = (
     | _REQUIREMENT_ENHANCEMENT_ARTIFACTS
     | _RECOMMENDATION_ARTIFACTS
     | _CONTINUOUS_IMPROVEMENT_ARTIFACTS
+    | _KNOWLEDGE_GRAPH_ARTIFACTS
     | {"manifest.json"}
 )
 
@@ -426,6 +434,73 @@ class TestPhase3PipelineExecution:
         assert continuous_improvement.summary.total_opportunities == 0
 
     @pytest.mark.productization
+    def test_knowledge_graph_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
+        """Knowledge Graph ran after Continuous Improvement (CAP-084C) and produced a result."""
+        assert golden_pipeline_result.knowledge_graph_result is not None, (
+            "KnowledgeGraphResult is None — Knowledge Graph did not run despite "
+            "continuous improvement completing."
+        )
+
+    @pytest.mark.productization
+    def test_knowledge_graph_runs_strictly_after_continuous_improvement(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The frozen order: Knowledge Graph only exists once continuous improvement does.
+
+        Knowledge Graph consumes exactly one ``HistoricalDatasetReference`` — never
+        a Layer 1 peer result, and never ``ContinuousImprovementResult``
+        (Recommendation 1/9, ADR-0023) — minted from this run's own
+        ``AnalysisResult`` via the same deterministic single-execution strategy
+        CAP-083C introduced (no real, multi-execution Historical Dataset
+        implementation exists yet, ADR-0021 §Stage 6).
+        """
+        knowledge_graph = golden_pipeline_result.knowledge_graph_result
+        assert golden_pipeline_result.continuous_improvement_result is not None
+        reference = knowledge_graph.historical_dataset
+        assert reference.first_execution_id == golden_pipeline_result.analysis_result.execution_id
+        assert reference.last_execution_id == golden_pipeline_result.analysis_result.execution_id
+        # Knowledge Graph completes after the reference it consumed was minted.
+        assert knowledge_graph.started_at <= knowledge_graph.completed_at
+
+    @pytest.mark.productization
+    def test_knowledge_graph_produces_the_golden_datasets_known_shape(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """A long-term regression guard: the golden dataset's structurally bounded shape.
+
+        Unlike Continuous Improvement's single-execution reference (which can
+        satisfy neither the recurrence nor trend floor, so the golden dataset
+        always observes exactly zero of everything), Knowledge Graph's CAP-084B
+        deterministic provider synthesizes a requirement, an execution, and a
+        dataset node **unconditionally** from every reference — the base shape —
+        plus up to four more node types (recommendation, finding, capability,
+        document) **conditionally**, gated by a SHA-256 digest of the reference's
+        own ``dataset_id`` (which embeds this run's randomly minted
+        ``execution_id``, ADR-0021 §Stage 6 — no real Historical Dataset exists
+        yet). That conditional presence is *reproducible for a fixed reference*
+        (proven by ``test_knowledge_graph_execution_integration.py``'s
+        same-input-same-output tests) but *legitimately varies* across two golden
+        pipeline runs, each of which mints its own fresh, random reference. This
+        test therefore asserts the invariant bounds and node/edge types that
+        *are* stable for every possible execution-count-1 reference, never an
+        exact count. A value outside these bounds is a genuine regression signal.
+        """
+        knowledge_graph = golden_pipeline_result.knowledge_graph_result
+        node_types = {str(node.node_type) for node in knowledge_graph.nodes}
+        assert {"execution", "requirement", "dataset"} <= node_types
+        assert 3 <= len(knowledge_graph.nodes) <= 7
+        assert 2 <= len(knowledge_graph.edges) <= 8
+        # Every conditional node type (recommendation/finding/capability/document)
+        # is always linked back to the requirement node by an edge the moment it
+        # is present (EdgeProjector), so a single-execution reference can never
+        # produce an isolated node, a broken lineage, or a cycle.
+        assert knowledge_graph.subgraphs and len(knowledge_graph.subgraphs) == 1
+        assert len(knowledge_graph.observations) == 3
+        assert knowledge_graph.findings == ()
+        assert knowledge_graph.summary.total_findings == 0
+        assert knowledge_graph.metrics.connected_component_count == 1
+
+    @pytest.mark.productization
     def test_execution_package_written(self, golden_pipeline_result: PipelineResult) -> None:
         """ExecutionWriter completed without raising."""
         assert golden_pipeline_result.write_result is not None
@@ -581,6 +656,29 @@ class TestPhase4OutputVerification:
         assert (
             ContinuousImprovementResult.model_validate(on_disk)
             == golden_pipeline_result.continuous_improvement_result
+        )
+
+    @pytest.mark.productization
+    def test_knowledge_graph_artifacts_present(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Knowledge Graph ran (CAP-084C), so all three artifacts are written."""
+        for name in _KNOWLEDGE_GRAPH_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Knowledge Graph artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Knowledge Graph artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_knowledge_graph_result_json_round_trips(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """knowledge_graph_result.json is a verbatim, round-trippable projection."""
+        from requirement_intelligence.knowledge_graph.models import KnowledgeGraphResult
+
+        on_disk = _load_json(golden_pipeline_result.output_dir / "knowledge_graph_result.json")
+        assert (
+            KnowledgeGraphResult.model_validate(on_disk)
+            == golden_pipeline_result.knowledge_graph_result
         )
 
     @pytest.mark.productization
@@ -974,6 +1072,117 @@ class TestPhase4OutputVerification:
             golden_pipeline_result.execution_data.continuous_improvement_result
             is golden_pipeline_result.continuous_improvement_result
         )
+
+    @pytest.mark.productization
+    def test_manifest_references_knowledge_graph_artifacts_only(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json indexes the Knowledge Graph artifacts; it never duplicates state.
+
+        Manifest purity (ADR-0017 §D31, applied here per ADR-0023 §D11/§D12): the
+        manifest owns package metadata and the artifact inventory only. The
+        canonical nodes, edges, subgraphs, observations, findings, metrics, and
+        summary are the sole runtime state and live exclusively on
+        ``KnowledgeGraphResult`` / the artifact ``knowledge_graph_result.json`` —
+        never re-surfaced as manifest keys.
+        """
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        result = golden_pipeline_result.knowledge_graph_result
+        assert manifest.get("knowledgeGraphExecuted") is True
+        assert manifest.get("knowledgeGraphReport") == "knowledge_graph_report.md"
+        assert manifest.get("knowledgeGraphMetrics") == "knowledge_graph_metrics.md"
+        for forbidden_key in (
+            "knowledgeGraphResult",
+            "knowledgeGraphSummary",
+            "knowledgeGraphNodes",
+            "knowledgeGraphEdges",
+            "knowledgeGraphFindings",
+        ):
+            assert forbidden_key not in manifest
+
+        on_disk = _load_json(golden_pipeline_result.output_dir / "knowledge_graph_result.json")
+        assert on_disk["summary"]["totalNodes"] == result.summary.total_nodes
+
+    @pytest.mark.productization
+    def test_manifest_checksums_the_knowledge_graph_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """knowledge_graph_result.json is checksummed like every other artifact."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        entries = {a["name"]: a for a in manifest["generatedArtifacts"]}
+        entry = entries["knowledge_graph_result.json"]
+        path = golden_pipeline_result.output_dir / "knowledge_graph_result.json"
+        assert entry["sha256"] == _sha256(path)
+        assert entry["bytes"] == path.stat().st_size
+
+    @pytest.mark.productization
+    def test_knowledge_graph_report_contains_the_summary_headline(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """knowledge_graph_report.md is a projection — it shows the result's own headline."""
+        report = (golden_pipeline_result.output_dir / "knowledge_graph_report.md").read_text(
+            encoding="utf-8"
+        )
+        assert golden_pipeline_result.knowledge_graph_result.summary.headline in report
+
+    @pytest.mark.productization
+    def test_knowledge_graph_metrics_contains_the_average_degree(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """knowledge_graph_metrics.md is a projection — it shows the result's own metrics."""
+        metrics_md = (golden_pipeline_result.output_dir / "knowledge_graph_metrics.md").read_text(
+            encoding="utf-8"
+        )
+        average_degree = golden_pipeline_result.knowledge_graph_result.metrics.average_degree
+        assert f"{average_degree:.3f}" in metrics_md
+
+    @pytest.mark.productization
+    def test_execution_data_knowledge_graph_result_matches_pipeline_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The object transported into the Execution Package is the same one returned."""
+        assert (
+            golden_pipeline_result.execution_data.knowledge_graph_result
+            is golden_pipeline_result.knowledge_graph_result
+        )
+
+    @pytest.mark.productization
+    def test_knowledge_graph_artifacts_are_written_after_continuous_improvement_artifacts(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Artifact write order mirrors the frozen pipeline order (Continuous
+        Improvement, then Knowledge Graph)."""
+        names = [
+            entry["name"] for entry in golden_pipeline_result.write_result.manifest[
+                "generatedArtifacts"
+            ]
+        ]
+        last_ci_index = max(
+            index for index, name in enumerate(names) if name.startswith("continuous_improvement")
+        )
+        first_kg_index = min(
+            index for index, name in enumerate(names) if name.startswith("knowledge_graph")
+        )
+        assert last_ci_index < first_kg_index
+
+    @pytest.mark.productization
+    def test_knowledge_graph_result_is_explainable_solely_from_the_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Every node/edge/observation the golden run produced traces to the result alone.
+
+        No re-run of the engine, the provider, or the service is required — the
+        explainability invariant ADR-0023 §D11/§D12 certifies.
+        """
+        result = golden_pipeline_result.knowledge_graph_result
+        known_node_ids = {node.node_id for node in result.nodes}
+        known_edge_ids = {edge.edge_id for edge in result.edges}
+        for edge in result.edges:
+            assert edge.source_node_id in known_node_ids
+            assert edge.target_node_id in known_node_ids
+        for observation in result.observations:
+            assert set(observation.subject_node_ids) <= known_node_ids
+            assert set(observation.subject_edge_ids) <= known_edge_ids
 
     @pytest.mark.productization
     def test_manifest_registers_the_engineering_context(
@@ -1700,6 +1909,88 @@ class TestPhase5Determinism:
         assert "continuousImprovementSummary" not in m2
 
     @pytest.mark.productization
+    def test_determinism_knowledge_graph_result_content(
+        self,
+        golden_pipeline_result: PipelineResult,
+    ) -> None:
+        """The same ``HistoricalDatasetReference``, built twice, yields the same content.
+
+        Unlike Continuous Improvement's always-empty single-execution result,
+        Knowledge Graph's CAP-084B deterministic provider gates several node/edge
+        types on a SHA-256 digest of the reference's own ``dataset_id`` — which
+        embeds this golden run's randomly minted ``execution_id``. Comparing two
+        *independent* golden pipeline runs would therefore compare two different
+        random inputs, not test determinism. The actual determinism contract this
+        engine makes (ADR-0023 §D10, ``test_knowledge_graph_historical_dataset.py``)
+        is *same reference in, same result out* — proven here by resolving the
+        exact reference this golden run already consumed a second time, directly
+        through ``KnowledgeGraphService.build``, and comparing content (never the
+        wall-clock ``startedAt``/``completedAt`` timestamps or the fresh
+        ``resultId``, since that id is minted from the graph id via
+        ``ResultBuilder`` but the object itself is rebuilt, not cached).
+        """
+        from requirement_intelligence.platform.platform_context import PlatformContext
+
+        r1 = golden_pipeline_result.knowledge_graph_result
+        r2 = PlatformContext().create_knowledge_graph_service().build(r1.historical_dataset)
+        assert r1.nodes == r2.nodes
+        assert r1.edges == r2.edges
+        assert r1.subgraphs == r2.subgraphs
+        assert r1.observations == r2.observations
+        assert r1.findings == r2.findings
+        assert r1.summary.total_nodes == r2.summary.total_nodes
+        assert r1.summary.total_edges == r2.summary.total_edges
+        assert r1.metrics == r2.metrics
+        assert r1.graph_id == r2.graph_id
+        assert r1.result_id == r2.result_id
+
+    @pytest.mark.productization
+    def test_determinism_knowledge_graph_serialization(
+        self,
+        golden_pipeline_result: PipelineResult,
+    ) -> None:
+        """Serializer output is a pure function of a ``KnowledgeGraphResult`` — no re-derivation.
+
+        The runtime mints run-specific provenance on the ``startedAt``/
+        ``completedAt`` fields (wall clock); the serializer must render the exact
+        same bytes given the exact same result object, exactly as every other
+        subsystem serializer in this platform does.
+        """
+        from requirement_intelligence.knowledge_graph.serialization import (
+            KnowledgeGraphSerializer,
+        )
+
+        serializer = KnowledgeGraphSerializer()
+        r1 = golden_pipeline_result.knowledge_graph_result
+
+        assert serializer.render_report(r1) == serializer.render_report(r1)
+        assert serializer.render_metrics(r1) == serializer.render_metrics(r1)
+        assert serializer.render_json(r1) == serializer.render_json(r1)
+
+    @pytest.mark.productization
+    def test_determinism_manifest_knowledge_graph_keys_stay_metadata_only(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """manifest Knowledge Graph keys are identical package metadata across two runs.
+
+        Content determinism itself is proven at the runtime-contract boundary by
+        ``test_determinism_knowledge_graph_result_content``: the golden regression
+        compares ``KnowledgeGraphResult`` content, never the manifest. This test
+        only confirms the manifest's package-metadata keys are stable and that no
+        runtime-state key has leaked back into the manifest.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1.get("knowledgeGraphExecuted") == m2.get("knowledgeGraphExecuted")
+        assert m1.get("knowledgeGraphReport") == m2.get("knowledgeGraphReport")
+        assert m1.get("knowledgeGraphMetrics") == m2.get("knowledgeGraphMetrics")
+        assert "knowledgeGraphSummary" not in m1
+        assert "knowledgeGraphSummary" not in m2
+
+    @pytest.mark.productization
     def test_determinism_normalization_outcome(
         self,
         golden_pipeline_result: PipelineResult,
@@ -1828,7 +2119,7 @@ class TestPhase6ProductizationAssertions:
     @pytest.mark.productization
     def test_dataset_version(self) -> None:
         """The golden dataset declares a version."""
-        assert GOLDEN_DATASET_VERSION == "1.5.0"
+        assert GOLDEN_DATASET_VERSION == "1.6.0"
 
     @pytest.mark.productization
     def test_dataset_covers_all_categories(self) -> None:

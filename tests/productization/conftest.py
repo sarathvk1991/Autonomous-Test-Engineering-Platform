@@ -38,6 +38,9 @@ from requirement_intelligence.execution.execution_writer import (
     ExecutionWriter,
     ExecutionWriteResult,
 )
+from requirement_intelligence.knowledge_graph.models import (
+    HistoricalDatasetReference as KnowledgeGraphHistoricalDatasetReference,
+)
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
@@ -151,6 +154,10 @@ class PipelineResult:
     # Continuous Improvement (Layer 2's first capability, immediately after
     # Recommendation)
     continuous_improvement_result: Any  # ContinuousImprovementResult
+
+    # Knowledge Graph (Layer 2's second capability, immediately after
+    # Continuous Improvement)
+    knowledge_graph_result: Any  # KnowledgeGraphResult
 
     # Execution package
     execution_data: ExecutionData
@@ -326,6 +333,28 @@ def _run_golden_pipeline(
     )
 
     # -----------------------------------------------------------------------
+    # Step 6f — Knowledge Graph (CAP-084C): Layer 2's second capability,
+    # immediately after Continuous Improvement, at the permanently frozen end of
+    # the pipeline. It consumes only a HistoricalDatasetReference — never any
+    # Layer 1 peer result, and never ContinuousImprovementResult (Recommendation
+    # 1/9, ADR-0023). Reuses the exact CAP-083C single-execution minting
+    # strategy, just against the deliberately duplicated
+    # knowledge_graph.models.HistoricalDatasetReference type.
+    # -----------------------------------------------------------------------
+    kg_historical_dataset = KnowledgeGraphHistoricalDatasetReference(
+        dataset_id=f"single-execution:{analysis_result.execution_id}",
+        dataset_version="1.0.0",
+        first_execution_id=analysis_result.execution_id,
+        last_execution_id=analysis_result.execution_id,
+        execution_count=1,
+        history_window=1,
+        generated_at=analysis_result.completed_at,
+    )
+    knowledge_graph_result = context.create_knowledge_graph_service().build(
+        kg_historical_dataset
+    )
+
+    # -----------------------------------------------------------------------
     # Step 7 — Execution package
     # -----------------------------------------------------------------------
     execution_data = ExecutionData(
@@ -351,6 +380,7 @@ def _run_golden_pipeline(
         requirement_enhancement_result=requirement_enhancement_result,
         recommendation_result=recommendation_result,
         continuous_improvement_result=continuous_improvement_result,
+        knowledge_graph_result=knowledge_graph_result,
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -370,6 +400,7 @@ def _run_golden_pipeline(
         quality_governance_result=quality_governance_result,
         recommendation_result=recommendation_result,
         continuous_improvement_result=continuous_improvement_result,
+        knowledge_graph_result=knowledge_graph_result,
         execution_data=execution_data,
         write_result=write_result,
         output_dir=tmp_dir,

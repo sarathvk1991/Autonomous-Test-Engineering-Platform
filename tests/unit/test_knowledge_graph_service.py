@@ -128,13 +128,17 @@ class TestPlatformContextRegistration:
 @pytest.mark.unit
 class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
-        """Outside the knowledge_graph package, only PlatformContext may name it.
+        """Outside the knowledge_graph package, only the sanctioned seams may name it.
 
-        CAP-084B registers the deterministic implementation, but the subsystem
-        remains unwired: no CLI phase, execution builder, manifest, or serializer
-        may reference the runtime service, so a future dependency cannot appear
-        silently (mirroring ADR-0022 §D6's containment test for Continuous
-        Improvement, before its own CAP-083C activation).
+        CAP-084C consciously wires the service: the composition root
+        (``PlatformContext``) constructs it, and the CLI orchestration
+        (``run_requirement_analysis.py``) obtains it from there and calls
+        ``build`` exactly once (mirroring the Continuous Improvement activation,
+        ADR-0022 §D11). No other module — no execution builder, manifest, or
+        serializer — may reference the runtime service, so a future dependency
+        cannot appear silently. The Execution Package in particular stays free of
+        the runtime class name: it transports and projects the
+        ``KnowledgeGraphResult``, never the service.
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -144,6 +148,7 @@ class TestRuntimeContainment:
         needle = "KnowledgeGraphService"
         permitted = {
             Path("requirement_intelligence/platform/platform_context.py"),
+            Path("scripts/run_requirement_analysis.py"),
         }
         external_consumers: set[Path] = set()
         for root in roots:
@@ -275,13 +280,28 @@ class TestDependencyBoundaries:
                     for token in forbidden:
                         assert token not in line, f"{path.name} imports {token}"
 
-    def test_no_serializer_execution_package_or_cli_integration_exists_yet(self) -> None:
-        """CAP-084B introduces no serializer or Execution Package integration (Stage 1 scope)."""
-        assert not (_KNOWLEDGE_GRAPH_PKG / "serialization").exists()
-        assert not any(
-            "knowledge_graph" in path.read_text(encoding="utf-8")
-            for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py")
+    def test_serializer_and_execution_package_integration_exist_and_stay_projection_only(
+        self,
+    ) -> None:
+        """CAP-084C introduces the serializer and Execution Package wiring (§8c/§D12).
+
+        The writer may reference the serializer module only — never the engine,
+        service, policy, rule catalogue, or provider — so activation never widens
+        the boundary CAP-084B.1 froze in advance.
+        """
+        assert (_KNOWLEDGE_GRAPH_PKG / "serialization").exists()
+        forbidden = (
+            "DeterministicKnowledgeGraphEngine",
+            "DeterministicKnowledgeGraphService",
+            "KnowledgeGraphRuleCatalog",
+            "KnowledgeGraphPolicy",
+            "HistoricalDatasetProvider",
         )
+        for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
 
     def test_engine_package_is_self_contained(self) -> None:
         """The engine/ package (projectors, analyzers, builders) imports no Layer 1/2 peer,

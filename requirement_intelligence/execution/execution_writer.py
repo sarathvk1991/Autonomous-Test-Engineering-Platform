@@ -37,6 +37,7 @@ from requirement_intelligence.execution.validation_report_builder import (
     ValidationReportBuilder,
 )
 from requirement_intelligence.grounding.serialization import GroundingSerializer
+from requirement_intelligence.knowledge_graph.serialization import KnowledgeGraphSerializer
 from requirement_intelligence.quality_governance.serialization import (
     QualityGovernanceSerializer,
 )
@@ -102,6 +103,7 @@ class ExecutionWriter:
         self._enhancement = EnhancementSerializer()
         self._recommendation = RecommendationSerializer()
         self._continuous_improvement = ContinuousImprovementSerializer()
+        self._knowledge_graph = KnowledgeGraphSerializer()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -308,6 +310,31 @@ class ExecutionWriter:
                 "continuous_improvement_result.json",
                 "continuous_improvement_report.md",
                 "continuous_improvement_metrics.md",
+            ]
+        # Knowledge Graph artifacts (CAP-084C): appended only when a
+        # KnowledgeGraphResult was produced — Layer 2's second capability,
+        # immediately after Continuous Improvement, at the permanently frozen end
+        # of the pipeline. Pure projection — the KnowledgeGraphResult is
+        # serialised/rendered as-is; no node is projected, no edge is projected,
+        # no subgraph is partitioned, no observation is recorded, no finding is
+        # detected here.
+        if data.knowledge_graph_result is not None:
+            _write_json(
+                target_dir / "knowledge_graph_result.json",
+                self._knowledge_graph.render_json(data.knowledge_graph_result),
+            )
+            (target_dir / "knowledge_graph_report.md").write_text(
+                self._knowledge_graph.render_report(data.knowledge_graph_result),
+                encoding="utf-8",
+            )
+            (target_dir / "knowledge_graph_metrics.md").write_text(
+                self._knowledge_graph.render_metrics(data.knowledge_graph_result),
+                encoding="utf-8",
+            )
+            names += [
+                "knowledge_graph_result.json",
+                "knowledge_graph_report.md",
+                "knowledge_graph_metrics.md",
             ]
         return tuple(names)
 

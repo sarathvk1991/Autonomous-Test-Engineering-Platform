@@ -53,6 +53,9 @@ from requirement_intelligence.execution import (  # noqa: E402
     ExecutionHistory,
     ExecutionWriter,
 )
+from requirement_intelligence.knowledge_graph.models import (  # noqa: E402
+    HistoricalDatasetReference as KnowledgeGraphHistoricalDatasetReference,
+)
 from requirement_intelligence.mappers.base_mapper import MapperError  # noqa: E402
 from requirement_intelligence.platform import (  # noqa: E402
     PlatformCapabilities,
@@ -635,6 +638,66 @@ def run_continuous_improvement_phase(
     return result
 
 
+def _knowledge_graph_historical_dataset_reference_for_execution(
+    result: Any,
+) -> KnowledgeGraphHistoricalDatasetReference:
+    """Mint a single-execution ``HistoricalDatasetReference`` for *result* (CAP-084C).
+
+    Reuses the exact deterministic single-execution minting strategy CAP-083C
+    introduced for Continuous Improvement
+    (``_historical_dataset_reference_for_execution`` above) — no second minting
+    strategy is invented for Knowledge Graph. The two calls construct the same
+    field values from the same ``result``; only the target type differs, because
+    ``knowledge_graph.models.HistoricalDatasetReference`` is a deliberately
+    duplicated, structurally identical type (ADR-0023 Stage 0 assessment,
+    ADR-0024 Stage 0), never imported across the two packages. No real Historical
+    Dataset implementation exists yet (ADR-0021 §Stage 6, reserved).
+    """
+    return KnowledgeGraphHistoricalDatasetReference(
+        dataset_id=f"single-execution:{result.execution_id}",
+        dataset_version=_HISTORICAL_DATASET_VERSION,
+        first_execution_id=result.execution_id,
+        last_execution_id=result.execution_id,
+        execution_count=1,
+        history_window=1,
+        generated_at=result.completed_at,
+    )
+
+
+def run_knowledge_graph_phase(
+    context: PlatformContext,
+    historical_dataset: KnowledgeGraphHistoricalDatasetReference,
+    console: Console,
+) -> Any:
+    """Knowledge Graph phase — Layer 2's second capability, immediately after
+    Continuous Improvement (CAP-084C, ADR-0023 §D12).
+
+    Runs at the permanently frozen end of the pipeline::
+
+        ... Recommendation → Historical Dataset → Continuous Improvement
+            → Knowledge Graph → Execution Package
+
+    It consumes **only** the already-minted ``HistoricalDatasetReference`` — never
+    a Layer 1 runtime contract directly, and never any of the peer results this
+    CLI just produced, including ``ContinuousImprovementResult`` (Recommendation
+    1/9, ADR-0023). The single ``KnowledgeGraphService`` comes solely from
+    :class:`PlatformContext`; this CLI is pure orchestration glue and invents no
+    node, edge, subgraph, observation, or finding of its own. Mirroring
+    Grounding/Quality Governance/Recommendation/Continuous Improvement, a failure
+    here is surfaced but never fatal to the analysis run, and never corrupts the
+    already-completed upstream results.
+    """
+    console.action("\nRunning Knowledge Graph")
+    result = context.create_knowledge_graph_service().build(historical_dataset)
+    summary = result.summary
+    console.ok(f"{summary.headline}")
+    console.note(f"  Nodes               : {summary.total_nodes}")
+    console.note(f"  Edges               : {summary.total_edges}")
+    console.note(f"  Subgraphs           : {summary.total_subgraphs}")
+    console.note(f"  Findings            : {summary.total_findings}")
+    return result
+
+
 # ===========================================================================
 # Subcommand handlers
 # ===========================================================================
@@ -878,6 +941,30 @@ def handle_analyze(args: argparse.Namespace) -> int:
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Continuous improvement failed: {exc}")
 
+    # Knowledge Graph phase (CAP-084C): Layer 2's second capability, immediately
+    # after Continuous Improvement, at the permanently frozen end of the pipeline
+    # (... → Recommendation → Historical Dataset → Continuous Improvement →
+    # Knowledge Graph → Execution Package). It consumes only a
+    # HistoricalDatasetReference — never any Layer 1 peer result, and never
+    # ContinuousImprovementResult (Recommendation 1/9, ADR-0023) — and runs
+    # whenever this is a live run (a completed AnalysisResult exists, so a
+    # single-execution reference can be minted, reusing the exact CAP-083C
+    # minting strategy; no real, multi-execution Historical Dataset
+    # implementation exists yet, ADR-0021 §Stage 6). It modifies nothing
+    # upstream. Mirroring every prior phase, a failure here is surfaced but
+    # never fatal, and never corrupts the already-completed upstream results.
+    knowledge_graph_result: Any = None
+    if result is not None:
+        try:
+            kg_historical_dataset = _knowledge_graph_historical_dataset_reference_for_execution(
+                result
+            )
+            knowledge_graph_result = run_knowledge_graph_phase(
+                context, kg_historical_dataset, console
+            )
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Knowledge graph build failed: {exc}")
+
     data = ExecutionData(
         selected=selected,
         engineering_context=engineering_context,
@@ -900,6 +987,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         requirement_enhancement_result=requirement_enhancement_result,
         recommendation_result=recommendation_result,
         continuous_improvement_result=continuous_improvement_result,
+        knowledge_graph_result=knowledge_graph_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

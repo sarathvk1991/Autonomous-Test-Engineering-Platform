@@ -158,4 +158,20 @@ class ManifestBuilder:
             manifest["continuousImprovementReport"] = "continuous_improvement_report.md"
             manifest["continuousImprovementMetrics"] = "continuous_improvement_metrics.md"
 
+        # Knowledge Graph references (CAP-084C): additive, and only when Knowledge
+        # Graph ran. When it did not, the manifest is byte-identical to before — no
+        # key is added, no schema change (manifestSchemaVersion stays 1.0.0). The
+        # three Knowledge Graph artifacts already appear in ``generatedArtifacts``
+        # via the same checksum mechanism as every other file. These three keys are
+        # package metadata only — a flag and two artifact filenames — never the
+        # Knowledge Graph runtime state itself. The canonical nodes, edges,
+        # subgraphs, observations, findings, metrics, and summary live exclusively
+        # in ``knowledge_graph_result.json`` (ADR-0023 §D11/§D12): the manifest
+        # references that artifact, it never duplicates its content.
+        knowledge_graph = data.knowledge_graph_result
+        if knowledge_graph is not None:
+            manifest["knowledgeGraphExecuted"] = True
+            manifest["knowledgeGraphReport"] = "knowledge_graph_report.md"
+            manifest["knowledgeGraphMetrics"] = "knowledge_graph_metrics.md"
+
         return manifest

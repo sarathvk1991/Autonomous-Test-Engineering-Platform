@@ -126,6 +126,19 @@ class ExecutionData:
         ``continuous_improvement_report.md`` / ``continuous_improvement_metrics.md``
         — a pure projection; nothing is re-observed, re-detected, re-generated, or
         recomputed.
+    knowledge_graph_result:
+        The complete ``KnowledgeGraphResult`` produced by the Knowledge Graph
+        runtime — the second Layer 2 capability (ADR-0020) — immediately after
+        Continuous Improvement and at the permanently frozen end of the pipeline
+        (CAP-084C, ADR-0023 §D12). ``None`` when Knowledge Graph did not execute —
+        it runs only for a live run (a completed ``AnalysisResult`` exists, so a
+        single-execution ``HistoricalDatasetReference`` can be minted, exactly the
+        same deterministic strategy CAP-083C introduced for Continuous Improvement),
+        so this is ``None`` for a dry run or on a surfaced-but-non-fatal Knowledge
+        Graph failure. When present, the execution package serialises it as-is into
+        ``knowledge_graph_result.json`` / ``knowledge_graph_report.md`` /
+        ``knowledge_graph_metrics.md`` — a pure projection; nothing is re-projected,
+        re-partitioned, re-observed, re-detected, or recomputed.
     """
 
     selected: Any
@@ -150,6 +163,7 @@ class ExecutionData:
     requirement_enhancement_result: Any | None = None
     recommendation_result: Any | None = None
     continuous_improvement_result: Any | None = None
+    knowledge_graph_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:
