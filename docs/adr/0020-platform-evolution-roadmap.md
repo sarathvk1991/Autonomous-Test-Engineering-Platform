@@ -111,7 +111,7 @@ Layer 1 reasons over **one execution at a time** and never looks backward across
 
 ### Layer 2 — Continuous Learning
 
-**Constitutional foundation:** ADR-0021 (Truth Hierarchy: Runtime Truth → Historical Truth → Derived Knowledge) and ADR-0024 (Historical Dataset & Historical Truth Constitution — the permanent definition of Historical Truth, Historical Dataset ownership, the Historical Dataset Resolution Principle, storage independence, and the Layer 1 → Historical Dataset → Layer 2 dependency chain every Continuous Learning capability inherits by citation, elevated from the pattern CAP-083 and CAP-084 each independently discovered).
+**Constitutional foundation:** ADR-0021 (Truth Hierarchy: Runtime Truth → Historical Truth → Derived Knowledge), ADR-0024 (Historical Dataset & Historical Truth Constitution — the permanent definition of Historical Truth, Historical Dataset ownership, the Historical Dataset Resolution Principle, storage independence, and the Layer 1 → Historical Dataset → Layer 2 dependency chain every Continuous Learning capability inherits by citation, elevated from the pattern CAP-083 and CAP-084 each independently discovered), and ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the permanent definition of Derived Knowledge, Layer 2's exclusive right to produce it, immutability, explainability, and the peer-independence rule governing every Layer 2 capability's relationship to every other, elevated from the pattern ADR-0022 and ADR-0023 each independently discovered).
 
 **Introduces (CAP-083/084's full lifecycles post-date this ADR, see ADR-0022/ADR-0023; CAP-085–086 remain reserved, not yet built):**
 
