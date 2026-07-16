@@ -1,16 +1,21 @@
 """The :class:`OrganizationalMemoryResult` — the frozen runtime contract of the
 Organizational Memory Framework (CAP-085A architecture freeze, ADR-0027
-§D3/§D4).
+§D3/§D4; permanently certified as the sole runtime contract by CAP-085B.1,
+ADR-0027 §D18).
 
 CAP-085A freezes the architecture before any engine exists — exactly as
 CAP-083A did for ``ContinuousImprovementResult`` before CAP-083B's
 deterministic engine, and CAP-084A did for ``KnowledgeGraphResult`` before
-CAP-084B's.
+CAP-084B's. CAP-085B then implements the first real engine behind this
+unchanged contract, and CAP-085B.1 permanently certifies
+``OrganizationalMemoryResult`` as the canonical runtime contract — no field,
+computation, or signature changes for that certification, exactly as
+CAP-084B.1 certified ``KnowledgeGraphResult`` (ADR-0023 §D11).
 
 It **is**:
 
-* the complete runtime output — the single object a future deterministic
-  Organizational Memory engine (reserved, CAP-085B) will cross from into
+* the complete runtime output — the single object
+  ``DeterministicOrganizationalMemoryEngine`` (CAP-085B) crosses from into
   serialization, exactly as ``KnowledgeGraphResult`` crosses from the
   Knowledge Graph Framework's own deterministic engine;
 * the canonical runtime contract — the only Organizational Memory aggregate,
@@ -153,11 +158,16 @@ class OrganizationalMemoryResult(Schema):
     11 of ADR-0022, Recommendation 11/17 of ADR-0023, Recommendation 2 of
     ADR-0025).
 
-    **Runtime boundary (frozen, CAP-085A).** Runtime ends at this object:
-    ``ContinuousImprovementResult`` + ``KnowledgeGraphResult`` → (future
-    engine) → ``OrganizationalMemoryResult``. Everything after that —
-    serialization, reports, Markdown, JSON, the Execution Package — is
-    projection only, and does not exist yet (CAP-085A introduces none of it).
+    **Runtime boundary (frozen, CAP-085A; permanently certified, CAP-085B.1,
+    ADR-0027 §D18).** Runtime ends at this object:
+    ``ContinuousImprovementResult`` + ``KnowledgeGraphResult`` →
+    ``DeterministicOrganizationalMemoryEngine`` → ``OrganizationalMemoryResult``.
+    Everything after that — serialization, reports, Markdown, JSON, the
+    Execution Package — is projection only and must compute nothing; none of
+    it exists yet (CAP-085A/CAP-085B introduce none of it). This boundary is
+    now permanently frozen: future serializers, reports, and Execution
+    Package integrations must consume ``OrganizationalMemoryResult`` only,
+    never the engine, the service, or ``PlatformContext``.
 
     **Golden regression boundary (frozen).** A future golden dataset compares
     this object's content, never Markdown or JSON formatting. A presentation

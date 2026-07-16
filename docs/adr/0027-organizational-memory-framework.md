@@ -1,11 +1,11 @@
 # ADR-0027 — Organizational Memory Framework
 
-- **Status:** Proposed (CAP-085A — Architecture & Governance Freeze; CAP-085A.1 — Engine Architecture Refinement & Governance Freeze; CAP-085B — Deterministic Engine implemented behind the frozen contracts)
-- **Date:** 2026-07-16 (CAP-085A — Architecture & Governance Freeze); 2026-07-16 (CAP-085A.1 — Engine Architecture Refinement & Governance Freeze); 2026-07-16 (CAP-085B — Deterministic Organizational Memory Engine)
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-085A.1 (Engine Architecture Refinement — froze the future deterministic engine's internal decomposition, the adjacent-only promotion discipline, and engine governance *before* any engine existed, mirroring how ADR-0023 §D10 pre-specified Knowledge Graph's own modular decomposition ahead of CAP-084B; see the Internal Engine Architecture section and D9–D16); CAP-085B (Deterministic Organizational Memory Engine — implements the first real engine behind the doubly-frozen contracts, filling exactly the shape D9–D16 pre-specified; see §D17). A future runtime-integration milestone (CAP-085C, reserved) will wire `build` into a live pipeline.
+- **Status:** Proposed (CAP-085A — Architecture & Governance Freeze; CAP-085A.1 — Engine Architecture Refinement & Governance Freeze; CAP-085B — Deterministic Engine implemented behind the frozen contracts; CAP-085B.1 — `OrganizationalMemoryResult` Runtime Contract permanently certified, no behaviour change)
+- **Date:** 2026-07-16 (CAP-085A — Architecture & Governance Freeze); 2026-07-16 (CAP-085A.1 — Engine Architecture Refinement & Governance Freeze); 2026-07-16 (CAP-085B — Deterministic Organizational Memory Engine); 2026-07-16 (CAP-085B.1 — Runtime Contract Freeze)
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-085A.1 (Engine Architecture Refinement — froze the future deterministic engine's internal decomposition, the adjacent-only promotion discipline, and engine governance *before* any engine existed, mirroring how ADR-0023 §D10 pre-specified Knowledge Graph's own modular decomposition ahead of CAP-084B; see the Internal Engine Architecture section and D9–D16); CAP-085B (Deterministic Organizational Memory Engine — implements the first real engine behind the doubly-frozen contracts, filling exactly the shape D9–D16 pre-specified; see §D17); CAP-085B.1 (permanent `OrganizationalMemoryResult` runtime-contract certification, mirroring CAP-084B.1, CAP-083B.1, CAP-082B.1, CAP-081B.1, and CAP-080B.1.1 — no behaviour change; see §D18). A future runtime-integration milestone (CAP-085C, reserved) will wire `build` into a live pipeline.
 - **Governing design:** `docs/proposals/organizational-memory-framework.md`
-- **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution — this is the third Layer 2 capability it names), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution — the Truth Hierarchy this framework's every boundary applies), ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the fan-in exception this framework is the first concrete implementation of, ADR-0025 §Stage 7/8), and ADR-0026 (Organizational Knowledge Architecture & Learning Constitution — the full constitutional definition of what this framework produces, including the knowledge hierarchy CAP-085A.1's D10 enforces at the model level). Also informed by ADR-0022 (Continuous Improvement Framework) and ADR-0023 (Knowledge Graph Framework) — the two completed Layer 2 peer capabilities this framework consumes, and the direct architectural precedent this ADR mirrors, including ADR-0023 §D10's modular engine decomposition CAP-085A.1's own D9 mirrored one milestone ahead of implementation, and now CAP-085B has filled.
-- **Runtime status:** **Implemented, still dormant (CAP-085B).** `OrganizationalMemoryService.build` now has a real implementation, `DeterministicOrganizationalMemoryService`, delegating to a private `DeterministicOrganizationalMemoryEngine` — a thin pipeline orchestrator over independent, modular collaborators (experience collection, clustering, lesson generation/consolidation, best-practice generation, promotion recording, lifecycle recording, summary/metrics/result builders), governed by the `PromotionRuleCatalog` and `OrganizationalMemoryPolicy`, policy-gated, fully explainable — see §D17. `PlatformContext.create_organizational_memory_service()` constructs the deterministic service by default. Nothing calls `build` at runtime yet — no CLI phase, no Execution Package field — so runtime behaviour remains byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0** and no frozen contract of any Layer 1 or Layer 2 subsystem changed.
+- **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution — this is the third Layer 2 capability it names), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution — the Truth Hierarchy this framework's every boundary applies), ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the fan-in exception this framework is the first concrete implementation of, ADR-0025 §Stage 7/8), and ADR-0026 (Organizational Knowledge Architecture & Learning Constitution — the full constitutional definition of what this framework produces, including the knowledge hierarchy CAP-085A.1's D10 enforces at the model level). Also informed by ADR-0022 (Continuous Improvement Framework) and ADR-0023 (Knowledge Graph Framework) — the two completed Layer 2 peer capabilities this framework consumes, and the direct architectural precedent this ADR mirrors, including ADR-0023 §D10's modular engine decomposition CAP-085A.1's own D9 mirrored one milestone ahead of implementation, and now CAP-085B has filled, and their own CAP-083B.1 and CAP-084B.1 runtime contract freezes CAP-085B.1 now mirrors.
+- **Runtime status:** **Implemented, still dormant (CAP-085B); runtime contract permanently certified (CAP-085B.1).** `OrganizationalMemoryService.build` now has a real implementation, `DeterministicOrganizationalMemoryService`, delegating to a private `DeterministicOrganizationalMemoryEngine` — a thin pipeline orchestrator over independent, modular collaborators (experience collection, clustering, lesson generation/consolidation, best-practice generation, promotion recording, lifecycle recording, summary/metrics/result builders), governed by the `PromotionRuleCatalog` and `OrganizationalMemoryPolicy`, policy-gated, fully explainable — see §D17. `OrganizationalMemoryResult` is constitutionally certified as the permanent runtime contract (§D18). `PlatformContext.create_organizational_memory_service()` constructs the deterministic service by default. Nothing calls `build` at runtime yet — no CLI phase, no Execution Package field — so runtime behaviour remains byte-identical and the golden baseline is unchanged. The Architecture Version remains **1.2.0**, `OrganizationalMemoryResultVersion` remains **1.0.0**, and no frozen contract of any Layer 1 or Layer 2 subsystem changed. See §D18.
 
 ## Problem
 
@@ -224,6 +224,88 @@ CAP-085B implements the first real engine behind the CAP-085A/CAP-085A.1 boundar
 
 **Tests.** New deterministic tests cover the rule catalogue (governed vocabulary, metadata-only shape, no threshold field), each collaborator's sole-authority ownership, clustering determinism, floor-gated lesson/best-practice generation, confidence scaling, promotion provenance completeness, lifecycle append-only recording, builder single-computation guarantees, end-to-end engine determinism and explainability, policy gating, and containment (no Layer 1 imports, no Historical Dataset touched directly, no peer implementation class imported, `HistoricalDatasetProvider`/`HistoricalDatasetReference` never crossing in, only `PlatformContext` constructs the service externally).
 
+## D18 — OrganizationalMemoryResult Runtime Contract (CAP-085B.1 permanent certification)
+
+CAP-085B.1 makes **no runtime behaviour change whatsoever**. It permanently certifies `OrganizationalMemoryResult` as the canonical runtime contract of the Organizational Memory Framework, exactly as CAP-080B.1.1 certified `QualityAssessmentResult`, CAP-081B.1 certified `RequirementEnhancementResult`, CAP-082B.1 certified `RecommendationResult`, CAP-083B.1 certified `ContinuousImprovementResult`, and CAP-084B.1 certified `KnowledgeGraphResult` — each *before* its subsystem's own runtime activation. This section is the permanent reference for that certification; nothing here changes a field, a computation, or a signature.
+
+**Frozen definition.** `OrganizationalMemoryResult` is *the complete deterministic runtime record produced from exactly one execution of* `OrganizationalMemoryService.build()`.
+
+**OrganizationalMemoryResult IS.** The complete runtime output of one Organizational Memory build; the canonical Layer 2 curation contract; Organizational Knowledge (ADR-0026 §Stage 1); self-contained; independently versioned; deterministic; explainable; projection-independent.
+
+**OrganizationalMemoryResult IS NOT.** Derived Knowledge; Historical Truth; Runtime Truth; either consumed Layer 2 result's own content; an execution package; a report; a renderer; a serializer; a CLI object; a mutable ledger.
+
+**Ownership (frozen, no overlap).**
+
+| Component | Owns | Owns *not* |
+|---|---|---|
+| `ExperienceCollector` | experience capture from named Continuous Improvement / Knowledge Graph objects | clustering, generation, promotion, lifecycle, orchestration |
+| `ExperienceClusterer` | byte-equality experience clustering | experience capture, generation, promotion, lifecycle |
+| `LessonGenerator` / `LessonConsolidator` | floor-gated lesson generation, lesson consolidation | experience capture, best-practice generation, promotion, lifecycle |
+| `BestPracticeGenerator` | floor-gated best-practice generation from Lessons only | experience/lesson generation, promotion, lifecycle |
+| `PromotionRecorder` | promotion-record construction | generation of the promoted knowledge itself, lifecycle |
+| `LifecycleRecorder` | lifecycle-state record construction | generation, promotion |
+| `SummaryBuilder` / `MetricsBuilder` | summary, metrics | orchestration, generation, promotion, lifecycle, packaging |
+| `DeterministicOrganizationalMemoryEngine` | pipeline orchestration of the collaborators above | any runtime contract, projection, packaging |
+| `OrganizationalMemoryService` | orchestration only | any computation the engine performs |
+| `OrganizationalMemoryResult` | experiences, lessons, best practices, promotions, lifecycles, summary, metrics, provenance, governing policy identity/version, and the two consumed Layer 2 result id references | runtime engines, either consumed Layer 2 result's own content, execution package, reports, serialization, future graph embeddings, future Graph RAG, future ML/neuro-symbolic reasoning |
+| Serializer (future) | projection only | generation, orchestration, packaging |
+| Execution Package (future) | packaging only | generation, orchestration, projection logic |
+| CLI (future) | orchestration (of the pipeline call) only | generation, projection, packaging |
+| `PlatformContext` | composition only | generation, orchestration, projection, packaging |
+
+**Explainability (frozen).** Every experience, lesson, best practice, promotion, and lifecycle record must be reconstructable solely from `OrganizationalMemoryResult`. No upstream subsystem, engine, service, or `PlatformContext` needs ever be inspected or re-run. `OrganizationalMemoryResult` is the complete explanation.
+
+**Runtime boundary (frozen).** Runtime ends at
+
+```
+ContinuousImprovementResult + KnowledgeGraphResult
+        ↓
+OrganizationalMemoryService
+        ↓
+OrganizationalMemoryResult
+```
+
+Everything after that is projection only. Future serializers, reports, dashboards, Markdown, HTML, and the Execution Package must consume `OrganizationalMemoryResult` only — never the engine, never the service, never `PlatformContext`, and must compute nothing.
+
+```
+ContinuousImprovementResult + KnowledgeGraphResult
+    → DeterministicOrganizationalMemoryEngine
+    → OrganizationalMemoryResult
+    → Serializer (future)
+    → Execution Package (future)
+    → Manifest (future)
+    → Release
+```
+
+No reverse dependency: nothing later in this chain is ever imported by anything earlier in it.
+
+**Layer 2 Fan-In Reference Principle (frozen permanently, mirrors ADR-0025 §Stage 7/8, D2 above).** `OrganizationalMemoryResult` intentionally references the two consumed Layer 2 results by id only (`continuous_improvement_result_id`, `knowledge_graph_result_id`) — never embedding either result's content. The public runtime boundary remains `ContinuousImprovementResult + KnowledgeGraphResult → OrganizationalMemoryResult`; the referenced results themselves remain each their own subsystem's already-frozen runtime contract (ADR-0022 §D3, ADR-0023 §D3), never duplicated here.
+
+**Organizational Knowledge principle (frozen permanently, mirrors D3 above; now the platform-wide constitution of ADR-0026).** `OrganizationalMemoryResult` is Organizational Knowledge — never Derived Knowledge, Historical Truth, or Runtime Truth. It must never be written back into either `ContinuousImprovementResult` or `KnowledgeGraphResult` it was computed from. Every execution of `build` derives its curated knowledge directly from the two resolved Layer 2 results — never from a prior `OrganizationalMemoryResult`. Organizational Knowledge must never recursively consume Organizational Knowledge. ADR-0026 generalizes this principle platform-wide — future Organizational Knowledge capabilities cite ADR-0026 directly rather than restating this paragraph.
+
+**Organizational Knowledge Truth Hierarchy remains permanent (frozen permanently, Recommendation 19 below).** `OrganizationalMemoryResult` never becomes Derived Knowledge, Historical Truth, or Runtime Truth, and it must never be written back into either consumed Layer 2 result.
+
+**Curation remains deterministic (frozen permanently, Recommendation 20 below).** Experience capture, clustering, lesson/best-practice generation, promotion, and lifecycle recording must remain reproducible from the same two consumed Layer 2 results and the same governed policy.
+
+**Organizational Memory remains explainable (frozen permanently, Recommendation 9 above).** Every experience, lesson, best practice, promotion, and lifecycle record must be traceable to the two consumed Layer 2 results within the same `OrganizationalMemoryResult`.
+
+**Runtime precedes projection (frozen permanently, Recommendation 10 above).** Serialization, dashboards, reporting, and the Execution Package are execution-time projections. They must never redefine or mutate this runtime contract.
+
+**Version-axis independence (frozen; full detail in `organizational_memory/identity/organizational_memory_identity.py`'s module docstring).** Eight distinct runtime-contract-facing version types exist — `OrganizationalMemoryFrameworkVersion`, `OrganizationalMemoryPolicyVersion`, `LessonVersion` (reserved), `BestPracticeVersion` (reserved), `KnowledgeLifecycleVersion` (reserved), `PromotionRuleVersion` (CAP-085B), `PromotionRuleCatalogVersion` (CAP-085B), `OrganizationalMemoryResultVersion` (the only axis stamped onto a model today) — each evolving independently. A ninth type, `OrganizationalMemoryEngineVersion` (CAP-085B), versions the deterministic engine's own internal implementation rather than any runtime-contract-facing schema, and is therefore excluded from this contract's axis count — mirroring the engine/contract separation every prior subsystem's own freeze already established. `Experience`, `KnowledgePromotion`, and `OrganizationalMemoryMetrics` carry no dedicated schema-version type of their own; `OrganizationalMemorySummary` carries only the governing policy version — a deliberate architectural consolidation, mirroring the precedent CAP-082B.1 established and CAP-083B.1/CAP-084B.1 reaffirmed for their own atomic finding/issue models; no new version type is invented by this certification.
+
+**Future engine compatibility (frozen permanently).** Future statistical, ML, LLM, GraphRAG, and neuro-symbolic engines must all reuse `OrganizationalMemoryResult` without contract changes.
+
+**Additional constitutional principles (frozen, CAP-085B.1), cross-referenced to the Recommendations already governing this ADR:**
+
+1. `OrganizationalMemoryResult` is the sole runtime authority for Organizational Knowledge produced by Organizational Memory (Recommendation 1; frozen definition, above).
+2. `OrganizationalMemoryResult` references, never embeds, the two consumed Layer 2 results (Layer 2 Fan-In Reference Principle, above; Recommendation 6).
+3. `OrganizationalMemoryResult` never becomes Derived Knowledge, Historical Truth, or Runtime Truth, and is never recursively consumed by a future Organizational Memory build (Organizational Knowledge principle, above; Recommendation 19 below).
+4. Runtime contracts evolve independently of engines, services, rule catalogues, serializers, and execution packaging (Version-axis independence, above; Recommendation 5).
+5. Organizational Memory remains a pure Layer 2 fan-in consumer of Continuous Improvement's and Knowledge Graph's Derived Knowledge and must never consume Layer 1 runtime contracts directly, nor recursively consume its own previous Organizational Knowledge (D2, D3, Recommendation 6/7).
+6. Future statistical, ML, LLM, GraphRAG, and neuro-symbolic engines must implement the unchanged `build(ContinuousImprovementResult, KnowledgeGraphResult) -> OrganizationalMemoryResult` contract, ensuring long-term engine replaceability (D8, Recommendation 12).
+
+**Certification.** `OrganizationalMemoryResult` is hereby constitutionally certified as the permanent Layer 2 runtime contract for Organizational Memory, completing the same architectural lifecycle (Architecture Freeze → Engine Architecture Refinement → Deterministic Implementation → Runtime Contract Freeze) previously established for Quality Governance (CAP-080B.1.1), Requirement Enhancement (CAP-081B.1), Recommendation (CAP-082B.1), Continuous Improvement (CAP-083B.1), and Knowledge Graph (CAP-084B.1). No field, validator, or signature changed to produce this certification. The repository is certified ready for **CAP-085C — Organizational Memory Runtime Integration**, with no further architectural work required.
+
 ---
 
 ### Recommendation 1 — Organizational Memory is the sole curator of Organizational Knowledge
@@ -313,6 +395,14 @@ Organizational Knowledge derived from completed Layer 2 capabilities. Technical 
 
 This recommendation is permanently frozen.
 
+### Recommendation 19 — Organizational Knowledge Truth Hierarchy Boundary is Permanent (mandatory, CAP-085B.1, frozen permanently)
+
+`OrganizationalMemoryResult` never becomes Derived Knowledge, Historical Truth, or Runtime Truth (D3, D18). It must never be written back into either `ContinuousImprovementResult` or `KnowledgeGraphResult` it was computed from, and no Organizational Memory build may recursively consume a prior `OrganizationalMemoryResult` as an input.
+
+### Recommendation 20 — Curation Remains Deterministic (mandatory, CAP-085B.1, frozen permanently)
+
+Experience capture, clustering, lesson/best-practice generation, promotion recording, and lifecycle recording must remain reproducible from the same two consumed Layer 2 results and the same governed policy (D18). A future statistical, ML, LLM, GraphRAG, or neuro-symbolic engine may change *how* curation decides, but never breaks reproducibility of `OrganizationalMemoryResult` for the same inputs and policy version.
+
 ---
 
 ## Trade-offs
@@ -324,6 +414,7 @@ This recommendation is permanently frozen.
 ## Future evolution
 
 - **CAP-085B — Deterministic Organizational Memory Engine (done).** The first real engine behind the frozen `build` signature: deterministic experience capture, lesson promotion, and best-practice promotion strictly from the two resolved Layer 2 results (Recommendation 6), never independent analysis or re-implementation of either peer's own reasoning — implemented as the modular collaborator pipeline CAP-085A.1's D9/D12 pre-specified (`ExperienceCollector` through `ResultBuilder`), governed by the `PromotionRuleCatalog` D14 named, never a single monolithic engine class. See §D17.
+- **CAP-085B.1 — OrganizationalMemoryResult Runtime Contract Freeze (done).** Permanently certifies `OrganizationalMemoryResult` as the canonical Layer 2 runtime contract (§D18) — no field, validator, or signature change; documentation and architecture tests only, mirroring CAP-084B.1.
 - **Runtime activation (CAP-085C, reserved)** — wiring `build` into a live pipeline, plus a future Execution Package projection and golden re-baseline, mirroring CAP-083C's activation of Continuous Improvement and CAP-084C's activation of Knowledge Graph.
 - **CAP-086 (Learning Framework)** — the remaining reserved Layer 2 capability (ADR-0020), to consume `OrganizationalMemoryResult` per Recommendation 8 above.
 - **Future AI graph reasoning, embeddings, and Graph RAG over curated knowledge** (reserved) — higher-layer or engine-variant capabilities that consume `OrganizationalMemoryResult` without ever becoming part of this contract.
@@ -333,5 +424,5 @@ This recommendation is permanently frozen.
 
 - **Owns:** curated Organizational Knowledge — experiences, lessons, best practices, promotion history, lifecycle state, Organizational Memory metadata. Owns the deterministic engine and its modular collaborators (D9–D17), the governed `PromotionRuleCatalog`, and the engine-internal confidence computation.
 - **Does not own:** Engineering Context Orchestration, Analysis, Requirement Enhancement, Grounding, Validation, CP1, Quality Governance, Recommendation, Continuous Improvement, Knowledge Graph, the Execution Package, or the Historical Dataset itself (ADR-0021 §Stage 6 names that owner, not this ADR). Does not own any Learning Framework responsibility (ADR-0026 §Stage 11, reserved for CAP-086). Never generates a new technical finding or analytical conclusion (Recommendation 18) — that remains Continuous Improvement's and Knowledge Graph's own responsibility.
-- **Runtime position (implemented, still dormant — CAP-085B):** `ContinuousImprovementResult` + `KnowledgeGraphResult` → `ExperienceCollector` → `ExperienceClusterer` → `LessonGenerator` → `LessonConsolidator` → `BestPracticeGenerator` → `PromotionRecorder` → `LifecycleRecorder` → `SummaryBuilder`/`MetricsBuilder` → `ResultBuilder` → `OrganizationalMemoryResult` → (future) Execution Package. Architecture frozen; the deterministic engine exists and is fully tested; nothing is wired into any execution pipeline yet.
-- **Governance:** registered as CAP-085 for the Requirement Intelligence Platform's Layer 2 — the third capability built under ADR-0020/ADR-0021/ADR-0025/ADR-0026, following Continuous Improvement (ADR-0022) and Knowledge Graph (ADR-0023). This ADR is **Proposed**; CAP-085A.1 strengthened it with the frozen internal engine architecture and promotion/lifecycle/result ownership rules under an unchanged public contract; CAP-085B extends it with the first deterministic engine implementing that frozen shape, exactly mirroring ADR-0022's and ADR-0023's own status ahead of their own runtime-integration milestones.
+- **Runtime position (implemented, still dormant — CAP-085B; runtime contract permanently certified — CAP-085B.1):** `ContinuousImprovementResult` + `KnowledgeGraphResult` → `ExperienceCollector` → `ExperienceClusterer` → `LessonGenerator` → `LessonConsolidator` → `BestPracticeGenerator` → `PromotionRecorder` → `LifecycleRecorder` → `SummaryBuilder`/`MetricsBuilder` → `ResultBuilder` → `OrganizationalMemoryResult` → (future) Execution Package. Architecture frozen; the deterministic engine exists and is fully tested; `OrganizationalMemoryResult` is constitutionally certified as the permanent runtime contract (§D18); nothing is wired into any execution pipeline yet.
+- **Governance:** registered as CAP-085 for the Requirement Intelligence Platform's Layer 2 — the third capability built under ADR-0020/ADR-0021/ADR-0025/ADR-0026, following Continuous Improvement (ADR-0022) and Knowledge Graph (ADR-0023). This ADR is **Proposed**; CAP-085A.1 strengthened it with the frozen internal engine architecture and promotion/lifecycle/result ownership rules under an unchanged public contract; CAP-085B extends it with the first deterministic engine implementing that frozen shape; CAP-085B.1 permanently certifies that contract, exactly mirroring ADR-0022's and ADR-0023's own status ahead of their own runtime-integration milestones. The repository is certified ready for CAP-085C — Organizational Memory Runtime Integration.
