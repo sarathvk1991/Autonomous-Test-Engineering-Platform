@@ -1,11 +1,11 @@
 # ADR-0029 — Learning Framework
 
-- **Status:** Proposed (CAP-086A — Architecture & Governance Freeze; CAP-086A.1 — Learning Architecture Refinement & Engine Governance Freeze)
-- **Date:** 2026-07-16 (CAP-086A — Architecture & Governance Freeze); 2026-07-16 (CAP-086A.1 — Learning Architecture Refinement & Engine Governance Freeze)
-- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-086A.1 (Learning Architecture Refinement — freezes the future deterministic engine's internal decomposition, the adjacent-only promotion discipline, the Validation/Institutionalization/Stability distinctions, and engine governance *before* any engine exists, mirroring how ADR-0023 §D10 pre-specified Knowledge Graph's own modular decomposition ahead of CAP-084B, and ADR-0027's own CAP-085A.1 pre-specified Organizational Memory's; see the Internal Engine Architecture section and D9–D17). A future runtime-integration milestone (CAP-086B, reserved) will implement a deterministic engine behind these now-doubly-frozen contracts, mirroring how CAP-083B implemented the first deterministic Continuous Improvement engine behind ADR-0022, CAP-084B implemented the first deterministic Knowledge Graph engine behind ADR-0023, and CAP-085B implemented the first deterministic Organizational Memory engine behind ADR-0027.
+- **Status:** Proposed (CAP-086A — Architecture & Governance Freeze; CAP-086A.1 — Learning Architecture Refinement & Engine Governance Freeze; CAP-086A.2 — Learning Decision Governance & Deterministic Execution Constitution)
+- **Date:** 2026-07-16 (CAP-086A — Architecture & Governance Freeze); 2026-07-16 (CAP-086A.1 — Learning Architecture Refinement & Engine Governance Freeze); 2026-07-16 (CAP-086A.2 — Learning Decision Governance & Deterministic Execution Constitution)
+- **Supersedes:** nothing. **Amends:** nothing. **Extended by:** CAP-086A.1 (Learning Architecture Refinement — freezes the future deterministic engine's internal decomposition, the adjacent-only promotion discipline, the Validation/Institutionalization/Stability distinctions, and engine governance *before* any engine exists, mirroring how ADR-0023 §D10 pre-specified Knowledge Graph's own modular decomposition ahead of CAP-084B, and ADR-0027's own CAP-085A.1 pre-specified Organizational Memory's; see the Internal Engine Architecture section and D9–D17). CAP-086A.2 (Decision Governance & Deterministic Execution Constitution — freezes *how* every Learning decision must be made: deterministic, explainable, reproducible, policy-governed, immutable, append-only, and free of hidden state, plus the whole-engine purity guarantee those per-decision properties compose into; see the Decision Governance & Deterministic Execution section and D18–D26). A future runtime-integration milestone (CAP-086B, reserved) will implement a deterministic engine behind these now-triply-frozen contracts, mirroring how CAP-083B implemented the first deterministic Continuous Improvement engine behind ADR-0022, CAP-084B implemented the first deterministic Knowledge Graph engine behind ADR-0023, and CAP-085B implemented the first deterministic Organizational Memory engine behind ADR-0027.
 - **Governing design:** `docs/proposals/learning-framework.md`
-- **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution — this is the fourth and final Layer 2 capability it names), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution — the Truth Hierarchy this framework's every boundary applies), ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the peer-independence and fan-in rules this framework's own single-input boundary is defined against), ADR-0026 (Organizational Knowledge Architecture & Learning Constitution — Learning's earliest principles, §Stage 11), and ADR-0028 (Learning Constitution — the full constitutional definition of what this framework produces: Learning, Learned Knowledge, the four-level Knowledge Promotion Chain, Learning Validation, Lineage, Maturity, Confidence, and Evolution, including the adjacent-promotion discipline CAP-086A.1's D11 enforces at the model level). Also informed by ADR-0022 (Continuous Improvement Framework), ADR-0023 (Knowledge Graph Framework), and ADR-0027 (Organizational Memory Framework) — the three completed Layer 2 peer capabilities that precede this one, and the direct architectural precedent this ADR mirrors, including ADR-0023 §D10's and ADR-0027 §D9's modular engine decomposition CAP-086A.1's own D9 mirrors one milestone ahead of implementation.
-- **Runtime status:** **Architecture only (CAP-086A; strengthened, still architecture only, CAP-086A.1).** `LearningService.build` is an **abstract, dormant contract**; `DormantLearningService` raises `NotImplementedError` on every call. No candidate is proposed, no learning is validated, no confidence is recorded, no lifecycle is recorded, and nothing is wired into a runtime path. CAP-086A.1 introduces no code — no collaborator class, no rule catalogue, no `engine/` package — it only freezes the *shape* CAP-086B must fill (Internal Engine Architecture, below). Runtime behaviour is byte-identical; the golden baseline is unchanged; the Architecture Version remains **1.2.0**.
+- **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution — this is the fourth and final Layer 2 capability it names), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution — the Truth Hierarchy this framework's every boundary applies), ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the peer-independence and fan-in rules this framework's own single-input boundary is defined against), ADR-0026 (Organizational Knowledge Architecture & Learning Constitution — Learning's earliest principles, §Stage 11), and ADR-0028 (Learning Constitution — the full constitutional definition of what this framework produces: Learning, Learned Knowledge, the four-level Knowledge Promotion Chain, Learning Validation, Lineage, Maturity, Confidence, and Evolution, including the adjacent-promotion discipline CAP-086A.1's D11 enforces at the model level, and the deterministic/explainable/reproducible decision discipline CAP-086A.2's D18 generalizes to every Learning decision). Also informed by ADR-0022 (Continuous Improvement Framework), ADR-0023 (Knowledge Graph Framework), and ADR-0027 (Organizational Memory Framework) — the three completed Layer 2 peer capabilities that precede this one, and the direct architectural precedent this ADR mirrors, including ADR-0023 §D10's and ADR-0027 §D9's modular engine decomposition CAP-086A.1's own D9 mirrors one milestone ahead of implementation.
+- **Runtime status:** **Architecture only (CAP-086A; strengthened, still architecture only, CAP-086A.1; decision philosophy frozen, still architecture only, CAP-086A.2).** `LearningService.build` is an **abstract, dormant contract**; `DormantLearningService` raises `NotImplementedError` on every call. No candidate is proposed, no learning is validated, no confidence is recorded, no lifecycle is recorded, and nothing is wired into a runtime path. CAP-086A.1 introduced no code — no collaborator class, no rule catalogue, no `engine/` package — only the *shape* CAP-086B must fill. CAP-086A.2 introduces no code either — it freezes *how* CAP-086B's collaborators must decide, not what they decide (Decision Governance & Deterministic Execution, below). Runtime behaviour is byte-identical; the golden baseline is unchanged; the Architecture Version remains **1.2.0**.
 
 ## Problem
 
@@ -258,6 +258,82 @@ Future engines may change algorithms within any single stage. They must preserve
 
 Every collaborator named in D9 may later have deterministic, ML, LLM, GraphRAG, reinforcement learning, neuro-symbolic, or hybrid implementations. `LearningService`, `LearningResult`, and `PlatformContext` remain unchanged regardless of which collaborators a future milestone implements first or replaces later (Recommendation 22 below).
 
+## Decision Governance & Deterministic Execution (frozen, CAP-086A.2)
+
+CAP-086A.2 freezes *how* every Learning decision must be made — before CAP-086B implements a single one. This section introduces **no code**: no collaborator class exists yet, no rule catalogue exists yet, and none is created by this milestone. It permanently freezes the decision philosophy CAP-086B's engine, and every future engine variant after it, must satisfy.
+
+### D18 — Deterministic Decision Principle (frozen, CAP-086A.2)
+
+Freeze permanently. Every Learning decision — whatever collaborator makes it, whatever engine implements that collaborator — is:
+
+* **deterministic** — the same inputs always produce the same decision;
+* **explainable** — every decision names the specific inputs it was derived from (D23);
+* **reproducible** — regenerable at any time from the same inputs, with no dependence on when it was first made (D24);
+* **policy-governed** — bounded by `LearningPolicy`'s capability switches and thresholds, never a literal hard-coded in a collaborator (D6);
+* **immutable** — once made, never modified (D25);
+* **append-only** — a changed decision is a *new* decision referencing the one it supersedes, never an edit (D25).
+
+**No hidden reasoning. No hidden heuristics. No hidden cache. No hidden mutable state.** A collaborator that consults anything not named in D20 below — a module-level cache, a random seed, wall-clock time beyond an injected clock, a network call, an environment variable — violates this principle regardless of how plausible its output looks. This is the platform-wide "explainability first" discipline (ADR-0020 §Stage 7, ADR-0028 §Stage 4) restated at the granularity of a single Learning decision, the finest grain this constitution reaches.
+
+### D19 — Decision Governance: every category obeys the same principle (frozen, CAP-086A.2)
+
+Freeze permanently. D18's six properties apply, without exception, to every category of Learning decision this engine makes:
+
+* **Promotion decisions** (Learning Candidate → Learning) are deterministic, explainable, reproducible, governed, append-only, and never mutate history (mirrors D11's adjacent-only discipline, now extended to the decision that triggers it).
+* **Validation decisions** (`LearningValidator`) satisfy the same six properties. Validation is never heuristic and never depends on hidden context — only the candidate's own referenced Best Practices and the governed policy (D20).
+* **Institutionalization decisions** (`InstitutionalizationEvaluator`) satisfy the same six properties. Institutionalization is permanently independent from Validation (D12): institutionalization never changes a validation outcome, and validation never changes an institutionalization outcome.
+* **Stability decisions** (`StabilityEvaluator`) satisfy the same six properties. Stability never changes Confidence; Confidence never changes Stability; neither changes Maturity (D13, extended: all three axes remain independent inputs to, and independent outputs of, their own dedicated collaborator alone).
+* **Confidence decisions** (`ConfidenceRecorder`) satisfy the same six properties. Confidence is always **derived** from the referenced evidence count and governed thresholds — never guessed, and never estimated from state a future reader cannot also inspect (D20).
+* **Lifecycle decisions** (`LifecycleRecorder`) satisfy the same six properties. Every maturity transition is append-only: it is recorded as a new `LearningLifecycle` entry, never a mutation of a prior one, and never a rewrite of history (mirrors ADR-0028 §Stage 8, ADR-0026 §Stage 7).
+
+No category is exempt, and no future engine variant may relax any one of D18's six properties for any single category while claiming to satisfy this ADR for the others.
+
+### D20 — Decision Inputs and Collaborator Communication (frozen, CAP-086A.2)
+
+Freeze permanently. Every Learning decision may consult only:
+
+* the consumed `OrganizationalMemoryResult`;
+* the governed `LearningPolicy`;
+* immutable intermediate objects already produced by an earlier collaborator in the frozen D16 execution order.
+
+**Nothing else.** Forbidden, permanently, for every collaborator: the Historical Dataset, `ContinuousImprovementResult`, `KnowledgeGraphResult`, any Layer 1 runtime contract, the Execution Package, any other runtime artifact, external storage of any kind, global interpreter state, and a prior `LearningResult` (mirrors Recommendation 6/7 of this ADR and Recommendation 20 of ADR-0028, restated at collaborator granularity).
+
+**Collaborators communicate only through immutable objects.** Never through shared mutable state, a singleton cache, a module-level or global variable, a mutable field on the engine itself, or any other hidden side channel. Each collaborator receives immutable input and produces immutable output — nothing else crosses a collaborator boundary. This is the same self-containment discipline D12 of ADR-0027 already froze for Organizational Memory's own collaborator layering, restated here as the platform-wide default for every Learning collaborator without exception.
+
+### D21 — Engine Purity (frozen, CAP-086A.2)
+
+Freeze permanently. The deterministic Learning engine, taken as a whole, is a pure function:
+
+```
+OrganizationalMemoryResult
+        +
+LearningPolicy
+        ↓
+LearningResult
+```
+
+**Same input, same output, always.** No collaborator inside the pipeline may introduce non-determinism the whole-engine boundary does not already permit — the composition of twelve deterministic, side-effect-free collaborators (D9) is itself deterministic and side-effect-free, by construction. This is the direct generalization of D18's per-decision purity to the entire engine, and the property every future replacement of any single collaborator (D9/Recommendation 22) must preserve without exception.
+
+### D22 — Result Assembly Remains Non-Computational (frozen, CAP-086A.2)
+
+Freeze permanently, restating and sharpening D10/D17. `ResultBuilder` never computes a decision — it assembles the `LearningResult` from already-finished collaborator output only. `SummaryBuilder` never computes Learning — it tallies already-recorded rows into `LearningSummary`. `MetricsBuilder` never computes Learning — it tallies already-recorded rows into `LearningMetrics`. None of the three may re-derive, re-validate, re-institutionalize, or otherwise recompute anything a prior collaborator in the D16 pipeline already decided.
+
+### D23 — Decision Explainability (frozen, CAP-086A.2)
+
+Freeze permanently. Every Learning decision must name the specific inputs (D20) it was derived from — a decision that cannot name what produced it is not explainable and must not be constructible. This is D18's explainability property, detailed: explainability is not a property a decision acquires after the fact through documentation or a report; it is a structural requirement on the decision itself, satisfied only by referencing (never re-deriving) the exact inputs consulted, exactly as D14's explainability chain already requires end-to-end for `Learning` as an object, now required for every intermediate decision that leads to one.
+
+### D24 — Decision Reproducibility (frozen, CAP-086A.2)
+
+Freeze permanently. Given the same `OrganizationalMemoryResult`, the same `LearningPolicy`, and the same upstream collaborator outputs, every Learning decision must reproduce identically, regardless of when or how many times it is remade. This is D18's reproducibility property, detailed: reproducibility is what makes D21's engine purity possible in practice, and what makes a future golden regression test (CAP-086C, reserved) meaningful the moment one exists.
+
+### D25 — Decision Immutability (frozen, CAP-086A.2)
+
+Freeze permanently. Once a Learning decision is made, it is never modified. A later reconsideration — a re-validation, a re-institutionalization, a confidence update, a stability re-check — produces a **new** decision, recorded as a new object referencing the one it supersedes (mirrors ADR-0028 §Stage 11, Recommendation 2/4 of this ADR). The superseded decision remains exactly as it was: an accurate record of what was decided from the inputs available at the time. This is D18's immutable/append-only pair, detailed at the level of a single decision rather than a single object.
+
+### D26 — Decision Traceability (frozen, CAP-086A.2)
+
+Freeze permanently. Every Learning decision must be traceable, hop by hop, through the D20 inputs it consulted, composing with D14's already-frozen explainability chain (`Learning → Learning Candidate → Best Practice → Lesson → Experience → Continuous Improvement or Knowledge Graph → Historical Dataset → Execution Ids → Runtime Truth`). No decision may exist whose trace terminates at anything other than a named, versioned input — an untraceable decision is indistinguishable from a guess, and this constitution forbids guessing (D18, D23).
+
 ---
 
 ### Recommendation 1 — Learning is the sole validator of Learned Knowledge
@@ -348,6 +424,38 @@ No Learning Candidate may be promoted to Learning, and no Learning may be instit
 
 Every collaborator named in D9 may later have deterministic, ML, LLM, GraphRAG, reinforcement learning, neuro-symbolic, or hybrid implementations. `LearningService`, `LearningResult`, and `PlatformContext` remain unchanged regardless of which collaborators a future milestone implements first or replaces later (D17).
 
+### Recommendation 23 — Every Learning decision is deterministic, explainable, reproducible, governed, immutable, and append-only (mandatory, CAP-086A.2, frozen permanently)
+
+No Learning decision, of any category, may satisfy fewer than all six of D18's properties. A decision satisfying only some of them is not a Learning decision and must not be constructible.
+
+### Recommendation 24 — Learning decisions never depend on hidden state (mandatory, CAP-086A.2, frozen permanently)
+
+No collaborator may consult a hidden cache, a hidden heuristic, hidden mutable state, or any input not named in D20. A decision that cannot be reproduced from its named inputs alone violates this Recommendation regardless of how accurate it appears (D18, D24).
+
+### Recommendation 25 — Collaborators communicate only through immutable objects (mandatory, CAP-086A.2, frozen permanently)
+
+No collaborator boundary may cross shared mutable state, a singleton cache, a global variable, or a mutable engine field. Every collaborator receives immutable input and produces immutable output, and nothing else (D20).
+
+### Recommendation 26 — The deterministic engine is a pure function (mandatory, CAP-086A.2, frozen permanently)
+
+`OrganizationalMemoryResult + LearningPolicy → LearningResult` is a pure function: the same pair of inputs always yields the same output, and no collaborator inside the pipeline may introduce non-determinism the whole-engine boundary does not already permit (D21).
+
+### Recommendation 27 — Institutionalization, Stability, and Confidence decisions remain mutually independent (mandatory, CAP-086A.2, frozen permanently)
+
+Institutionalization never changes a Validation outcome, and Validation never changes an Institutionalization outcome (D12/D19). Stability never changes Confidence; Confidence never changes Stability; neither changes Maturity (D13/D19). No future engine may collapse any two of these axes into a shared computation.
+
+### Recommendation 28 — Confidence is always derived, never guessed (mandatory, CAP-086A.2, frozen permanently)
+
+`ConfidenceRecorder`'s output must be a deterministic function of the referenced evidence count and the governed policy thresholds — never an estimate, a heuristic, or a value read from hidden state (D19/D20).
+
+### Recommendation 29 — Lifecycle transitions are append-only and never rewrite history (mandatory, CAP-086A.2, frozen permanently)
+
+Every maturity transition `LifecycleRecorder` records is a new `LearningLifecycle` entry, never a mutation of a prior one and never a rewrite of a prior maturity record (D19/D25, mirrors Recommendation 4).
+
+### Recommendation 30 — ResultBuilder, SummaryBuilder, and MetricsBuilder assemble; they never compute Learning (mandatory, CAP-086A.2, frozen permanently)
+
+None of the three may re-derive, re-validate, re-institutionalize, or otherwise recompute anything a prior collaborator in the D16 pipeline already decided — they tally and assemble already-finished output only (D22).
+
 ---
 
 ## Trade-offs
@@ -359,7 +467,8 @@ Every collaborator named in D9 may later have deterministic, ML, LLM, GraphRAG, 
 ## Future evolution
 
 - **Done (CAP-086A.1).** Engine architecture refinement & governance freeze: the future engine's modular 12-collaborator decomposition, adjacent-only promotion discipline, the Validation/Institutionalization/Stability distinctions, the complete explainability chain, and the reserved promotion-metadata concept — no code, still architecture only. See the Internal Engine Architecture section, D9–D17.
-- **CAP-086B — Deterministic Learning Engine (reserved).** The first real engine behind the frozen `build` signature: implement the CAP-086A.1 collaborator pipeline strictly from the one resolved `OrganizationalMemoryResult` (Recommendation 6), never independent analysis or re-implementation of Organizational Memory's own curation.
+- **Done (CAP-086A.2).** Decision Governance & Deterministic Execution Constitution: the six permanent properties every Learning decision must satisfy (deterministic, explainable, reproducible, governed, immutable, append-only), the freedom from hidden state, collaborator-to-collaborator immutable-object-only communication, whole-engine purity, and per-category decision governance for promotion/validation/institutionalization/stability/confidence/lifecycle — no code, still architecture only. See the Decision Governance & Deterministic Execution section, D18–D26.
+- **CAP-086B — Deterministic Learning Engine (reserved).** The first real engine behind the frozen `build` signature: implement the CAP-086A.1 collaborator pipeline strictly from the one resolved `OrganizationalMemoryResult` (Recommendation 6), obeying the CAP-086A.2 decision-governance constitution in every collaborator, never independent analysis or re-implementation of Organizational Memory's own curation.
 - **Runtime activation (CAP-086C, reserved)** — wiring `build` into a live pipeline, plus a future Execution Package projection and golden re-baseline, mirroring CAP-085C's activation of Organizational Memory.
 - **Feature Engineering (Layer 3, reserved)** — the first capability outside Layer 2, to consume `LearningResult` per Recommendation 8 above, completing the Layer 2 → Layer 3 bridge ADR-0028 §Stage 16 names.
 - **Future AI validation, promotion reasoning, and institutional-adoption modeling over Learned Knowledge** (reserved) — higher-layer or engine-variant capabilities that consume `LearningResult` without ever becoming part of this contract.
@@ -367,7 +476,7 @@ Every collaborator named in D9 may later have deterministic, ML, LLM, GraphRAG, 
 
 ## Ownership, runtime position, governance
 
-- **Owns:** validated Learned Knowledge — learning candidates, learnings, validation history, confidence records, maturity/lifecycle state, Learning Framework metadata. Owns the frozen internal engine decomposition and collaborator ownership (D9–D17), reserved ahead of the deterministic engine that will implement it.
+- **Owns:** validated Learned Knowledge — learning candidates, learnings, validation history, confidence records, maturity/lifecycle state, Learning Framework metadata. Owns the frozen internal engine decomposition and collaborator ownership (D9–D17), and the frozen decision-governance constitution every collaborator's own decisions must satisfy (D18–D26), both reserved ahead of the deterministic engine that will implement them.
 - **Does not own:** Engineering Context Orchestration, Analysis, Requirement Enhancement, Grounding, Validation, CP1, Quality Governance, Recommendation, Continuous Improvement, Knowledge Graph, Organizational Memory, the Execution Package, or the Historical Dataset itself (ADR-0021 §Stage 6 names that owner, not this ADR). Does not own any Feature Engineering responsibility (ADR-0020 §Stage 4, reserved for Layer 3).
-- **Runtime position (architecture only — CAP-086A; strengthened, still architecture only — CAP-086A.1):** `OrganizationalMemoryResult` → (future engine, reserved) → `LearningResult`. Architecture frozen; the internal collaborator pipeline is pre-specified; no engine exists; nothing is wired into any execution pipeline.
-- **Governance:** registered as CAP-086 for the Requirement Intelligence Platform's Layer 2 — the fourth and final capability built under ADR-0020/ADR-0021/ADR-0025/ADR-0026/ADR-0028, following Continuous Improvement (ADR-0022), Knowledge Graph (ADR-0023), and Organizational Memory (ADR-0027). This ADR is **Proposed**; CAP-086A.1 strengthened it with the frozen internal engine architecture and validation/institutionalization/stability/promotion/result ownership rules under an unchanged public contract; a future CAP-086B extends it with the first deterministic engine implementing that frozen shape, exactly mirroring ADR-0022's, ADR-0023's, and ADR-0027's own status ahead of their own B-milestones. The repository is certified ready for **CAP-086B — Deterministic Learning Engine**.
+- **Runtime position (architecture only — CAP-086A; strengthened, still architecture only — CAP-086A.1; decision philosophy frozen, still architecture only — CAP-086A.2):** `OrganizationalMemoryResult` → (future engine, reserved) → `LearningResult`. Architecture frozen; the internal collaborator pipeline is pre-specified; the decision-governance constitution every collaborator must satisfy is pre-specified; no engine exists; nothing is wired into any execution pipeline.
+- **Governance:** registered as CAP-086 for the Requirement Intelligence Platform's Layer 2 — the fourth and final capability built under ADR-0020/ADR-0021/ADR-0025/ADR-0026/ADR-0028, following Continuous Improvement (ADR-0022), Knowledge Graph (ADR-0023), and Organizational Memory (ADR-0027). This ADR is **Proposed**; CAP-086A.1 strengthened it with the frozen internal engine architecture and validation/institutionalization/stability/promotion/result ownership rules under an unchanged public contract; CAP-086A.2 strengthened it further with the frozen decision-governance constitution — determinism, explainability, reproducibility, policy-governance, immutability, append-only evolution, freedom from hidden state, immutable-only collaborator communication, and whole-engine purity — every future collaborator's every decision must satisfy, still under the same unchanged public contract; a future CAP-086B extends it with the first deterministic engine implementing that doubly-frozen shape, exactly mirroring ADR-0022's, ADR-0023's, and ADR-0027's own status ahead of their own B-milestones. The repository is certified ready for **CAP-086B — Deterministic Learning Engine**.
