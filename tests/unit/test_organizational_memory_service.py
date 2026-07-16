@@ -1,10 +1,11 @@
 """Contract and architecture-boundary tests for OrganizationalMemoryService
-(CAP-085A, ADR-0027).
+(CAP-085B, ADR-0027).
 
 ADR-0027 froze the service boundary (CAP-085A: abstract contract, dormant
-implementation, PlatformContext registration). These tests assert the
-permanent contract, the ``PlatformContext`` composition root, and the
-containment/dependency invariants (ADR-0027 §D2/§D6/§D7) — including the
+implementation, PlatformContext registration). CAP-085B replaces the dormant
+implementation with ``DeterministicOrganizationalMemoryService``. These tests
+assert the permanent contract, the ``PlatformContext`` composition root, and
+the containment/dependency invariants (ADR-0027 §D2/§D6/§D7) — including the
 deliberate **fan-in exception** (ADR-0025 §Stage 7/8): unlike
 ``test_continuous_improvement_service.py`` and ``test_knowledge_graph_service.
 py``, this service legitimately imports both Continuous Improvement's and
@@ -20,12 +21,14 @@ and it never touches a ``HistoricalDatasetReference`` or a
 from __future__ import annotations
 
 from abc import ABC
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
+from requirement_intelligence.organizational_memory.models.result import OrganizationalMemoryResult
 from requirement_intelligence.organizational_memory.organizational_memory_service import (
-    DormantOrganizationalMemoryService,
+    DeterministicOrganizationalMemoryService,
     OrganizationalMemoryService,
 )
 from requirement_intelligence.organizational_memory.policy import (
@@ -35,6 +38,65 @@ from requirement_intelligence.platform.platform_context import PlatformContext
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ORGANIZATIONAL_MEMORY_PKG = _REPO_ROOT / "requirement_intelligence" / "organizational_memory"
+_NOW = datetime(2026, 7, 16, tzinfo=UTC)
+
+
+def _continuous_improvement_result():
+    from requirement_intelligence.continuous_improvement.engine import (
+        DeterministicContinuousImprovementEngine,
+    )
+    from requirement_intelligence.continuous_improvement.models import (
+        HistoricalDatasetReference,
+    )
+    from requirement_intelligence.continuous_improvement.policy import (
+        default_improvement_policy,
+    )
+    from requirement_intelligence.continuous_improvement.rules import (
+        default_improvement_rule_catalog,
+    )
+
+    reference = HistoricalDatasetReference(
+        dataset_id="ds-service-test",
+        dataset_version="1.0.0",
+        first_execution_id="ex-1",
+        last_execution_id="ex-1",
+        execution_count=1,
+        history_window=1,
+        generated_at=_NOW,
+    )
+    engine = DeterministicContinuousImprovementEngine(
+        policy=default_improvement_policy(),
+        rule_catalog=default_improvement_rule_catalog(),
+        clock=lambda: _NOW,
+    )
+    return engine.improve(reference)
+
+
+def _knowledge_graph_result():
+    from requirement_intelligence.knowledge_graph.engine import (
+        DeterministicKnowledgeGraphEngine,
+    )
+    from requirement_intelligence.knowledge_graph.models import HistoricalDatasetReference
+    from requirement_intelligence.knowledge_graph.policy import default_knowledge_graph_policy
+    from requirement_intelligence.knowledge_graph.rules import (
+        default_knowledge_graph_rule_catalog,
+    )
+
+    reference = HistoricalDatasetReference(
+        dataset_id="ds-service-test",
+        dataset_version="1.0.0",
+        first_execution_id="ex-1",
+        last_execution_id="ex-1",
+        execution_count=1,
+        history_window=1,
+        generated_at=_NOW,
+    )
+    engine = DeterministicKnowledgeGraphEngine(
+        policy=default_knowledge_graph_policy(),
+        rule_catalog=default_knowledge_graph_rule_catalog(),
+        clock=lambda: _NOW,
+    )
+    return engine.build(reference)
 
 #: Every Layer 1 subsystem Organizational Memory must never import — the same
 #: stricter boundary Continuous Improvement and Knowledge Graph already
@@ -85,20 +147,24 @@ class TestServiceContract:
 
 
 @pytest.mark.unit
-class TestDormantService:
-    def test_dormant_service_is_constructible(self) -> None:
-        service = DormantOrganizationalMemoryService()
+class TestDeterministicService:
+    def test_service_is_constructible(self) -> None:
+        service = DeterministicOrganizationalMemoryService(
+            policy=default_organizational_memory_policy()
+        )
         assert isinstance(service, OrganizationalMemoryService)
 
-    def test_dormant_service_raises_on_build(self) -> None:
-        service = DormantOrganizationalMemoryService()
-        with pytest.raises(NotImplementedError):
-            service.build(None, None)  # type: ignore[arg-type]
+    def test_service_delegates_to_the_engine_and_returns_a_real_result(self) -> None:
+        service = PlatformContext().create_organizational_memory_service()
+        result = service.build(_continuous_improvement_result(), _knowledge_graph_result())
+        assert isinstance(result, OrganizationalMemoryResult)
 
-    def test_dormant_service_raises_with_explanatory_message(self) -> None:
-        service = DormantOrganizationalMemoryService()
-        with pytest.raises(NotImplementedError, match="architecture-only"):
-            service.build(None, None)  # type: ignore[arg-type]
+    def test_service_accepts_an_explicit_policy(self) -> None:
+        service = DeterministicOrganizationalMemoryService(
+            policy=default_organizational_memory_policy()
+        )
+        result = service.build(_continuous_improvement_result(), _knowledge_graph_result())
+        assert isinstance(result, OrganizationalMemoryResult)
 
 
 @pytest.mark.unit
@@ -111,10 +177,10 @@ class TestPlatformContextRegistration:
         policy = PlatformContext().create_organizational_memory_policy()
         assert isinstance(policy, OrganizationalMemoryPolicy)
 
-    def test_create_organizational_memory_service_returns_dormant_service(self) -> None:
+    def test_create_organizational_memory_service_returns_deterministic_service(self) -> None:
         service = PlatformContext().create_organizational_memory_service()
         assert isinstance(service, OrganizationalMemoryService)
-        assert isinstance(service, DormantOrganizationalMemoryService)
+        assert isinstance(service, DeterministicOrganizationalMemoryService)
 
     def test_repeated_calls_return_independent_but_equal_policies(self) -> None:
         ctx = PlatformContext()
@@ -133,11 +199,11 @@ class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
         """Outside the organizational_memory package, only PlatformContext may name it.
 
-        CAP-085A registers the dormant implementation, but the subsystem
-        remains unwired: no CLI phase, execution builder, manifest, or
-        serializer may reference the runtime service, so a future dependency
-        cannot appear silently (mirroring ADR-0022 §D6/ADR-0023 §D6's
-        containment test, before either's own runtime activation).
+        CAP-085B registers the deterministic implementation, but the
+        subsystem remains unwired: no CLI phase, execution builder, manifest,
+        or serializer may reference the runtime service, so a future
+        dependency cannot appear silently (mirroring ADR-0022 §D6/ADR-0023
+        §D6's containment test, before either's own runtime activation).
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",

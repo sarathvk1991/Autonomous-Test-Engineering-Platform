@@ -421,3 +421,53 @@ class OrganizationalMemoryResultVersion(_SemanticVersion):
     """
 
     _LABEL: ClassVar[str] = "organizational memory result version"
+
+
+# ---------------------------------------------------------------------------
+# CAP-085B additive version axes (Stage 2 of the CAP-085B brief).
+#
+# Introduced alongside the deterministic engine and its governed rule
+# catalogue, mirroring how the Continuous Improvement Framework's own rule
+# and rule-catalogue version axes were added in CAP-083B, and the Knowledge
+# Graph Framework's own rule and rule-catalogue version axes were added in
+# CAP-084B — after each subsystem's own architecture-freeze milestone, never
+# during it. None of the
+# six version axes above are modified by this addition.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, order=True)
+class PromotionRuleVersion(_SemanticVersion):
+    """Semantic version of the governed ``PromotionRule`` schema (CAP-085B).
+
+    Advances independently of every other Organizational Memory version axis.
+    """
+
+    _LABEL: ClassVar[str] = "promotion rule version"
+
+
+@dataclass(frozen=True, order=True)
+class PromotionRuleCatalogVersion(_SemanticVersion):
+    """Semantic version of the governed default :class:`PromotionRuleCatalog`
+    (CAP-085B).
+
+    Tuning the catalogue (adding, removing, or retuning a rule) advances this
+    version, never the engine or framework version.
+    """
+
+    _LABEL: ClassVar[str] = "promotion rule catalog version"
+
+
+@dataclass(frozen=True, order=True)
+class OrganizationalMemoryEngineVersion(_SemanticVersion):
+    """Semantic version of the deterministic Organizational Memory engine's own
+    implementation (CAP-085B).
+
+    Independent of ``OrganizationalMemoryFrameworkVersion`` (the frozen public
+    contract) — retuning the engine's internal algorithm is an engine-version
+    change, never a framework or result-contract change (mirrors the
+    engine/contract separation every prior subsystem's own engine freeze
+    already established).
+    """
+
+    _LABEL: ClassVar[str] = "organizational memory engine version"

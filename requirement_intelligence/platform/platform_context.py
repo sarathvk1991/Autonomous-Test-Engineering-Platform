@@ -113,7 +113,7 @@ from requirement_intelligence.knowledge_graph.rules import (
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.organizational_memory.organizational_memory_service import (
-    DormantOrganizationalMemoryService,
+    DeterministicOrganizationalMemoryService,
     OrganizationalMemoryService,
 )
 from requirement_intelligence.organizational_memory.policy import (
@@ -627,24 +627,27 @@ class PlatformContext:
 
         The governed capability switches and deterministic thresholds for the
         Organizational Memory Framework — which capabilities are enabled, and
-        the bounds a future engine must respect. **Not yet wired**: no runtime
+        the bounds the engine must respect. **Not yet wired**: no runtime
         path calls it, so runtime behaviour is unchanged.
         """
         return default_organizational_memory_policy()
 
     def create_organizational_memory_service(self) -> OrganizationalMemoryService:
-        """Return the :class:`DormantOrganizationalMemoryService` (CAP-085A, ADR-0027).
+        """Return the :class:`DeterministicOrganizationalMemoryService` (CAP-085B, ADR-0027).
 
         The single runtime entry point into the Organizational Memory
-        Framework — the third Layer 2 capability (ADR-0020), and the
-        **composition root** for the subsystem. CAP-085A registers only the
-        dormant implementation: no engine exists yet, so every call to
-        ``build`` raises ``NotImplementedError``. The framework remains
-        **unwired into any execution pipeline** — nothing calls ``build`` at
-        runtime, so runtime behaviour is byte-identical and the golden
-        baseline is unchanged.
+        Framework — the third Layer 2 capability (ADR-0020) — and the
+        **composition root** for the subsystem: it constructs the
+        deterministic engine, injecting the governed
+        :meth:`create_organizational_memory_policy`. CAP-085B replaces the
+        dormant CAP-085A service with this real, deterministic one, but it
+        remains **unwired into any execution pipeline** — nothing calls
+        ``build`` at runtime, so runtime behaviour is byte-identical and the
+        golden baseline is unchanged.
         """
-        return DormantOrganizationalMemoryService()
+        return DeterministicOrganizationalMemoryService(
+            policy=self.create_organizational_memory_policy()
+        )
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:

@@ -297,7 +297,7 @@ class TestRuntimeBoundary:
         source = (_ORGANIZATIONAL_MEMORY_PKG / "models" / "result.py").read_text(encoding="utf-8")
         forbidden = (
             "OrganizationalMemoryService",
-            "DormantOrganizationalMemoryService",
+            "DeterministicOrganizationalMemoryService",
             "PlatformContext",
         )
         for line in source.splitlines():

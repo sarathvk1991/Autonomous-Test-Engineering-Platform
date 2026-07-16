@@ -117,7 +117,7 @@ Layer 1 reasons over **one execution at a time** and never looks backward across
 
 - **CAP-083 — Continuous Improvement** — Accepted, live (ADR-0022; CAP-083A architecture freeze → CAP-083B deterministic engine → CAP-083B.1 runtime contract freeze → CAP-083C runtime integration). The first Layer 2 capability to complete its lifecycle.
 - **CAP-084 — Knowledge Graph** — Accepted, live (ADR-0023; CAP-084A architecture & governance freeze → CAP-084B deterministic engine → CAP-084B.1 runtime contract freeze → CAP-084C runtime integration). The second Layer 2 capability to complete its lifecycle, mirroring CAP-083's own.
-- **CAP-085 — Organizational Memory** — Proposed, architecture frozen (ADR-0027; CAP-085A architecture & governance freeze). The third Layer 2 capability, and the first to exercise ADR-0025's fan-in exception — a consumer of both Continuous Improvement's and Knowledge Graph's completed results; still unwired into any execution pipeline.
+- **CAP-085 — Organizational Memory** — Proposed, deterministic engine implemented (ADR-0027; CAP-085A architecture & governance freeze → CAP-085A.1 engine architecture refinement → CAP-085B deterministic engine). The third Layer 2 capability, and the first to exercise ADR-0025's fan-in exception — a consumer of both Continuous Improvement's and Knowledge Graph's completed results; still unwired into any execution pipeline.
 - **CAP-086 — Learning Framework**
 
 **Purpose:** Historical Intelligence — reasoning over **many** completed Layer 1 executions, never a single one in isolation.

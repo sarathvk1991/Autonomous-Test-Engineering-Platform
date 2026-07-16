@@ -11,12 +11,15 @@ from requirement_intelligence.organizational_memory.identity.organizational_memo
     KnowledgePromotionId,
     LessonId,
     LessonVersion,
+    OrganizationalMemoryEngineVersion,
     OrganizationalMemoryFrameworkVersion,
     OrganizationalMemoryId,
     OrganizationalMemoryPolicyId,
     OrganizationalMemoryPolicyVersion,
     OrganizationalMemoryResultId,
     OrganizationalMemoryResultVersion,
+    PromotionRuleCatalogVersion,
+    PromotionRuleVersion,
 )
 
 __all__ = [
@@ -28,10 +31,13 @@ __all__ = [
     "KnowledgePromotionId",
     "LessonId",
     "LessonVersion",
+    "OrganizationalMemoryEngineVersion",
     "OrganizationalMemoryFrameworkVersion",
     "OrganizationalMemoryId",
     "OrganizationalMemoryPolicyId",
     "OrganizationalMemoryPolicyVersion",
     "OrganizationalMemoryResultId",
     "OrganizationalMemoryResultVersion",
+    "PromotionRuleCatalogVersion",
+    "PromotionRuleVersion",
 ]

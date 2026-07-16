@@ -48,16 +48,20 @@ What the service does NOT own
     implementation detail** of the service and can be replaced without
     changing this contract.
 
-Runtime status (CAP-085A)
-    ``build`` is abstract and dormant: :class:`DormantOrganizationalMemoryService`
-    raises ``NotImplementedError`` on every call. No experience is captured, no
-    lesson is promoted, no best practice is institutionalized, and no lifecycle
-    is recorded. Only ``PlatformContext`` may construct it outside this
-    package. A later milestone (CAP-085B, reserved) implements the method
-    behind this unchanged signature, exactly as CAP-083B implemented the
-    Continuous Improvement Framework's own entry point behind the ADR-0022
-    boundary and CAP-084B implemented the Knowledge Graph Framework's own
-    entry point behind the ADR-0023 boundary.
+Runtime status (CAP-085B)
+    ``build`` is now implemented: :class:`DeterministicOrganizationalMemoryService`
+    delegates to a private :class:`~requirement_intelligence.organizational_memory.
+    engine.DeterministicOrganizationalMemoryEngine` that performs deterministic
+    experience capture, clustering, lesson generation/consolidation,
+    best-practice generation, promotion recording, and lifecycle recording end
+    to end — via independent, modular collaborators, never one large engine.
+    The service is still **not wired into any execution pipeline** (nothing
+    calls ``build`` at runtime) and only ``PlatformContext`` may construct it
+    outside this package — so runtime behaviour is byte-identical and the
+    golden baseline is unchanged. Runtime integration is future work, exactly
+    as CAP-083B implemented the Continuous Improvement Framework's own entry
+    point before a later milestone activated it, and CAP-084B did the same for
+    the Knowledge Graph Framework.
 """
 
 from __future__ import annotations
@@ -68,7 +72,11 @@ from requirement_intelligence.continuous_improvement.models.result import (
     ContinuousImprovementResult,
 )
 from requirement_intelligence.knowledge_graph.models.result import KnowledgeGraphResult
+from requirement_intelligence.organizational_memory.engine import (
+    DeterministicOrganizationalMemoryEngine,
+)
 from requirement_intelligence.organizational_memory.models.result import OrganizationalMemoryResult
+from requirement_intelligence.organizational_memory.policy import OrganizationalMemoryPolicy
 
 
 class OrganizationalMemoryService(ABC):
@@ -108,31 +116,37 @@ class OrganizationalMemoryService(ABC):
 
         Notes
         -----
-        Abstract in CAP-085A; a future CAP-085B milestone implements it behind
-        this unchanged signature.
+        Abstract at CAP-085A; :class:`DeterministicOrganizationalMemoryService`
+        (CAP-085B) implements it behind this unchanged signature.
         """
         raise NotImplementedError
 
 
-class DormantOrganizationalMemoryService(OrganizationalMemoryService):
-    """The CAP-085A registered default — architecture only, no behaviour.
+class DeterministicOrganizationalMemoryService(OrganizationalMemoryService):
+    """The registered default service (CAP-085B) — thin orchestration over the engine.
 
-    Every call to ``build`` raises ``NotImplementedError``. This is the
-    intentional, permanent shape of a dormant Layer 2 service (mirrors the
-    dormant default services Continuous Improvement registered at CAP-083A
-    and Knowledge Graph registered at CAP-084A, both since replaced by their
-    own deterministic successors) — it exists so ``PlatformContext`` has a
-    real, constructible object to return before any engine exists, and so the
-    abstract contract above is provably instantiable.
+    Holds a private :class:`~requirement_intelligence.organizational_memory.
+    engine.DeterministicOrganizationalMemoryEngine` and delegates ``build`` to
+    it, owning only the public boundary and construction. It **computes
+    nothing itself**: the engine's modular collaborators perform experience
+    capture, clustering, lesson generation/consolidation, best-practice
+    generation, promotion recording, and lifecycle recording. Mirrors how the
+    Continuous Improvement and Knowledge Graph subsystems' own deterministic
+    runtime services delegate to their private engines (ADR-0022, ADR-0023) —
+    a thin service, real behaviour one layer down. Replaces
+    ``DormantOrganizationalMemoryService`` (CAP-085A), which CAP-085B removes,
+    mirroring how CAP-083B's and CAP-084B's own deterministic services
+    replaced their dormant predecessors.
     """
+
+    def __init__(self, *, policy: OrganizationalMemoryPolicy) -> None:
+        """Construct the private deterministic engine this service delegates to."""
+        self._engine = DeterministicOrganizationalMemoryEngine(policy=policy)
 
     def build(
         self,
         continuous_improvement_result: ContinuousImprovementResult,
         knowledge_graph_result: KnowledgeGraphResult,
     ) -> OrganizationalMemoryResult:
-        """Always raises — no Organizational Memory engine exists yet (CAP-085A)."""
-        raise NotImplementedError(
-            "Organizational Memory is architecture-only (CAP-085A); no deterministic "
-            "engine exists yet. See CAP-085B."
-        )
+        """Build curated Organizational Memory via the deterministic engine — delegation only."""
+        return self._engine.build(continuous_improvement_result, knowledge_graph_result)
