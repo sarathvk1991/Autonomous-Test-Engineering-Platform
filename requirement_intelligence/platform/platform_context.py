@@ -110,6 +110,11 @@ from requirement_intelligence.knowledge_graph.rules import (
     KnowledgeGraphRuleCatalog,
     default_knowledge_graph_rule_catalog,
 )
+from requirement_intelligence.learning.learning_service import (
+    DormantLearningService,
+    LearningService,
+)
+from requirement_intelligence.learning.policy import LearningPolicy, default_learning_policy
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.organizational_memory.organizational_memory_service import (
@@ -648,6 +653,30 @@ class PlatformContext:
         return DeterministicOrganizationalMemoryService(
             policy=self.create_organizational_memory_policy()
         )
+
+    def create_learning_policy(self) -> LearningPolicy:
+        """Return the governed default :class:`LearningPolicy` (CAP-086A, ADR-0029).
+
+        The governed capability switches and deterministic thresholds for
+        the Learning Framework — which capabilities are enabled, and the
+        bounds a future engine must respect. **Not yet wired**: no runtime
+        path calls it, so runtime behaviour is unchanged.
+        """
+        return default_learning_policy()
+
+    def create_learning_service(self) -> LearningService:
+        """Return the :class:`DormantLearningService` (CAP-086A, ADR-0029).
+
+        The single runtime entry point into the Learning Framework — the
+        fourth and final Layer 2 capability (ADR-0020), and the
+        **composition root** for the subsystem. CAP-086A registers only the
+        dormant implementation: no engine exists yet, so every call to
+        ``build`` raises ``NotImplementedError``. The framework remains
+        **unwired into any execution pipeline** — nothing calls ``build`` at
+        runtime, so runtime behaviour is byte-identical and the golden
+        baseline is unchanged.
+        """
+        return DormantLearningService()
 
     @cached_property
     def prompt_registry(self) -> PromptRegistry:
