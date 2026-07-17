@@ -200,14 +200,15 @@ class TestPlatformContextRegistration:
 @pytest.mark.unit
 class TestRuntimeContainment:
     def test_only_sanctioned_wiring_points_name_the_service_externally(self) -> None:
-        """Outside the learning package, only PlatformContext may name it.
+        """Outside the learning package, only PlatformContext and the CLI phase may name it.
 
-        CAP-086B registers the deterministic implementation, but the
-        subsystem remains unwired: no CLI phase, execution builder, manifest,
-        or serializer may reference the runtime service, so a future
-        dependency cannot appear silently (mirroring ADR-0022 §D6/ADR-0023
-        §D6/ADR-0027 §D7's containment test, before any of their own runtime
-        activation).
+        CAP-086B registers the deterministic implementation; CAP-086C wires
+        ``run_learning_phase()`` into the live CLI, immediately after
+        Organizational Memory. No execution builder, manifest, or serializer
+        may reference the runtime service directly — only its own projection
+        (``LearningSerializer``) may, and that is checked separately (mirrors
+        ADR-0022 §D6/ADR-0023 §D6/§D12/ADR-0027 §D7/§D19's containment test,
+        post-activation).
         """
         roots = (
             _REPO_ROOT / "requirement_intelligence",
@@ -217,6 +218,7 @@ class TestRuntimeContainment:
         needle = "LearningService"
         permitted = {
             Path("requirement_intelligence/platform/platform_context.py"),
+            Path("scripts/run_requirement_analysis.py"),
         }
         external_consumers: set[Path] = set()
         for root in roots:
@@ -229,15 +231,33 @@ class TestRuntimeContainment:
                     external_consumers.add(path.relative_to(_REPO_ROOT))
         assert external_consumers == permitted
 
-    def test_no_serializer_execution_package_or_cli_integration_exists_yet(self) -> None:
-        """CAP-086B introduces no serializer or Execution Package integration."""
-        assert not (_LEARNING_PKG / "serialization").exists()
-        assert not any(
-            "learning" in path.read_text(encoding="utf-8").lower()
-            for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py")
+    def test_serializer_and_execution_package_integration_exist_and_stay_projection_only(
+        self,
+    ) -> None:
+        """CAP-086C introduces the serializer and Execution Package integration.
+
+        The serializer package exists, and the only files outside the
+        learning package that mention "learning" (besides the sanctioned
+        PlatformContext/CLI wiring points already checked above) are the
+        Execution Package's own writer/manifest builder — and those import
+        only the projection serializer, never the engine, the service, the
+        policy, or the rule catalogue.
+        """
+        assert (_LEARNING_PKG / "serialization").exists()
+        forbidden = (
+            "DeterministicLearningEngine",
+            "DeterministicLearningService",
+            "LearningPolicy",
+            "LearningRuleCatalog",
         )
-        script = _REPO_ROOT / "scripts" / "run_requirement_analysis.py"
-        assert "requirement_intelligence.learning" not in script.read_text(encoding="utf-8")
+        for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            if "learning" not in source.lower():
+                continue
+            for line in source.splitlines():
+                if line.strip().startswith(("import ", "from ")):
+                    for token in forbidden:
+                        assert token not in line, f"{path.name} imports {token}: {line!r}"
 
 
 @pytest.mark.unit

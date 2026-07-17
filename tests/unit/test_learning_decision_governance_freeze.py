@@ -53,7 +53,8 @@ def _adr_text() -> str:
 @pytest.mark.unit
 class TestEngineCodeNowExists:
     """CAP-086A.2's own point-in-time check (no engine/rules code yet) has
-    been superseded by CAP-086B, which built exactly what D9-D26 governs."""
+    been superseded by CAP-086B, which built exactly what D9-D26 governs, and
+    by CAP-086C, which activated the runtime behind it."""
 
     def test_engine_package_exists(self) -> None:
         assert (_LEARNING_PKG / "engine").exists()
@@ -61,8 +62,9 @@ class TestEngineCodeNowExists:
     def test_rules_package_exists(self) -> None:
         assert (_LEARNING_PKG / "rules").exists()
 
-    def test_no_serialization_package_exists_yet(self) -> None:
-        assert not (_LEARNING_PKG / "serialization").exists()
+    def test_serialization_package_now_exists(self) -> None:
+        """CAP-086C (ADR-0029 §D29) introduces the projection-only serializer."""
+        assert (_LEARNING_PKG / "serialization").exists()
 
 
 @pytest.mark.unit

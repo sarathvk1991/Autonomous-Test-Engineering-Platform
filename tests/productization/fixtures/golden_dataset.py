@@ -48,10 +48,15 @@ from requirement_intelligence.models.source_artifact import SourceArtifact
 # (CAP-085C) re-baselines it again to include the three Organizational Memory
 # artifacts now that Organizational Memory — Layer 2's third capability, and the
 # first to exercise ADR-0025's fan-in exception — is active immediately after
-# Knowledge Graph, at the permanently frozen end of the live pipeline; the nine
-# source artifacts and the golden response are unchanged.
+# Knowledge Graph, at the permanently frozen end of the live pipeline. 1.8.0
+# (CAP-086C) re-baselines it again to include the three Learning artifacts now
+# that Learning — Layer 2's fourth and final capability, and the first to
+# consume exactly one already-completed Layer 2 tier rather than a
+# HistoricalDatasetReference or a two-peer fan-in — is active immediately after
+# Organizational Memory, at the permanently frozen end of the live pipeline;
+# the nine source artifacts and the golden response are unchanged.
 # ---------------------------------------------------------------------------
-GOLDEN_DATASET_VERSION = "1.7.0"
+GOLDEN_DATASET_VERSION = "1.8.0"
 
 # ---------------------------------------------------------------------------
 # Fixed timestamps (deterministic provenance)

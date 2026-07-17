@@ -191,4 +191,20 @@ class ManifestBuilder:
             manifest["organizationalMemoryReport"] = "organizational_memory_report.md"
             manifest["organizationalMemoryMetrics"] = "organizational_memory_metrics.md"
 
+        # Learning references (CAP-086C): additive, and only when Learning ran.
+        # When it did not, the manifest is byte-identical to before — no key is
+        # added, no schema change (manifestSchemaVersion stays 1.0.0). The three
+        # Learning artifacts already appear in ``generatedArtifacts`` via the
+        # same checksum mechanism as every other file. These three keys are
+        # package metadata only — a flag and two artifact filenames — never the
+        # Learning runtime state itself. The canonical candidates, learnings,
+        # validations, confidences, lifecycles, metrics, and summary live
+        # exclusively in ``learning_result.json`` (ADR-0029 §D28/§D29): the
+        # manifest references that artifact, it never duplicates its content.
+        learning = data.learning_result
+        if learning is not None:
+            manifest["learningExecuted"] = True
+            manifest["learningReport"] = "learning_report.md"
+            manifest["learningMetrics"] = "learning_metrics.md"
+
         return manifest

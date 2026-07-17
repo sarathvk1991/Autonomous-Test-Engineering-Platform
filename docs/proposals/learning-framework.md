@@ -1,8 +1,8 @@
 # Learning Framework — Design Proposal
 
-- **Status:** Accepted, live (CAP-086A froze the architecture; CAP-086A.1 froze the future engine's internal decomposition and governance; CAP-086A.2 froze the decision-governance constitution every collaborator's decisions must satisfy; CAP-086B implemented the first deterministic engine behind it, unchanged; CAP-086B.1 permanently certified the runtime contract, no behaviour change; still unwired)
+- **Status:** Accepted, live (CAP-086A froze the architecture; CAP-086A.1 froze the future engine's internal decomposition and governance; CAP-086A.2 froze the decision-governance constitution every collaborator's decisions must satisfy; CAP-086B implemented the first deterministic engine behind it, unchanged; CAP-086B.1 permanently certified the runtime contract, no behaviour change; CAP-086C activated Learning in the live pipeline, completing Layer 2 end to end)
 - **Capability:** CAP-086 — Learning Framework
-- **Milestones covered:** CAP-086A (Architecture & Governance Freeze), CAP-086A.1 (Learning Architecture Refinement & Engine Governance Freeze — see §8a), CAP-086A.2 (Learning Decision Governance & Deterministic Execution Constitution), CAP-086B (Deterministic Learning Engine — see §8b), CAP-086B.1 (LearningResult Runtime Contract Freeze — see §8c)
+- **Milestones covered:** CAP-086A (Architecture & Governance Freeze), CAP-086A.1 (Learning Architecture Refinement & Engine Governance Freeze — see §8a), CAP-086A.2 (Learning Decision Governance & Deterministic Execution Constitution), CAP-086B (Deterministic Learning Engine — see §8b), CAP-086B.1 (LearningResult Runtime Contract Freeze — see §8c), CAP-086C (Learning Runtime Integration — see §8d)
 - **Governed by:** ADR-0029
 - **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution), ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the peer-independence and fan-in rules this framework's own single-input boundary is defined against), ADR-0026 (Organizational Knowledge Architecture & Learning Constitution — Learning's earliest principles), and ADR-0028 (Learning Constitution — the full constitutional definition of what this framework produces).
 
@@ -257,8 +257,70 @@ permanent Layer 2 runtime contract for Learning, and the permanent Layer 2
 output surface — completing Architecture Freeze (CAP-086A) → Engine
 Architecture Refinement (CAP-086A.1) → Decision Governance Freeze
 (CAP-086A.2) → Deterministic Implementation (CAP-086B) → Runtime Contract
-Freeze (CAP-086B.1). Runtime Integration (CAP-086C, reserved) is the only
-remaining step before this framework is live.
+Freeze (CAP-086B.1). Runtime Integration (CAP-086C) activates it in the live
+pipeline — see §8d.
+
+## 8d. Runtime Integration (CAP-086C)
+
+CAP-086C activates the already-complete Learning Framework in the live
+Requirement Intelligence runtime — Layer 2's fourth and final capability
+going live, completing Layer 2 end to end. **No redesign, no contract
+change, no engine change, no collaborator change, no policy change, no rule
+catalogue change, no identity change, no version change** — only runtime
+activation, exactly as CAP-085C activated Organizational Memory. Full detail
+lives in ADR-0029 §D29; summarised here:
+
+**Execution order (frozen).** Learning runs exactly once, immediately after
+Organizational Memory, at the permanently frozen end of the pipeline:
+
+```
+... → Knowledge Graph → Organizational Memory → Learning
+    → Execution Package
+```
+
+**No reference minting, no fan-in.** Unlike Organizational Memory, Learning
+mints no `HistoricalDatasetReference` and consumes no second peer —
+`run_learning_phase` passes the one already-completed Organizational Memory
+result straight through to `LearningService.build`, and runs only when
+`organizational_memory_result` is present.
+
+**CLI.** `run_learning_phase` obtains `LearningService` exclusively from
+`PlatformContext` and calls `build(organizational_memory_result)` —
+orchestration only, identical failure semantics to every prior phase
+(surfaced, never fatal).
+
+**Execution Package.** `ExecutionData.learning_result` is additive-only.
+`LearningSerializer` (`learning/serialization/`) renders
+`learning_result.json` (canonical `model_dump`), `learning_report.md`, and
+`learning_metrics.md` — pure projection, computing nothing.
+`ExecutionWriter` appends these three artifacts only when the result is
+present, immediately after the Organizational Memory artifacts.
+
+**Manifest purity.** The manifest gains exactly three additive keys —
+`learningExecuted`, `learningReport`, `learningMetrics` — a flag and two
+filenames, never runtime state. `manifestSchemaVersion` stays `1.0.0`.
+
+**Golden integration.** `_run_golden_pipeline()` now builds Learning
+immediately after Organizational Memory; `PipelineResult` carries
+`learning_result`. `GOLDEN_DATASET_VERSION` re-baselines `1.7.0` → `1.8.0` —
+the nine source artifacts and the golden response are unchanged; only the
+generated artifact set grows by the three Learning files. Because
+Organizational Memory's own golden shape never promotes a best practice, the
+golden `LearningResult` is genuinely, structurally empty — a real,
+reproducible corpus-floor-gated shape (ADR-0028 §Stage 6), not an
+unexplained one. The Architecture Version remains `1.2.0`; the Platform
+Version is unchanged.
+
+**Ownership (unchanged, now live).** The engine's collaborators
+collect/cluster/validate/generate/evaluate/record as already frozen.
+Service orchestrates only. `LearningResult` owns runtime state only. The
+serializer projects only. The Execution Package packages only. The CLI
+orchestrates (the pipeline call) only. `PlatformContext` composes only.
+
+**Layer 2 completion.** With Learning now live, all four Layer 2
+capabilities — Continuous Improvement, Knowledge Graph, Organizational
+Memory, and Learning — execute in the live pipeline, in their permanently
+frozen order, completing Layer 2 end to end.
 
 ## 9. PlatformContext
 
@@ -267,11 +329,11 @@ remaining step before this framework is live.
 - `create_learning_policy() -> LearningPolicy`
 - `create_learning_service() -> LearningService`
 
-Mirroring `create_organizational_memory_policy()` / `create_organizational_memory_service()` (ADR-0027), these are the **only** sanctioned points outside the `learning` package that may construct its objects, enforced by a containment test.
+Mirroring `create_organizational_memory_policy()` / `create_organizational_memory_service()` (ADR-0027), these are the **only** sanctioned points outside the `learning` package that may construct its objects, enforced by a containment test — extended by CAP-086C to also permit `scripts/run_requirement_analysis.py`'s `run_learning_phase()` to call `create_learning_service()` (never `PlatformContext`'s composition methods bypassed).
 
 ## 10. Execution package
 
-Not introduced by CAP-086A. When a future milestone activates the runtime, every Learning execution artifact will be a **pure projection** of `LearningResult`, reproducible from it alone, computing nothing — the same serialization invariant ADR-0022 §D8, ADR-0023 §D8, and ADR-0027 §D19 established for their own subsystems (Recommendation 10 of ADR-0029).
+Activated by CAP-086C (§8d). Every Learning execution artifact is a **pure projection** of `LearningResult`, reproducible from it alone, computing nothing — the same serialization invariant ADR-0022 §D8, ADR-0023 §D8, and ADR-0027 §D19 established for their own subsystems (Recommendation 10 of ADR-0029).
 
 ## 11. Implementation roadmap (non-normative)
 
@@ -280,7 +342,7 @@ Not introduced by CAP-086A. When a future milestone activates the runtime, every
 3. **Done (CAP-086A.2).** Decision Governance & Deterministic Execution Constitution: the six permanent properties every Learning decision must satisfy, freedom from hidden state, immutable-only collaborator communication, and whole-engine purity — no code, still architecture only.
 4. **Done (CAP-086B).** Deterministic Learning Engine: implement the CAP-086A.1 collaborator pipeline (corrected order, §8b) strictly from the one resolved `OrganizationalMemoryResult` (Recommendation 6 of ADR-0029), obeying the CAP-086A.2 decision-governance constitution, never independent analysis. See §8b.
 5. **Done (CAP-086B.1).** LearningResult Runtime Contract Freeze: permanent certification of `LearningResult` as the sole runtime contract and permanent Layer 2 output surface, no behaviour change. See §8c.
-6. Runtime activation (CAP-086C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-085C's activation of Organizational Memory.
+6. **Done (CAP-086C).** Runtime activation — wire `build` into the live cross-execution pipeline immediately after Organizational Memory, add the Execution Package projection, golden re-baseline `1.7.0` → `1.8.0`, mirroring CAP-083C/CAP-084C/CAP-085C's own activations. Completes Layer 2 end to end. See §8d.
 7. Future AI validation — statistical, ML, LLM, GraphRAG, reinforcement learning, and neuro-symbolic engines (reserved), behind the unchanged `LearningResult` contract — never a redesign of it.
 8. Feature Engineering (Layer 3, reserved) — the first capability outside Layer 2, to consume `LearningResult` (Recommendation 8 of ADR-0029), completing the Layer 2 → Layer 3 bridge ADR-0028 §Stage 16 names.
 

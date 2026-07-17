@@ -107,6 +107,13 @@ _ORGANIZATIONAL_MEMORY_ARTIFACTS = frozenset(
         "organizational_memory_metrics.md",
     }
 )
+_LEARNING_ARTIFACTS = frozenset(
+    {
+        "learning_result.json",
+        "learning_report.md",
+        "learning_metrics.md",
+    }
+)
 _ALL_ARTIFACTS = (
     _CORE_ARTIFACTS
     | _RESULT_ARTIFACTS
@@ -119,6 +126,7 @@ _ALL_ARTIFACTS = (
     | _CONTINUOUS_IMPROVEMENT_ARTIFACTS
     | _KNOWLEDGE_GRAPH_ARTIFACTS
     | _ORGANIZATIONAL_MEMORY_ARTIFACTS
+    | _LEARNING_ARTIFACTS
     | {"manifest.json"}
 )
 
@@ -587,6 +595,68 @@ class TestPhase3PipelineExecution:
         assert organizational_memory.metrics.active_count == len(organizational_memory.lifecycles)
 
     @pytest.mark.productization
+    def test_learning_result_exists(self, golden_pipeline_result: PipelineResult) -> None:
+        """Learning ran after Organizational Memory (CAP-086C) and produced a result."""
+        assert golden_pipeline_result.learning_result is not None, (
+            "LearningResult is None — Learning did not run despite Organizational "
+            "Memory completing."
+        )
+
+    @pytest.mark.productization
+    def test_learning_runs_strictly_after_organizational_memory(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The frozen order: Learning only exists once Organizational Memory does.
+
+        Learning consumes exactly the one already-completed Layer 2 tier
+        immediately beneath it — never a ``HistoricalDatasetReference``, never
+        a two-peer fan-in (ADR-0028 §Stage 12, ADR-0029 §D2).
+        """
+        learning = golden_pipeline_result.learning_result
+        assert golden_pipeline_result.organizational_memory_result is not None
+        assert learning.organizational_memory_result_id == str(
+            golden_pipeline_result.organizational_memory_result.result_id
+        )
+        assert learning.started_at <= learning.completed_at
+
+    @pytest.mark.productization
+    def test_learning_produces_the_golden_datasets_known_shape(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """A long-term regression guard: the golden dataset's structurally bounded shape.
+
+        Organizational Memory's own golden shape (see
+        ``test_organizational_memory_produces_the_golden_datasets_known_shape``
+        above) never promotes a best practice — its `ExperienceClusterer`
+        groups by exact equality, and this golden run's captured experiences
+        never reach the governed `minimum_experiences_for_lesson` floor, so
+        `best_practices == ()` unconditionally. `LearningCandidateCollector`
+        proposes a candidate only when the consumed `OrganizationalMemoryResult`
+        already carries at least `LearningThresholds.minimum_best_practices_for_
+        candidate` (2, by governed default) best practices in total — a corpus
+        of zero best practices never clears that floor, so this golden dataset
+        proposes no candidate at all, and every downstream collaborator
+        (clusterer, validator, generator, institutionalization/stability
+        evaluators, confidence/promotion/lifecycle recorders) has nothing to
+        act on. The result is a genuine, valid, empty `LearningResult` — not
+        the policy-disabled short-circuit path (candidate proposal remains
+        enabled), but the natural corpus-floor gate (ADR-0028 §Stage 6). A
+        non-empty value here is a genuine regression signal — either the
+        Organizational Memory golden shape changed upstream, or Learning's own
+        corpus gate stopped being respected.
+        """
+        learning = golden_pipeline_result.learning_result
+        assert learning.candidates == ()
+        assert learning.learnings == ()
+        assert learning.validations == ()
+        assert learning.confidences == ()
+        assert learning.lifecycles == ()
+        assert learning.summary.total_candidates == 0
+        assert learning.summary.total_learnings == 0
+        assert learning.metrics.candidate_count == 0
+        assert not learning.summary.headline.startswith("Learning is disabled by policy")
+
+    @pytest.mark.productization
     def test_execution_package_written(self, golden_pipeline_result: PipelineResult) -> None:
         """ExecutionWriter completed without raising."""
         assert golden_pipeline_result.write_result is not None
@@ -792,6 +862,26 @@ class TestPhase4OutputVerification:
         assert (
             OrganizationalMemoryResult.model_validate(on_disk)
             == golden_pipeline_result.organizational_memory_result
+        )
+
+    @pytest.mark.productization
+    def test_learning_artifacts_present(self, golden_pipeline_result: PipelineResult) -> None:
+        """Learning ran (CAP-086C), so all three artifacts are written."""
+        for name in _LEARNING_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"Learning artifact missing: {name}"
+            assert path.stat().st_size > 0, f"Learning artifact is empty: {name}"
+
+    @pytest.mark.productization
+    def test_learning_result_json_round_trips(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """learning_result.json is a verbatim, round-trippable projection."""
+        from requirement_intelligence.learning.models import LearningResult
+
+        on_disk = _load_json(golden_pipeline_result.output_dir / "learning_result.json")
+        assert (
+            LearningResult.model_validate(on_disk) == golden_pipeline_result.learning_result
         )
 
     @pytest.mark.productization
@@ -1332,6 +1422,129 @@ class TestPhase4OutputVerification:
         )
         for lesson in result.lessons:
             assert set(lesson.source_experience_ids) <= known_experience_ids
+        for lifecycle in result.lifecycles:
+            assert lifecycle.subject_id in known_subject_ids
+
+    @pytest.mark.productization
+    def test_manifest_references_learning_artifacts_only(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """manifest.json indexes the Learning artifacts; it never duplicates state.
+
+        Manifest purity (ADR-0017 §D31, applied here per ADR-0029 §D28/§D29):
+        the manifest owns package metadata and the artifact inventory only.
+        The canonical candidates, validations, learnings, confidences, and
+        lifecycles are the sole runtime state and live exclusively on
+        ``LearningResult`` / the artifact ``learning_result.json`` — never
+        re-surfaced as manifest keys.
+        """
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        result = golden_pipeline_result.learning_result
+        assert manifest.get("learningExecuted") is True
+        assert manifest.get("learningReport") == "learning_report.md"
+        assert manifest.get("learningMetrics") == "learning_metrics.md"
+        for forbidden_key in (
+            "learningResult",
+            "learningSummary",
+            "learningCandidates",
+            "learningValidations",
+            "learnings",
+            "learningConfidences",
+            "learningLifecycles",
+        ):
+            assert forbidden_key not in manifest
+
+        on_disk = _load_json(golden_pipeline_result.output_dir / "learning_result.json")
+        assert on_disk["summary"]["totalCandidates"] == result.summary.total_candidates
+
+    @pytest.mark.productization
+    def test_manifest_checksums_the_learning_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """learning_result.json is checksummed like every other artifact."""
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        entries = {a["name"]: a for a in manifest["generatedArtifacts"]}
+        entry = entries["learning_result.json"]
+        path = golden_pipeline_result.output_dir / "learning_result.json"
+        assert entry["sha256"] == _sha256(path)
+        assert entry["bytes"] == path.stat().st_size
+
+    @pytest.mark.productization
+    def test_learning_report_contains_the_summary_headline(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """learning_report.md is a projection — it shows the result's own headline."""
+        report = (golden_pipeline_result.output_dir / "learning_report.md").read_text(
+            encoding="utf-8"
+        )
+        assert golden_pipeline_result.learning_result.summary.headline in report
+
+    @pytest.mark.productization
+    def test_learning_metrics_contains_the_candidate_count(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """learning_metrics.md is a projection — it shows the result's own metrics."""
+        metrics_md = (golden_pipeline_result.output_dir / "learning_metrics.md").read_text(
+            encoding="utf-8"
+        )
+        candidate_count = golden_pipeline_result.learning_result.metrics.candidate_count
+        assert str(candidate_count) in metrics_md
+
+    @pytest.mark.productization
+    def test_execution_data_learning_result_matches_pipeline_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """The object transported into the Execution Package is the same one returned."""
+        assert (
+            golden_pipeline_result.execution_data.learning_result
+            is golden_pipeline_result.learning_result
+        )
+
+    @pytest.mark.productization
+    def test_learning_artifacts_are_written_after_organizational_memory_artifacts(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Artifact write order mirrors the frozen pipeline order (Organizational
+        Memory, then Learning)."""
+        names = [
+            entry["name"]
+            for entry in golden_pipeline_result.write_result.manifest["generatedArtifacts"]
+        ]
+        last_om_index = max(
+            index for index, name in enumerate(names) if name.startswith("organizational_memory")
+        )
+        first_learning_index = min(
+            index for index, name in enumerate(names) if name.startswith("learning")
+        )
+        assert last_om_index < first_learning_index
+
+    @pytest.mark.productization
+    def test_learning_result_is_explainable_solely_from_the_result(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """Every candidate/validation/learning/confidence/lifecycle the golden run
+        produced traces to the result alone.
+
+        No re-run of the engine, the service, or the consumed Organizational
+        Memory result is required — the explainability invariant ADR-0029
+        §D28/§D29 certifies. The golden run's own shape is empty (see
+        ``test_learning_produces_the_golden_datasets_known_shape``), so this
+        guards the invariant even for a corpus-floor-gated, zero-record
+        result.
+        """
+        result = golden_pipeline_result.learning_result
+        known_candidate_ids = {candidate.candidate_id for candidate in result.candidates}
+        known_validation_ids = {validation.validation_id for validation in result.validations}
+        known_subject_ids = {str(i) for i in known_candidate_ids} | {
+            str(learning.learning_id) for learning in result.learnings
+        }
+        for validation in result.validations:
+            assert validation.candidate_id in known_candidate_ids
+        for learning in result.learnings:
+            assert learning.candidate_id in known_candidate_ids
+            assert learning.validation_id in known_validation_ids
+        for confidence in result.confidences:
+            assert confidence.subject_id in known_subject_ids
         for lifecycle in result.lifecycles:
             assert lifecycle.subject_id in known_subject_ids
 
@@ -2309,6 +2522,84 @@ class TestPhase5Determinism:
         assert "organizationalMemorySummary" not in m2
 
     @pytest.mark.productization
+    def test_determinism_learning_result_content(
+        self,
+        golden_pipeline_result: PipelineResult,
+    ) -> None:
+        """The same consumed Layer 2 tier, built twice, yields the same content.
+
+        Learning consumes exactly one already-completed Layer 2 tier —
+        never a ``HistoricalDatasetReference``, never a two-peer fan-in
+        (ADR-0028 §Stage 12, ADR-0029 §D2). The determinism contract
+        (ADR-0029 §D28/§D29) is *same result in, same result out* — proven
+        here by rebuilding directly through ``LearningService.build`` from
+        the exact ``OrganizationalMemoryResult`` this golden run already
+        consumed, and comparing content (never the wall-clock
+        ``startedAt``/``completedAt`` timestamps, since the runtime mints
+        those at each build).
+        """
+        from requirement_intelligence.platform.platform_context import PlatformContext
+
+        r1 = golden_pipeline_result.learning_result
+        r2 = (
+            PlatformContext()
+            .create_learning_service()
+            .build(golden_pipeline_result.organizational_memory_result)
+        )
+        assert r1.candidates == r2.candidates
+        assert r1.learnings == r2.learnings
+        assert r1.validations == r2.validations
+        assert r1.confidences == r2.confidences
+        assert r1.lifecycles == r2.lifecycles
+        assert r1.summary.total_candidates == r2.summary.total_candidates
+        assert r1.metrics == r2.metrics
+        assert r1.result_id == r2.result_id
+
+    @pytest.mark.productization
+    def test_determinism_learning_serialization(
+        self,
+        golden_pipeline_result: PipelineResult,
+    ) -> None:
+        """Serializer output is a pure function of a ``LearningResult`` — no re-derivation.
+
+        The runtime mints run-specific provenance on the ``startedAt``/
+        ``completedAt`` fields (wall clock); the serializer must render the
+        exact same bytes given the exact same result object, exactly as
+        every other subsystem serializer in this platform does.
+        """
+        from requirement_intelligence.learning.serialization import LearningSerializer
+
+        serializer = LearningSerializer()
+        r1 = golden_pipeline_result.learning_result
+
+        assert serializer.render_report(r1) == serializer.render_report(r1)
+        assert serializer.render_metrics(r1) == serializer.render_metrics(r1)
+        assert serializer.render_json(r1) == serializer.render_json(r1)
+
+    @pytest.mark.productization
+    def test_determinism_manifest_learning_keys_stay_metadata_only(
+        self,
+        golden_pipeline_result: PipelineResult,
+        tmp_path: Path,
+    ) -> None:
+        """manifest Learning keys are identical package metadata across two runs.
+
+        Content determinism itself is proven at the runtime-contract boundary
+        by ``test_determinism_learning_result_content``: the golden regression
+        compares ``LearningResult`` content, never the manifest. This test
+        only confirms the manifest's package-metadata keys are stable and
+        that no runtime-state key has leaked back into the manifest.
+        """
+        run2 = _run_golden_pipeline(tmp_path)
+        m1 = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        m2 = _load_json(run2.output_dir / "manifest.json")
+        assert m1.get("learningExecuted") == m2.get("learningExecuted")
+        assert m1.get("learningReport") == m2.get("learningReport")
+        assert m1.get("learningMetrics") == m2.get("learningMetrics")
+        assert "learningSummary" not in m1
+        assert "learningSummary" not in m2
+
+    @pytest.mark.productization
     def test_determinism_normalization_outcome(
         self,
         golden_pipeline_result: PipelineResult,
@@ -2437,7 +2728,7 @@ class TestPhase6ProductizationAssertions:
     @pytest.mark.productization
     def test_dataset_version(self) -> None:
         """The golden dataset declares a version."""
-        assert GOLDEN_DATASET_VERSION == "1.7.0"
+        assert GOLDEN_DATASET_VERSION == "1.8.0"
 
     @pytest.mark.productization
     def test_dataset_covers_all_categories(self) -> None:

@@ -153,6 +153,21 @@ class ExecutionData:
         ``organizational_memory_report.md`` / ``organizational_memory_metrics.md`` —
         a pure projection; nothing is re-captured, re-promoted, re-institutionalized,
         or recomputed.
+    learning_result:
+        The complete ``LearningResult`` produced by the Learning runtime — the
+        fourth and final Layer 2 capability (ADR-0020), and the first to consume
+        exactly one already-completed Layer 2 tier rather than a
+        ``HistoricalDatasetReference`` or a two-peer fan-in — immediately after
+        Organizational Memory and at the permanently frozen end of the pipeline
+        (CAP-086C, ADR-0029 §D29). It consumes no ``HistoricalDatasetReference``
+        and no peer Layer 2 result directly: it runs only when
+        ``organizational_memory_result`` is present, so this is ``None`` for a
+        dry run, a run where Organizational Memory did not execute, or a
+        surfaced-but-non-fatal Learning failure. When present, the execution
+        package serialises it as-is into ``learning_result.json`` /
+        ``learning_report.md`` / ``learning_metrics.md`` — a pure projection;
+        nothing is re-collected, re-validated, re-generated, re-institutionalized,
+        or recomputed.
     """
 
     selected: Any
@@ -179,6 +194,7 @@ class ExecutionData:
     continuous_improvement_result: Any | None = None
     knowledge_graph_result: Any | None = None
     organizational_memory_result: Any | None = None
+    learning_result: Any | None = None
 
     @property
     def full_prompt(self) -> str:

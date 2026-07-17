@@ -163,6 +163,12 @@ class PipelineResult:
     # Knowledge Graph — the first to exercise ADR-0025's fan-in exception)
     organizational_memory_result: Any  # OrganizationalMemoryResult
 
+    # Learning (Layer 2's fourth and final capability, immediately after
+    # Organizational Memory — the first to consume exactly one already-
+    # completed Layer 2 tier rather than a HistoricalDatasetReference or a
+    # two-peer fan-in)
+    learning_result: Any  # LearningResult
+
     # Execution package
     execution_data: ExecutionData
     write_result: ExecutionWriteResult
@@ -368,6 +374,16 @@ def _run_golden_pipeline(
     )
 
     # -----------------------------------------------------------------------
+    # Step 6h — Learning (CAP-086C): Layer 2's fourth and final capability,
+    # immediately after Organizational Memory, at the permanently frozen end
+    # of the pipeline. It consumes exactly the one already-completed Layer 2
+    # tier immediately beneath it — never a HistoricalDatasetReference, never
+    # a two-peer fan-in (unlike Organizational Memory, ADR-0028 §Stage 12,
+    # ADR-0029 §D2).
+    # -----------------------------------------------------------------------
+    learning_result = context.create_learning_service().build(organizational_memory_result)
+
+    # -----------------------------------------------------------------------
     # Step 7 — Execution package
     # -----------------------------------------------------------------------
     execution_data = ExecutionData(
@@ -395,6 +411,7 @@ def _run_golden_pipeline(
         continuous_improvement_result=continuous_improvement_result,
         knowledge_graph_result=knowledge_graph_result,
         organizational_memory_result=organizational_memory_result,
+        learning_result=learning_result,
     )
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -416,6 +433,7 @@ def _run_golden_pipeline(
         continuous_improvement_result=continuous_improvement_result,
         knowledge_graph_result=knowledge_graph_result,
         organizational_memory_result=organizational_memory_result,
+        learning_result=learning_result,
         execution_data=execution_data,
         write_result=write_result,
         output_dir=tmp_dir,

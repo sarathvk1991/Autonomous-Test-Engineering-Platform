@@ -735,6 +735,38 @@ def run_organizational_memory_phase(
     return result
 
 
+def run_learning_phase(
+    context: PlatformContext,
+    organizational_memory_result: Any,
+    console: Console,
+) -> Any:
+    """Learning phase — Layer 2's fourth and final capability, immediately after
+    Organizational Memory (CAP-086C, ADR-0029 §D29).
+
+    Runs at the permanently frozen end of the pipeline::
+
+        ... Knowledge Graph → Organizational Memory → Learning → Execution Package
+
+    It consumes **only** the one already-completed Layer 2 tier immediately
+    beneath it — never a ``HistoricalDatasetReference``, never a two-peer
+    fan-in (unlike Organizational Memory), and never any Layer 1 runtime
+    contract directly (ADR-0028 §Stage 12, ADR-0029 §D2). The single
+    ``LearningService`` comes solely from :class:`PlatformContext`; this CLI
+    is pure orchestration glue and invents no candidate, validation, learning,
+    confidence, or lifecycle record of its own. Mirroring every prior phase, a
+    failure here is surfaced but never fatal to the analysis run, and never
+    corrupts the already-completed upstream results.
+    """
+    console.action("\nRunning Learning")
+    result = context.create_learning_service().build(organizational_memory_result)
+    summary = result.summary
+    console.ok(f"{summary.headline}")
+    console.note(f"  Candidates          : {summary.total_candidates}")
+    console.note(f"  Learnings           : {summary.total_learnings}")
+    console.note(f"  Validations         : {summary.total_validations}")
+    return result
+
+
 # ===========================================================================
 # Subcommand handlers
 # ===========================================================================
@@ -1020,6 +1052,23 @@ def handle_analyze(args: argparse.Namespace) -> int:
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Organizational memory build failed: {exc}")
 
+    # Learning phase (CAP-086C): Layer 2's fourth and final capability,
+    # immediately after Organizational Memory, at the permanently frozen end
+    # of the pipeline (... → Organizational Memory → Learning → Execution
+    # Package). It consumes only the one already-completed Layer 2 tier
+    # immediately beneath it — never a HistoricalDatasetReference, never a
+    # two-peer fan-in (unlike Organizational Memory, ADR-0028 §Stage 12,
+    # ADR-0029 §D2) — and runs only when Organizational Memory's result is
+    # present. It modifies nothing upstream. Mirroring every prior phase, a
+    # failure here is surfaced but never fatal, and never corrupts the
+    # already-completed upstream results.
+    learning_result: Any = None
+    if organizational_memory_result is not None:
+        try:
+            learning_result = run_learning_phase(context, organizational_memory_result, console)
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"Learning build failed: {exc}")
+
     data = ExecutionData(
         selected=selected,
         engineering_context=engineering_context,
@@ -1044,6 +1093,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         continuous_improvement_result=continuous_improvement_result,
         knowledge_graph_result=knowledge_graph_result,
         organizational_memory_result=organizational_memory_result,
+        learning_result=learning_result,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

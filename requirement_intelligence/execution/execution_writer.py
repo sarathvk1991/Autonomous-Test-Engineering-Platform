@@ -38,6 +38,7 @@ from requirement_intelligence.execution.validation_report_builder import (
 )
 from requirement_intelligence.grounding.serialization import GroundingSerializer
 from requirement_intelligence.knowledge_graph.serialization import KnowledgeGraphSerializer
+from requirement_intelligence.learning.serialization import LearningSerializer
 from requirement_intelligence.organizational_memory.serialization import (
     OrganizationalMemorySerializer,
 )
@@ -108,6 +109,7 @@ class ExecutionWriter:
         self._continuous_improvement = ContinuousImprovementSerializer()
         self._knowledge_graph = KnowledgeGraphSerializer()
         self._organizational_memory = OrganizationalMemorySerializer()
+        self._learning = LearningSerializer()
 
     def write(self, target_dir: Path, data: ExecutionData) -> ExecutionWriteResult:
         """Write every artifact for *data* into *target_dir* and the manifest."""
@@ -364,6 +366,32 @@ class ExecutionWriter:
                 "organizational_memory_result.json",
                 "organizational_memory_report.md",
                 "organizational_memory_metrics.md",
+            ]
+        # Learning artifacts (CAP-086C): appended only when a LearningResult was
+        # produced — Layer 2's fourth and final capability, immediately after
+        # Organizational Memory, at the permanently frozen end of the pipeline.
+        # Pure projection — the LearningResult is serialised/rendered as-is; no
+        # candidate is collected, no candidate is clustered, no candidate is
+        # validated, no Learning is generated, no institutionalization or
+        # stability decision is evaluated, and no confidence, promotion, or
+        # lifecycle record is created here.
+        if data.learning_result is not None:
+            _write_json(
+                target_dir / "learning_result.json",
+                self._learning.render_json(data.learning_result),
+            )
+            (target_dir / "learning_report.md").write_text(
+                self._learning.render_report(data.learning_result),
+                encoding="utf-8",
+            )
+            (target_dir / "learning_metrics.md").write_text(
+                self._learning.render_metrics(data.learning_result),
+                encoding="utf-8",
+            )
+            names += [
+                "learning_result.json",
+                "learning_report.md",
+                "learning_metrics.md",
             ]
         return tuple(names)
 
