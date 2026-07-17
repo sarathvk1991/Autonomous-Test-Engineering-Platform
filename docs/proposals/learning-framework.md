@@ -1,8 +1,8 @@
 # Learning Framework — Design Proposal
 
-- **Status:** Accepted, live (CAP-086A froze the architecture; CAP-086A.1 froze the future engine's internal decomposition and governance; CAP-086A.2 froze the decision-governance constitution every collaborator's decisions must satisfy; CAP-086B implemented the first deterministic engine behind it, unchanged, still unwired)
+- **Status:** Accepted, live (CAP-086A froze the architecture; CAP-086A.1 froze the future engine's internal decomposition and governance; CAP-086A.2 froze the decision-governance constitution every collaborator's decisions must satisfy; CAP-086B implemented the first deterministic engine behind it, unchanged; CAP-086B.1 permanently certified the runtime contract, no behaviour change; still unwired)
 - **Capability:** CAP-086 — Learning Framework
-- **Milestones covered:** CAP-086A (Architecture & Governance Freeze), CAP-086A.1 (Learning Architecture Refinement & Engine Governance Freeze — see §8a), CAP-086A.2 (Learning Decision Governance & Deterministic Execution Constitution), CAP-086B (Deterministic Learning Engine — see §8b)
+- **Milestones covered:** CAP-086A (Architecture & Governance Freeze), CAP-086A.1 (Learning Architecture Refinement & Engine Governance Freeze — see §8a), CAP-086A.2 (Learning Decision Governance & Deterministic Execution Constitution), CAP-086B (Deterministic Learning Engine — see §8b), CAP-086B.1 (LearningResult Runtime Contract Freeze — see §8c)
 - **Governed by:** ADR-0029
 - **Depends on:** ADR-0020 (Platform Evolution Roadmap & Architectural Constitution), ADR-0021 (Cross-Execution Data Architecture & Historical Intelligence Constitution), ADR-0025 (Derived Knowledge Architecture & Layer 2 Constitution — the peer-independence and fan-in rules this framework's own single-input boundary is defined against), ADR-0026 (Organizational Knowledge Architecture & Learning Constitution — Learning's earliest principles), and ADR-0028 (Learning Constitution — the full constitutional definition of what this framework produces).
 
@@ -144,6 +144,122 @@ CAP-086B is the later milestone §8a's D9/D10/D16 pre-specified: it implements `
 
 **Tests.** New deterministic tests cover rule catalogue construction, each collaborator's sole-authority ownership, clustering/consolidation determinism, floor-gated validation and generation, confidence agreement across collaborators, institutionalization/stability decision correctness, lifecycle append-only recording, builder single-computation guarantees, end-to-end engine determinism and explainability, policy gating, and containment (no Layer 1 imports, no Historical Dataset touched directly, no Organizational Memory implementation class imported, only `PlatformContext` constructs the service externally).
 
+## 8c. Runtime Contract Freeze (CAP-086B.1)
+
+CAP-086B.1 permanently certifies `LearningResult` as the runtime contract of
+the Learning Framework, before the subsystem is activated in the live
+pipeline — mirroring CAP-080B.1.1 (`QualityAssessmentResult`), CAP-081B.1
+(`RequirementEnhancementResult`), CAP-082B.1 (`RecommendationResult`),
+CAP-083B.1 (`ContinuousImprovementResult`), CAP-084B.1
+(`KnowledgeGraphResult`), and CAP-085B.1 (`OrganizationalMemoryResult`).
+**No runtime behaviour changes.** No field, no computation, no signature
+changed; only documentation and architecture-only tests were added. Full
+detail lives in ADR-0029 §D28; summarised here:
+
+**Frozen definition.** `LearningResult` is *the complete deterministic
+runtime record produced from exactly one execution of*
+`LearningService.build()`.
+
+- **IS:** the complete runtime output of one Learning build; the canonical,
+  fourth and final Layer 2 runtime contract; Learned Knowledge;
+  self-contained; independently versioned; deterministic; explainable;
+  projection-independent; the permanent Layer 2 → Layer 3 hand-off surface.
+- **IS NOT:** Organizational Knowledge, Derived Knowledge, Historical Truth,
+  or Runtime Truth; the consumed `OrganizationalMemoryResult`'s own content;
+  an execution package; a report; a renderer; a serializer; a CLI object; a
+  mutable ledger; any engine-specific or implementation-specific object.
+
+**Ownership (no overlap).** `LearningCandidateCollector` owns candidate
+collection only. `LearningCandidateClusterer` owns consolidation only.
+`LearningValidator` owns validation only. `LearningGenerator` owns Learning
+construction only, from validated candidates only.
+`InstitutionalizationEvaluator` owns institutional-readiness decisions only.
+`StabilityEvaluator` owns stability decisions only (reserved output).
+`ConfidenceRecorder` owns confidence recording only. `PromotionRecorder`
+owns promotion recording only (reserved output). `LifecycleRecorder` owns
+lifecycle recording only. `SummaryBuilder`/`MetricsBuilder` own aggregation
+only. `DeterministicLearningEngine` owns pipeline orchestration of those
+collaborators only. `LearningService` owns orchestration only.
+`LearningResult` owns candidates, learnings, validations, confidences,
+lifecycles, summary, metrics, provenance, governing policy identity/version,
+and the one consumed `OrganizationalMemoryResult` id reference only — it
+never owns runtime engines, the consumed result's own content, the execution
+package, reports, serialization, or future GraphRAG/ML/neuro-symbolic
+reasoning. A future serializer owns projection only. A future Execution
+Package owns packaging only. `PlatformContext` owns composition only.
+
+**Explainability.** Every candidate, learning, validation, confidence, and
+lifecycle record is reconstructable solely from `LearningResult` — no engine
+rerun, no service inspection required.
+
+**Runtime boundary.** Runtime ends at `LearningResult`. Everything after it
+— serializers, reports, dashboards, Markdown, the Execution Package — is
+projection, and must consume `LearningResult` only, never the engine, the
+service, or `PlatformContext`:
+
+```
+OrganizationalMemoryResult
+    → DeterministicLearningEngine
+    → LearningResult
+    → Serializer (future)
+    → Execution Package (future)
+    → Manifest (future)
+    → Release
+```
+
+**Layer 2 Single-Tier Reference Principle (frozen permanently, mirrors
+ADR-0028 §Stage 12/16).** `LearningResult` intentionally references the one
+consumed `OrganizationalMemoryResult` by id only — never embedding its
+content. The public runtime boundary remains
+`OrganizationalMemoryResult → LearningResult`.
+
+**Learned Knowledge principle (frozen permanently).** `LearningResult` is
+Learned Knowledge. It never becomes Organizational Knowledge, Derived
+Knowledge, Historical Truth, or Runtime Truth. Learning must never
+recursively consume its own prior Learned Knowledge.
+
+**Layer 2 Output Permanence (frozen permanently).** `LearningResult` is now
+the permanent Layer 2 output surface — the fourth and final Layer 2 runtime
+contract, and the sole sanctioned Layer 2 → Layer 3 hand-off object. A
+future Feature Engineering capability must consume `LearningResult` alone,
+never any Learning collaborator, the engine, the service, or
+`PlatformContext` directly.
+
+**Append-Only Runtime Philosophy (frozen permanently).** Every record
+`LearningResult` carries was produced by an append-only decision — nothing
+inside a `LearningResult` is ever a mutation of a prior build's own record.
+A later build over newer Organizational Knowledge produces an entirely new,
+independent `LearningResult`.
+
+**Version-axis independence.** Nine distinct version types exist —
+`LearningFrameworkVersion`, `LearningPolicyVersion`, `LearningVersion`
+(reserved), `LearningLifecycleVersion` (reserved), `LearningValidationVersion`
+(reserved), `LearningResultVersion` (the only axis stamped onto a model
+today), `LearningRuleVersion`, `LearningRuleCatalogVersion`,
+`LearningEngineVersion` — each evolving independently. `LearningEngineVersion`
+versions the engine's own internal implementation, not any
+runtime-contract-facing schema, and is excluded from this count.
+`LearningCandidate`, `LearningConfidence`, and `LearningSummary`/
+`LearningMetrics` carry no dedicated schema-version type of their own;
+`LearningValidation` carries only the governing policy version — a
+deliberate architectural consolidation, not a gap. No new version type was
+invented for this certification.
+
+**Future engine compatibility.** Future deterministic, statistical, ML,
+LLM, GraphRAG, reinforcement learning, and neuro-symbolic engines must all
+reuse `LearningResult` without contract changes — changing only computed
+values, never runtime structure. No alternative runtime contract (e.g. an
+`MLLearningResult`, `LLMLearningResult`, `GraphLearningResult`,
+`AgentLearningResult`, or `NeuralLearningResult`) may ever be introduced.
+
+**Certification.** `LearningResult` is constitutionally certified as the
+permanent Layer 2 runtime contract for Learning, and the permanent Layer 2
+output surface — completing Architecture Freeze (CAP-086A) → Engine
+Architecture Refinement (CAP-086A.1) → Decision Governance Freeze
+(CAP-086A.2) → Deterministic Implementation (CAP-086B) → Runtime Contract
+Freeze (CAP-086B.1). Runtime Integration (CAP-086C, reserved) is the only
+remaining step before this framework is live.
+
 ## 9. PlatformContext
 
 `PlatformContext` exposes two composition-root methods, construction only:
@@ -163,9 +279,10 @@ Not introduced by CAP-086A. When a future milestone activates the runtime, every
 2. **Done (CAP-086A.1).** Engine architecture refinement & governance freeze: the future engine's modular collaborator decomposition, adjacent-only promotion discipline, the Validation/Institutionalization/Stability distinctions, the complete explainability chain, and reserved promotion-metadata governance — no code, still architecture only. See §8a.
 3. **Done (CAP-086A.2).** Decision Governance & Deterministic Execution Constitution: the six permanent properties every Learning decision must satisfy, freedom from hidden state, immutable-only collaborator communication, and whole-engine purity — no code, still architecture only.
 4. **Done (CAP-086B).** Deterministic Learning Engine: implement the CAP-086A.1 collaborator pipeline (corrected order, §8b) strictly from the one resolved `OrganizationalMemoryResult` (Recommendation 6 of ADR-0029), obeying the CAP-086A.2 decision-governance constitution, never independent analysis. See §8b.
-5. Runtime activation (CAP-086C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-085C's activation of Organizational Memory.
-6. Future AI validation — statistical, ML, LLM, GraphRAG, reinforcement learning, and neuro-symbolic engines (reserved), behind the unchanged `LearningResult` contract — never a redesign of it.
-7. Feature Engineering (Layer 3, reserved) — the first capability outside Layer 2, to consume `LearningResult` (Recommendation 8 of ADR-0029), completing the Layer 2 → Layer 3 bridge ADR-0028 §Stage 16 names.
+5. **Done (CAP-086B.1).** LearningResult Runtime Contract Freeze: permanent certification of `LearningResult` as the sole runtime contract and permanent Layer 2 output surface, no behaviour change. See §8c.
+6. Runtime activation (CAP-086C, reserved) — wire `build` into a live cross-execution pipeline, add a future Execution Package projection, golden re-baseline, mirroring CAP-085C's activation of Organizational Memory.
+7. Future AI validation — statistical, ML, LLM, GraphRAG, reinforcement learning, and neuro-symbolic engines (reserved), behind the unchanged `LearningResult` contract — never a redesign of it.
+8. Feature Engineering (Layer 3, reserved) — the first capability outside Layer 2, to consume `LearningResult` (Recommendation 8 of ADR-0029), completing the Layer 2 → Layer 3 bridge ADR-0028 §Stage 16 names.
 
 Each lands behind the unchanged `build` signature and the unchanged `LearningResult` contract — no architectural change required.
 

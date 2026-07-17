@@ -1,22 +1,23 @@
 """The :class:`LearningResult` — the frozen runtime contract of the Learning
-Framework (CAP-086A architecture freeze, ADR-0029 §D3/§D4).
+Framework (CAP-086A architecture freeze, ADR-0029 §D3/§D4; permanently
+certified as the sole runtime contract by CAP-086B.1, ADR-0029 §D28).
 
 CAP-086A freezes the architecture before any engine exists — exactly as
 CAP-083A did for ``ContinuousImprovementResult`` before CAP-083B's
 deterministic engine, CAP-084A did for ``KnowledgeGraphResult`` before
 CAP-084B's, and CAP-085A did for ``OrganizationalMemoryResult`` before
-CAP-085B's. A future CAP-086B milestone implements the first real engine
-behind this unchanged contract, and a future CAP-086B.1 milestone would
-permanently certify ``LearningResult`` as the canonical runtime contract —
-exactly as CAP-085B.1 certified ``OrganizationalMemoryResult`` (ADR-0027
-§D18) — neither of which is introduced by this milestone.
+CAP-085B's. CAP-086B then implements the first real engine behind this
+unchanged contract, and CAP-086B.1 permanently certifies ``LearningResult``
+as the canonical runtime contract and the permanent Layer 2 output surface —
+no field, computation, or signature changes for that certification, exactly
+as CAP-085B.1 certified ``OrganizationalMemoryResult`` (ADR-0027 §D18).
 
 It **is**:
 
-* the complete runtime output — the single object a future deterministic
-  Learning engine (CAP-086B, reserved) will cross from into serialization,
-  exactly as ``OrganizationalMemoryResult`` crosses from the Organizational
-  Memory Framework's own deterministic engine;
+* the complete runtime output — the single object
+  ``DeterministicLearningEngine`` (CAP-086B) crosses from into
+  serialization, exactly as ``OrganizationalMemoryResult`` crosses from the
+  Organizational Memory Framework's own deterministic engine;
 * the canonical runtime contract — the only Learning aggregate, the fourth
   and final Layer 2 runtime contract (ADR-0020), and the first to consume a
   single already-completed Layer 2 tier (``OrganizationalMemoryResult`)
@@ -149,14 +150,16 @@ class LearningResult(Schema):
     consume a prior ``LearningResult`` as an input (mirrors Recommendation
     19 of ADR-0027, Recommendation 20 of ADR-0028).
 
-    **Runtime boundary (frozen, CAP-086A).** Runtime ends at this object:
-    ``OrganizationalMemoryResult`` → (future engine, reserved) →
+    **Runtime boundary (frozen, CAP-086A; permanently certified, CAP-086B.1,
+    ADR-0029 §D28).** Runtime ends at this object:
+    ``OrganizationalMemoryResult`` → ``DeterministicLearningEngine`` →
     ``LearningResult``. Everything after that — serialization, reports,
     Markdown, JSON, the Execution Package — is projection only and must
-    compute nothing; none of it exists yet (CAP-086A introduces none of it).
-    This boundary is now permanently frozen: future serializers, reports,
-    and Execution Package integrations must consume ``LearningResult`` only,
-    never the engine, the service, or ``PlatformContext``.
+    compute nothing; none of it exists yet (CAP-086A/CAP-086B introduce none
+    of it). This boundary is now permanently frozen: future serializers,
+    reports, and Execution Package integrations must consume
+    ``LearningResult`` only, never the engine, the service, or
+    ``PlatformContext``.
 
     **Golden regression boundary (frozen).** A future golden dataset
     compares this object's content, never Markdown or JSON formatting. A
