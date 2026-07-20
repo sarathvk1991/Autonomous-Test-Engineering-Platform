@@ -27,6 +27,141 @@ in order, without opening any other file.
 
 ---
 
+# Platform Architecture
+
+> Every diagram in this section is built from the actual execution order and
+> artifacts of `EP-20260720-070156-c1ab42ec` — the verbose CLI trace, the
+> manifest's per-subsystem `*Executed` flags, and the `generatedArtifacts`
+> checksum list. No stage below was assumed; each was observed running, in
+> this order, in this execution.
+
+## Diagram 1 — Platform Overview
+
+```mermaid
+flowchart TD
+    A["Engineering Sources<br/>JIRA · SonarQube · OWASP ZAP"] --> B[Connectors]
+    B --> C[Mappers]
+    C --> D["Consolidation<br/>39 Consolidated Artifacts"]
+    D --> E["Engineering Context<br/>26/39 groups admitted"]
+    E --> F["Requirement Intelligence<br/>Prompt → LLM → Analysis → Enhancement →<br/>Grounding → Validation → CP1 → Quality Governance → Recommendation"]
+    F --> G["Continuous Learning<br/>Continuous Improvement → Knowledge Graph →<br/>Organizational Memory → Learning"]
+    G --> H["Execution Package<br/>36 artifacts, checksummed"]
+```
+
+**Purpose** — explain the whole platform in 20 seconds, before opening a single file.
+
+**What the audience should understand** — raw engineering signals from three independent systems become one governed, checksummed package, through exactly two reasoning phases: one that judges a single execution, and one that accumulates across many.
+
+**Key message** — every capability produces an immutable runtime contract; nothing in this flow is ad hoc.
+
+**Speaking time** — 20 seconds.
+
+---
+
+## Diagram 2 — Complete Runtime Data Flow
+
+The primary architecture diagram. This is the literal, observed execution
+order from the verbose run of `demo-readiness-20260720` — not an idealized
+sequence.
+
+```mermaid
+flowchart TD
+    S1["Engineering Sources<br/>JIRA · SonarQube · OWASP ZAP"]
+    S2["Connectors<br/>329 SourceArtifacts ingested"]
+    S3[Mappers]
+    S4["Consolidation<br/>39 Consolidated Artifacts"]
+    S5["Engineering Context<br/>policy: coverage v1.0.0 · 26/39 groups"]
+    S6["Prompt Builder<br/>prompt.txt · 16,593 chars"]
+    S7["LLM<br/>gemini-3.1-flash-lite"]
+    S8["Requirement Analysis<br/>18 requirements generated"]
+    S9["Requirement Enhancement<br/>18 enhanced · 1 finding"]
+    S10["Grounding<br/>18/18 supported · score 80"]
+    S11["Validation<br/>PASSED · 13/13 rules"]
+    S12["CP1<br/>PASS · 0 findings"]
+    S13["Quality Governance<br/>PASS · score 80"]
+    S14["Recommendation<br/>1 recommendation"]
+    S15["Continuous Improvement<br/>0 findings — single-run history"]
+    S16["Knowledge Graph<br/>6 nodes · 6 edges · 1 subgraph"]
+    S17["Organizational Memory<br/>4 experiences"]
+    S18["Learning<br/>0 candidates — gated on best practices"]
+    S19["Execution Package<br/>36 artifacts"]
+    S20[Manifest]
+    S21["Markdown Reports<br/>21 files"]
+    S22["Runtime Contracts<br/>15 JSON files"]
+
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> S10 --> S11 --> S12 --> S13 --> S14 --> S15 --> S16 --> S17 --> S18 --> S19
+    S19 --> S20
+    S19 --> S21
+    S19 --> S22
+```
+
+**Purpose** — show how engineering data flows through the entire platform, end to end, in the exact order this execution actually ran it.
+
+**What the audience should understand** — the pipeline is strictly linear and one-directional up through Execution Package; Manifest, Markdown Reports, and Runtime Contracts are then written together as three faces of the same package, not three more sequential stages.
+
+**Key message** — Requirement Enhancement runs *before* Grounding, and Grounding runs *before* Validation — enrichment and evidence-judgement both happen ahead of the correctness gate, so nothing ungrounded or unenhanced ever reaches CP1 or Quality Governance.
+
+**Speaking time** — 90 seconds (walk it stage by stage, pointing at the corresponding runbook section below).
+
+---
+
+## Diagram 3 — Runtime Contract Flow
+
+Every immutable runtime model this execution actually produced, in the order
+`manifestSchemaVersion`'s subsystem flags confirm they were generated.
+
+```mermaid
+flowchart TD
+    R1["AnalysisResult<br/>analysis_result.json"]
+    R2["RequirementEnhancementResult<br/>requirement_enhancement_result.json"]
+    R3["GroundingResult<br/>grounding_result.json"]
+    R4["ValidationResult<br/>validation_result.json"]
+    R5["CP1Result<br/>cp1_report.md"]
+    R6["QualityGovernanceResult<br/>quality_governance_result.json"]
+    R7["RecommendationResult<br/>recommendation_result.json"]
+    R8["ContinuousImprovementResult<br/>continuous_improvement_result.json"]
+    R9["KnowledgeGraphResult<br/>knowledge_graph_result.json"]
+    R10["OrganizationalMemoryResult<br/>organizational_memory_result.json"]
+    R11["LearningResult<br/>learning_result.json"]
+
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11
+```
+
+**Purpose** — show that every capability's output is a named, typed, versioned model — not a free-form blob.
+
+**What the audience should understand** — each result carries its own `resultVersion` and `frameworkVersion` (all `1.0.0` in this execution, `RecommendationResult` policy at `1.1.0`), and each downstream result explicitly lists which upstream result ids it consumed — visible directly in the report tables shown in Stages 6–15.
+
+**Key message** — `CP1Result` is the one model in this chain serialized as Markdown (`cp1_report.md`) rather than JSON; every other result has both a JSON and a Markdown form. Worth knowing before someone asks "why is this one different."
+
+**Speaking time** — 60 seconds.
+
+---
+
+## Diagram 4 — Execution Package Composition
+
+```mermaid
+flowchart TD
+    E["Execution<br/>c1ab42ec-adb5-4efd-ba74-e7a968a1b5f4"]
+    M["Manifest<br/>manifest.json"]
+    R["Markdown Reports<br/>21 files"]
+    C["Runtime Contracts<br/>15 generated JSON files"]
+    K["Checksums<br/>36/36 SHA-256 verified"]
+    ME["Metrics<br/>8 *_metrics.md files"]
+    EM["Execution Metadata<br/>executionId · analysisId · timestamps · versions"]
+
+    E --> M --> R --> C --> K --> ME --> EM
+```
+
+**Purpose** — show how one execution becomes one auditable, self-verifying package on disk.
+
+**What the audience should understand** — `manifest.json` is the entry point; every other file it references is checksum-verifiable against it, and nothing in the package depends on anything outside the package to be trusted.
+
+**Key message** — this execution's package was independently re-verified after generation: 36/36 artifacts, SHA-256 and byte-count both matched, 0 mismatches, 0 missing files (see the Testing section below).
+
+**Speaking time** — 45 seconds.
+
+---
+
 ## Stage 0 — Repository Validation
 
 **Purpose** — prove the repository is in a runnable, tested state before the audience sees anything.
@@ -504,4 +639,77 @@ PY
 
 ## Total estimated demo time
 
-~10–12 minutes for the full walkthrough (Stages 0–16 + Manifest + Testing), or ~6 minutes if Architecture and Roadmap are skipped unless asked.
+~10–12 minutes for the full walkthrough (Stages 0–16 + Manifest + Testing), or ~6 minutes if Architecture and Roadmap are skipped unless asked. Add ~3–4 minutes if walking through all four Platform Architecture diagrams.
+
+---
+
+## Architecture Summary
+
+### Layer 1 — Requirement Intelligence
+
+Per-execution ingestion, reasoning, and governance. Every capability below reported `executed: true` (or an equivalent PASS/complete verdict) in this execution's manifest.
+
+| Capability | Completed | Evidence |
+| --- | --- | --- |
+| Connectors (JIRA, SonarQube, OWASP ZAP) | ✓ | 329 source artifacts ingested live |
+| Mappers | ✓ | canonical `SourceArtifact` shape confirmed in `consolidated_artifact.json` |
+| Consolidation | ✓ | 39 Consolidated Artifacts (`consolidationEngineVersion` 1.0.0) |
+| Engineering Context Orchestration | ✓ | `contextOrchestrationVersion` 2.0.0 · policy `coverage` v1.0.0 · 26/39 groups admitted |
+| Prompt Builder | ✓ | `promptFrameworkVersion` 1.0.0 · `prompt.txt` reproducible via `promptSha256` |
+| LLM Integration | ✓ | `llmFrameworkVersion` 1.0.0 · gemini-3.1-flash-lite |
+| Requirement Analysis | ✓ | `analysisServiceVersion` 1.0.0 · 18 requirements generated |
+| Requirement Enhancement | ✓ | `requirementEnhancementExecuted: true` |
+| Grounding | ✓ | 18/18 supported, 0 hallucinations, score 80 |
+| Validation | ✓ | PASSED, 13/13 rules, 0 issues |
+| CP1 | ✓ | `cp1Executed: true`, verdict `pass` |
+| Quality Governance | ✓ | `qualityGovernanceExecuted: true`, decision `pass`, score 80 |
+| Recommendation | ✓ | `recommendationExecuted: true`, 1 recommendation generated |
+
+### Layer 2 — Continuous Learning
+
+Cross-execution history accumulation. All four capabilities executed successfully; three of the four correctly produced zero output because this was the platform's first execution in its history dataset (`single-execution:c1ab42ec…`), not because anything failed.
+
+| Capability | Completed | Evidence |
+| --- | --- | --- |
+| Continuous Improvement | ✓ | `continuousImprovementExecuted: true` — 0 findings/trends (expected on 1 execution) |
+| Knowledge Graph | ✓ | `knowledgeGraphExecuted: true` — 6 nodes, 6 edges, 1 fully-connected subgraph, 0 dangling refs |
+| Organizational Memory | ✓ | `organizationalMemoryExecuted: true` — 4 experiences captured, 0 lessons (expected on 1 execution) |
+| Learning | ✓ | `learningExecuted: true` — 0 candidates (gated on Organizational Memory best practices, none yet) |
+
+### Execution Package — Governed Outputs
+
+| Output | Count / Detail |
+| --- | --- |
+| Total files | 37 (36 generated + `manifest.json`) |
+| Markdown reports | 21 |
+| Generated JSON files | 15 (16 including the manifest) |
+| Package size | ~1.1 MB |
+| Checksum integrity | 36/36 artifacts SHA-256 + byte-count verified against `manifest.json`, 0 mismatches |
+
+### Current Versions (from this execution's manifest)
+
+| Field | Value |
+| --- | --- |
+| Architecture Version | 1.2.0 |
+| Platform Version | 1.0.0 |
+| Execution Package Version | 1.0.0 |
+| Manifest Schema Version | 1.0.0 |
+| Context Orchestration Version | 2.0.0 |
+| Prompt / Reasoning Contract Version | 1.0.0 / 1.0.0 |
+
+---
+
+## Presenter Tips
+
+**Show first**
+- **Diagram 1 (Platform Overview)** — open the demo with this. It answers "what does this platform do" in 20 seconds before any artifact is opened.
+- **Diagram 2 (Complete Runtime Data Flow)** — bring this up immediately after Diagram 1 as the map you'll be walking through for the rest of the demo.
+
+**Keep visible while demonstrating artifacts**
+- **Diagram 2** — keep it up (or reopen it) at the start of each numbered Stage section (0–16) so the audience always knows where the file they're looking at sits in the pipeline.
+- **Diagram 3 (Runtime Contract Flow)** — reopen this specifically during Stages 6–15 (Enhancement through Learning), since each of those stages' report tables explicitly names the upstream result id it consumed — the diagram makes that chain visible at a glance.
+
+**Only show if architecture questions are asked**
+- **Diagram 4 (Execution Package Composition)** — this is a "how do you know it's trustworthy" diagram, not a narrative one. Hold it back unless someone asks how the manifest/checksums/reports relate, then pair it with the Testing section's live checksum re-verification.
+- The **Architecture** and **Roadmap** sections further down this document — both are explicitly marked "only if asked" and are for depth, not the main narrative.
+- The **Architecture Summary** table above — useful as a leave-behind reference after the demo, not something to read aloud during it.
