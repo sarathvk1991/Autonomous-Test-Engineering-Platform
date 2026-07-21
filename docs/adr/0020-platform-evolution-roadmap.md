@@ -126,6 +126,24 @@ Layer 1 reasons over **one execution at a time** and never looks backward across
 
 **Why Feature Engineering must not bypass it.** Layer 3 (Feature Engineering) needs stable, reusable numerical representations — and a representation is only reusable if it is built from a durable historical record, not recomputed ad hoc from whatever Layer 1 executions happen to be lying around. If Feature Engineering read raw Layer 1 results directly, every feature engine would re-implement its own historical aggregation, the aggregation would drift between engines, and there would be no single place to audit "where did this feature's history come from?" Layer 2 is that single place: it owns the corpus, the trends, and the organizational memory *once*, so every higher layer inherits one consistent, explainable history instead of reconstructing its own.
 
+### Layer 2.5 — Executable Specification Engineering
+
+**Amendment note (additive only, ADR-0030).** This layer entry was added by ADR-0030 (CAP-087A — Executable Specification Engineering Architecture & Governance Freeze). It does not renumber, redefine, or reorder Layer 1, Layer 2, or Layer 3, or any layer above them; it names a position ADR-0020's original seven-question placement tree (Stage 9) never anticipated — see ADR-0030 Stage 0 and D1 for the full placement analysis. No other line in this document, and no existing runtime contract, was changed by this amendment.
+
+**Constitutional foundation:** ADR-0028 (Learning Constitution — Recommendation 19's "Learning is the sole sanctioned bridge from Layer 2 to Layer 3," the rule this layer's own Layer 2 dependency is defined against), ADR-0018/ADR-0016/the Validation architecture/ADR-0019 (the four same-execution Layer 1 contracts this layer consumes), and ADR-0030 (Executable Specification Engineering Architecture & Governance Freeze — the full architectural definition of this layer).
+
+**Introduces:** CAP-087 — Executable Specification Engineering — Proposed (ADR-0030; CAP-087A architecture & governance freeze only; no engine, no runtime contract certification, no runtime integration yet — those remain reserved future milestones, CAP-087B onward).
+
+**Purpose:** Specification Production — transforming one execution's already-judged Layer 1 output, enriched by Layer 2's institutionalized organizational Learning, into a technology-independent, executable Specification Model. Neither Layer 1 nor Layer 2 produces anything a rendering tool or reviewer can act on directly; this layer is the platform's first to do so.
+
+**Runtime contract:** `SpecificationEngineeringResult` (reserved, dormant — ADR-0030 §D3 names it the platform's first instance of a fifth, distinct kind of truth, **Specification Truth**: neither Runtime Truth, Historical Truth, Derived Knowledge, Organizational Knowledge, nor Learned Knowledge).
+
+**Why this layer exists, and why it is not Layer 3.** Layer 3's `FeatureResult` is a numerical representation (§Layer 3, below); this layer's output is a qualitative, structured specification graph, and computes no number that estimates, scores, or predicts anything. Placing specification production inside Layer 3 would have required redefining Layer 3's own frozen purpose — forbidden. Placing it inside Layer 1 is impossible under Stage 5's own upward-only dependency rule, because it must consume `LearningResult` (Layer 2's own terminal output). Layer 2.5 is therefore the smallest position that satisfies both constraints: higher than Layer 2 (so it may consume Learning), not Layer 3 (so Layer 3's own definition stays untouched).
+
+**Dependency boundary.** Layer 2.5 consumes exactly five already-frozen runtime contracts — `RequirementEnhancementResult`, `GroundingResult`, `ValidationResult`, `RecommendationResult` (same-execution Layer 1 peers) and `LearningResult` (the sole Layer 2 bridge, per ADR-0028 Recommendation 19) — and nothing else. It never reaches past `LearningResult` into `ContinuousImprovementResult`, `KnowledgeGraphResult`, or `OrganizationalMemoryResult` directly (the identical no-skip discipline Stage 5 already freezes for every other layer boundary). Nothing above Layer 2.5 exists yet; a future Layer 3+ capability that needs a specification-tier conclusion must reach it through `SpecificationEngineeringResult` alone, never past it.
+
+**Boundary.** Executable Specification Engineering produces specifications; it never generates executable test code, step definitions, or test data, never executes a test, and never calls an external system (ADR-0030 D5). Full architecture: ADR-0030 and `docs/proposals/executable-specification-engineering.md`.
+
 ### Layer 3 — Feature Engineering
 
 **Purpose:** Transform deterministic runtime contracts (Layer 1's completed results, and Layer 2's historical aggregates) into reusable, numerical feature vectors.
@@ -302,6 +320,9 @@ Does this capability reason over one execution?
 Does it reason over many executions?
     → Layer 2: Continuous Learning
 
+Does it transform judged execution output (Layer 1), enriched by Learning (Layer 2), into a technology-independent, executable specification?
+    → Layer 2.5: Executable Specification Engineering
+
 Does it produce reusable numerical representations?
     → Layer 3: Feature Engineering
 
@@ -319,6 +340,8 @@ Does it reason across organizations?
 ```
 
 A capability that answers "yes" to more than one question has not yet been decomposed correctly (Stage 3) — split it until each piece answers exactly one question, and place each piece in its own layer.
+
+**Amendment note (additive only, ADR-0030).** The Layer 2.5 question above was added by ADR-0030. It occupies the tree's existing order (immediately after the Layer 2 question, immediately before the Layer 3 question) without reordering, rewording, or renumbering any other question.
 
 ---
 
@@ -339,6 +362,10 @@ Prediction & Insights
                 ▲
 Layer 3
 Feature Engineering
+                ▲
+Layer 2.5
+Executable Specification Engineering
+    └── CAP-087 Executable Specification Engineering (Proposed, CAP-087A architecture only)
                 ▲
 Layer 2
 Continuous Learning
