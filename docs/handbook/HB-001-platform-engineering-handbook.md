@@ -1,29 +1,34 @@
 # HB-001 — Platform Engineering Handbook
 
-**Revision 1 · Version 1.0 (Draft)**
+**Revision 2 · Version 2.0 (Draft)**
 
 | Attribute | Value |
 | --------- | ----- |
 | Document ID | HB-001 |
 | Document family | Handbook (HB) |
-| Revision | 1 |
-| Version | 1.0 (Draft) |
+| Revision | 2 |
+| Version | 2.0 (Draft) |
 | Document type | Documentation Architecture — Root Reference |
 | Status | Draft — pending architecture review |
 | Owner | Platform Architecture |
 | Governs | The documentation ecosystem of the entire engineering platform |
 | Governed by | Nothing — HB-001 is the root of the documentation hierarchy it defines |
-| Supersedes | Nothing (first revision) |
+| Supersedes | Nothing (HB-001 revises itself; it does not supersede a different document) |
+| Prior revision | HB-001 Revision 1, Version 1.0 (Draft) — now **Revised** (§8); see [Revision History](#revision-history) |
 | Implementation independence | This handbook contains no language, framework, or AI-provider-specific guidance. It describes documents, not code. |
 
 > HB-001 is not an implementation guide and not a governance document. It is the
 > **documentation architecture** of the platform — the single reference that
 > explains what kinds of engineering documents exist, what each one is
 > responsible for, how they relate to one another, and how a reader or a new
-> document finds its correct place in the ecosystem. Every ADR, governance
-> record, standard, capability document, runtime document, and certification
-> record in this platform is expected to be locatable, and explicable, in terms
-> of the structure this handbook defines.
+> document finds its correct place in the ecosystem. Revision 1 established that
+> architecture. **Revision 2 strengthens it** by adding the governance rules that
+> keep the documentation ecosystem itself consistent as the platform evolves —
+> dependency rules, quality attributes, review responsibilities, a metadata
+> standard, a traceability standard, a classified principle set, an ownership
+> model, and a reserved view of future automation. Revision 2 changes no
+> architecture, governance, capability, or runtime decision anywhere in the
+> platform, and requires no change to any existing document.
 
 ---
 
@@ -41,11 +46,19 @@
 10. [Repository Organization](#10-repository-organization)
 11. [Engineering Principles](#11-engineering-principles)
 12. [Future Evolution](#12-future-evolution)
+13. [Documentation Dependency Rules](#13-documentation-dependency-rules)
+14. [Documentation Quality Attributes](#14-documentation-quality-attributes)
+15. [Documentation Review Workflow](#15-documentation-review-workflow)
+16. [Document Metadata Standard](#16-document-metadata-standard)
+17. [Documentation Traceability Standard](#17-documentation-traceability-standard)
+18. [Documentation Ownership Model](#18-documentation-ownership-model)
+19. [Future Automation](#19-future-automation)
+- [Revision History](#revision-history)
 - [Revision Summary](#revision-summary)
 - [Future Revision Roadmap](#future-revision-roadmap)
-- [Known Limitations of Revision 1](#known-limitations-of-revision-1)
+- [Known Limitations of Revision 2](#known-limitations-of-revision-2)
 - [Final Self Review](#final-self-review)
-- [HB-001 Revision 1 Compliance Certificate](#hb-001-revision-1-compliance-certificate)
+- [HB-001 Revision 2 Compliance Certificate](#hb-001-revision-2-compliance-certificate)
 
 ---
 
@@ -57,34 +70,48 @@ HB-001 exists to prevent that outcome by defining, once and authoritatively, **t
 
 This handbook does not describe *what the platform does*. It describes *how the platform explains itself*. Every existing ADR, governance record, standard, capability document, runtime document, and certification report in this repository already conforms, in substance, to the structure this handbook names. HB-001's contribution is not to invent new rules for any of them — it is to make the rule that already governs their relationships explicit, permanent, and citable, exactly as ADR-0020 made the platform's architectural layering explicit for code that had, in substance, already been following it.
 
+**What Revision 2 adds to this purpose.** Revision 1 answered "what documents exist, and where do they belong?" Revision 2 answers the next question that follows from it: "what keeps those documents correct, consistent, and trustworthy once they exist?" §13–§19 supply that answer as governance rules for the documentation ecosystem itself — never as new architecture, governance, capability, or runtime content (§2).
+
 ## 2. Scope
 
-**In scope for HB-001 (Revision 1):**
+**In scope for HB-001 (Revision 1, unchanged):**
 
 - The documentation hierarchy — the ordered relationship between the platform's constitutional, architectural, governance, standards, capability, runtime, and certification documents.
 - The document families — the recurring *kinds* of document the platform produces, each with one purpose, one owner, and one place in the hierarchy.
 - The relationships between families — dependency direction, citation conventions, and traceability.
 - The lifecycle every engineering document passes through, from first draft to superseded.
-- The versioning strategy for documents themselves (not for runtime contracts, APIs, or code — those are governed elsewhere, see §2's out-of-scope list).
+- The versioning strategy for documents themselves (not for runtime contracts, APIs, or code — those are governed elsewhere, see the out-of-scope list below).
 - Baseline recommendations for repository organization, naming, and cross-referencing of documents.
 - The guiding principles that keep the documentation ecosystem consistent as it grows.
 
-**Intentionally out of scope for HB-001 (Revision 1):**
+**Added in scope for Revision 2:**
 
-- **Architecture content.** HB-001 does not define what any layer, capability, or runtime contract *is* — that is the Architecture family's own responsibility (§6.2), and every architectural decision already on record (ADR-0001 through the platform's latest) is treated as authoritative and unmodified by this handbook.
+- Explicit, per-family dependency rules — permitted upstream dependencies, prohibited downstream dependencies, and the rationale for each (§13).
+- The quality attributes every governed document should satisfy, regardless of family (§14).
+- Review responsibilities layered onto the existing lifecycle, without adding or renaming any lifecycle stage (§15).
+- A canonical metadata standard for governed documents — defined, not retroactively applied (§16).
+- A traceability standard defining mandatory, optional, and prohibited references between families (§17).
+- A classification of the existing engineering principles into logical categories, with every Revision 1 principle preserved (§11).
+- An ownership model naming owner, review authority, approval authority, and maintenance responsibility per family (§18).
+- A reserved, informational section naming future documentation-automation opportunities, with no tooling specified (§19).
+
+**Intentionally out of scope for HB-001 (Revision 1 and Revision 2, both):**
+
+- **Architecture content.** HB-001 does not define what any layer, capability, or runtime contract *is* — that is the Architecture family's own responsibility (§6.2), and every architectural decision already on record is treated as authoritative and unmodified by this handbook.
 - **Governance content.** HB-001 does not define freeze policy, capability maturity criteria, or ADR-required/not-required judgments — that is the Governance family's own responsibility (§6.5), exercised today by the Architecture Freeze Index and the Platform Capability Matrix, both left exactly as they are.
 - **New capabilities.** HB-001 introduces no `CAP-NNN` capability, changes no capability's boundary, and reserves no new runtime contract.
-- **Runtime or implementation detail.** HB-001 names languages, frameworks, or AI providers nowhere in this document, by design (see the Implementation Independence line in the header table).
+- **Runtime or implementation detail.** HB-001 names languages, frameworks, or AI providers nowhere in this document, by design (see the Implementation Independence row in the header table).
 - **Versioning of runtime contracts, APIs, or code artifacts.** §9 covers *document* versioning only. Runtime contract versioning (e.g. `*_RESULT_VERSION` constants) remains governed entirely by each capability's own ADR, unaffected by this handbook.
+- **New engineering, coding, or implementation standards.** HB-001 defines the Standards family's *place* in the ecosystem (§6.6) and, new in Revision 2, the metadata (§16) and dependency (§13) rules a future Standards document must itself obey — it never originates a standard's own content. That remains the province of a future `STD-NNN` document.
 - **Document content standards** (writing style, terminology glossaries, template text). Reserved for a future Standards-family document (§12).
 
 ## 3. Audience
 
 | Reader | How HB-001 serves them |
 | --- | --- |
-| **Platform Architects** | The map from which every architectural and constitutional document's place, authority, and dependency is determined before it is written. |
+| **Platform Architects** | The map from which every architectural and constitutional document's place, authority, and dependency is determined before it is written — and, as of Revision 2, the explicit rules (§13) for what such a document may and may not cite. |
 | **Engineers** | A way to find the correct document for a question — "why does this work this way?" (Architecture), "is this allowed?" (Governance), "how should I build this?" (Standards, future) — without guessing which directory to search. |
-| **Reviewers** | A structural checklist: does a new document belong to exactly one family, cite its correct dependencies, and enter at the correct lifecycle stage? |
+| **Reviewers** | A structural checklist: does a new document belong to exactly one family, cite its correct dependencies, and enter at the correct lifecycle stage? Revision 2's Review Workflow (§15) and Quality Attributes (§14) give this checklist concrete criteria. |
 | **Technical Leads** | A planning surface for what documentation a new initiative requires, and in what order it must be produced (Architecture before Governance before Capability, per §5). |
 | **Contributors** | An onboarding reference — a new contributor can learn the shape of the platform's documentation before learning the shape of its code. |
 
@@ -97,6 +124,8 @@ This handbook does not describe *what the platform does*. It describes *how the 
 **Documentation minimizes duplication by construction, not by discipline alone.** The platform's own architectural principle of "exactly one owner per responsibility" (already frozen for code and capabilities by the platform's constitutional ADRs) applies identically to documentation: exactly one document owns a given fact, and every other document that needs that fact cites it rather than restates it. This is why §7 (Documentation Relationships) exists as its own section, not a footnote — cross-referencing is the primary mechanism, not an optional courtesy.
 
 **Documentation has a lifecycle because engineering decisions have a lifecycle.** A document that is still Draft carries different authority than one that is Frozen; treating every document as equally final, regardless of its stage, is how documentation drifts silently out of sync with the systems it describes. §8 exists to make that distinction explicit and enforceable.
+
+**Documentation stays trustworthy only if something keeps it trustworthy.** Revision 1 established what a document *is*. It did not yet establish what keeps a document *correct* once written — a rule for what it may depend on (§13), a definition of what "good" means for it (§14), who is responsible for checking it (§15), what it must declare about itself (§16), how it must connect to its neighbors (§17), and who owns it in practice (§18). That is Revision 2's contribution to this philosophy.
 
 ## 5. Documentation Architecture
 
@@ -128,13 +157,15 @@ Platform Constitution
 | **Runtime** | The description of the system as it actually executes — component specifications for what is live, and the artifacts a live execution itself produces. | *What does this system actually do when it runs?* |
 | **Certification** | The record that a capability, a release, or a runtime behavior has been verified against everything above it in this hierarchy. | *Is this ready, and how do we know?* |
 
-**Reading the hierarchy.** A document at any tier may cite and depend on a document at any tier above it (closer to Platform Constitution) — never a tier below it. A Standards document may cite Architecture and Governance; it may never be cited by, or depend on, a piece of Architecture, because that would let convention dictate design rather than the reverse. This is the documentation-level restatement of the same one-way dependency rule the platform's own architectural layers already obey — extended here from runtime contracts to the documents that describe them.
+**Reading the hierarchy.** A document at any tier may cite and depend on a document at any tier above it (closer to Platform Constitution) — never a tier below it. A Standards document may cite Architecture and Governance; it may never be cited by, or depend on, a piece of Architecture, because that would let convention dictate design rather than the reverse. This is the documentation-level restatement of the same one-way dependency rule the platform's own architectural layers already obey — extended here from runtime contracts to the documents that describe them. **Revision 2 makes this rule precise and per-family in §13.**
 
 **This is a hierarchy of authority, not a hierarchy of quality.** A Runtime document is not "lesser" than a Constitution document — it answers a different, equally necessary question. The hierarchy exists so that when two documents appear to disagree, the reader knows, without guessing, which one is authoritative: the one closer to Platform Constitution.
 
+This hierarchy, established in Revision 1, is unchanged by Revision 2.
+
 ## 6. Document Families
 
-Each family below has exactly one purpose, one form of ownership, and one place in §5's hierarchy. A document belongs to exactly one family.
+Each family below has exactly one purpose, one form of ownership, and one place in §5's hierarchy. A document belongs to exactly one family. This family catalogue, established in Revision 1, is unchanged by Revision 2 — §18 supplements each family's Ownership row with a fuller review/approval/maintenance model, without altering any family's purpose or boundary.
 
 ### 6.1 HB — Handbook
 
@@ -174,7 +205,7 @@ Each family below has exactly one purpose, one form of ownership, and one place 
 - **Ownership:** Platform Architecture, maintained as a living document family (unlike ADRs and Handbook revisions, Governance documents are expected to be updated in place as the platform's state changes, rather than superseded).
 - **Responsibilities:** Freeze status tracking, ADR-required/not-required judgment criteria, capability maturity aggregation, and cross-capability consistency checks.
 - **Examples:** the platform's Architecture Freeze Index, Platform Capability Matrix, Architecture Coverage Dashboard, and any capability-specific governance record (a dedicated governance document for a single capability, used when that capability's own governance mechanics — versioning axes, extension/deprecation strategy, review checklists — are too extensive for its governing ADR to carry alone).
-- **Relationship with other families:** Sits at the Governance tier of §5. Depends on Architecture (it indexes ADRs; it never originates architectural content of its own — see the Governance family's own stated purpose: "this document indexes; it does not create"). Is depended on by Standards, Capabilities, and Certification, each of which cites Governance to confirm a document's freeze status or maturity before proceeding.
+- **Relationship with other families:** Sits at the Governance tier of §5. Depends, as an **authority dependency**, on Architecture only (it indexes ADRs; it never originates architectural content of its own). It also **records observational facts** about Capabilities (e.g. a capability's current maturity) as an exercise of its own aggregation responsibility — a relationship Revision 2 distinguishes explicitly from authority dependency in §13, because the two look similar on the page but carry opposite implications for who may cite whom. Is depended on, as an authority, by Standards, Capabilities, and Certification, each of which cites Governance to confirm a document's freeze status or maturity before proceeding.
 
 ### 6.6 STD — Standard
 
@@ -184,7 +215,7 @@ Each family below has exactly one purpose, one form of ownership, and one place 
 - **Examples:** the platform's existing naming-conventions and coding-standards references, and any development guide describing how to build a specific kind of governed unit consistently (e.g. a rule-development guide for a governed rule catalogue).
 - **Relationship with other families:** Sits at the Standards tier of §5. Depends on Architecture and Governance (a naming convention exists to make an already-frozen architectural distinction visible in code or documents, never to invent a new one). Is depended on by Capability and Runtime documentation, which conform to it without restating it.
 
-> **Note on current state.** The platform's existing standards documents predate a formal `STD-NNN` identifier scheme. HB-001 does not renumber, relocate, or rewrite them (that would modify an existing artifact, forbidden by this handbook's own scope, §2). §10 and §12 record the recommended path for bringing them under a governed identifier in a future revision, without disturbing their current content or location.
+> **Note on current state (unchanged from Revision 1).** The platform's existing standards documents predate a formal `STD-NNN` identifier scheme. HB-001 does not renumber, relocate, or rewrite them. Revision 2 does not change this — formalizing the `STD-NNN` scheme remains reserved for a future revision or for `STD-001` itself (§12, §19's revision note).
 
 ### 6.7 Runtime Documentation
 
@@ -202,7 +233,7 @@ Each family below has exactly one purpose, one form of ownership, and one place 
 - **Ownership:** The reviewing authority for the certified scope — a Platform Architect for an architecture certification, a release owner for a release certification.
 - **Responsibilities:** Verification statements, sign-off records, and — where the certified scope is a release rather than a single capability — the regression baseline a future release is measured against.
 - **Examples:** the platform's release-regression-baseline governance contract, per-capability architecture certification reports (the closing verification section of a capability's ADR or governance record), and pre-certification review reports (a review of one candidate capability's readiness, produced before its formal certification is recorded).
-- **Relationship with other families:** Sits at the Certification tier of §5, the terminal tier — nothing in this documentation ecosystem depends on Certification; it is where the chain of trust from Constitution through Runtime terminates in a verifiable statement. Depends on every tier above it. A review report is treated as evidence feeding a certification, not a certification itself — this is the concrete expression of this handbook's own Engineering Philosophy line: *"Reviews validate implementations. Certification validates readiness."*
+- **Relationship with other families:** Sits at the Certification tier of §5, the terminal tier — nothing in this documentation ecosystem depends on Certification; it is where the chain of trust from Constitution through Runtime terminates in a verifiable statement. Depends on every tier above it. A review report is treated as evidence feeding a certification, not a certification itself — this is the concrete expression of this handbook's own Engineering Philosophy line: *"Reviews validate implementations. Certification validates readiness."* **Revision 2's Review Workflow (§15) gives this distinction a concrete home in the lifecycle.**
 
 ### 6.9 Family summary
 
@@ -210,7 +241,7 @@ Each family below has exactly one purpose, one form of ownership, and one place 
 | --- | --- | --- | --- |
 | HB | outside the hierarchy (defines it) | nothing | every family, indirectly |
 | ADR (+ Design Proposal) | Platform Constitution, Architecture | prior ADRs | Governance, Standards, CAP, Runtime |
-| Governance | Governance | ADR | Standards, CAP, Certification |
+| Governance | Governance | ADR (authority); CAP (observational only, §13) | Standards, CAP, Certification |
 | STD | Standards | ADR, Governance | CAP, Runtime |
 | CAP | Capabilities | ADR, Governance, STD | Runtime, Certification |
 | Runtime | Runtime | ADR, CAP | Certification |
@@ -218,19 +249,21 @@ Each family below has exactly one purpose, one form of ownership, and one place 
 
 ## 7. Documentation Relationships
 
-**Dependency direction is always toward Platform Constitution.** Every citation in this ecosystem points from a lower tier to a higher one (§5): a Governance document cites the ADR it indexes; a Capability document cites the Architecture and Governance that bound it; a Certification report cites everything it verified. A document never cites something below it in the hierarchy as though that lower document had authority over it — a piece of Architecture does not cite a Certification report to justify itself, because certification is evidence of conformance, not a source of design authority.
+**Dependency direction is always toward Platform Constitution.** Every citation in this ecosystem points from a lower tier to a higher one (§5): a Governance document cites the ADR it indexes; a Capability document cites the Architecture and Governance that bound it; a Certification report cites everything it verified. A document never cites something below it in the hierarchy as though that lower document had authority over it — a piece of Architecture does not cite a Certification report to justify itself, because certification is evidence of conformance, not a source of design authority. **§13 restates this rule per family, with a permitted/prohibited table and a citation matrix.**
 
-**Citation, not duplication, is the traceability mechanism.** When a document needs a fact that another document already owns, it references that document by its identifier (§10.3) rather than restating the fact. This is the same "exactly one owner per fact" discipline this platform's own runtime architecture already enforces for canonical models, applied here to documentation content.
+**Citation, not duplication, is the traceability mechanism.** When a document needs a fact that another document already owns, it references that document by its identifier (§10.3) rather than restating the fact. This is the same "exactly one owner per fact" discipline this platform's own runtime architecture already enforces for canonical models, applied here to documentation content. **§17 defines which such references are mandatory, optional, or prohibited.**
 
 **Traceability is bidirectional in practice, even though authority flows one way.** A reader starting from a Certification report can trace backward through every tier to the Platform Constitution it ultimately rests on; a reader starting from the Platform Constitution can, conversely, discover every Capability and Certification that was ever built against it, because every downstream document names its upstream dependency explicitly. Neither direction requires guessing — both are satisfied by the same set of forward citations, read in the direction the reader needs.
 
-**A document's own identifier is the primary cross-reference token.** A document is cited by its identifier (e.g. an ADR number, a `CAP-NNN` id, or this handbook's own `HB-001`) plus, where useful, the specific internal section — never by an ambiguous description like "the architecture doc" or "the recent proposal." §10.3 defines the identifier scheme this depends on.
+**A document's own identifier is the primary cross-reference token.** A document is cited by its identifier (e.g. an ADR number, a `CAP-NNN` id, or this handbook's own `HB-001`) plus, where useful, the specific internal section — never by an ambiguous description like "the architecture doc" or "the recent proposal." §10.3 defines the identifier scheme this depends on; §16 defines the metadata (including `Related Documents`) that carries it inside a document's own header.
 
 **Cross-family relationships are never circular.** Because dependency only ever points toward Platform Constitution (§5), and no family occupies more than one tier, a citation cycle across families is structurally impossible without violating the hierarchy itself — the same guarantee the platform's runtime architecture already provides for its own layers, restated here for the documents that describe them.
 
+This section, established in Revision 1, is unchanged by Revision 2. §13 and §17 make its rules operational.
+
 ## 8. Documentation Lifecycle
 
-Every engineering document, in every family, progresses through the same six stages, in the same order. A document may remain at a stage indefinitely (a Governance document, for example, is expected to stay "Frozen" for the architecture it indexes while still being edited in place to stay current — see the note under §8's table); no document skips a stage on its way forward.
+Every engineering document, in every family, progresses through the same six stages, in the same order. A document may remain at a stage indefinitely (a Governance document, for example, is expected to stay "Frozen" for the architecture it indexes while still being edited in place to stay current — see the note under this section's table); no document skips a stage on its way forward. **These six stages are unchanged by Revision 2** — §15 clarifies who is responsible for what at each stage; it introduces no new stage and reorders none.
 
 ```
 Draft
@@ -249,34 +282,34 @@ Superseded
 | Stage | Meaning |
 | --- | --- |
 | **Draft** | The document is being written. It carries no authority yet; nothing outside its own author's working set should depend on it. |
-| **Review** | The document is complete and submitted for review by its family's designated reviewing authority (§6). Content may still change in response to feedback. |
+| **Review** | The document is complete and submitted for review by its family's designated reviewing authority (§6, §18). Content may still change in response to feedback. §15 decomposes this single stage into the specific review types a document may need to pass through before it is Approved. |
 | **Approved** | The document's content is accepted. It now carries the authority its family grants it, but it is not yet declared immutable — narrow corrections remain possible without a formal revision. |
 | **Frozen** | The document's content is declared immutable except through a deliberate, reviewed change (for an ADR, a new ADR; for a Handbook, a new revision; for Governance, an explicit, logged update). This is the stage at which other documents may safely cite it as a stable dependency. |
-| **Revised** | A newer revision or version of the document exists and is now authoritative; this version remains available for historical reference but no longer governs new work. |
+| **Revised** | A newer revision or version of the document exists and is now authoritative; this version remains available for historical reference but no longer governs new work. HB-001 Revision 1 is, as of this document, in this stage — see [Revision History](#revision-history). |
 | **Superseded** | The document no longer governs anything, even for historical reference of "what was current then" — a later document has fully replaced its role. Retained for audit history, never deleted. |
 
 **Family-specific notes:**
 
 - **ADRs** typically move Draft → Review → Approved → Frozen, and only reach Superseded when a later ADR explicitly supersedes them — never silently.
 - **Governance documents** are the one family designed to be edited in place at the Frozen stage — described in §6.5 as "living documents." Their own header always names what edits are in scope (indexing and status updates) versus out of scope (originating new architectural content), so an in-place edit never becomes an undisclosed architectural change.
-- **Handbook (HB) documents** move to a new **Revision** (not a new document identifier) rather than a full Supersession, for as long as the same root document continues to govern the ecosystem — see §9 for how revisions and versions interact.
+- **Handbook (HB) documents** move to a new **Revision** (not a new document identifier) rather than a full Supersession, for as long as the same root document continues to govern the ecosystem — see §9 for how revisions and versions interact, and [Revision History](#revision-history) for this document's own instance of the rule.
 - **Certification documents** are Frozen at the moment of sign-off by definition — a certification that could still change after being issued would not be a certification.
 
 ## 9. Versioning Strategy
 
-This section governs the versioning of **documents**, not of runtime contracts, APIs, or code. Runtime contract versioning remains entirely the concern of the ADR that governs the contract, unaffected by this handbook.
+This section governs the versioning of **documents**, not of runtime contracts, APIs, or code. Runtime contract versioning remains entirely the concern of the ADR that governs the contract, unaffected by this handbook. This section, established in Revision 1, is unchanged by Revision 2, and Revision 2 is itself the first instance of its own HB-versioning rule below.
 
 **Every document family versions along the same three-part scheme, applied consistently:**
 
 | Version part | Meaning | Example trigger |
 | --- | --- | --- |
 | **Major** | A change that breaks a prior reader's understanding, or removes/redefines something a downstream document depended on. | A Handbook revision that changes the documentation hierarchy itself (§5); an ADR being superseded outright. |
-| **Minor** | An additive change — new content that does not invalidate anything a downstream document already relies on. | A new document family added to §6; a new capability registered in the Governance family's Capability Matrix. |
+| **Minor** | An additive change — new content that does not invalidate anything a downstream document already relies on. | A new document family added to §6; a new capability registered in the Governance family's Capability Matrix; **this Revision 2 itself, which adds §13–§19 without invalidating any Revision 1 content.** |
 | **Patch** | A correction that changes no meaning — a typo, a broken cross-reference fixed, a formatting pass. | A citation link corrected; a table's formatting repaired. |
 
 **Family-specific version identity:**
 
-- **Handbook (HB)** documents carry two independent counters: a **Revision** number (Draft/Review/Approved/Frozen cycle for a substantively new edition, e.g. Revision 1 → Revision 2) and a **Version** within that revision (1.0 Draft → 1.0 → 1.1 → …, for refinements that do not warrant a new revision). A new **Revision** is a Major-class event; a **Version** bump within a revision follows the Minor/Patch distinction above.
+- **Handbook (HB)** documents carry two independent counters: a **Revision** number (Draft/Review/Approved/Frozen cycle for a substantively new edition, e.g. Revision 1 → Revision 2) and a **Version** within that revision (1.0 Draft → 1.0 → 1.1 → …, for refinements that do not warrant a new revision). A new **Revision** is a Major-class event; a **Version** bump within a revision follows the Minor/Patch distinction above. **Note on this instance:** Revision 2 is a new Revision (a Major-class event at the Revision axis) that is additive at the content axis (no Revision 1 rule is invalidated) — the two axes are independent, exactly as this rule states, and both can be true of the same change simultaneously without contradiction.
 - **ADRs** are numbered sequentially and permanently (`ADR-0001`, `ADR-0002`, …); the number never changes. An ADR's own content is versioned by its lifecycle stage (§8) rather than a numeric version — a superseding decision is a *new* ADR number, never a version bump of the old one, because the old decision's text must remain exactly as it was for historical accuracy.
 - **CAP** documents are numbered sequentially and permanently (`CAP-001`, `CAP-002`, …, allocated in domain blocks with reserved growth ranges); the capability's own maturity — not its identifier — is what advances through the lifecycle in §8.
 - **Governance** documents are living documents (§8) and therefore version primarily through the Minor/Patch distinction — a Major version is reserved for a restructuring of the document's own scope (rare, and itself requiring an ADR to authorize, since Governance may not originate architectural change on its own, §6.5).
@@ -288,7 +321,7 @@ This section governs the versioning of **documents**, not of runtime contracts, 
 
 ### 10.1 Directory hierarchy (recommended)
 
-The platform's existing documentation directory structure already reflects most of the family boundaries §6 defines. This handbook recommends the following mapping as the authoritative one going forward, without relocating any existing file (relocation is a future-revision concern, §12, since HB-001 may recommend but must not itself restructure the repository):
+The platform's existing documentation directory structure already reflects most of the family boundaries §6 defines. This handbook recommends the following mapping as the authoritative one going forward, without relocating any existing file (relocation is a future-revision concern, §12, since HB-001 may recommend but must not itself restructure the repository). **Unchanged by Revision 2.**
 
 | Directory | Family (§6) |
 | --- | --- |
@@ -319,84 +352,290 @@ Every document that carries decision or verification authority (HB, ADR, CAP, an
 
 - A citation always names the target document's identifier (or, for unnumbered families, its canonical path) plus, where the reference is to a specific decision or section, that section's own label.
 - A citation never restates the cited content in place of linking to it (§7) — the single exception is a short, explicitly-labeled summary, used only when restating would materially aid the reader, and always paired with the full citation.
-- A document introducing a new dependency on another family (e.g. a Standards document citing an ADR for the first time) states that dependency in its own header or opening section, not buried mid-document — mirroring the header-table convention this handbook and the platform's existing ADRs already use.
+- A document introducing a new dependency on another family (e.g. a Standards document citing an ADR for the first time) states that dependency in its own header or opening section, not buried mid-document — mirroring the header-table convention this handbook and the platform's existing ADRs already use, and formalized as the `Related Documents` metadata field in §16.
+
+§10 is unchanged by Revision 2 in substance; §16 gives its header-table convention a canonical, named field set.
 
 ## 11. Engineering Principles
 
-These principles govern the documentation ecosystem itself, and are inherited — never re-derived — by every family §6 defines.
+These principles govern the documentation ecosystem itself, and are inherited — never re-derived — by every family §6 defines. **Every principle below is unchanged from Revision 1, in substance, wording, and permanent number** — Revision 2's only change is organizational: grouping them into four logical categories, per capability request, so a reader can find the principle relevant to their question faster. A citation to, for example, "§11 Principle 9" or "§11 Principle 10" from anywhere else in this handbook, or from any external document, continues to resolve to the same principle it always has, regardless of which category it now appears under.
+
+### 11.1 Architecture Principles
+
+Principles governing how documentation reflects, and never inverts, the platform's own layered structure.
 
 1. **Architecture before implementation.** No capability's runtime is built before its architecture is frozen (already the platform's own constitutional rule; this handbook's Capabilities and Runtime tiers exist in that order because of it, §5).
+7. **Layer isolation.** A document never reaches past its own hierarchy tier to claim authority that belongs to a tier above it (§5, §7, §13).
+10. **Single responsibility, single family.** Every document answers exactly one of §5's tier-level questions, and belongs to exactly one family in §6 — a document trying to be both a Standard and a Certification has not yet been decomposed correctly.
+
+### 11.2 Engineering Principles
+
+General engineering discipline, applied to documentation the same way it is applied to code.
+
 2. **Standards before coding.** A convention is defined once, in the Standards family, before it is repeated informally across capability documents.
-3. **Documentation over tribal knowledge.** If a fact governs engineering decisions, it belongs in a document at the correct tier — not in a person's memory or a chat thread.
-4. **Explicit ownership.** Every document names an owner (§6's per-family Ownership rows); a document with no owner is not yet ready to leave Draft (§8).
 5. **Backward compatibility.** A document's identifier and its historical content are permanent; change is additive (a new revision, a new ADR, a new version) rather than a silent rewrite of the past (§9).
 6. **Deterministic engineering.** The same governing documents, read by two different engineers, must produce the same understanding of what is required — ambiguity in a governing document is itself a defect.
-7. **Layer isolation.** A document never reaches past its own hierarchy tier to claim authority that belongs to a tier above it (§5, §7).
-8. **Traceability.** Every document can be traced, citation by citation, back to the Platform Constitution tier that ultimately authorizes it (§7).
+
+### 11.3 Documentation Principles
+
+Principles governing the content and structure of a document itself.
+
+3. **Documentation over tribal knowledge.** If a fact governs engineering decisions, it belongs in a document at the correct tier — not in a person's memory or a chat thread.
+4. **Explicit ownership.** Every document names an owner (§6's per-family Ownership rows, expanded in §18); a document with no owner is not yet ready to leave Draft (§8).
+8. **Traceability.** Every document can be traced, citation by citation, back to the Platform Constitution tier that ultimately authorizes it (§7, §17).
 9. **Consistency.** Two documents in the same family follow the same structure, the same header conventions, and the same lifecycle vocabulary — a reader who has read one ADR should recognize the shape of every other one.
-10. **Single responsibility, single family.** Every document answers exactly one of §5's tier-level questions, and belongs to exactly one family in §6 — a document trying to be both a Standard and a Certification has not yet been decomposed correctly.
+
+### 11.4 Review Principles
+
+Introduced as a named category in Revision 2 to give the review-related consequences of the principles above a single place to point to. This category adds no new numbered principle of its own — it is a cross-reference banner over material Revision 2 elaborates directly: the review-and-approval mechanics implied by Principle 4 (Explicit ownership) and Principle 9 (Consistency) above are made concrete in the Documentation Review Workflow (§15) and the Reviewability quality attribute (§14), and staffed per family in the Documentation Ownership Model (§18).
 
 ## 12. Future Evolution
 
-HB-001 Revision 1 deliberately leaves the following for later revisions, so that Revision 1 can be adopted without waiting for every open question in the ecosystem to be resolved at once:
+HB-001 Revision 1 deliberately left the following for later revisions, so that Revision 1 could be adopted without waiting for every open question in the ecosystem to be resolved at once:
 
 - **A formally numbered Standards (`STD-NNN`) identifier scheme**, bringing the platform's existing coding-standards and naming-convention references — and any future development guide — under the same permanent-identifier discipline ADR and CAP documents already have (§6.6, §10.2).
 - **A dedicated `docs/standards/` directory**, consolidating the Standards family's current, pre-handbook location under `docs/development/` and `docs/*.md` into the structure §10.1 recommends, without disturbing existing content until that migration is itself planned and reviewed.
-- **A formal template set** — one canonical header/section template per family, so that "every ADR looks like every other ADR" (§11, Principle 9) is enforced by a reusable template rather than by convention alone.
+- **A formal template set** — one canonical header/section template per family, so that "every ADR looks like every other ADR" (§11.3, Principle 9) is enforced by a reusable template rather than by convention alone.
 - **A documentation coverage view**, analogous to the platform's existing Architecture Coverage Dashboard, but scoped to documentation itself — which capabilities have a Runtime document, which have a Certification record, and which do not yet.
 - **A future engineering process family**, if the platform's own process (release management, incident review, onboarding) ever grows enough independent documentation to warrant its own family rather than living inside Operations/Runtime as it does today.
-- **Explicit guidance for documents that appear to span two families**, extending §11 Principle 10's decomposition rule with worked examples, once enough such cases have been observed in practice to generalize from.
+- **Explicit guidance for documents that appear to span two families**, extending §11.1 Principle 10's decomposition rule with worked examples, once enough such cases have been observed in practice to generalize from.
 
-None of the above is authorized by this revision. Each is named so that a future revision has a clear, pre-scoped starting point rather than an open-ended mandate.
+**Revision 2 status note.** Revision 2 deliberately did **not** pursue the `STD-NNN` identifier scheme or the `docs/standards/` directory listed above, even though Revision 1's own roadmap anticipated Revision 2 would — doing so would have meant introducing engineering-standards content, which Revision 2's own mission explicitly reserves for a future `STD-001` (§2). Revision 2 instead used this cycle to strengthen the governance of the documentation ecosystem itself: dependency rules, quality attributes, review workflow, a metadata standard, a traceability standard, principle classification, an ownership model, and a reserved automation view (§13–§19). The `STD-NNN` scheme, the template set, and the coverage view all remain open, unauthorized future work — see the [Future Revision Roadmap](#future-revision-roadmap).
+
+## 13. Documentation Dependency Rules
+
+*(New in Revision 2.)* §5 and §7 already establish that dependency flows only toward Platform Constitution. This section makes that rule **explicit, per family**, and distinguishes two relationships that Revision 1's prose did not yet separate by name.
+
+### 13.1 Two kinds of relationship
+
+- **Authority dependency.** Document A cites Document B *as the source of A's own legitimacy* — B's content is why A is allowed to say what it says. Authority dependency is strictly upward-only (§5): a document may hold an authority dependency only on a family at or above its own tier.
+- **Observational reference.** Document A *records a fact about* Document B as part of A's own stated responsibility (e.g. Governance recording a capability's maturity, §6.5), without treating B as the source of A's own legitimacy. Observational reference may point in either direction, but it never substitutes for, or is confused with, an authority dependency — a Governance document's record of a capability's maturity does not make that capability the authority for what Governance itself is allowed to say.
+
+Every dependency named below is an **authority dependency** unless explicitly marked observational.
+
+### 13.2 Per-family dependency rules
+
+| Family | Permitted upstream dependencies (authority) | Prohibited downstream dependencies | Rationale |
+| --- | --- | --- | --- |
+| **HB** | None — HB is the root (§6.1). It may name other families' documents only as illustrative examples (§10.4), never as a source of its own authority. | Every family — an authority dependency in either direction would make the root defined by what it roots, a circularity §5 forbids by construction. | The root of a hierarchy cannot derive its authority from something inside the hierarchy it defines. |
+| **ADR** | Prior ADRs (constitutional or subsystem); its own Design Proposal satellite. | Governance, Standards, CAP, Runtime, Certification. | Architecture must not be shaped by how it is later governed, applied, run, or verified — that would let downstream conformance dictate upstream design, inverting Principle 1 (§11.1). |
+| **Governance** | ADR (authority). | Standards, CAP, Runtime, Certification, as **authority**. (Governance's own recording of CAP maturity is an **observational reference**, §13.1, §6.5 — permitted, and distinct from an authority dependency.) | Governance indexes and tracks; it does not let the thing it tracks dictate the rules by which it is tracked. |
+| **STD** | ADR, Governance. | CAP, Runtime, Certification. | A standard must not be shaped by how one specific capability happens to be built, or by a certification outcome — convention must precede implementation (Principle 2, §11.2), not follow it. |
+| **CAP** | ADR, Governance, STD. | Runtime, Certification. | A capability's own definition and maturity tracking must not depend on how it happens to execute, or on a certification verdict — the capability's design authority must precede both. |
+| **Runtime** | ADR, Governance (observational context), STD, CAP. | Certification. | A runtime description must describe what a capability actually does; it must not be reshaped by a certification's later verdict, which would let verification retroactively define what was being verified. |
+| **Certification** | ADR, Governance, STD, CAP, Runtime — the complete set. | Nothing below it (terminal tier, §6.8) — and, symmetrically, no other family may hold an authority dependency *on* a Certification document (already covered by each family's own Prohibited column above). | Certification is the terminal sink of trust. If any upstream family could cite a certification to justify its own design, "we verified it works" would retroactively justify what the thing was supposed to be — inverting the entire chain the hierarchy exists to protect. |
+
+### 13.3 Dependency matrix
+
+Rows cite columns. `✓` = permitted authority dependency. `○` = permitted observational reference only. `—` = prohibited (and, on the diagonal, not applicable).
+
+| Citing ↓ / Cited → | HB | ADR | Governance | STD | CAP | Runtime | Certification |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: | :-: |
+| **HB** | — | — | — | — | — | — | — |
+| **ADR** | — | ✓ | — | — | — | — | — |
+| **Governance** | — | ✓ | — | — | ○ | — | — |
+| **STD** | — | ✓ | ✓ | — | — | — | — |
+| **CAP** | — | ✓ | ✓ | ✓ | — | — | — |
+| **Runtime** | — | ✓ | ○ | ✓ | ✓ | — | — |
+| **Certification** | — | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+
+A blank/`—` cell is not an oversight — it is the enforced boundary. A document proposing a citation that this matrix marks `—` has either mis-scoped itself (it belongs to a different family, §11.1 Principle 10) or is proposing a dependency this handbook does not authorize, and must be revised before it can leave Draft (§8, §15).
+
+## 14. Documentation Quality Attributes
+
+*(New in Revision 2.)* The following ten attributes apply to every governed document, in every family. They describe what "good" means for a document, independent of what the document is about.
+
+| Attribute | A document has this when… |
+| --- | --- |
+| **Correctness** | It accurately reflects the current state of what it governs or describes. A stale or wrong statement is a defect regardless of how well the document is otherwise structured. |
+| **Completeness** | It covers everything its family's stated responsibility requires (§6), with no required section left unaddressed. |
+| **Consistency** | It uses the same terms, structure, and lifecycle vocabulary as every other document in its family (§11.3, Principle 9). |
+| **Traceability** | Every claim in it can be traced to the upstream document that authorizes it, following §13's dependency rules and §17's traceability standard. |
+| **Single Responsibility** | It answers exactly one tier-level question (§5) and belongs to exactly one family (§6) (§11.1, Principle 10). |
+| **Versionability** | Its changes can be tracked, compared, and attributed to a specific version or revision (§9), without ambiguity about what changed and when. |
+| **Reviewability** | It is structured so a reviewer can verify its correctness against its declared dependencies without needing undocumented context (§15). |
+| **Maintainability** | It can be updated by someone other than its original author, using only its own content and its declared dependencies. |
+| **Minimal Duplication** | It states a fact once, in its owning family, and cites rather than restates every fact another document already owns (§7). |
+| **Discoverability** | It can be found by its identifier, its family, or its position in the hierarchy (§10), without relying on institutional memory of where it "usually lives." |
+
+These attributes are descriptive, not procedural — they name what a document should satisfy; §15 names who checks for them and when.
+
+## 15. Documentation Review Workflow
+
+*(New in Revision 2.)* This section clarifies review responsibility **within the existing lifecycle (§8)**. It introduces no new lifecycle stage, renames none, and reorders none — every review type below occurs during the existing **Review** stage, on the way to **Approved**.
+
+| Review type | Occurs during | Performed by (role, not a named individual) | Primary check | Required for |
+| --- | --- | --- | --- | --- |
+| **Author review** | Draft, before submission to Review | The document's own author(s) | Self-check against §14's quality attributes and the metadata standard (§16) before asking anyone else's time. | Every family, every document. |
+| **Architecture review** | Review | The reviewing authority named for the document's family in §18 for Architecture-tier and Constitution-tier content | The document does not contradict, redefine, or reinterpret any Frozen ADR or platform layer it touches (§7, §13). | HB, ADR, Design Proposal; any Governance, STD, CAP, or Runtime document making an architectural claim. |
+| **Governance review** | Review | The reviewing authority named for the document's family in §18 for Governance-tier content | The document's freeze status, maturity claims, and ADR-required/not-required judgments are correctly represented (§6.5). | Governance documents; any CAP or Certification document citing a freeze or maturity status. |
+| **Editorial review** | Review | Any qualified reviewer, per §18 | Clarity, terminology consistency, structural conformance to §11.3 Principle 9, and correct use of the metadata standard (§16). | Every family, every document. |
+| **Approval** | Review → Approved transition | The approval authority named for the document's family in §18 | All prior review types applicable to this document are complete, and no outstanding objection remains. | Every family, every document — this is the gate the lifecycle (§8) already names as the Review → Approved transition; this row only names who performs it. |
+
+**Reading this table against §8.** A document does not need every review type to advance — only the ones its family and content require (the "Required for" column). A pure Editorial-review correction, for example, need not re-trigger Architecture or Governance review. This is a clarification of responsibility inside the existing Review stage, not a new stage or a new gate.
+
+## 16. Document Metadata Standard
+
+*(New in Revision 2. This section defines the standard only — it does not update, and does not require updating, any existing document's header.)*
+
+Every governed document (HB, ADR, CAP, and, once introduced, STD) should declare the following metadata, typically in an opening header table — the convention this handbook and the platform's existing ADRs already use.
+
+| Field | Meaning | Applies to |
+| --- | --- | --- |
+| **Identifier** | The document's stable, permanent identifier (§10.3). | HB, ADR, CAP, STD (once numbered). Unnumbered families (Governance, Runtime, Certification) use their canonical path instead. |
+| **Title** | The document's full descriptive name. | All families. |
+| **Version** | The document's current Major.Minor version (§9). | All families. |
+| **Revision** | The document's current revision number, where the family distinguishes revisions from versions (§9). | HB only, today. |
+| **Status** | The document's current lifecycle stage (§8): Draft, Review, Approved, Frozen, Revised, or Superseded. | All families. |
+| **Owner** | The accountable party for the document's content, per §6 and §18. | All families. |
+| **Approvers** | The approval authority that moved this document to Approved, per §18. | All families that pass through a formal Approval step (§15). |
+| **Created** | When the document's first Draft was produced. | All families. |
+| **Updated** | When the document's content was last substantively changed. | All families, especially living documents (Governance). |
+| **Related Documents** | The specific upstream (and, where relevant, downstream) documents this one cites, by identifier (§10.4, §17). | All families. |
+| **Scope** | What the document covers. | All families, especially HB, ADR, and Governance documents defining a boundary. |
+| **Out of Scope** | What the document deliberately does not cover, and why. | All families where an adjacent, easily-confused topic exists. |
+| **Supersedes** | The identifier of a document this one fully replaces, per §8's Superseded stage. | ADR, CAP, STD — families whose documents can be superseded outright. |
+| **Superseded By** | The identifier of the document that replaced this one, once applicable. | Same as above, added only once true. |
+
+**This is a standard, not a migration.** No existing document in this repository is required to add these fields retroactively by virtue of this section existing. A document already conforms to the spirit of this standard if its existing header carries equivalent information under different labels (as most of this platform's existing ADRs and governance documents already do); a future document, or a future revision of an existing one, is expected to use this field set directly.
+
+## 17. Documentation Traceability Standard
+
+*(New in Revision 2.)* This section defines which references between families are mandatory, optional, or prohibited, building on the chain HB-001's own mission names:
+
+```
+ADR
+ ↓
+Governance
+ ↓
+Standards
+ ↓
+Capabilities
+ ↓
+Runtime
+ ↓
+Certification
+```
+
+(This chain begins at ADR rather than "Platform Constitution" because the ADR family, per §6.2, is the family that carries constitutional-tier content — the chain is the same one §5 already establishes, named at the family level rather than the tier label.)
+
+### 17.1 Mandatory references
+
+- Every **CAP** document must cite its governing **ADR** (and, where one exists, its Design Proposal).
+- Every **Runtime** document describing a live capability must cite the **CAP** it realizes.
+- Every **Certification** document must cite every **Runtime**, **CAP**, **Governance**, and **Standards** document within its certified scope.
+- Every **Governance** document indexing an ADR's freeze status must cite that **ADR** directly, never a summary of it.
+- Every document claiming a dependency under §13 must name that dependency explicitly (§16's `Related Documents` field) — an unstated dependency is, for traceability purposes, indistinguishable from no dependency at all.
+
+### 17.2 Optional references
+
+- A **Standards** document may cite a specific **CAP** as a worked, illustrative example of the convention it defines, without becoming dependent on that capability (this is an observational-style reference, §13.1, used for illustration rather than authority).
+- An **HB** document may name specific documents from any family as examples of the structure it defines (as this handbook already does throughout §6), without those references becoming authority dependencies (§13.1).
+- A **Governance** document may cross-reference a sibling Governance document (e.g. the Capability Matrix referencing the Freeze Index) for reader convenience, provided neither treats the other as its source of authority.
+
+### 17.3 Prohibited references
+
+- Any reference from a higher tier to a lower tier **as an authority** — restating §13's rule at the level of an individual citation rather than a family-wide table.
+- Any reference that restates cited content instead of linking to it, except the short, explicitly-labeled summary §10.4 already permits.
+- Any reference to a document that has reached **Superseded** (§8) as though it still governs — a citation to a superseded document is only ever historical, and must say so explicitly.
+- Any circular reference chain across families — structurally excluded by §13, but named here as a review check (§15) a reviewer should verify by hand until §19's future automation exists to check it mechanically.
+
+## 18. Documentation Ownership Model
+
+*(New in Revision 2. This section supplements the per-family Ownership row already established in §6; it does not change who owns what — it names the review, approval, and maintenance roles around that existing ownership.)*
+
+| Family | Owner (from §6) | Review authority | Approval authority | Maintenance responsibility |
+| --- | --- | --- | --- | --- |
+| **HB** | Platform Architecture | Platform Architecture (self-review, given HB has no family above it) | Platform Architecture | Platform Architecture — revised, not superseded, per §8. |
+| **ADR** | The Platform Architect(s) responsible for the decision's domain | Architecture review (§15), by a Platform Architect independent of the ADR's author where practical | The Platform Architect(s) accountable for the decision | The original owner, until superseded by a later ADR. |
+| **Design Proposal** | Same owner as its governing ADR | Same as its governing ADR | Approved implicitly alongside its governing ADR | Same owner as its governing ADR. |
+| **Governance** | Platform Architecture | Governance review (§15) | Platform Architecture | Platform Architecture, continuously — this is the living-document family (§6.5, §8). |
+| **STD** *(reserved family, no members yet)* | Platform Architecture, delegated per domain (§6.6) | Architecture review + Editorial review (§15) | Platform Architecture | The delegated domain owner, once a `STD-NNN` document exists. |
+| **CAP** | The engineering owner of the capability's domain (§6.4) | Architecture review + Governance review (§15) | The capability's engineering owner, with Governance sign-off on maturity claims | The capability's engineering owner, across its full lifecycle (§8). |
+| **Runtime** | The engineering owner of the described component or execution surface (§6.7) | Architecture review, where a runtime claim implies an architectural one; otherwise Editorial review | The component's engineering owner | The component's engineering owner, kept current as the component changes. |
+| **Certification** | The reviewing authority for the certified scope (§6.8) | All applicable review types across the certified scope (§15) | The named reviewing authority (a Platform Architect, or a release owner for a release-scoped certification) | The certifying authority — a Certification document, once Frozen (§8), is not expected to require further maintenance; a new certification is produced instead. |
+
+**Reading this table.** "Owner" answers *whose content is this*; "Review authority" answers *who checks it before approval*; "Approval authority" answers *who has standing to move it to Approved* (§8, §15); "Maintenance responsibility" answers *who keeps it current afterward*. For most families these coincide with a single accountable role; where they diverge (e.g. Governance review of a CAP document's maturity claim, distinct from the capability's own engineering owner), this table makes the divergence explicit rather than leaving it implied.
+
+## 19. Future Automation
+
+*(New in Revision 2. This section is informational only. It names opportunities, not commitments, and specifies no tool, library, or implementation.)*
+
+As the documentation ecosystem grows, the following categories of automation could reduce the manual burden of the rules this handbook defines, without changing any of those rules:
+
+- **Automatic identifier validation** — confirming that every `HB-NNN`, ADR number, `CAP-NNN`, and future `STD-NNN` referenced anywhere in the documentation set actually exists, is unique, and is never reused (§10.3).
+- **Broken reference detection** — confirming that every citation named under §17's mandatory-reference rules resolves to a real, current document, and flagging references to a Superseded document that do not say so explicitly (§17.3).
+- **Documentation coverage reporting** — an automated version of the coverage view named as open future work in §12, showing which capabilities have a Runtime document, a Certification record, or neither.
+- **Dependency graph generation** — a visual or queryable rendering of §13's dependency matrix as it actually exists across the repository's real documents, making a prohibited or circular dependency visible before a reviewer has to find it by hand.
+- **Orphan document detection** — identifying a document that no other document cites and that cites nothing itself, a signal (not a verdict) that it may have lost its place in the hierarchy (§5) or been left in Draft (§8) longer than intended.
+
+None of the above is authorized, scheduled, or specified by this revision. Each is named so that a future revision — or a future STD or Runtime document describing actual tooling — has a pre-scoped starting point, consistent with how §12 already reserves other future work without authorizing it prematurely.
 
 ---
 
+## Revision History
+
+| Revision | Version | Status | Summary |
+| --- | --- | --- | --- |
+| **Revision 1** | 1.0 (Draft) | Revised (§8) | Established the documentation architecture for the first time: the seven-tier hierarchy (§5), the seven document families and their boundaries (§6), cross-family relationships and traceability (§7), the six-stage lifecycle (§8), the document versioning scheme (§9), baseline repository-organization recommendations (§10), and ten engineering principles (§11, later reorganized in Revision 2 without changing their substance). Introduced no architecture, governance, capability, or runtime content. |
+| **Revision 2** | 2.0 (Draft) | Draft — pending architecture review | Strengthened the documentation ecosystem's own governance without changing anything Revision 1 established: explicit per-family dependency rules and a citation matrix (§13), ten documentation quality attributes (§14), a review workflow layered onto the unchanged lifecycle (§15), a canonical (non-retroactive) metadata standard (§16), a traceability standard of mandatory/optional/prohibited references (§17), the Revision 1 principles reorganized into four categories with every principle's substance and number preserved (§11), a per-family ownership model (§18), and a reserved, tooling-free future-automation section (§19). Introduced no architecture, governance, capability, or runtime content. |
+
 ## Revision Summary
 
-**HB-001 Revision 1** establishes the platform's documentation architecture for the first time: the seven-tier hierarchy (§5), the seven document families and their boundaries (§6), the cross-family relationship and traceability rules (§7), the six-stage document lifecycle (§8), the document versioning scheme (§9), baseline repository-organization recommendations (§10), and the ten engineering principles governing documentation itself (§11). It introduces no new architecture, governance rule, capability, or runtime behavior — every frozen input named in this handbook's mission is treated as authoritative and unmodified, and this handbook's own role is limited to organizing how those inputs relate to one another and to future documents.
+**HB-001 Revision 2** strengthens the documentation architecture Revision 1 established, by adding the governance rules that keep that architecture consistent as the platform evolves. It adds seven new sections (§13–§19: Documentation Dependency Rules, Documentation Quality Attributes, Documentation Review Workflow, Document Metadata Standard, Documentation Traceability Standard, Documentation Ownership Model, and Future Automation) and reorganizes one existing section (§11, Engineering Principles, into four logical categories) without changing any principle's substance or permanent number. Every architecture, governance, capability, and runtime document this handbook depends on — including HB-001 Revision 1 itself — is treated as authoritative and unmodified; no existing document requires any change as a result of this revision.
 
 ## Future Revision Roadmap
 
 | Revision | Anticipated focus |
 | --- | --- |
-| **Revision 2** | Formalize the Standards (`STD-NNN`) identifier scheme and directory (§12); introduce the canonical per-family template set. |
-| **Revision 3** | Introduce the documentation coverage view; extend §7's traceability guidance with a worked cross-family example drawn from a real capability's full ADR → Governance → CAP → Runtime → Certification chain. |
-| **Revision 4+ (reserved)** | Evaluate whether a dedicated Engineering Process family is warranted; incorporate lessons from any document found, in practice, to span two families (§11 Principle 10). |
+| **Revision 3** | Formalize the Standards (`STD-NNN`) identifier scheme and directory, and the canonical per-family template set — both deferred from Revision 2 (§12's status note) once a future `STD-001` or equivalent authorizes engineering-standards content. |
+| **Revision 4** | Introduce the documentation coverage view (§12, §19); extend §17's traceability standard with a worked cross-family example drawn from a real capability's full ADR → Governance → CAP → Runtime → Certification chain. |
+| **Revision 5+ (reserved)** | Evaluate whether a dedicated Engineering Process family is warranted; incorporate lessons from any document found, in practice, to span two families (§11.1 Principle 10); revisit §19's automation opportunities once enough of the ecosystem exists to justify tooling. |
 
-## Known Limitations of Revision 1
+## Known Limitations of Revision 2
 
-- The Standards family is defined (§6.6) but not yet brought under a numbered identifier scheme — its existing seed documents remain exactly where and as they are.
-- No canonical document template is provided yet; family structure is described narratively (§6) rather than as a fill-in-the-blank template.
-- The mapping in §10.1 is a recommendation, not an enforced or automatically-checked structure — no tooling validates that a new document lands in its recommended directory.
-- Cross-reference validation (broken-link detection, identifier-uniqueness enforcement) is not addressed; it is assumed to be a future tooling concern, not a Revision 1 documentation-architecture concern.
-- This handbook does not yet address documentation for capabilities that predate the ADR-numbering convention (noted, without resolution, exactly as the platform's own constitutional ADR already notes for its earliest capabilities) — Revision 2 or later may choose to retroactively acknowledge, but never rewrite, that history.
+- The Standards family remains defined (§6.6) but not yet brought under a numbered identifier scheme — Revision 2 deliberately left this open rather than resolve it out of scope (§2, §12's status note).
+- No canonical document template is provided yet; family structure is described narratively (§6) and via the metadata standard (§16), rather than as a fill-in-the-blank template — reserved for Revision 3.
+- The dependency matrix (§13.3) and traceability standard (§17) are declarative rules, not enforced or automatically checked — §19 names, but does not authorize, the automation that could eventually check them.
+- The metadata standard (§16) is not applied retroactively; existing documents are not required to change, so the platform's documentation set will contain a mix of pre-standard and post-standard headers for some time.
+- The Review Workflow (§15) names review types and required-for scopes, but does not define escalation, disagreement resolution, or timeboxing for any review — those remain implicit, general engineering-management concerns outside this handbook's scope.
+- Revision 2 inherits every limitation of Revision 1 not explicitly resolved above (see Revision 1's own known limitations, summarized in the [Revision History](#revision-history)).
 
 ## Final Self Review
 
-- [x] No architecture was modified — every ADR, layer definition, and runtime contract referenced in this handbook is cited, never redefined.
-- [x] No governance was modified — the Architecture Freeze Index, Platform Capability Matrix, and every existing governance record are referenced by role only.
+- [x] No architecture was modified — every ADR, layer definition, and runtime contract referenced in this handbook (Revision 1 or Revision 2) is cited, never redefined.
+- [x] No governance was modified — the Architecture Freeze Index, Platform Capability Matrix, and every existing governance record are referenced by role only; §13's Governance/CAP observational-reference clarification describes an existing relationship, it does not create a new one.
 - [x] No runtime was modified — no component specification, execution behavior, or artifact format is changed.
 - [x] No capabilities were modified — no `CAP-NNN` boundary, dependency, or maturity status is altered.
-- [x] Documentation hierarchy is internally consistent — §5's seven tiers, §6's seven families, and §9's versioning scheme all cross-reference without contradiction.
-- [x] Every document family has a single responsibility — verified family by family in §6, summarized in §6.9.
-- [x] Traceability is maintained — §7 defines the citation mechanism; §10.3–10.4 define the identifier and cross-reference conventions that make it enforceable.
-- [x] Future evolution is supported — §12 and the Future Revision Roadmap name specific, scoped next steps without authorizing them prematurely.
+- [x] No new engineering, coding, or implementation standard was introduced — §16's metadata standard and §13's dependency rules govern documents, not code, language, framework, or AI-provider choices.
+- [x] Documentation hierarchy is preserved — §5's seven tiers are unchanged; §13 makes their existing rule explicit without altering it.
+- [x] Document families are preserved — §6's seven families, their purposes, and their boundaries are unchanged; §18 supplements ownership without moving any responsibility between families.
+- [x] Lifecycle is preserved — §8's six stages are unchanged in name, order, and count; §15 clarifies responsibility within the existing Review stage only.
+- [x] Versioning strategy is preserved — §9 is unchanged; this revision is itself a conforming instance of its own HB-versioning rule.
+- [x] Repository organization is preserved — §10 is unchanged; §16 formalizes its existing header convention without altering it.
+- [x] Engineering philosophy is preserved — §4's four Revision 1 paragraphs are unchanged; a fifth paragraph is appended, not substituted, to introduce Revision 2's contribution.
+- [x] All ten Revision 1 principles are preserved with their original numbering — verified in §11.1–§11.3; §11.4 adds no new numbered principle.
+- [x] Every Revision 2 objective (1–8 as commissioned) is addressed: Dependency Rules (§13), Quality Attributes (§14), Review Workflow (§15), Metadata Standard (§16), Traceability Standard (§17), Principle Classification (§11), Ownership Model (§18), Future Automation (§19).
+- [x] Backward compatibility with Revision 1 is maintained — every Revision 1 section reference, principle number, and defined term still resolves to the same meaning it always had.
+- [x] Remains implementation-, language-, framework-, and AI-provider-independent — verified by inspection of §13–§19; none names a technology.
+
+## HB-001 Revision 2 Compliance Certificate
+
+**This certifies that HB-001, Revision 2, Version 2.0 (Draft):**
+
+- ✅ **Mission completed** — Revision 2 strengthens the documentation architecture with governance rules for the documentation ecosystem itself: dependency rules (§13), quality attributes (§14), review workflow (§15), a metadata standard (§16), a traceability standard (§17), reorganized engineering principles (§11), an ownership model (§18), and a reserved future-automation view (§19).
+- ✅ **Scope respected** — no new architecture, governance, runtime behaviour, capability, implementation guidance, or engineering standard is introduced; every addition governs documents, never code (§2).
+- ✅ **Frozen inputs preserved** — HB-001 Revision 1, every existing ADR, every Design Proposal, every Governance document, the Platform Capability Matrix, every existing CAP definition, existing Runtime documentation, and existing Certification documents are referenced only, never redefined or contradicted.
+- ✅ **Documentation hierarchy preserved** — §5's seven tiers are unchanged; §13 operationalizes their existing dependency rule without altering it.
+- ✅ **No architectural change introduced** — verified in the Final Self Review above.
+- ✅ **No governance change introduced** — verified in the Final Self Review above; the Governance/CAP observational-reference distinction in §13 clarifies, rather than changes, an existing relationship.
+- ✅ **No runtime change introduced** — verified in the Final Self Review above.
+- ✅ **No capability changes introduced** — verified in the Final Self Review above.
+- ✅ **Backward compatibility maintained** — every Revision 1 section, principle number, and defined term continues to resolve identically; Revision 1 itself remains intact and available for historical reference ([Revision History](#revision-history)).
+- ✅ **Ready for review.**
+
+**Summary.** HB-001 Revision 2 is suitable to remain the root documentation artifact of the platform, and to serve as the authoritative root for all future Standards work, because it completes the pairing every governance system needs: Revision 1 defined *what* the documentation ecosystem is made of; Revision 2 defines *what keeps it correct*. A future `STD-001` (or any later document in any family) can now be written against explicit dependency rules (§13), a defined quality bar (§14), a named review path (§15), a canonical metadata shape (§16), and a stated traceability contract (§17) — rather than inferring all five from convention, the way every document before this revision had to. That is the specific, narrow, load-bearing extension a root documentation artifact's second revision should make — and the only one this revision claims to make.
 
 ---
 
-## HB-001 Revision 1 Compliance Certificate
-
-**This certifies that HB-001, Revision 1, Version 1.0 (Draft):**
-
-- ✅ **Mission completed** — the documentation architecture for the platform's entire engineering ecosystem is established, covering purpose, scope, audience, philosophy, hierarchy, families, relationships, lifecycle, versioning, repository organization, principles, and future evolution.
-- ✅ **Scope respected** — this handbook defines documentation architecture only; it contains no architecture redesign, no governance redesign, no new capability, no runtime change, and no implementation, language, or framework detail of any kind.
-- ✅ **Frozen inputs preserved** — every existing ADR, governance document, the Platform Capability Matrix, every existing CAP document, the platform's layered architecture, and the existing runtime architecture are treated as authoritative and referenced, never redesigned or contradicted.
-- ✅ **Documentation hierarchy established** — the seven-tier Platform Constitution → Architecture → Governance → Standards → Capabilities → Runtime → Certification flow is fully defined, with explicit responsibilities and dependency direction at every tier.
-- ✅ **Engineering principles respected** — every principle named in this handbook's mission (first-class artifact status, version control, explicit ownership, internal consistency, single responsibility, single family membership, minimized duplication, cross-reference preference, and the Standards-inherit-Architecture / Capabilities-inherit-Standards / Implementations-inherit-Capabilities / Reviews-validate-Implementations / Certification-validates-readiness chain) is reflected directly in §5, §6, §7, and §11.
-- ✅ **Ready for architecture review.**
-
-**Summary.** HB-001 is suitable to become the root documentation artifact of the platform because it is the only document in the ecosystem that describes the ecosystem itself rather than any one part of it: it makes explicit a structure every existing document in this repository already, informally, follows — a constitutional tier, an architecture tier, a governance tier, and (now formally named) standards, capability, runtime, and certification tiers, each with one owner and one responsibility. Every future ADR, governance record, standard, capability document, runtime specification, and certification report can now cite HB-001 to justify *where it belongs*, exactly as it already cites its own family's governing precedent to justify *what it decides*. That is the specific, narrow, load-bearing role a root documentation artifact must perform — and the only one this revision claims to fulfill.
-
----
-
-*End of HB-001, Revision 1, Version 1.0 (Draft).*
+*End of HB-001, Revision 2, Version 2.0 (Draft).*
