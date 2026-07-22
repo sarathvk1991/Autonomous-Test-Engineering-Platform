@@ -20,6 +20,7 @@
 | 10 | `DRC-STD-002-R2` §9 (DRC-3) | §6.1 | Replaced the "third model nearby" paragraph with an explicit relationship statement naming `CAP-100` §5 as unchanged and reserved for future harmonization. |
 | 11 | `DRC-STD-002-R2` §10 (Minor, retroactively labeled DRC-4 by this document's own commissioning brief — see Note below) | §5 (`Runtime Contract` field row) | Revised to cite STD-003 §4 and clarify declaration-of-intent versus realized contract. |
 | — | Administrative, not DRC-driven | §1 (Metadata) | Identifier, version, and status updated as an inherent consequence of producing a new revision (STD-007 §6) — not itself a disposed Finding. |
+| — | Administrative, not DRC-driven *(added to close `SRR-STD-002-R3` Condition 1 / `CCR-STD-002-V2.0`)* | §17 (Final Self Review) | Checklist rewritten to verify DRC implementation specifically, rather than the prior working text's own alignment checklist — an inherent consequence of producing a new revision, not itself a disposed Finding. This entry was originally omitted from this Log; its addition here closes `SRR-STD-002-R3`'s own Condition 1. |
 
 **Note on DRC numbering.** `DRC-STD-002-R2` itself used the section headers "Minor Findings" (§10) and "Informational Findings" (§11) rather than numbered `DRC-4`/`DRC-5` labels. This document's own commissioning brief refers to them as `DRC-4` and `DRC-5`. The content maps cleanly and without ambiguity — `DRC-STD-002-R2` §10 (Minor, ISSUE-4) is `DRC-4`; `DRC-STD-002-R2` §11 (Informational, ISSUE-5) is `DRC-5` — and this document adopts that numbering going forward for consistency. This is a labeling alignment, not a new or altered disposition.
 
@@ -250,7 +251,7 @@ This proposal SHALL NOT: redefine STD-000, STD-004, or STD-005 (cited throughout
 - [x] Every Accepted disposition implemented — DRC-1 (§6, §6.1), DRC-2 (§1.2, §13, §14), DRC-3 (§6.1) — verified against `DRC-STD-002-R2` §6.
 - [x] Accepted with Modification disposition implemented — DRC-4 (§5's `Runtime Contract` field) — verified against `DRC-STD-002-R2` §10.
 - [x] Recorded finding left unchanged — DRC-5 (`SRR-STD-002-R2` ISSUE-5) required no textual change, and none was made.
-- [x] No unrelated edits introduced — verified against the Revision Reconciliation Log (§0); every change traces to a specific DRC entry, except the single administrative metadata update, itself named as such.
+- [x] No unrelated edits introduced — verified against the Revision Reconciliation Log (§0); every change traces to a specific DRC entry, except the two administrative updates (§1 metadata, and this §17 checklist itself), both named as such in the Log.
 - [x] Every reconciliation note present — §0, and inline at each point of change.
 - [x] No new governance issues introduced — this revision itself introduces no new terminology, no new compression, and no new identity space; every change narrows or resolves an existing Finding.
 - [x] Does not retroactively alter `CAP-001` or `CAP-100` — §1.2.
