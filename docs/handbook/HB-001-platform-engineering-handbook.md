@@ -1,20 +1,20 @@
 # HB-001 — Platform Engineering Handbook
 
-**Revision 3 · Version 3.0 (Draft)**
+**Revision 4 · Version 4.0 (Draft)**
 
 | Attribute | Value |
 | --------- | ----- |
 | Document ID | HB-001 |
 | Document family | Handbook (HB) |
-| Revision | 3 |
-| Version | 3.0 (Draft) |
+| Revision | 4 |
+| Version | 4.0 (Draft) |
 | Document type | Documentation Architecture — Root Reference |
 | Status | Draft — pending architecture review |
 | Owner | Platform Architecture |
 | Governs | The documentation ecosystem of the entire engineering platform |
 | Governed by | Nothing — HB-001 is the root of the documentation hierarchy it defines |
 | Supersedes | Nothing (HB-001 revises itself; it does not supersede a different document) |
-| Prior revision | HB-001 Revision 2, Version 2.0 (Draft) — now **Revised** (§8); see [Revision History](#revision-history) |
+| Prior revision | HB-001 Revision 3, Version 3.0 (Draft) — now **Revised** (§8); see [Revision History](#revision-history) |
 | Implementation independence | This handbook contains no language, framework, or AI-provider-specific guidance. It describes documents, not code. |
 
 > HB-001 is not an implementation guide and not a governance document. It is the
@@ -22,21 +22,26 @@
 > explains what kinds of engineering documents exist, what each one is
 > responsible for, how they relate to one another, and how a reader or a new
 > document finds its correct place in the ecosystem. Revision 1 established that
-> architecture. Revision 2 strengthened it with the governance rules that keep
-> the documentation ecosystem itself consistent as the platform evolves —
-> dependency rules, quality attributes, review responsibilities, a metadata
-> standard, a traceability standard, a classified principle set, an ownership
-> model, and a reserved view of future automation. **Revision 3 fulfills the
-> `STD-NNN` identifier-scheme item Revision 1's own roadmap reserved for this
-> revision (§12's status note) — and substantially extends it** into a single,
-> platform-wide **Engineering Document Identification & Classification
-> Standard** (§20), now that STD-000 through STD-005 and a growing Derivative
-> series (PRD-001, ADR-001, CAP-001, RUN-001, SYS-001, IMP-001, PRA-001) exist to
-> generalize an identifier scheme from. Revision 3 changes no architecture,
-> governance, capability, or runtime decision anywhere in the platform; where it
-> extends a Revision 1 or Revision 2 rule (the family catalogue, §6; the
-> hierarchy, §5; the numbered-identifier rule, §10.3), it does so additively and
-> says so explicitly (§20), never by silent rewrite.
+> architecture. Revision 2 strengthened it with governance rules for the
+> documentation ecosystem itself. Revision 3 gave that ecosystem its first
+> identification and numbering scheme. **Revision 4 is the final constitutional
+> refinement before Platform Architecture (ADR-100) begins.** It generalizes
+> Revision 3's own Engineering Document Identification & Classification
+> Standard into a complete **Engineering Artifact Identification & Classification
+> Standard** (§20): a governed distinction between an Engineering Artifact (a
+> concept, lifecycle-independent of any document) and an Engineering Document
+> (one lifecycle-stage description of that concept); a Bounded Context
+> Classification replacing Revision 3's own Product Numbering Strategy; an
+> explicit Reservation/Allocation distinction; separate Artifact-identity and
+> Document-identity models; and a conceptual, implementation-free Engineering
+> Artifact Registry Model. Revision 4 preserves every decision made in
+> Revisions 1–3 unless stated otherwise here; no document identifier is
+> renumbered, no document family is removed, and no architectural decision is
+> changed. Where Revision 4 discovers a real inconsistency between Revision 3's
+> own text and this revision's own generalization — a range whose meaning has
+> shifted, a roadmap item superseded before it was reached — it is named and
+> reconciled explicitly (§20, and the scaffolding sections below), never
+> silently overwritten.
 
 ---
 
@@ -61,13 +66,13 @@
 17. [Documentation Traceability Standard](#17-documentation-traceability-standard)
 18. [Documentation Ownership Model](#18-documentation-ownership-model)
 19. [Future Automation](#19-future-automation)
-20. [Engineering Document Identification & Classification Standard](#20-engineering-document-identification--classification-standard)
+20. [Engineering Artifact Identification & Classification Standard](#20-engineering-artifact-identification--classification-standard)
 - [Revision History](#revision-history)
 - [Revision Summary](#revision-summary)
 - [Future Revision Roadmap](#future-revision-roadmap)
-- [Known Limitations of Revision 3](#known-limitations-of-revision-3)
+- [Known Limitations of Revision 4](#known-limitations-of-revision-4)
 - [Final Self Review](#final-self-review)
-- [HB-001 Revision 3 Compliance Certificate](#hb-001-revision-3-compliance-certificate)
+- [HB-001 Revision 4 Compliance Certificate](#hb-001-revision-4-compliance-certificate)
 
 ---
 
@@ -108,7 +113,11 @@ This handbook does not describe *what the platform does*. It describes *how the 
 
 - A single, platform-wide Engineering Document Identification & Classification Standard (§20): document-family registration and reservation, product numbering, artifact identity, naming convention, lifecycle and transformation consistency, family-level traceability, and the governance rules for the standard itself.
 
-**Intentionally out of scope for HB-001 (Revision 1, Revision 2, and Revision 3, all three):**
+**Added in scope for Revision 4:**
+
+- Generalization of Revision 3's own identification standard into a complete Engineering Artifact Identification & Classification Standard (§20): the Engineering Artifact / Engineering Document distinction, Bounded Context Classification (replacing Revision 3's Product Numbering Strategy), explicit Reservation and Allocation rules, separate Artifact-identity and Document-identity models, a unified artifact metadata model, and a conceptual (non-software) Engineering Artifact Registry Model.
+
+**Intentionally out of scope for HB-001 (Revision 1 through Revision 4, all four):**
 
 - **Architecture content.** HB-001 does not define what any layer, capability, or runtime contract *is* — that is the Architecture family's own responsibility (§6.2), and every architectural decision already on record is treated as authoritative and unmodified by this handbook.
 - **Governance content.** HB-001 does not define freeze policy, capability maturity criteria, or ADR-required/not-required judgments — that is the Governance family's own responsibility (§6.5), exercised today by the Architecture Freeze Index and the Platform Capability Matrix, both left exactly as they are.
@@ -584,86 +593,161 @@ As the documentation ecosystem grows, the following categories of automation cou
 
 None of the above is authorized, scheduled, or specified by this revision. Each is named so that a future revision — or a future STD or Runtime document describing actual tooling — has a pre-scoped starting point, consistent with how §12 already reserves other future work without authorizing it prematurely.
 
-## 20. Engineering Document Identification & Classification Standard
+## 20. Engineering Artifact Identification & Classification Standard
 
-*(New in Revision 3.)* This section is the authoritative standard governing the identification, numbering, classification, naming, ownership, lifecycle, and traceability of every engineering artifact this platform produces, in every family. It fulfills the `STD-NNN` identifier-scheme item Revision 1's own roadmap reserved for Revision 3 (§12's status note), generalized platform-wide because the Derivative document series has grown well beyond the Standards family alone since that note was written.
+*(Revised in Revision 4, replacing Revision 3's own §20 in full, per this revision's own explicit commissioning brief. Revision 3's original §20 content is not deleted from the record — it remains exactly as written in the Revision History table below, restating this section's own §20.14 discipline: DO NOT silently modify history; document reconciliation explicitly instead. This section fulfills the same `STD-NNN` identifier-scheme lineage Revision 3 began, now generalized into a complete Engineering Artifact Identification & Classification Standard, and is the final constitutional refinement before Platform Architecture, ADR-100, begins.)*
 
-**Relationship to §5, §6, §9, §10, and §13.** This section extends each of those sections additively, exactly as §9's own versioning rule requires of any Major-class, Minor-content-additive change (§9's note on Revision 2 applies identically here): it invalidates no existing rule, and every place it adds to an existing rule, it says so by name rather than silently reinterpreting the original text.
+**Relationship to §5, §6, §9, §10, §13, and Revision 3's own §20.** This section extends each additively. Every place it changes a Revision 3 rule rather than merely rephrasing it — the numbering-range table (§20.4), the roadmap items Revision 3 itself anticipated for "Revision 4" (Revision History, below) — is named as a change, with its own reconciliation, never presented as if Revision 3 had said it all along.
 
 ### 20.1 Purpose
 
-Every engineering document this standard governs SHALL be:
+Every engineering artifact and every engineering document (§20.2) this standard governs SHALL be:
 
 | Property | Meaning |
 | --- | --- |
-| **Uniquely identifiable** | Its identifier (§20.4) is assigned once, permanently, and never reused (restates §9's and §10.3's own immutability rule). |
-| **Human readable** | Its title and identifier together tell a reader what it is without opening it. |
-| **Machine readable** | Its identifier follows one parseable pattern (§20.5) across every family, enabling the automation §19 already reserves without authorizing. |
-| **Lifecycle aware** | Its current stage (§8) is always stated, never implied. |
-| **Product aware** | Its numbering range (§20.3) identifies which product it belongs to, without requiring a reader to already know the platform's own product landscape. |
-| **Traceable** | It resolves, family by family, back to Governance (§20.8). |
-| **Version controlled** | It follows §9's Major.Minor.Patch discipline, unchanged. |
-| **Governance compliant** | It satisfies §20.9's governance rules before being treated as authoritative. |
+| **Uniquely identifiable** | Its identifier is assigned once and never duplicated. |
+| **Permanently identifiable** | Its identifier is never reused, renumbered, or reassigned (restates §9's and §10.3's own immutability rule, now stated as its own property rather than folded into "uniquely identifiable" alone). |
+| **Human readable** | Its name or title tells a reader what it is without opening it. |
+| **Machine readable** | Its identifier follows one parseable pattern (§20.10) across every family, enabling the automation §19 already reserves without authorizing. |
+| **Product aware** | Its Bounded Context (§20.4) identifies which domain it belongs to. |
+| **Domain aware** | Restates the prior property from the Engineering Artifact's own vantage point (§20.2) — a concept, not only a document, belongs to one domain. |
+| **Lifecycle aware** | Its current lifecycle status (§20.7, §20.8) is always stated, never implied. |
+| **Version aware** | It follows §9's Major.Minor.Patch discipline, unchanged. |
+| **Governance compliant** | It satisfies §20.14's governance rules before being treated as authoritative. |
+| **Traceable** | It resolves, per §20.13, back to Business Intent. |
 
-### 20.2 Engineering Document Families
+### 20.2 Engineering Artifact Model
 
-This subsection extends §6's family catalogue. **§6's original seven families (HB, ADR + Design Proposal, Governance, STD, CAP, Runtime, Certification) are unchanged in purpose, ownership, and boundary** — this subsection (a) registers four families real precedent already established but §6 never formally named, (b) formally reserves one family anticipated by STD-004's and STD-005's own vocabulary but not yet exercised, and (c) aligns two existing families' short-form codes with the numbered-identifier convention their own real documents already use.
+*(New in Revision 4.)* This subsection introduces a distinction Revision 3 did not yet draw: between an **Engineering Artifact** and an **Engineering Document**.
 
-| Family | Short code | Purpose | Responsibilities | Typical lifecycle position (§20.6) | Transformation relationship (STD-005 §6) | Status |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Handbook** | `HB` | Define the documentation architecture itself (§6.1, unchanged). | Unchanged from §6.1. | Precedes every other family; shared, not per-product. | N/A — HB originates no transformation. | Existing (§6.1). |
-| **Standard** | `STD` | Define conventions engineering work must follow (§6.6, unchanged). | Unchanged from §6.6. | Precedes every other family; shared, not per-product. | N/A — a Standard is cited as Transformation Authority (STD-005 §8); it is not itself a transformation's Output Artifact. | Existing (§6.6). |
-| **Product Requirements Document** | `PRD` | Record business intent for one product, bound by nothing architectural (restates ADR-001 §5's own framing of PRD-001 as "the first Derivative document, and the only one with no architectural dependency"). | Vision, objectives, scope, functional and non-functional requirements, business-tier success metrics, for one product. | First per-product tier — precedes Architecture. **Extends §5's hierarchy with a Business/Product tier above Platform Constitution** (§20.6 Reconciliation Note). | Origin of the **Refines** transformation into Architectural Intent (STD-005 §5). | **New family — registered by this revision.** Real precedent: PRD-001. |
-| **Architecture Decision Record** | `ADR` | Record one architectural decision (§6.2, unchanged). | Unchanged from §6.2. | Realizes a PRD's business intent as Architectural Intent. | **Refines** (STD-005 §5, §6). | Existing (§6.2). |
-| **Capability Document** | `CAP` | Track one platform capability (§6.4, unchanged). | Unchanged from §6.4. | Decomposes/Allocates an ADR's architecture into Capability Intent. | **Decomposes → Allocates → Specializes** (STD-005 §5, §6; ADR-001 §17). | Existing (§6.4). |
-| **Runtime Documentation** | `RUN` | Describe a capability as it executes (§6.7, unchanged in purpose). | Unchanged from §6.7. | Realizes a CAP's capability intent as Runtime Intent. | **Realizes → Preserves → Derives** (STD-005 §5). | Existing (§6.7) — **short code and numbering reconciled** (§20.2's own Reconciliation Note below). |
-| **System Specification** | `SYS` | Decompose a Runtime's own responsibilities and state model into cohesive logical systems (SYS-001 §2's own framing). | Realize a runtime's own Boundary and State Model unchanged, at finer, system-level grain (SYS-001 §4). | A refinement inside the single `Runtime Intent → Implementation Intent` hop STD-005 §5 already names — never a new stage (SYS-001 §15's own framing, restated). | **Realizes → Decomposes → Allocates → Preserves** (SYS-001's own Transformation Record). | **New family — registered by this revision.** Real precedent: SYS-001. |
-| **Platform Reference Architecture** | `PRA` | Give a body of architecture its reusable, technology-shaped substrate (PRA-001 §2's own framing). | See §20.7's Reconciliation Note — this family has **two valid scopes**, distinguished by instance, not by family definition. | See §20.7. | **Realizes → Allocates → Specializes → Preserves** (PRA-001's own Transformation Record). | **New family — registered by this revision.** Real precedent: PRA-001. |
-| **Implementation Specification** | `IMP` | Give a System Specification its complete technology realization (IMP-001 §2's own framing). | Realize STD-005 §5's own reserved `System → Implementation` hop (SYS-001 §15). | Follows System Specification; precedes Evidence. | **Realizes → Allocates → Specializes → Preserves** (IMP-001's own Transformation Record). | **New family — registered by this revision.** Real precedent: IMP-001. |
-| **Evidence** | `EVD` | Record the specific, checkable facts (STD-001 §6, STD-002 §9, STD-003 §10's own evidence vocabulary) an Implementation actually produced. | Aggregate Implementation Deliverables (STD-001 §6) into the Engineering Evidence stage STD-005 §5 already names. | Follows Implementation; precedes Certification. | **Verifies** (STD-005 §5, §6). | **Reserved — no `EVD-NNN` document exists yet.** Named because STD-004 §9's own `Evidence` tier and STD-005 §5's own `Engineering Evidence` stage already require a family to occupy this position; not yet exercised by a real document. |
-| **Certification** | `CERT` | Record formal verification (§6.8, unchanged in purpose). | Unchanged from §6.8. | Terminal tier — validates Evidence. | **Validates** (STD-005 §5, §6). | Existing (§6.8) — **short code and numbering reconciled** (§20.2's own Reconciliation Note below). |
+**Engineering Artifact.** A governed engineering *concept* — e.g. Engineering Intelligence Operating System, Requirements Intelligence, Architecture Intelligence, Capability Intelligence, Runtime Intelligence, Knowledge Intelligence, Evidence Intelligence, Certification Intelligence. An Engineering Artifact is **lifecycle independent** — it exists as a governed concept regardless of how many documents currently describe it, or at what stage.
 
-**On Governance's own absence from this table.** Governance (§6.5) remains a living, unnumbered family, exactly as §10.3 already establishes — it is deliberately not given a short code above, because it never carries the kind of discrete, versioned identity this section's numbering scheme (§20.3) exists to assign. This is continuity with §10.3, not an oversight.
+**Engineering Document.** One lifecycle-stage description of an Engineering Artifact — a `PRD-NNN`, `ADR-NNN`, `CAP-NNN`, `RUN-NNN`, `SYS-NNN`, `PRA-NNN`, or `IMP-NNN` (§20.3). **Many documents; one Artifact.** Example:
 
-**Reconciliation Note — RUN and CERT numbering.** §10.3, as written in Revision 2, states that "Governance, Runtime, and Certification documents... are referenced by their descriptive path instead" of a numbered identifier. Real precedent since has established otherwise for Runtime: `RUN-001` (Requirements Intelligence Runtime) already exists as a stable, permanent, CAP-aligned numbered identifier, cited throughout the SYS-001, IMP-001, and PRA-001 lineage exactly as an ADR or CAP number would be. **This revision reconciles §10.3 with that precedent: a Runtime or Certification document that specifies a live component's design (rather than an execution-produced instance, §6.7) now carries a numbered identifier (`RUN-NNN`, `CERT-NNN`) under this section's own scheme, once one is assigned** — §10.3's own text is not rewritten (restating this handbook's own additive-revision discipline), but is, on this one point, superseded by this section going forward. Execution-produced Runtime documentation (a run's own report, summary, or metrics artifact, §6.7) remains unnumbered and path-referenced, unaffected by this reconciliation.
+```
+Engineering Artifact: Requirements Intelligence
 
-### 20.3 Product Numbering Strategy
+Documents:
+  PRD-201 → ADR-201 → CAP-201 → RUN-201 → SYS-201 → PRA-201 → IMP-201
+```
 
-| Range | Product |
+**Document identity and Artifact identity SHALL remain separate concepts** (§20.7, §20.8) — a document's own identifier names one lifecycle-stage description; an artifact's own identifier (once assigned, §20.7) names the concept every such description, across every family, is ultimately about.
+
+**Reconciliation Note — the Requirements Intelligence Artifact today.** The example above shows the fully-numbered form a *future* Requirements Intelligence documentation lineage would take once registered under §20.4's Bounded Context Classification. The Requirements Intelligence Engineering Artifact **already exists in substance**, described today by the grandfathered `CAP-001`, `RUN-001`, `SYS-001`, and `IMP-001` documents — a **partial** documentation set, missing a dedicated `PRD` and `ADR` of its own, since those roles were originally played by the platform-wide `PRD-001` and `ADR-001` rather than by a Requirements-Intelligence-specific document. This gap is named here explicitly, not silently closed: no renumbering occurs, and no new `PRD`/`ADR` is retroactively required of the existing lineage by this revision. Should a dedicated `PRD-201`/`ADR-201` ever be written, it would describe the *same* Engineering Artifact the grandfathered documents already describe — exactly the situation this subsection's own Artifact/Document distinction exists to make coherent.
+
+### 20.3 Document Families
+
+*(Retains, does not remove, every family Revision 3 registered.)* Extending §6's original seven families (unchanged in purpose, ownership, and boundary) and Revision 3's own four registrations plus one reservation:
+
+| Family | Purpose | Responsibilities | Lifecycle Position | Transformation Relationships (STD-005 §6) |
+| --- | --- | --- | --- | --- |
+| **HB** | Define the documentation architecture itself (§6.1). | Unchanged from §6.1. | Precedes every Artifact's own lifecycle; shared, not per-Artifact. | N/A — HB originates no transformation. |
+| **STD** | Define conventions engineering work must follow (§6.6). | Unchanged from §6.6. | Precedes every Artifact's own lifecycle; shared, not per-Artifact. | N/A — cited as Transformation Authority (STD-005 §8), never itself a Target Artifact. |
+| **PRD** | Record business intent for one Engineering Artifact, bound by nothing architectural. | Vision, objectives, scope, functional and non-functional requirements. | First per-Artifact tier — precedes Architecture. | Origin of the **Refines** transformation (STD-005 §5). |
+| **ADR** | Record one architectural decision (§6.2). | Unchanged from §6.2. | Realizes a PRD's business intent as Architectural Intent. | **Refines** (STD-005 §5, §6). |
+| **CAP** | Track one platform capability (§6.4). | Unchanged from §6.4. | Decomposes/Allocates an ADR's architecture into Capability Intent. | **Decomposes → Allocates → Specializes.** |
+| **RUN** | Describe a capability as it executes (§6.7). | Unchanged from §6.7. | Realizes a CAP's capability intent as Runtime Intent. | **Realizes → Preserves → Derives.** |
+| **SYS** | Decompose a Runtime's own responsibilities and state model into cohesive logical systems. | Realize a runtime's own Boundary and State Model unchanged, at system grain. | A refinement inside the `Runtime Intent → Implementation Intent` hop (STD-005 §5) — never a new stage. | **Realizes → Decomposes → Allocates → Preserves.** |
+| **PRA** | Give a body of architecture its reusable, technology-shaped substrate. | Two valid scopes — platform-wide singleton or per-Artifact specialization (§20.12's own Reconciliation Note, carried forward from Revision 3 §20.7). | See §20.12. | **Realizes → Allocates → Specializes → Preserves.** |
+| **IMP** | Give a System Specification its complete technology realization. | Realize the reserved `System → Implementation` hop. | Follows System Specification; precedes Evidence. | **Realizes → Allocates → Specializes → Preserves.** |
+| **EVD** *(Reserved)* | Record the specific, checkable facts an Implementation actually produced. | Aggregate Implementation Deliverables into the Engineering Evidence stage. | Follows Implementation; precedes Certification. | **Verifies.** |
+| **CERT** | Record formal verification (§6.8). | Unchanged from §6.8. | Terminal tier — validates Evidence. | **Validates.** |
+
+**Governance's own continued absence from this table** is unchanged from Revision 3: it remains a living, unnumbered family (§10.3), outside this identification scheme entirely — restated, not revisited, by this revision (Revision 3's own Future Revision Roadmap already reserved a future, separate registration of Governance's own numbering treatment, should practice ever produce a numbered instance; that reservation stands, below).
+
+**Reconciliation Note — RUN and CERT numbering, carried forward from Revision 3.** Revision 3 already reconciled §10.3's original claim (that Runtime and Certification documents are unnumbered) against `RUN-001`'s own real, numbered precedent. That reconciliation is unchanged and restated here, not revisited: a Runtime or Certification document specifying a live component's design carries a numbered identifier under this scheme; execution-produced Runtime documentation remains unnumbered and path-referenced.
+
+### 20.4 Bounded Context Classification
+
+*(Replaces Revision 3's own Product Numbering Strategy, §20.3 as it stood in Revision 3 — a genuine change, reconciled explicitly below, never presented as a Revision 3 rule restated unchanged.)* Every Engineering Artifact (§20.2) SHALL belong to exactly one bounded context:
+
+| Reserved Range | Domain |
 | --- | --- |
-| 001–099 | Core Engineering Intelligence Applications |
+| 000–099 | Governance & Shared Authorities |
 | 100–199 | Engineering Intelligence Operating System |
-| 200–299 | Architecture Intelligence |
-| 300–399 | Runtime Intelligence |
-| 400–499 | Knowledge Intelligence |
-| 500–599 | Evidence Intelligence |
-| 600–699 | Certification Intelligence |
-| 700–799 | Shared Platform Services |
+| 200–299 | Requirements Intelligence |
+| 300–399 | Architecture Intelligence |
+| 400–499 | Capability Intelligence |
+| 500–599 | Runtime Intelligence |
+| 600–699 | Knowledge Intelligence |
+| 700–799 | Evidence & Certification Intelligence |
 | 800–899 | Enterprise Extensions |
-| 900–999 | Research / Experimental / Incubation |
+| 900–999 | Research / Experimental |
 
-These ranges are **reserved, not exhaustively assigned** — a range is claimed only when a real product's first document (typically its `PRD-NNN`) is registered against it, and ranges may be added, split, or reinterpreted only under §20.9's Governance Rules (i.e., only by a future revision to this Handbook).
+**HB reserves identifier ranges. HB does NOT allocate identifiers** (§20.5, §20.6) — a range's existence in this table commits nothing about whether, or when, a document claiming it will ever be written.
 
-**Reconciliation Note — existing "001" identifiers are grandfathered, never renumbered.** §9 and §10.3 already make identifier permanence absolute: "a document's identifier... never changes once assigned," and "never reused, renumbered, or reassigned." The platform's own existing `-001` series — `PRD-001` and `ADR-001` (platform-wide founding architecture), together with `CAP-001`, `RUN-001`, `SYS-001`, `IMP-001` (Requirements Intelligence, the platform's first proven application), and `PRA-001` (the platform-wide reference architecture, §20.7) — predates this numbering strategy and is **not reclassified, renumbered, or reinterpreted by it**. This range table governs every product-numbering decision from this revision forward; it does not reach backward to reassign meaning to an identifier already Frozen or Drafted under this platform's prior practice.
+**Reconciliation Note — this table changes range meanings Revision 3 assigned, and says so explicitly.** Revision 3's own §20.3 assigned: `001–099` to "Core Engineering Intelligence Applications," `200–299` to Architecture Intelligence, `300–399` to Runtime Intelligence, `400–499` to Knowledge Intelligence, `500–599` to Evidence Intelligence, `600–699` to Certification Intelligence, and `700–799` to Shared Platform Services. This table reassigns nearly every one of those ranges — `200–299` now names Requirements Intelligence; `300–399` now names Architecture Intelligence; `400–499` now names Capability Intelligence (a bounded context Revision 3 did not separately range at all); `500–599` now names Runtime Intelligence; `600–699` now names Knowledge Intelligence; `700–799` now merges Evidence and Certification Intelligence into one range; and `000–099` now names Governance & Shared Authorities, a concept Revision 3 never named as its own range. **Only `100–199` (Engineering Intelligence Operating System) is unchanged between the two revisions** — `PRD-100` (already Allocated, §20.6) remains correctly classified under both.
 
-### 20.4 Artifact Identity
+**This is a real, acknowledged change, not a cosmetic rewording — handled per this revision's own Conflict Resolution Rules: history is preserved, not silently modified.** Revision 3's own range table remains an accurate historical record of what Revision 3 said, preserved verbatim in the Revision History table below. It is **superseded, from this revision forward**, by the table above. No document was ever Allocated (§20.6) against any of Revision 3's now-superseded range meanings other than the grandfathered `-001` series and `PRD-100` — so no real identifier's own domain classification is disturbed by this change; only the *prospective* meaning of an as-yet-unclaimed range changes.
 
-Every engineering artifact SHALL possess, extending §16's Document Metadata Standard:
+**Reconciliation Note — grandfathered identifiers are exempt from bounded-context classification entirely, under either revision's table.** The platform's own existing `-001` series (`PRD-001`, `ADR-001`, `CAP-001`, `RUN-001`, `SYS-001`, `IMP-001`, `PRA-001`) predates both Revision 3's and this revision's own classification schemes. **These identifiers are not reclassified into "Governance & Shared Authorities" merely because `000–099` is numerically adjacent to their own numbering, and they were never, in substance, "Core Engineering Intelligence Applications" either** (Revision 3's own label). They remain, simply and permanently, **exempt from bounded-context classification** — the platform's own founding lineage, grandfathered in full, reclassified into neither this table's ranges nor Revision 3's. `PRD-100` is the sole exception: it was Allocated (§20.6) after Revision 3's own scheme existed, against a range whose meaning is unchanged by this revision, and remains correctly classified as Engineering Intelligence Operating System under both.
 
-| Field | Relationship to §16 |
+### 20.5 Identifier Reservation
+
+**Reservation** claims identifier space for a bounded context (§20.4) without implying any document exists. Example: `100–199` is Reserved for the Engineering Intelligence Operating System; no document was required to exist merely because that reservation was made (and, in fact, none did, for one full revision). **Only HB may reserve ranges** (§20.14).
+
+Reservation is distinct from grandfathering (§20.4): a grandfathered identifier predates this scheme's own reservation concept entirely and is exempted from it, never counted as an early claim against a reserved range.
+
+### 20.6 Identifier Allocation
+
+**Allocation** assigns one specific identifier, and occurs only when a document is actually created. Example: `PRD-100` — Allocated, Engineering Intelligence Operating System. **Allocated identifiers SHALL never be reused, SHALL never be renumbered, and SHALL remain permanent** (restates §9, §10.3). **Grandfathered identifiers SHALL remain valid** (§20.4's own Reconciliation Note).
+
+**Reconciliation Note.** `PRD-100`, created before this revision's own Reservation/Allocation vocabulary existed in words, already satisfied this section's own discipline in substance: it was assigned only at the moment its document was created, against a range reserved in advance. It stands, retroactively, as this scheme's first real Allocation.
+
+### 20.7 Engineering Artifact Identity
+
+Every Engineering Artifact (§20.2) SHALL possess:
+
+| Field | Meaning |
 | --- | --- |
-| Identifier | §16, unchanged. |
-| Title | §16, unchanged. |
-| **Product** | New — names the product-numbering range (§20.3) this artifact belongs to. |
-| **Document Family** | New — names the family (§20.2) this artifact belongs to; supplements §16's implicit family-by-prefix convention with an explicit field. |
-| **Lifecycle Stage** | Restates §16's `Status` field by name, to align this standard's own vocabulary with §8's. |
-| Version | §16, unchanged. |
-| Status | §16, unchanged (see Lifecycle Stage above — the two fields name the same fact; a document may use either label consistently within its own family's convention). |
-| Owner | §16, unchanged. |
-| **Governing Authority** | New — names the specific upstream document (per §13's dependency rules) this artifact's own authority derives from; makes §16's existing `Related Documents` field's *authority* entries explicit and singular where §13.1 requires exactly one. |
-| **Traceability Identifier** | New — the specific chain position (§20.8) this artifact occupies, so a reader can locate it in the traceability chain without re-deriving it from the document's own content. |
+| **Artifact Name** | The concept's own human-readable name (e.g. "Requirements Intelligence"). |
+| **Artifact Identifier** | A stable identifier for the concept itself, independent of any one document's own identifier (§20.9) — reserved for future assignment; not retroactively required of an Artifact already described only by grandfathered documents (§20.2's own Reconciliation Note). |
+| **Bounded Context** | The domain (§20.4) this Artifact belongs to. |
+| **Description** | What the concept is, in business or engineering terms — never an implementation description (Writing Guidelines). |
+| **Owner** | The accountable party for the concept itself, distinct from any one document's own Owner field. |
+| **Lifecycle Status** | The Artifact's own maturity (e.g. Proposed, Realized, Partially Realized — restating STD-002 §3's own capability-lifecycle vocabulary at Artifact grain). |
+| **Governing Authority** | The upstream document or Standard the Artifact's own legitimacy derives from. |
+| **Traceability Root** | The Business Intent (§20.13) this Artifact ultimately traces back to. |
 
-### 20.5 Naming Convention
+### 20.8 Engineering Document Identity
+
+Every Engineering Document (§20.2) SHALL possess:
+
+| Field | Meaning |
+| --- | --- |
+| **Document Identifier** | The document's own stable, permanent identifier (§20.6). |
+| **Document Family** | Which family (§20.3) it belongs to. |
+| **Version** | §9, unchanged. |
+| **Status** | §8, unchanged. |
+| **Owner** | §16, unchanged, at document grain. |
+| **Governing Authority** | The specific upstream document (§13's dependency rules) this document's own authority derives from. |
+| **Artifact Identifier** | Which Engineering Artifact (§20.7) this document describes — the field that makes §20.2's Document/Artifact distinction operational. |
+| **Derived From** | §1's own header convention (ADR-001, PRD-001, and every document in this lineage already carries this field) — restated here as a required field, not a convention observed by precedent alone. |
+| **Transformation Authority** | The STD-005 semantic (§20.12) this document's own derivation was performed under. |
+
+### 20.9 Artifact Metadata Model
+
+The mandatory metadata set, unifying §20.7 (Artifact-level) and §20.8 (Document-level) into one schema:
+
+| Field | Applies to |
+| --- | --- |
+| Artifact Identifier | Artifact and Document (a document names the Artifact it describes). |
+| Artifact Name | Artifact. |
+| Document Identifier | Document only. |
+| Document Family | Document only. |
+| Bounded Context | Artifact and Document (a document inherits its Artifact's own context). |
+| Owner | Artifact and Document (may differ; §20.7/§20.8 name each separately). |
+| Lifecycle Status | Artifact and Document (an Artifact's own maturity is distinct from any one document's own lifecycle stage, §20.2). |
+| Version | Document only (an Artifact, being lifecycle-independent, has no version of its own). |
+| Created | Document only. |
+| Last Modified | Document only. |
+| Related Documents | Document only (§16). |
+| Governing Authority | Artifact and Document. |
+| Traceability Root | Artifact and Document. |
+
+### 20.10 Naming Convention
+
+Retained, unchanged from Revision 3:
 
 ```
 HB-001
@@ -677,15 +761,13 @@ PRA-100
 IMP-100
 ```
 
-Naming remains consistent across every product: `<FAMILY>-<NNN>`, where `<NNN>` is the product's own assigned number (§20.3) shared by every family that product's own lifecycle (§20.6) produces. **No product-specific prefix (e.g. `PPRD`, `PADR`) is ever introduced** — the family code alone (§20.2) identifies the kind of document; the number alone identifies the product; combining them into a compound prefix would duplicate information the two-part scheme (§20.4's `Document Family` plus `Product` fields) already carries explicitly, violating §14's Minimal Duplication attribute.
+`<FAMILY>-<NNN>`. No product-specific prefix (`PPRD`, `PADR`) is ever introduced. No duplicate identifier is ever assigned (§20.6).
 
-### 20.6 Lifecycle Consistency Rules
+### 20.11 Lifecycle Consistency
+
+Every Engineering Artifact SHALL evolve through the standard engineering lifecycle:
 
 ```
-HB
- ↓
-STD
- ↓
 PRD
  ↓
 ADR
@@ -701,50 +783,38 @@ PRA
 IMP
 ```
 
-**Reading this diagram.** `HB` and `STD` are shared, platform-wide, Normative families (ADR-001 §5) — they are not renumbered per product; every product's own lifecycle begins by inheriting them as-is. `PRD` through `IMP` are Derivative and repeat per product, sharing that one product's own number (§20.3, §20.5) throughout. Every product SHALL use this same nine-family reading order; only the identifier's numeric component changes between products.
+The lifecycle is universal; only identifiers differ between Artifacts. **This diagram shows the per-Artifact portion of the lifecycle only** — `HB` and `STD` remain its shared, non-per-Artifact prerequisite context (§20.3's own Lifecycle Position column), presumed rather than redrawn here, exactly as Revision 3's own fuller nine-family diagram already showed explicitly. Nothing about `HB`'s or `STD`'s own place in the sequence changes; this diagram is a narrower, per-Artifact view of the same sequence, not a contradiction of it.
 
-**Reconciliation Note — extending §5's hierarchy.** §5's own seven-tier hierarchy (Platform Constitution → Architecture → Governance → Standards → Capabilities → Runtime → Certification) has never named a tier for Business/Product intent, even though `PRD-001` already exists and ADR-001 §5 already treats it as Architecture's own sole content source. **This revision extends §5 additively with one new tier, above Platform Constitution:**
+**Reconciliation Note — extending §5's hierarchy, carried forward from Revision 3.** §5's seven-tier hierarchy was extended, additively, with a Business/Product tier above Platform Constitution, to give `PRD` a place in it. That extension is unchanged and restated here, not revisited.
 
-```
-Business / Product
-        ↓
-Platform Constitution
-        ↓
-    Architecture
-        ↓
-       ...  (§5, unchanged below this point)
-```
+### 20.12 Transformation Consistency
 
-This is the same kind of additive, non-invalidating extension SYS-001 §15 already performed on RUN-001's own five-node chain, and IMP-001 §14 on SYS-001's six-node chain — a permitted refinement of an existing model, never a redefinition of it. §5's own text is not rewritten; this note is its authoritative amendment.
-
-### 20.7 Transformation Consistency
-
-Restates STD-005 in full: document identifiers preserve transformation lineage, never obscure it.
+Restates STD-005 in full: transformation lineage SHALL preserve identity.
 
 ```
 PRD-100
-        ↓
+ ↓
 ADR-100
-        ↓
+ ↓
 CAP-100
-        ↓
+ ↓
 RUN-100
-        ↓
+ ↓
 SYS-100
-        ↓
+ ↓
 PRA-100
-        ↓
+ ↓
 IMP-100
 ```
 
-**Reconciliation Note — PRA's two valid scopes.** `PRA-001` (already Drafted, §20.3's grandfather clause) is a **platform-wide, capability-independent reference architecture** — a singleton, Realized directly from `ADR-001` (PRA-001's own Transformation Record), sitting between Architecture and Capability in the platform's own traceability chain (PRA-001 §19), reusable by every product. The diagram above shows a **second, distinct scope**: a **per-product** `PRA-NNN` — that one product's own specialization of the platform-wide `PRA-001` applied to its own `SYS-NNN`, positioned between System Specification and Implementation Specification in that product's own lifecycle. Both scopes are valid, non-contradictory uses of the same family (§20.2): the platform-wide instance is Realized once, directly from an ADR, and extended by every product; a per-product instance, where a product's own architecture is complex enough to warrant one, is Realized from that product's own `SYS-NNN`, and SHALL itself derive from, specialize, and never contradict the platform-wide `PRA-001` it extends. A product not complex enough to need its own `PRA-NNN` inherits `PRA-001` directly, and simply omits this stage from its own lifecycle — restating STD-005 §7's own distinction between a Mandatory and an Optional transformation.
+**Reconciliation Note — PRA's two valid scopes, carried forward from Revision 3.** `PRA-001` remains the platform-wide, capability-independent reference architecture — a singleton, Realized directly from `ADR-001`, reusable by every Artifact. The diagram above shows the distinct, per-Artifact scope: a per-Artifact `PRA-NNN` (e.g. a future `PRA-100`) is that Artifact's own specialization of the platform-wide `PRA-001`, applied to its own `SYS-NNN`, and SHALL derive from and never contradict it. An Artifact not complex enough to need its own `PRA-NNN` inherits `PRA-001` directly and omits this stage — restating STD-005 §7's Mandatory/Optional distinction. This reconciliation is unchanged from Revision 3 §20.7; it is restated here because §20.11's diagram still names `PRA` as a lifecycle stage, and a reader should not need to consult a superseded section to understand what that stage means.
 
-### 20.8 Traceability Rules
+### 20.13 Traceability Rules
+
+Every Engineering Artifact SHALL support traceability through:
 
 ```
-Governance
-        ↓
-     Product
+Business Intent
         ↓
   Architecture
         ↓
@@ -761,18 +831,54 @@ Implementation
 Certification
 ```
 
-**This is a family-level reading of the same structure STD-004's canonical graph (§9) and STD-005's Engineering Transformation Model (§5) already describe from complementary angles (STD-005 §5's own table already reconciles its process view against STD-004's structural view) — a third, family-cataloguing view, never a competing chain.** `Governance` heads this reading because every family below it is checked against Governance's own freeze and maturity record (§13.2) before being treated as authoritative; `Product` (this section's own new PRD family, §20.2) is the per-product root every other family in the chain ultimately traces back to, restating §20.6's own hierarchy extension at family-cataloguing grain.
+Restates STD-004 and STD-005 §5 — this chain now uses STD-005 §5's own exact terminology ("Business Intent") rather than Revision 3's own "Product," and no longer names "Governance" as a chain node.
 
-### 20.9 Governance Rules
+**Reconciliation Note.** Revision 3's own §20.8 headed this chain with `Governance`, and used `Product` where STD-005 §5 itself says `Business Intent`. Neither change removes governance or business-intent content: Governance's own checking role is unchanged and is stated in full by §20.14 below and by §13's existing dependency rules — restating ADR-001 §8's own observation that a cross-cutting concern (there, L5/L6; here, Governance) need not be drawn as a sequential chain node to remain fully binding. Renaming `Product` to `Business Intent` brings this chain into exact terminological alignment with STD-005 §5's own model, a clarification, not a scope change — `Business Intent` and `Product` name the same origin point this chain has always had.
 
-1. **Only HB may introduce new document families.** Restates §6's own root-authority position — this section's own registration of PRD, SYS, PRA, and IMP (§20.2), and reservation of EVD, is itself performed inside HB-001, by HB-001, consistent with this rule, never by a downstream family claiming that authority for itself.
-2. **Only HB may reserve numbering ranges.** §20.3's table is this section's own exercise of that authority; a future range change requires a future HB revision, never a per-product decision.
-3. **Only STD-005 governs transformations.** This section cites, and never redefines, STD-005 §6's semantics (§20.2's Transformation relationship column, §20.7).
-4. **Only STD-004 governs relationships.** This section cites, and never redefines, STD-004's own relationship vocabulary; §20.8's chain names family-level positions, never a fifteenth relationship type.
+### 20.14 Governance Rules
 
-### 20.10 Compliance Statement
+Only HB may:
 
-Every future engineering artifact, in every family (§20.2), for every product (§20.3), SHALL comply with this identification standard. An artifact missing an identifier, a product assignment, a document-family classification, a lifecycle stage, or a resolvable position in §20.8's traceability chain is not yet a governed artifact under this Handbook, regardless of how complete its own content otherwise is — restating §9's Constitutional Rule 3's own governed-evolution discipline (STD-000), applied here to identity itself.
+1. **Introduce document families** (§20.3) — restates §6's own root-authority position; this section's own retention of every Revision 3 family is itself an exercise of this rule, not an exception to it.
+2. **Reserve identifier ranges** (§20.4, §20.5) — this revision's own reassignment of range meanings (§20.4's Reconciliation Note) is itself an exercise of this rule, performed inside HB-001, by HB-001, never by a downstream family claiming that authority for itself.
+3. **Modify naming conventions** (§20.10).
+4. **Modify artifact identity rules** (§20.7, §20.8, §20.9).
+
+**Only document creation allocates identifiers** (§20.6) — no range reservation (§20.5) and no artifact registration (§20.7) allocates one on its own.
+
+**Only STD-005 governs transformations** (§20.12) — this section cites, and never redefines, its semantics.
+
+**Only STD-004 governs traceability** (§20.13) — this section cites, and never redefines, its relationship vocabulary.
+
+### 20.15 Engineering Artifact Registry Model
+
+*(New in Revision 4. Conceptual only — a governance model, NOT a software specification. No database, API, service, or implementation detail is described here; that remains ADR-100's own future responsibility, restating the Mission's own boundary for this revision.)*
+
+The registry is the logical record every governed Engineering Artifact and Engineering Document ultimately resolves against:
+
+```
+Artifact Identity (§20.7)
+        ↓
+Document Identity (§20.8)
+        ↓
+Lifecycle State (§20.2, §20.7, §20.8)
+        ↓
+Relationships (STD-004)
+        ↓
+Ownership (§20.7, §20.8)
+        ↓
+Version (§9)
+        ↓
+Traceability (§20.13)
+        ↓
+Governance Status (§13, §20.14)
+```
+
+**Relationship to PRA-001.** This conceptual model is the governance-tier specification a future realization would satisfy — PRA-001 §8 already reserves Document Registry, Capability Registry, and Traceability Service rows for exactly this purpose, each marked Reserved. This section defines the concept those future services must conform to; it performs none of their work itself, and describes no database, API, or service of its own, per this revision's own Writing Guidelines.
+
+### 20.16 Compliance Statement
+
+Every future engineering artifact, and every future engineering document describing one, SHALL comply with this section. Compliance requires conformance to: Artifact Identity (§20.7), Document Identity (§20.8), Naming (§20.10), Lifecycle (§20.11), Transformation (§20.12), Traceability (§20.13), and Governance (§20.14). An artifact or document missing any of the above is not yet governed under this Handbook, regardless of how complete its own content otherwise is.
 
 ---
 
@@ -782,62 +888,65 @@ Every future engineering artifact, in every family (§20.2), for every product (
 | --- | --- | --- | --- |
 | **Revision 1** | 1.0 (Draft) | Revised (§8) | Established the documentation architecture for the first time: the seven-tier hierarchy (§5), the seven document families and their boundaries (§6), cross-family relationships and traceability (§7), the six-stage lifecycle (§8), the document versioning scheme (§9), baseline repository-organization recommendations (§10), and ten engineering principles (§11, later reorganized in Revision 2 without changing their substance). Introduced no architecture, governance, capability, or runtime content. |
 | **Revision 2** | 2.0 (Draft) | Revised (§8) | Strengthened the documentation ecosystem's own governance without changing anything Revision 1 established: explicit per-family dependency rules and a citation matrix (§13), ten documentation quality attributes (§14), a review workflow layered onto the unchanged lifecycle (§15), a canonical (non-retroactive) metadata standard (§16), a traceability standard of mandatory/optional/prohibited references (§17), the Revision 1 principles reorganized into four categories with every principle's substance and number preserved (§11), a per-family ownership model (§18), and a reserved, tooling-free future-automation section (§19). Introduced no architecture, governance, capability, or runtime content. |
-| **Revision 3** | 3.0 (Draft) | Draft — pending architecture review | Fulfilled, and substantially extended, the `STD-NNN` identifier-scheme item Revision 1's roadmap reserved for this revision (§12's status note): a single, platform-wide Engineering Document Identification & Classification Standard (§20) — eleven document families including four newly registered (PRD, SYS, PRA, IMP) and one formally reserved (EVD), a product numbering strategy, artifact-identity and naming-convention rules, lifecycle and transformation consistency rules, a family-level traceability chain, and governance rules for the standard itself. Explicitly reconciles, rather than silently contradicts, three points of real-world precedent Revision 2's text did not yet reflect: RUN-001's own numbered identifier (§10.3), PRD-001's own hierarchy tier (§5), and PRA-001's own platform-wide scope alongside a possible per-product instance (§20.7). Introduced no architecture, governance, capability, or runtime content. |
+| **Revision 3** | 3.0 (Draft) | Revised (§8) | Fulfilled, and substantially extended, the `STD-NNN` identifier-scheme item Revision 1's roadmap reserved for this revision (§12's status note): a single, platform-wide Engineering Document Identification & Classification Standard (§20, as it stood in Revision 3) — eleven document families including four newly registered (PRD, SYS, PRA, IMP) and one formally reserved (EVD), a **Product Numbering Strategy** ranging `001–099` "Core Engineering Intelligence Applications" through `900–999` "Research / Experimental / Incubation" (with `100–199` Engineering Intelligence Operating System, `200–299` Architecture Intelligence, `300–399` Runtime Intelligence, `400–499` Knowledge Intelligence, `500–599` Evidence Intelligence, `600–699` Certification Intelligence, `700–799` Shared Platform Services, `800–899` Enterprise Extensions), artifact-identity and naming-convention rules, lifecycle and transformation consistency rules, a family-level traceability chain, and governance rules for the standard itself. Explicitly reconciled, rather than silently contradicted, three points of real-world precedent Revision 2's text did not yet reflect: RUN-001's own numbered identifier (§10.3), PRD-001's own hierarchy tier (§5), and PRA-001's own platform-wide scope alongside a possible per-product instance. Introduced no architecture, governance, capability, or runtime content. **This Product Numbering Strategy is superseded by Revision 4's own Bounded Context Classification (§20.4) — this row is preserved verbatim as the accurate historical record of what Revision 3 actually assigned, per Revision 4's own Conflict Resolution Rules.** |
+| **Revision 4** | 4.0 (Draft) | Draft — pending architecture review | The final constitutional refinement before Platform Architecture (ADR-100) begins. Replaced Revision 3's own §20 in full with a generalized **Engineering Artifact Identification & Classification Standard**: the Engineering Artifact / Engineering Document distinction (§20.2) — a governed concept versus its lifecycle-stage descriptions; a **Bounded Context Classification** (§20.4) superseding Revision 3's Product Numbering Strategy, reassigning most range meanings while leaving `100–199` (EIOS) unchanged and explicitly exempting every grandfathered `-001` identifier and `PRD-100` from reclassification; an explicit Reservation/Allocation distinction (§20.5–§20.6); separate Artifact-identity and Document-identity models unified by one metadata schema (§20.7–§20.9); a Traceability Rules chain (§20.13) realigned to STD-005 §5's own exact terminology; and a conceptual, implementation-free Engineering Artifact Registry Model (§20.15). Carried forward, unchanged, Revision 3's own RUN/CERT numbering and PRA dual-scope reconciliations. Introduced no architecture, governance, capability, or runtime content, and renumbered no existing identifier. |
 
 ## Revision Summary
 
-**HB-001 Revision 3** fulfills the `STD-NNN` identifier-scheme item Revision 1's own roadmap reserved for this revision (§12's status note), generalized platform-wide as a single Engineering Document Identification & Classification Standard (§20), because five more Standards documents and a seven-document Derivative series (PRD-001, ADR-001, CAP-001, RUN-001, SYS-001, IMP-001, PRA-001) now exist to generalize an identifier scheme from. It adds one new section (§20) registering four new document families (PRD, SYS, PRA, IMP) and formally reserving a fifth (EVD), a ten-range product numbering strategy, a ten-field artifact-identity model extending §16, a naming convention, lifecycle and transformation consistency rules extending §5 and citing STD-005, a family-level traceability chain complementing STD-004's and STD-005's own views, and four governance rules for the standard itself. It explicitly reconciles — never silently overrides — three points where real precedent had already outpaced Revision 2's own text: Runtime's numbered identifier (§10.3), the Business/Product tier §5 had not yet named, and the Platform Reference Architecture family's two valid scopes (§20.7). Every architecture, governance, capability, and runtime document this handbook depends on — including HB-001 Revision 1 and Revision 2 themselves — is treated as authoritative and unmodified; no existing document requires any change as a result of this revision.
+**HB-001 Revision 4** is the final constitutional refinement before Platform Architecture (ADR-100) begins. It replaces Revision 3's own §20 with a generalized Engineering Artifact Identification & Classification Standard: a governed distinction between an Engineering Artifact (a lifecycle-independent concept) and an Engineering Document (one lifecycle-stage description of it, §20.2); a Bounded Context Classification (§20.4) that supersedes Revision 3's own Product Numbering Strategy — reassigning most range meanings while leaving the Engineering Intelligence Operating System range (`100–199`) unchanged, and explicitly exempting every grandfathered identifier from reclassification under either scheme; an explicit Reservation/Allocation distinction (§20.5–§20.6, with `PRD-100` recognized as this model's first real Allocation); separate Artifact-identity and Document-identity models, unified into one metadata schema (§20.7–§20.9); a Traceability Rules chain (§20.13) realigned to STD-005 §5's own exact "Business Intent" terminology; and a conceptual, non-software Engineering Artifact Registry Model (§20.15) that names what a future ADR-100/PRA-100 realization would need to satisfy, without describing any database, API, or service. Every point where this revision changes rather than merely restates a Revision 3 rule is named as a change, with its own reconciliation, per this revision's own Conflict Resolution Rules — Revision 3's own text is preserved, verbatim, in the Revision History above, never silently rewritten. No document identifier is renumbered, no document family is removed, and no architectural decision anywhere in the platform is changed.
 
 ## Future Revision Roadmap
 
 | Revision | Anticipated focus |
 | --- | --- |
-| **Revision 4** | The canonical per-family template set and the `docs/standards/`-style directory-mapping formalization Revision 1's roadmap originally paired with the `STD-NNN` scheme (§12) — both still open, now that §20 has assigned the scheme itself; introduce the documentation coverage view (§12, §19); extend §17's traceability standard with a worked cross-family example drawn from a real product's full PRD → ADR → CAP → RUN → SYS → PRA → IMP chain (§20.6). |
-| **Revision 5** | Formally register the Governance family's own numbering treatment, if practice ever produces a numbered Governance instance; assign the first real range-claiming `PRD-NNN` outside the grandfathered `-001` series and the now-registered EIOS `-100` series (§20.3), exercising §20.9's Governance Rules for the first time since this revision. |
-| **Revision 6+ (reserved)** | Evaluate whether a dedicated Engineering Process family is warranted; incorporate lessons from any document found, in practice, to span two families (§11.1 Principle 10); revisit §19's automation opportunities, now with §20's own identifier scheme as a concrete target for the identifier-validation and broken-reference-detection items §19 already names. |
+| **Revision 5** | The canonical per-family template set and the `docs/standards/`-style directory-mapping formalization Revision 1's roadmap originally anticipated for "Revision 3" (§12) and Revision 3's own roadmap re-anticipated for "Revision 4" (both superseded by this revision's own, higher-priority generalization work — restating this handbook's own Revision 2 precedent, §12's status note, that a roadmap names anticipated focus, never a binding commitment); introduce the documentation coverage view (§12, §19); extend §17's traceability standard with a worked cross-family example drawn from a real Artifact's full PRD → ADR → CAP → RUN → SYS → PRA → IMP chain (§20.11). |
+| **Revision 6** | Formally register the Governance family's own numbering treatment, if practice ever produces a numbered Governance instance; assign the first real range-claiming identifier under §20.4's Bounded Context Classification, outside the grandfathered `-001` series and the already-Allocated `PRD-100`, exercising §20.14's Governance Rules for the first time since this revision. |
+| **Revision 7+ (reserved)** | Evaluate whether a dedicated Engineering Process family is warranted; incorporate lessons from any document found, in practice, to span two families (§11.1 Principle 10); assign an Artifact Identifier (§20.7) to the Requirements Intelligence Engineering Artifact, closing the gap §20.2's own Reconciliation Note names; revisit §19's automation opportunities, now with §20's own Artifact/Document model and Registry concept as a concrete target for identifier-validation, broken-reference-detection, and registry tooling. |
 
-## Known Limitations of Revision 3
+## Known Limitations of Revision 4
 
-- **§20's own family, numbering, and traceability rules are declarative, not enforced or automatically checked** — restates §19's own reserved-not-authorized automation stance, now with a considerably larger surface (eleven families, ten numbering ranges) to eventually validate mechanically.
-- **The EVD family (§20.2) is registered but not yet exercised** — no `EVD-NNN` document exists; its row in §20.2 describes an anticipated shape, not an observed one, unlike the four families this revision registers from real precedent.
-- **The per-product `PRA-NNN` scope (§20.7) is, as of this revision, hypothetical** — only the platform-wide singleton `PRA-001` exists; the per-product reconciliation this section provides is a rule ready to be exercised, not yet a rule confirmed by a second real instance.
-- **§20.4's `Governing Authority` and `Traceability Identifier` fields are not applied retroactively**, exactly as §16's own metadata standard already declares of itself — no existing document's header is required to change.
-- **The grandfather clause in §20.3 relies on a judgment call** (which existing identifiers count as "founding lineage") that has not yet been tested against a disputed or ambiguous case; §20.3 states the rule, not a worked adjudication of every edge case.
-- Revision 3 inherits every limitation of Revision 1 and Revision 2 not explicitly resolved above (see the [Revision History](#revision-history)).
+- **§20's own artifact, document, classification, and traceability rules remain declarative, not enforced or automatically checked** — restates §19's own reserved-not-authorized automation stance; §20.15's Registry Model names what such automation would eventually need to satisfy, without authorizing or specifying it.
+- **The EVD family remains registered but not yet exercised** — no `EVD-NNN` document exists.
+- **The per-Artifact `PRA-NNN` scope (§20.12) remains, as of this revision, hypothetical** — only the platform-wide singleton `PRA-001` exists.
+- **No Engineering Artifact has yet been assigned its own Artifact Identifier (§20.7)** — every Artifact named in this document (§20.2's examples) is described today only through its Engineering Documents; the Artifact-identity model is a rule ready to be exercised, not yet exercised by a real, standalone Artifact record.
+- **The Requirements Intelligence Engineering Artifact is only partially documented** (§20.2's own Reconciliation Note) — it has no dedicated `PRD`/`ADR` of its own, only the grandfathered `CAP-001`/`RUN-001`/`SYS-001`/`IMP-001` series; closing this gap is reserved, not performed, by this revision.
+- **A downstream citation is now stale and is named here, not silently left broken:** PRD-100's own metadata cites "HB-001 §20.3's Product Numbering Strategy" — that content has moved to, and been superseded by, §20.4's Bounded Context Classification in this revision. PRD-100 itself is a different document, out of this revision's own scope ("Do not modify any unrelated section"), and is not edited by this revision; the staleness is recorded here as a known, unresolved cross-reference, for a future correction.
+- **§20.4's own range reassignment relies on the judgment that no real identifier besides the grandfathered `-001` series and `PRD-100` was ever Allocated against a Revision-3-only range meaning** — true as of this revision, but not mechanically verified, since no registry (§20.15) yet exists to check it against.
+- Revision 4 inherits every limitation of Revisions 1–3 not explicitly resolved above (see the [Revision History](#revision-history)).
 
 ## Final Self Review
 
 - [x] No architecture was modified — every ADR, layer definition, and runtime contract referenced in this handbook (any revision) is cited, never redefined.
 - [x] No governance was modified — the Architecture Freeze Index, Platform Capability Matrix, and every existing governance record are referenced by role only.
-- [x] No runtime was modified — no component specification, execution behavior, or artifact format is changed; §20.2's Reconciliation Note on RUN/CERT numbering changes a citation convention, not a runtime behavior.
+- [x] No runtime was modified — no component specification, execution behavior, or artifact format is changed.
 - [x] No capabilities were modified — no `CAP-NNN` boundary, dependency, or maturity status is altered.
-- [x] No new engineering, coding, or implementation standard was introduced — §20 governs document identity, not code, language, framework, or AI-provider choices.
-- [x] Documentation hierarchy is preserved and extended additively — §5's seven tiers are unchanged in substance; §20.6 adds one new tier above Platform Constitution, by name, without deleting or renumbering the seven.
-- [x] Document families are preserved and extended additively — §6's seven families are unchanged in purpose, ownership, and boundary; §20.2 registers four new families and reserves a fifth without altering any of the seven's own definition.
-- [x] Lifecycle is preserved — §8's six stages are unchanged in name, order, and count; §20 introduces a per-product family sequence (§20.6), a distinct concept from a document's own six-stage lifecycle.
-- [x] Versioning strategy is preserved — §9 is unchanged; the grandfather clause (§20.3) is itself a direct application of §9's and §10.3's own permanence rule, not an exception to it.
-- [x] Repository organization is preserved — §10 is unchanged; §20.2's numbering reconciliation extends §10.3 by name, on the one point real precedent had already outpaced it.
+- [x] No new engineering, coding, or implementation standard was introduced — §20 governs artifact and document identity only; §20.15 is explicitly conceptual, naming no database, API, or service.
+- [x] No document identifier was renumbered — verified against §20.4's, §20.5's, and §20.6's own grandfather and Allocation rules; every existing `-001` identifier and `PRD-100` remain exactly as assigned.
+- [x] No document family was removed — §20.3 retains all eleven of Revision 3's own families, including the reserved EVD family, unchanged in purpose, ownership, and boundary.
+- [x] Documentation hierarchy is preserved — §5's tiers, as extended by Revision 3, are unchanged by this revision.
+- [x] Versioning strategy is preserved — §9 is unchanged; §20.6's Allocation rule is a direct application of §9's and §10.3's own permanence rule.
 - [x] All ten Revision 1 principles remain preserved with their original numbering, unchanged by this revision.
-- [x] Every Revision 3 objective (as commissioned) is addressed: Purpose (§20.1), Engineering Document Families (§20.2), Product Numbering Strategy (§20.3), Artifact Identity (§20.4), Naming Convention (§20.5), Lifecycle Consistency Rules (§20.6), Transformation Consistency (§20.7), Traceability Rules (§20.8), Governance Rules (§20.9), Compliance Statement (§20.10).
-- [x] Backward compatibility with Revision 1 and Revision 2 is maintained — every prior section reference, principle number, and defined term still resolves to the same meaning it always had; every point of extension (§5, §6, §10.3) is named explicitly as such (§20's own Reconciliation Notes).
-- [x] Remains implementation-, language-, framework-, and AI-provider-independent — verified by inspection of §20; it names no technology.
+- [x] Every Revision 4 objective (as commissioned) is addressed: Purpose (§20.1), Engineering Artifact Model (§20.2), Document Families (§20.3), Bounded Context Classification (§20.4), Identifier Reservation (§20.5), Identifier Allocation (§20.6), Engineering Artifact Identity (§20.7), Engineering Document Identity (§20.8), Artifact Metadata Model (§20.9), Naming Convention (§20.10), Lifecycle Consistency (§20.11), Transformation Consistency (§20.12), Traceability Rules (§20.13), Governance Rules (§20.14), Engineering Artifact Registry Model (§20.15), Compliance Statement (§20.16).
+- [x] Every discovered inconsistency was named and reconciled, never silently modified — the Bounded Context range reassignment (§20.4), the superseded "Revision 4" roadmap item (Future Revision Roadmap, above), and PRD-100's own now-stale cross-reference (Known Limitations, above) are each documented explicitly, per this revision's own Conflict Resolution Rules.
+- [x] Remains governance-only, implementation-, technology-, vendor-, and architecture-independent — verified by inspection of §20; §20.15 explicitly declines to describe any database, API, or service.
 
-## HB-001 Revision 3 Compliance Certificate
+## HB-001 Revision 4 Compliance Certificate
 
-**This certifies that HB-001, Revision 3, Version 3.0 (Draft):**
+**This certifies that HB-001, Revision 4, Version 4.0 (Draft):**
 
-- ✅ **Mission completed** — the Engineering Document Identification & Classification Standard (§20) is established, fulfilling the `STD-NNN` roadmap item Revision 1 reserved for this revision.
-- ✅ **Scope respected** — no new architecture, governance, runtime behaviour, capability, or engineering-implementation standard is introduced; §20 governs document identity only.
-- ✅ **Frozen inputs preserved** — HB-001 Revision 1 and Revision 2, every existing ADR, PRD, CAP, RUN, SYS, IMP, PRA, Design Proposal, Governance document, the Platform Capability Matrix, and every existing Runtime or Certification document are referenced only, never redefined or contradicted.
-- ✅ **Documentation hierarchy preserved and extended additively** — §5's seven tiers are unchanged; §20.6 adds a Business/Product tier by name, reconciling the hierarchy with PRD-001's own long-standing role rather than leaving the gap unexamined.
-- ✅ **Document families preserved and extended additively** — §6's seven families are unchanged; §20.2 registers PRD, SYS, PRA, and IMP from real precedent and formally reserves EVD.
-- ✅ **No architectural, governance, runtime, or capability change introduced** — verified in the Final Self Review above.
-- ✅ **Backward compatibility maintained** — every prior revision's section, principle number, and defined term continues to resolve identically; both prior revisions remain intact and available for historical reference ([Revision History](#revision-history)).
-- ✅ **Real-world precedent reconciled, not contradicted** — RUN-001's numbering (§10.3), PRD-001's hierarchy position (§5), and PRA-001's platform-wide scope (§20.7) are each explicitly reconciled with this revision's own new rules, by name, rather than silently overridden.
+- ✅ **Mission completed** — the Engineering Artifact Identification & Classification Standard (§20) is established as the final constitutional refinement before Platform Architecture (ADR-100) begins.
+- ✅ **Scope respected** — governance-only; no architecture, runtime behaviour, capability, database, API, registry service, or platform design is introduced (§20.15 verified explicitly conceptual).
+- ✅ **Frozen inputs preserved** — HB-001 Revisions 1–3, every existing ADR, PRD, CAP, RUN, SYS, IMP, PRA, Design Proposal, Governance document, the Platform Capability Matrix, and every existing Runtime or Certification document are referenced only, never redefined or contradicted.
+- ✅ **Every Revision 1–3 decision preserved unless explicitly stated otherwise** — the sole substantive change, the Bounded Context range reassignment (§20.4), is named as a change, reconciled explicitly, and does not alter any real, already-Allocated identifier's own classification (§20.4's own Reconciliation Notes).
+- ✅ **No document identifier renumbered** — verified in the Final Self Review above.
+- ✅ **No document family removed** — verified in the Final Self Review above; all eleven of Revision 3's own families are retained.
+- ✅ **No architectural decision changed** — verified in the Final Self Review above.
+- ✅ **Historical correctness preserved over cosmetic consistency** — Revision 3's own now-superseded content (its Product Numbering Strategy, its own "Revision 4" roadmap anticipation) is preserved verbatim in the historical record (Revision History, Future Revision Roadmap) rather than deleted or silently rewritten to look as if this revision's own scheme had always been in place.
+- ✅ **Reconciliation explicitly documented** — every inconsistency this revision's own generalization exposed (range reassignment, roadmap supersession, PRD-100's stale cross-reference) is named, not silently resolved.
 - ✅ **Ready for review.**
 
-**Summary.** HB-001 Revision 3 is suitable to remain the root documentation artifact of the platform because it closes the one identifier-scheme gap Revision 1 always intended to close, at the moment the platform's own document series had grown enough real precedent — seven Derivative documents across five families beyond the original seven — to generalize a standard from rather than invent one speculatively. Where that real precedent had already run ahead of Revision 2's own text (RUN-001's numbering, PRD-001's hierarchy position, PRA-001's scope), this revision names the gap and closes it explicitly, restating this handbook's own Revision 2 lesson: a root documentation artifact stays trustworthy only if something keeps it trustworthy, including — as of this revision — its own identifier scheme.
+**Summary.** HB-001 Revision 4 is suitable to serve as the final constitutional refinement before Platform Architecture (ADR-100) begins, because it completes the identification model Revision 3 began at the moment that model needed to generalize beyond documents alone — to the governed concepts (Engineering Artifacts) those documents describe, and to the bounded contexts (domains) those concepts belong to. Where generalizing exposed a real inconsistency Revision 3's own narrower model had not yet had to face — a range whose assigned meaning could not survive generalization unchanged, a roadmap item overtaken by higher-priority work, a downstream citation left stale — this revision names each one explicitly and reconciles it, rather than presenting a generalized model as though it had been the platform's plan all along. That is this handbook's own Revision 2 lesson, applied once more: a root documentation artifact stays trustworthy only if what changes about it is always said out loud.
 
 ---
 
-*End of HB-001, Revision 3, Version 3.0 (Draft).*
+*End of HB-001, Revision 4, Version 4.0 (Draft).*
