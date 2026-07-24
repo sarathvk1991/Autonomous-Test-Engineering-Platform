@@ -41,6 +41,8 @@ Adopt the following as the platform's single, authoritative target architecture,
 | **L6** | Failure Intelligence & Self-Healing | Diagnoses and repairs execution failures. |
 | **L7** | Governance Dashboard | Leadership-facing insights across the pipeline. |
 
+**Amendment note (additive only, ADR-0040).** L4's Purpose cell above ("Validates Layers 2 and 3 via SonarQube and Gherkin lint; outputs a self-healed, execution-ready suite") is redefined by ADR-0040 (Control Point Model and Layer 4 Redefinition). Gherkin lint and self-healing move to Layer 2's own CP2 and Layer 3's own CP3, each in-layer; Layer 4 is redefined as suite-level integration governance (cross-artifact checks no single generating layer can make). L1–L3, L5–L7, and the three-source freeze below are unaffected — see ADR-0040 for the full redefinition and rationale.
+
 Sources feeding Layer 1 are frozen at exactly three: **JIRA** (requirements), **SonarQube** (SAST), **OWASP ZAP** (DAST) — the three connectors already FUNCTIONAL per `docs/audit/CODEBASE_AUDIT_2026-07-24.md` §2.1–2.3.
 
 **This ADR formally supersedes ADR-0020 in its entirety** (D1). ADR-0020's five layers that named platform-wide reasoning over history and autonomous action — **Continuous Learning**, **Prediction & Insights**, **Optimization**, **Autonomous Engineering**, and **Organizational Intelligence** — are **redesignated as Layer 1 sub-capabilities**, not layers, effective immediately. Their code location, CAP identifiers, runtime contracts, and Accepted governing ADRs (ADR-0021 through ADR-0029) are **unchanged** — only their architectural designation changes (D3). **Nothing is deleted.**
