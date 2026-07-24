@@ -66,7 +66,7 @@ Each action progresses through the following statuses, in order:
 
 | Action ID | Title | Source (RAAR Section) | Category | Priority | Status | Owner | Target Release | Verification Evidence | Exit Criteria |
 |---|---|---|---|---|---|---|---|---|---|
-| ACT-001 | Resolve shared capability identifier collision | RAAR-001 §4 Repository Identity; §10; §11; §13 Immediate; §14 Step 1 | Governance | High | Identified | Architecture Review Board | TBD | TBD | A governance action assigns each identifier definition a distinct identifier, or formally designates one definition as authoritative, and no repository document retains an unresolved conflicting definition. |
+| ACT-001 | Resolve shared capability identifier collision | RAAR-001 §4 Repository Identity; §10; §11; §13 Immediate; §14 Step 1 | Governance | High | Closed | Architecture Review Board | n/a — resolved by governance precedence, no release-gated implementation required | ADR-0038 (Documentation Track Governance) | A governance action assigns each identifier definition a distinct identifier, or formally designates one definition as authoritative, and no repository document retains an unresolved conflicting definition. |
 | ACT-002 | Review transformation artifact | RAAR-001 §4 Transformation; §11; §13 Immediate; §14 Step 2 | Governance | Medium | Identified | Architecture Review Board | TBD | TBD | The transformation artifact has completed every stage of the existing documentation review workflow and carries an Approved status. |
 | ACT-003 | Correct repository status summary | RAAR-001 §4 Documentation; §6; §10; §11; §13 Immediate; §14 Step 3 | Documentation | Low | Identified | Architecture Review Board | TBD | TBD | The top-level status summary reflects the phase status recorded in the release history and capability matrix, confirmed by direct comparison. |
 | ACT-004 | Verify flagship Hosted Application claim | RAAR-001 §4 Capability Validation; §6; §11; §13 Near-Term; §14 Step 4 | Validation | High | Identified | Architecture Review Board | TBD | TBD | The flagship claim has been checked against the existing capability maturity model and is either confirmed at the maturity level asserted or corrected to the verified maturity level. |
@@ -94,10 +94,10 @@ The following principles govern how this register is interpreted and applied. Th
 | Metric | Value |
 |---|---|
 | Total Actions | 8 |
-| Open | 8 |
+| Open | 7 |
 | In Progress | 0 |
 | Verified | 0 |
-| Closed | 0 |
+| Closed | 1 |
 | Superseded | 0 |
 | High Priority | 5 |
 | Medium Priority | 2 |
@@ -161,3 +161,4 @@ This forms a continuous architecture governance cycle, in which each assessment 
 |---|---|---|
 | 1.0 | 2026-07-23 | Initial publication. Register populated with the eight actions approved by RAAR-001. |
 | 1.1 | 2026-07-23 | Editorial refinement. Added Related Documents, Governance Notes, and Register Maintenance sections. Expanded Governance Rules and Traceability. Added Verified and Superseded metrics. Standardized action titles, categories, and exit-criteria wording for consistency. |
+| 1.2 | 2026-07-24 | ACT-001 closed by governance precedence. ADR-0038 (Documentation Track Governance) declares Track A (`docs/adr/`, `docs/architecture/`, `docs/governance/`, `docs/proposals/`, `docs/reviews/`, `docs/releases/`) normative and Track B (`docs/product/`, `docs/handbook/`, `docs/standards/`) non-normative and frozen; where an identifier collides (`CAP-001`), Track A wins by precedence. Recorded as ACT-001's exit criteria's second, explicitly offered path ("formally designates one definition as authoritative"), not the first (distinct renumbering). Status changed Identified → Closed; Verification Evidence set to ADR-0038; Metrics updated (Open 8→7, Closed 0→1). |

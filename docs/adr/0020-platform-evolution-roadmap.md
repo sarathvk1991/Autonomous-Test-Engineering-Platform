@@ -1,6 +1,6 @@
 # ADR-0020 — Platform Evolution Roadmap & Architectural Constitution
 
-- **Status:** Proposed
+- **Status:** Superseded by ADR-0031
 - **Date:** 2026-07-15
 - **Supersedes:** nothing. **Amends:** nothing (see the Stage 0 note below for one corrected header in ADR-0016).
 - **Governing design:** none — this ADR *is* the governing design. It introduces no proposal document because it is not subsystem architecture.
