@@ -152,7 +152,7 @@ This recommendation does not resolve the open question of what specific mechanis
 
 **Architecture Action Register.** Requires amendment. ACT-001's recorded status and supporting notes must be updated to reflect that execution was paused pending this Board decision, consistent with the recommendation already made in the ACT-001 Execution Report. Once the Board decides, the register entry should record which disjunct of the Exit Criteria the selected option satisfies.
 
-**ACT-001 Architecture Action Execution Record.** Requires amendment. Sections 3 through 5 (Repository Scope, Current State Analysis, Impact Assessment) remain valid as factual records and require no change. Section 6 (Proposed Resolution) is superseded by whichever option the Board selects and must be revised accordingly before implementation resumes. Sections 7 and 8 (Implementation Plan, Validation Checklist) will require corresponding revision once a resolution direction is confirmed.
+**ACT-001 Architecture Action Execution Record.** The ACT-001 Architecture Action Execution Record remains the historical record of the originally approved implementation approach. Following the Board's decision, it should either be revised to reflect the approved implementation approach or formally superseded by a new revision. The original version should be retained as part of the governance history.
 
 ---
 
