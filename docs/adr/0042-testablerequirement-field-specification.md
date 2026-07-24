@@ -113,6 +113,8 @@ Platform-assigned, never LLM-invoked (ADR-0034 property 1). One shared normaliza
 
 `SourceRef` is preserved (moved, not deleted) when `canonical_requirement.py` is removed, using its **actual** field shape (`system`, `external_id`, `url` — see Decision 1's `SourceRef` table and the discrepancy note there). This decides ADR-0034's TBD item 8 and **unblocks ADR-0035's removal item 2** (`requirement_intelligence/models/canonical_requirement.py`), whose salvage note explicitly required this decision before removal could proceed. Removal itself remains a future task, per ADR-0035's own governance line — this ADR unblocks it, it does not execute it.
 
+**Sequencing.** `canonical_requirement.py` is **not** deleted by the renames-and-deletions task (ADR-0035 items 1, 3, 4, per that ADR's own Recommendation 1). It is deleted in the **same change** that creates the `TestableRequirement` contract module, so `SourceRef` moves directly into its new home rather than being staged in a temporary location or orphaned by an earlier deletion. "Unblocked" (above, and in ADR-0035's own resolution note) means the salvage question is decided, **not** that the file may be removed independently of the contract work.
+
 ## Decision 5 — `supersedes` is specified but deferred
 
 The field exists in the schema from v1.0.0 and **emits `null` in v1.0.0**.

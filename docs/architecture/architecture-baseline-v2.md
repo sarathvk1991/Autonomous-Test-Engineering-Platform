@@ -41,6 +41,7 @@ This is the single page a reader consults to answer "what is locked, and what is
 - **`docs/adr/0020-platform-evolution-roadmap.md`** — status line changed from `Proposed` to `Superseded by ADR-0031`. Body untouched (historical record preserved per this batch's constraint against retro-editing Accepted/Proposed ADR bodies).
 - **`docs/architecture/architecture-action-register.md`** — ACT-001 changed from `Identified` to `Closed`, Verification Evidence set to ADR-0038, register version bumped to 1.2, metrics updated (Open 8→7, Closed 0→1).
 - **`docs/reference/`** — new non-normative documentation tree established (ADR-0040), alongside `docs/integrations/`, `docs/development/`, `docs/operations/` under ADR-0038's operational carve-out. Holds `docs/reference/automation-poc/` — 5 of the sibling POC's ~26–30 Copilot prompt assets and its `.gherkin-lintrc`, reference-only, not loaded by any code.
+- **ADR-0042 Decision 4 and ADR-0035 item 2's resolution note** — both extended with removal sequencing: `canonical_requirement.py` is not deleted by the ADR-0035 items 1/3/4 removal task; it is deleted in the same change that creates the `TestableRequirement` contract module, so `SourceRef` moves directly into its new home. "Unblocked" (ADR-0035 item 2) means the salvage question is decided, not that the file may be removed on its own schedule.
 
 ## 4. Open questions this baseline does not resolve (consolidated from the TBD column)
 

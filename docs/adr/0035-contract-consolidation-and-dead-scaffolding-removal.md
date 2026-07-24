@@ -33,6 +33,8 @@ Record the following four items for removal. **Removal does not happen in this t
 
 **Resolution note (additive only, ADR-0042).** The `SourceRef` salvage question is decided: ADR-0042 (TestableRequirement Field Specification, Decision 4) salvages `SourceRef` into `TestableRequirement`'s `traces_to[]`, using its actual field shape unchanged (`system`/`external_id`/`url`). **This item's removal is now unblocked** — it may proceed as a future task per this ADR's own governance line, citing ADR-0042 as the salvage record.
 
+**Sequencing.** This item is **not** removed by the same task that executes items 1, 3, and 4 (this ADR's Recommendation 1). It is removed in the same change that creates the `TestableRequirement` contract module, so `SourceRef` moves directly into its new home rather than sitting deleted-and-staged, or deleted-and-orphaned, ahead of that module existing. "Unblocked" means the salvage question is decided — it does not mean this item may be removed on its own schedule, independent of the contract work.
+
 ### 3. `requirement_intelligence/models/requirement_package.py`
 
 **Claim:** `RequirementPackage` is defined here and never constructed anywhere.
