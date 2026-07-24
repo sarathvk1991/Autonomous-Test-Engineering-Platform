@@ -2,7 +2,11 @@
 # Developer convenience targets.  Run `make help` for the list.
 # ===========================================================================
 .DEFAULT_GOAL := help
-PY := python
+# Always invoke tools through the project's own virtualenv interpreter, never
+# a bare command name resolved off $PATH — an unrelated Python installation's
+# pytest can shadow this project's on some machines. See
+# docs/development/environment.md for the details and the trap this avoids.
+PY := .venv/bin/python
 
 .PHONY: help install dev run dashboard lint format typecheck test cov check clean
 
@@ -15,29 +19,29 @@ install: ## Install runtime dependencies
 
 dev: ## Install runtime + dev dependencies and pre-commit hooks
 	$(PY) -m pip install -r requirements.txt -r requirements-dev.txt
-	pre-commit install
+	$(PY) -m pre_commit install
 
 run: ## Run the FastAPI app (reload)
-	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	$(PY) -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 dashboard: ## Run the Streamlit governance dashboard (future phase)
-	streamlit run governance_dashboard/app.py
+	$(PY) -m streamlit run governance_dashboard/app.py
 
 lint: ## Lint with ruff
-	ruff check .
+	$(PY) -m ruff check .
 
 format: ## Auto-format with ruff
-	ruff format .
-	ruff check . --fix
+	$(PY) -m ruff format .
+	$(PY) -m ruff check . --fix
 
 typecheck: ## Static type-check with mypy
-	mypy .
+	$(PY) -m mypy .
 
 test: ## Run the test suite
-	pytest
+	$(PY) -m pytest
 
 cov: ## Run tests with coverage
-	pytest --cov=requirement_intelligence --cov=shared --cov=infrastructure
+	$(PY) -m pytest --cov=requirement_intelligence --cov=shared --cov=infrastructure
 
 check: lint typecheck test ## Run all quality gates
 

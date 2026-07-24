@@ -20,6 +20,17 @@
 | `app/` | 3 |
 | The six Layer 2–7 placeholder packages combined (`feature_engineering/`, `automation_engineering/`, `quality_governance/`, `execution/`, `failure_intelligence/`, `governance_dashboard/`) | **1** — the initial scaffold commit, with zero commits since |
 
+**Verification note (additive only).** `docs/audit/CODEBASE_AUDIT_2026-07-24.md` (this ADR's
+evidentiary basis) separately contained a genuine commit-count error ("1290" total /
+"~1260" since the initial commit — corrected in that document's own Appendix, verified
+against commit `932f416`). **This ADR's own table above does not share that error.** It was
+independently re-run for this ADR (per the "Governing design" line above) rather than cited
+from the audit, and its figure — 252 — was re-verified during the audit-correction pass: it
+matches `git rev-list --count` at this ADR's own parent commit exactly (this ADR's own commit,
+`4613b40`, is commit 253; 252 is the count immediately before it landed, the same
+before-this-commit convention the audit itself used for its "last 5 commits" list). No change
+to this table, and no change to this ADR's decision, is required.
+
 More than half of the repository's entire commit history went into deepening Layer 1 — adding Requirement Enhancement, Grounding, Quality Governance (the requirement-analysis kind), Recommendation, Continuous Improvement, Knowledge Graph, Organizational Memory, and Learning, each behind its own multi-milestone ADR arc — while the platform has, to date, **never generated a feature file, never generated a page object, and never executed a test.** Left unaddressed, nothing structurally prevents this pattern from continuing indefinitely: Layer 1 has a mature, well-practiced pattern for adding new capabilities (Architecture Freeze → Deterministic Implementation → Runtime Contract Freeze → Runtime Integration → Execution Package Integration → Golden Rebaseline, per ADR-0020 Stage 8 / the pattern ADR-0031 inherits), and that pattern's own momentum is exactly what has crowded out the six unbuilt layers this platform is named for.
 
 ## Decision

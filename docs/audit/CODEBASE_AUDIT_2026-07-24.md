@@ -853,6 +853,74 @@ flowchart TD
 
 ---
 
+## Appendix — Correction block (additive, added 2026-07-24, post-hoc)
+
+**This section corrects verified factual errors found in the body above. Nothing above this
+point has been edited — the errors remain visible in place, as originally written, per this
+repository's amendment convention (additive corrections only, never silent rewrites).**
+
+**Verified against commit `932f416`** (the commit that added this audit file) and current
+`HEAD` (`8715d7d`), via `git rev-list --count`, `git log --oneline --all`, `git reflog`, and
+`git fsck --unreachable`. Method and full reasoning: see the environment-repair and
+audit-correction task history; summarized below.
+
+| # | Claim | Location | Audit's figure | Verified figure | Status |
+|---|---|---|---|---|---|
+| 1 | Total commit count | §1.6, "Total commits: 1290" | 1290 | **252** at this audit's own commit (`932f416`); **256** at current `HEAD` | **Corrected** |
+| 2 | Commits since initial commit, layers untouched | §1.6, "~1260 commits since" | ~1260 | **251** since `28d0284` | **Corrected** |
+| 3 | `requirement_intelligence/` file count | §1.1, "~280 files" | ~280 | **495** tracked files / **478** `.py` files / **456** `.py` excluding its own `tests/` | **Corrected** (understated regardless of interpretation) |
+| 4 | `docs/` markdown file count | §1.1, "~140 markdown files" | ~140 | **125** | **Corrected** (modest, ~11% over) |
+| 5 | `tests/unit/` file count | §1.1, "~150 files, populated" | ~150 | **160** total files (156 are `test_*.py`) | **Corrected** (modest, ~7% under) |
+
+**Alternative explanation for #1/#2 (history rewrite) was checked and ruled out.** The repo is
+not shallow (`git rev-parse --is-shallow-repository` → `false`); `git reflog` (257 entries)
+shows no `rebase`, `reset --hard`, or `amend` operations; `git fsck --unreachable` finds only 4
+unreachable commits, all ordinary `git stash` artifacts dated 2026-06-24 and 2026-06-29 —
+nowhere near explaining a ~1000-commit gap. **The 1290/1260 figures were simply wrong when
+originally written, not a value that became stale afterward.**
+
+**Claims re-checked and found accurate (not an exhaustive list — see the audit-correction
+task's own report for the full sweep), listed so a reader doesn't have to wonder which other
+numbers might also be wrong:**
+- §3.7's precise test-file count ("176 total: ~157 under `tests/`, 19 under
+  `requirement_intelligence/tests/`") — **exact match**, 157+19=176.
+- §3.4's `manifest.json` top-level key count ("~70") — **69**, rounds correctly.
+- §1.4's `.env` file size ("6473 bytes") — **exact match**.
+- §1.2's ADR count and date range ("30 numbered ADRs dated 2026-06-18 through 2026-07-21") —
+  **exact match**: 30 ADRs, 0001–0030, spanning exactly that date range.
+- §1.2's README "CAP-070 through CAP-077" milestone table — **exact match** against the
+  table's actual contents at this audit's own commit.
+- §1.1's "internally labeled CAP-081 through CAP-087 per commit history" — **confirmed**, all
+  seven present in commit-message history.
+- §1.6's claim that `execution/`, `failure_intelligence/`, and `governance_dashboard/` each
+  have zero commits since the initial commit — **confirmed**: exactly 1 commit each (the
+  initial commit only).
+- §1.1's "60+ subpackages" under `requirement_intelligence/` — **confirmed as a valid
+  lower bound**: actual count is 114 unique directories.
+
+**What is explicitly UNAFFECTED by this correction — the audit's qualitative findings stand
+as originally written, independently re-verified since by later work:**
+- The **layer-by-layer implementation status** (§2, §4.1): Layer 1 FUNCTIONAL, Layers 2/3/4/5/6
+  NOT STARTED, Layer 7 SCAFFOLDED. None of this rests on the commit-count or file-count
+  figures corrected above — it rests on direct reads of each layer's own files, confirmed
+  independently by ADR-0031/ADR-0032's own re-verification.
+- The **`NotImplementedError` stubs** (Azure OpenAI provider, Governance Dashboard, the
+  `/requirements/ingest` endpoint) — unaffected; these are direct code citations, not counts.
+- The **dead-scaffolding items** (§3.2, §4.3: `CanonicalRequirement`/`RequirementPackage`
+  unconstructed, the `shared.contracts.base.SourceConnector` Protocol unimplemented, the
+  unused `jira` SDK dependency) — unaffected, and independently re-verified since by
+  ADR-0035 (Contract Consolidation and Dead Scaffolding Removal, Accepted) and ADR-0042
+  (TestableRequirement Field Specification), both of which re-ran the same `grep`-based
+  verification and reached the same conclusions.
+- The **naming collisions** ("Quality Governance," "Execution," `CAP-001`) — unaffected;
+  independently re-verified and resolved since by ADR-0033 (Naming Disambiguation) and
+  ADR-0038 (Documentation Track Governance).
+
+**No decision made downstream of this audit — ADR-0032's Layer 1 capability freeze
+specifically — rests on the corrected figures.** ADR-0032 independently re-ran its own
+commit-count verification rather than citing this audit's number, and its own figure (252,
+at its own commit) was already correct; see the added note at ADR-0032 itself.
+
 ## Appendix — Evidence quality summary
 
 All findings in Step 2 are rated **HIGH** as of this audit: every connector, layer, and
