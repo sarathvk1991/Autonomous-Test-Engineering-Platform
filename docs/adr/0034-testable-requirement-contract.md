@@ -66,6 +66,8 @@ Layer 2 is the **only** consumer of this contract. Specifying every field of `Te
 - The JSON Schema file's location and the compatibility test's exact mechanism (precedent: the Prompt Registry's SHA-256 manifest, ADR-0014 — a candidate, not a decision).
 - Whether `CanonicalRequirement`'s `SourceRef` model (`requirement_intelligence/models/canonical_requirement.py:27-32`) is salvaged into this contract — ADR-0035 flags it as a candidate; this ADR does not decide it.
 
+**Resolution note (additive only, ADR-0042).** ADR-0042 (TestableRequirement Field Specification) resolves all of the above except the `supersedes`-detection mechanism (its D4 explicitly remains deferred, blocked on a cross-run requirement index ADR-0036's filesystem-only model does not yet provide). See ADR-0042 for the field lists, hash algorithm, JSON Schema location, set-partitioning decision, and the `SourceRef` salvage decision (using `SourceRef`'s actual three-field shape — `system`/`external_id`/`url` — not an invented shape).
+
 **Resolution path:** Layer 2's architecture-freeze ADR (the future ADR that plays the role ADR-0016 played for Grounding, or ADR-0030 played for Executable Specification Engineering) is where these are decided, with Layer 2's own designers as the deciding voice. This ADR's six locked properties are binding constraints on that future ADR, not a placeholder for it.
 
 ---

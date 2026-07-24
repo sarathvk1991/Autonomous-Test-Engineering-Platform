@@ -31,6 +31,8 @@ Record the following four items for removal. **Removal does not happen in this t
 
 **Salvage note:** `SourceRef` (`canonical_requirement.py:27-32` — `system: SourceSystem`, `external_id: str`, `url: str | None`) is a small, self-contained provenance pointer. Whether its shape suits `TestableRequirement`'s own provenance needs (ADR-0034, TBD section) is a candidate for the future Layer 2 LLD to evaluate — this ADR does not decide it, and removal of `canonical_requirement.py` should not proceed without that evaluation happening first, so a useful shape is not lost by deleting the file wholesale.
 
+**Resolution note (additive only, ADR-0042).** The `SourceRef` salvage question is decided: ADR-0042 (TestableRequirement Field Specification, Decision 4) salvages `SourceRef` into `TestableRequirement`'s `traces_to[]`, using its actual field shape unchanged (`system`/`external_id`/`url`). **This item's removal is now unblocked** — it may proceed as a future task per this ADR's own governance line, citing ADR-0042 as the salvage record.
+
 ### 3. `requirement_intelligence/models/requirement_package.py`
 
 **Claim:** `RequirementPackage` is defined here and never constructed anywhere.

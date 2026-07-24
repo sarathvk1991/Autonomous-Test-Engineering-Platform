@@ -49,6 +49,8 @@ Choosing a build tool, Java version, Cucumber-JVM version, test runner, browser 
 ## TBD — deferred to implementation
 
 - **The concrete Java stack**: build tool (Maven vs. Gradle), Java version, Cucumber-JVM version, test runner, browser automation library, assertion library, reporter. **To be mined from the `Automation-POC` repository's actual choices, not chosen fresh** (D4) — resolved when Layer 3's architecture-freeze ADR is written.
+
+  **Resolution note (additive only, ADR-0041).** This TBD is resolved by ADR-0041 (Java Stack for the Generated Test Suite): Maven, Java 21, JUnit/Cucumber BOM-managed versions, JUnit Platform Suite runner (not JUnit 4), JUnit Jupiter–only assertions, Selenium 4.25.0 with Selenium Manager (no WebDriverManager), and the three-reporter (message/junit/html) split feeding Layer 6. See ADR-0041 for the full decision and its provenance against `docs/reference/automation-poc/pom.xml`. This ADR's remaining TBDs — the tracked baseline's exact repository path and the promotion review mechanism — are unaffected and remain open.
 - The tracked baseline module's exact directory location within this repository.
 - The exact promotion review mechanism (human approval, a governed gate, or both).
 - The exact shape of the base page objects and framework code the tracked baseline holds on day one.
