@@ -233,7 +233,6 @@
           "title": "Supersedes"
         },
         "title": {
-          "maxLength": 70,
           "title": "Title",
           "type": "string"
         },

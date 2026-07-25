@@ -158,7 +158,13 @@ class TestableRequirement(Schema):
     requirement_id: str
     content_hash: str
     supersedes: str | None = None
-    title: str = Field(..., max_length=70)
+    #: Unconstrained length. ADR-0042 cites the Gherkin Feature-name 70-char rule
+    #: as this field's downstream consumer, but that limit is Layer 2/CP2's own
+    #: concern (.gherkin-lintrc), never enforced here: Layer 1's title is the
+    #: source of truth, over its full text, and REQ-* is content-addressed over
+    #: that full text — truncating it here would risk hash collisions and would
+    #: silently discard content Layer 2 needs to derive its own compliant name from.
+    title: str
     component: str
     functional_tag: str
     narrative: str | None = None

@@ -351,22 +351,37 @@ class TestFieldShapes:
         expected = {"risk_id", "statement", "category", "traces_to"}
         assert set(type(requirement.risks[0]).model_fields) == expected
 
-    def test_title_over_70_chars_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            build_testable_requirement(
-                title="x" * 71,
-                component="auth",
-                functional_tag="@x",
-                priority=Priority.LOW,
-                traces_to=[_REF],
-            )
-
-    def test_title_at_70_chars_accepted(self) -> None:
+    def test_title_over_70_chars_accepted_unmodified(self) -> None:
+        """title has no length constraint at Layer 1: the .gherkin-lintrc 70-char
+        Feature-name rule ADR-0042 cites is Layer 2/CP2's own downstream concern,
+        never enforced on this contract. Layer 1 emits the full text; a longer
+        title is neither rejected nor truncated."""
+        long_title = "x" * 140
         requirement = build_testable_requirement(
-            title="x" * 70,
+            title=long_title,
             component="auth",
             functional_tag="@x",
             priority=Priority.LOW,
             traces_to=[_REF],
         )
-        assert len(requirement.title) == 70
+        assert requirement.title == long_title
+
+    def test_requirement_id_is_stable_and_unique_over_full_title_beyond_70_chars(self) -> None:
+        """REQ-* is content-addressed over the full title, not a truncated prefix
+        — two titles that only differ after char 70 must not collide."""
+        prefix = "x" * 70
+        a = build_testable_requirement(
+            title=prefix + "-alpha",
+            component="auth",
+            functional_tag="@x",
+            priority=Priority.LOW,
+            traces_to=[_REF],
+        )
+        b = build_testable_requirement(
+            title=prefix + "-beta",
+            component="auth",
+            functional_tag="@x",
+            priority=Priority.LOW,
+            traces_to=[_REF],
+        )
+        assert a.requirement_id != b.requirement_id
