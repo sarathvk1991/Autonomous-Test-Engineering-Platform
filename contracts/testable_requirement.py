@@ -216,13 +216,20 @@ class AcceptanceCriterionInput:
     ``criterion_id`` is minted by :func:`build_testable_requirement` from the
     owning requirement's id and this input's stable ordinal position — never
     supplied here.
+
+    Carries no ``traces_to``: per ADR-0042 Decision 1's additive correction note
+    (2026-07-25), no caller can honestly populate criterion-level provenance in
+    ``contract_version`` 1.0.0 (no criterion-to-``SourceArtifact`` link exists
+    anywhere in Layer 1's output). ``AcceptanceCriterion.traces_to`` stays in the
+    frozen model shape, reserved for a future Layer 1 capability, but
+    :func:`build_testable_requirement` always constructs it empty — there is no
+    parameter here that could set it otherwise.
     """
 
     category: Category
     statement: str
     polarity_hints: tuple[PolarityHint, ...] = ()
     data_fields: tuple[str, ...] = ()
-    traces_to: tuple[SourceRef, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -267,7 +274,7 @@ def build_testable_requirement(
             statement=criterion.statement,
             polarity_hints=criterion.polarity_hints,
             data_fields=criterion.data_fields,
-            traces_to=criterion.traces_to,
+            traces_to=(),
         )
         for ordinal, criterion in enumerate(acceptance_criteria, start=1)
     )

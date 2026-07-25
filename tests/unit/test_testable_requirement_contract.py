@@ -53,7 +53,6 @@ def _make_requirement_set() -> TestableRequirementSet:
                 category=Category.SECURITY,
                 statement="Locks after 5 consecutive failed attempts",
                 polarity_hints=(PolarityHint.NEGATIVE,),
-                traces_to=(_REF,),
             ),
         ],
         risks=[
@@ -218,6 +217,35 @@ class TestOptionalCorrectionNote:
         )
         dumped = requirement.model_dump(mode="json", by_alias=True)
         assert dumped["risks"][0]["category"] is None
+
+    def test_acceptance_criterion_traces_to_is_always_empty(self) -> None:
+        """ADR-0042 Decision 1's third correction note (2026-07-25):
+        AcceptanceCriterion.traces_to has no honest source in contract_version
+        1.0.0 and is always empty — AcceptanceCriterionInput offers no parameter
+        that could set it otherwise."""
+        requirement = build_testable_requirement(
+            title="Some requirement",
+            component="auth",
+            functional_tag="@auth",
+            priority=Priority.MEDIUM,
+            traces_to=[_REF],
+            acceptance_criteria=[
+                AcceptanceCriterionInput(category=Category.FUNCTIONAL, statement="y")
+            ],
+        )
+        assert requirement.acceptance_criteria[0].traces_to == ()
+
+    def test_requirement_traces_to_is_unaffected(self) -> None:
+        """Requirement-level provenance IS honestly available and is unaffected
+        by the AcceptanceCriterion.traces_to correction."""
+        requirement = build_testable_requirement(
+            title="Some requirement",
+            component="auth",
+            functional_tag="@auth",
+            priority=Priority.MEDIUM,
+            traces_to=[_REF],
+        )
+        assert requirement.traces_to == (_REF,)
 
 
 @pytest.mark.unit

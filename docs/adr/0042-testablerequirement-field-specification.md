@@ -60,6 +60,8 @@ Run-scoped envelope; replaces the deleted `RequirementPackage` (ADR-0034, ADR-00
 | `data_fields[]` | optional | Seeds `Examples:` tables and Layer 3's test-data spec. |
 | `traces_to[]` | `SourceRef[]` | — |
 
+**Correction note (additive, 2026-07-25).** `AcceptanceCriterion.traces_to` cannot be honestly populated in `contract_version` 1.0.0. Verified during Part 2: `AnalysisResult` carries only group-level provenance (`source_consolidated_id`, one `ConsolidatedArtifact` id) and flat, unattributed criterion strings — no criterion-to-`SourceArtifact` link exists anywhere in Layer 1's output. The link is structurally absent by design: the LLM is never shown an artifact identifier, the output schema mandates bare string statements with no citation field, and Grounding (ADR-0016) exists precisely to **compute** requirement-evidence support because no such link is carried upstream. Per this ADR's rule against fabricating absent signal, `AcceptanceCriterion.traces_to` emits an empty list in 1.0.0 and is reserved. Requirement-level provenance **is** honestly available and is carried on `TestableRequirement.traces_to` (populated from `source_consolidated_id`'s `SourceArtifact` set). AC-level attribution requires a future Layer 1 capability (criterion-level source attribution, distinct from Grounding's support judgement) and is therefore gated behind ADR-0032's freeze-lifting procedure. The traceability spine is coarse (requirement→group) in 1.0.0, not precise (criterion→artifact); this is a recorded limitation, not a defect.
+
 ### `Risk`
 
 | Field | Type / value |
