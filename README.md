@@ -12,21 +12,33 @@
 
 ## Status
 
-| Phase | Layer                                   | Status                |
-|-------|-----------------------------------------|-----------------------|
-| 1     | Requirement Intelligence                | 🟢 Complete           |
-| 2     | Feature Engineering                     | ⚪ Planned             |
-| 3     | Automation Engineering                  | ⚪ Planned             |
-| 4     | Quality Governance                      | ⚪ Planned             |
-| 5     | Execution                               | ⚪ Planned             |
-| 6     | Failure Intelligence & Self-Healing     | ⚪ Planned             |
-| 7     | Governance Dashboard (Streamlit)        | ⚪ Planned             |
+The seven-layer catalogue below, and its L4/L5 names, are ADR-0031's authoritative layer
+model (`docs/adr/0031-authoritative-layer-model.md`); L4's purpose is further refined by
+ADR-0040 (`docs/adr/0040-control-point-model-and-layer-4-redefinition.md`). Package names
+follow ADR-0033 (`docs/adr/0033-naming-disambiguation-and-package-renames.md`).
 
-> Phase 1 is implemented end to end: connectors (FILE and live API ingestion),
+| Layer | Name                                     | Package                     | Status                |
+|-------|-------------------------------------------|-----------------------------|-----------------------|
+| L1    | Requirement Intelligence                 | `requirement_intelligence/` | 🟢 Complete            |
+| L2    | Feature Engineering                      | `feature_engineering/`      | ⚪ Not started          |
+| L3    | Automation Engineering                   | `automation_engineering/`   | ⚪ Not started          |
+| L4    | Suite Quality Governance                 | `suite_quality_governance/` | ⚪ Not started          |
+| L5    | Test Execution                           | `test_execution/`           | ⚪ Not started          |
+| L6    | Failure Intelligence & Self-Healing      | `failure_intelligence/`     | ⚪ Not started          |
+| L7    | Governance Dashboard (Streamlit)         | `governance_dashboard/`     | ⚪ Scaffolded           |
+
+> L1 is implemented end to end: connectors (FILE and live API ingestion),
 > consolidation, engineering context orchestration, prompt governance, Gemini analysis,
 > **evidence grounding & traceability**, normalization, response validation, CP1
 > engineering-readiness, and the execution package. Architecture Version **1.2.0**.
 > See the [demo guide](docs/demo/demo-guide.md) to run it.
+>
+> L2–L6 are placeholder packages only (a `README.md` and an empty `__init__.py` each) —
+> no code, and no feature file has ever been generated. L7 additionally has a scaffold
+> `app.py`; nothing in it is wired to the rest of the platform. **L1 internally contains
+> its own run-scoped quality-governance and execution-artifact subsystems**
+> (`requirement_quality_governance/`, `execution_package/`) — these are unrelated to L4
+> and L5 above; ADR-0033 exists specifically to keep the two pairs from being confused.
 
 ## Architecture at a glance
 
@@ -305,15 +317,16 @@ autonomous-test-engineering-platform/
 │   ├── normalization/         #   response normalization subsystem
 │   ├── validation/            #   response validation subsystem (framework + rules + profiles)
 │   ├── cp1/                   #   CP1 engineering-readiness subsystem (models/framework/criteria/response/engine)
-│   ├── execution/             #   execution package (writer + per-artifact builders)
+│   ├── requirement_quality_governance/ #   terminal release decision for one run (CAP-080D; ADR-0017) — not L4
+│   ├── execution_package/     #   execution package (writer + per-artifact builders)
 │   ├── api/                   #   HTTP routes (future integration surface; not yet wired)
 │   └── tests/                 #   layer tests (unit/integration)
-├── feature_engineering/       # Phase 2 (placeholder)
-├── automation_engineering/    # Phase 3 (placeholder)
-├── quality_governance/        # Phase 4 (placeholder)
-├── execution/                 # Phase 5 (placeholder)
-├── failure_intelligence/      # Phase 6 (placeholder)
-├── governance_dashboard/      # Phase 7 — Streamlit (placeholder)
+├── feature_engineering/       # L2 — Feature Engineering (placeholder)
+├── automation_engineering/    # L3 — Automation Engineering (placeholder)
+├── suite_quality_governance/  # L4 — Suite Quality Governance (placeholder)
+├── test_execution/            # L5 — Test Execution (placeholder)
+├── failure_intelligence/      # L6 — Failure Intelligence & Self-Healing (placeholder)
+├── governance_dashboard/      # L7 — Governance Dashboard, Streamlit (scaffolded)
 ├── shared/                    # Shared kernel
 │   ├── contracts/             #   cross-layer schemas & protocols
 │   ├── enums/                 #   shared enumerations

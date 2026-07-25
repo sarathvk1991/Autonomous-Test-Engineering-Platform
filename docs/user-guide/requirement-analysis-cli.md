@@ -101,7 +101,7 @@ It contains no business logic.
 | `supported_commands()` | Registered CLI command names |
 | `system_identity()` | Python version, OS, architecture, working directory |
 
-### Execution package (`requirement_intelligence.execution`)
+### Execution package (`requirement_intelligence.execution_package`)
 
 All execution-package file generation lives here, not in the CLI.
 

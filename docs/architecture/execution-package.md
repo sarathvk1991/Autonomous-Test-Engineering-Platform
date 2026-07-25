@@ -1,7 +1,7 @@
 # Execution Package
 
 The **Execution Package** is the on-disk record of one Requirement Intelligence run.
-It is written by `ExecutionWriter` (`requirement_intelligence/execution/`) into a single
+It is written by `ExecutionWriter` (`requirement_intelligence/execution_package/`) into a single
 output directory: one serialized file per runtime model, human-readable reports, and a
 checksummed `manifest.json` that ties them together.
 
