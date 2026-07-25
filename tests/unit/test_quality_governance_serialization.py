@@ -17,11 +17,11 @@ import pytest
 
 from requirement_intelligence.execution.execution_writer import ExecutionWriter
 from requirement_intelligence.platform.platform_context import PlatformContext
-from requirement_intelligence.quality_governance import (
+from requirement_intelligence.requirement_quality_governance import (
     QualityDecision,
     QualityGovernanceResult,
 )
-from requirement_intelligence.quality_governance.serialization import (
+from requirement_intelligence.requirement_quality_governance.serialization import (
     QualityGovernanceSerializer,
 )
 from shared.enums.base import ValidationVerdict as CP1Verdict
@@ -186,18 +186,18 @@ class TestSerializationBoundary:
         source = (
             _REPO_ROOT
             / "requirement_intelligence"
-            / "quality_governance"
+            / "requirement_quality_governance"
             / "serialization"
             / "quality_governance_serializer.py"
         ).read_text(encoding="utf-8")
         forbidden = (
-            "quality_governance.evaluation",
-            "quality_governance.assessment",
-            "quality_governance.decision",
-            "quality_governance.pipeline",
-            "quality_governance.builder",
-            "quality_governance.policy",
-            "quality_governance.rules",
+            "requirement_quality_governance.evaluation",
+            "requirement_quality_governance.assessment",
+            "requirement_quality_governance.decision",
+            "requirement_quality_governance.pipeline",
+            "requirement_quality_governance.builder",
+            "requirement_quality_governance.policy",
+            "requirement_quality_governance.rules",
             "quality_governance_service",
             "QualityGovernancePipeline",
             "QualityRuleEvaluator",
@@ -215,7 +215,7 @@ class TestSerializationBoundary:
         source = (
             _REPO_ROOT
             / "requirement_intelligence"
-            / "quality_governance"
+            / "requirement_quality_governance"
             / "models"
             / "result.py"
         ).read_text(encoding="utf-8")

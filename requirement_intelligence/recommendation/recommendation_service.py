@@ -57,7 +57,6 @@ from abc import ABC, abstractmethod
 from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from requirement_intelligence.enhancement.models.result import RequirementEnhancementResult
 from requirement_intelligence.grounding.models.assessment import GroundingResult
-from requirement_intelligence.quality_governance.models.result import QualityGovernanceResult
 from requirement_intelligence.recommendation.engine import DeterministicRecommendationEngine
 from requirement_intelligence.recommendation.models.result import RecommendationResult
 from requirement_intelligence.recommendation.policy.recommendation_policy import (
@@ -65,6 +64,9 @@ from requirement_intelligence.recommendation.policy.recommendation_policy import
 )
 from requirement_intelligence.recommendation.rules.recommendation_rule_catalog import (
     RecommendationRuleCatalog,
+)
+from requirement_intelligence.requirement_quality_governance.models.result import (
+    QualityGovernanceResult,
 )
 from requirement_intelligence.validation.models.validation_result import ValidationResult
 

@@ -232,7 +232,7 @@ class TestContainment:
             "requirement_intelligence.grounding",
             "requirement_intelligence.validation",
             "requirement_intelligence.cp1",
-            "requirement_intelligence.quality_governance",
+            "requirement_intelligence.requirement_quality_governance",
             "requirement_intelligence.recommendation",
             "requirement_intelligence.continuous_improvement",
             "requirement_intelligence.execution",

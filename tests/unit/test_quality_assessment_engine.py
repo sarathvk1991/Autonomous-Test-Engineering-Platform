@@ -16,14 +16,14 @@ from pathlib import Path
 import pytest
 
 from requirement_intelligence.platform.platform_context import PlatformContext
-from requirement_intelligence.quality_governance.assessment import (
+from requirement_intelligence.requirement_quality_governance.assessment import (
     AssessmentPolicy,
     DeterministicQualityAssessmentEngine,
     QualityAssessmentEngine,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_QG_PKG = _REPO_ROOT / "requirement_intelligence" / "quality_governance"
+_QG_PKG = _REPO_ROOT / "requirement_intelligence" / "requirement_quality_governance"
 _ASSESS_PKG = _QG_PKG / "assessment"
 
 

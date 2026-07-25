@@ -2311,7 +2311,7 @@ def test_cli_end_to_end_runs_governance_exactly_once_and_places_result(
     # Governance evaluated exactly once, and its (real) result rode onto ExecutionData and
     # into the manifest as the canonical release verdict.
     assert recorder.call_count == 1
-    from requirement_intelligence.quality_governance import QualityGovernanceResult
+    from requirement_intelligence.requirement_quality_governance import QualityGovernanceResult
 
     governance_result = captured["data"].quality_governance_result
     assert isinstance(governance_result, QualityGovernanceResult)

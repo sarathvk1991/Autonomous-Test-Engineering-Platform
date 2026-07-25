@@ -130,36 +130,6 @@ from requirement_intelligence.prompts.framework.prompt_registry import PromptReg
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
-from requirement_intelligence.quality_governance.assessment import (
-    AssessmentPolicy,
-    DeterministicQualityAssessmentEngine,
-    QualityAssessmentEngine,
-    default_assessment_policy,
-)
-from requirement_intelligence.quality_governance.builder import QualityGovernanceResultBuilder
-from requirement_intelligence.quality_governance.decision import (
-    DecisionPolicy,
-    DeterministicQualityDecisionEngine,
-    QualityDecisionEngine,
-    default_decision_policy,
-)
-from requirement_intelligence.quality_governance.evaluation import (
-    DeterministicQualityRuleEvaluator,
-    QualityRuleEvaluator,
-)
-from requirement_intelligence.quality_governance.pipeline import QualityGovernancePipeline
-from requirement_intelligence.quality_governance.policy import (
-    QualityPolicy,
-    default_quality_policy,
-)
-from requirement_intelligence.quality_governance.quality_governance_service import (
-    DefaultQualityGovernanceService,
-    QualityGovernanceService,
-)
-from requirement_intelligence.quality_governance.rules import (
-    QualityRuleCatalog,
-    default_quality_rule_catalog,
-)
 from requirement_intelligence.recommendation.policy import (
     RecommendationPolicy,
     default_recommendation_policy,
@@ -173,6 +143,40 @@ from requirement_intelligence.recommendation.rules import (
     default_recommendation_rule_catalog,
 )
 from requirement_intelligence.registry.connector_registry import ConnectorRegistry
+from requirement_intelligence.requirement_quality_governance.assessment import (
+    AssessmentPolicy,
+    DeterministicQualityAssessmentEngine,
+    QualityAssessmentEngine,
+    default_assessment_policy,
+)
+from requirement_intelligence.requirement_quality_governance.builder import (
+    QualityGovernanceResultBuilder,
+)
+from requirement_intelligence.requirement_quality_governance.decision import (
+    DecisionPolicy,
+    DeterministicQualityDecisionEngine,
+    QualityDecisionEngine,
+    default_decision_policy,
+)
+from requirement_intelligence.requirement_quality_governance.evaluation import (
+    DeterministicQualityRuleEvaluator,
+    QualityRuleEvaluator,
+)
+from requirement_intelligence.requirement_quality_governance.pipeline import (
+    QualityGovernancePipeline,
+)
+from requirement_intelligence.requirement_quality_governance.policy import (
+    QualityPolicy,
+    default_quality_policy,
+)
+from requirement_intelligence.requirement_quality_governance.quality_governance_service import (
+    DefaultQualityGovernanceService,
+    QualityGovernanceService,
+)
+from requirement_intelligence.requirement_quality_governance.rules import (
+    QualityRuleCatalog,
+    default_quality_rule_catalog,
+)
 from requirement_intelligence.validation.profiles import (
     ValidationProfileDefinition,
     ValidationProfileRegistry,

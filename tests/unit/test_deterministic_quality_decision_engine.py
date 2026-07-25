@@ -11,25 +11,27 @@ from __future__ import annotations
 
 import pytest
 
-from requirement_intelligence.quality_governance.assessment import (
+from requirement_intelligence.requirement_quality_governance.assessment import (
     AssessmentLevel,
     DeterministicQualityAssessmentEngine,
     QualityAssessmentResult,
     default_assessment_policy,
 )
-from requirement_intelligence.quality_governance.decision import (
+from requirement_intelligence.requirement_quality_governance.decision import (
     DecisionRule,
     DeterministicQualityDecisionEngine,
     QualityDecisionResult,
     default_decision_policy,
 )
-from requirement_intelligence.quality_governance.evaluation import (
+from requirement_intelligence.requirement_quality_governance.evaluation import (
     DeterministicQualityRuleEvaluator,
 )
-from requirement_intelligence.quality_governance.identity import DecisionPolicyVersion
-from requirement_intelligence.quality_governance.models import QualityDecision
-from requirement_intelligence.quality_governance.policy import default_quality_policy
-from requirement_intelligence.quality_governance.rules import default_quality_rule_catalog
+from requirement_intelligence.requirement_quality_governance.identity import DecisionPolicyVersion
+from requirement_intelligence.requirement_quality_governance.models import QualityDecision
+from requirement_intelligence.requirement_quality_governance.policy import default_quality_policy
+from requirement_intelligence.requirement_quality_governance.rules import (
+    default_quality_rule_catalog,
+)
 from requirement_intelligence.validation.models import (
     ValidationVerdict as ValidationSubsystemVerdict,
 )

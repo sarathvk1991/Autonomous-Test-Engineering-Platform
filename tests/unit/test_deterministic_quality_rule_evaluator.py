@@ -11,18 +11,20 @@ from __future__ import annotations
 
 import pytest
 
-from requirement_intelligence.quality_governance.evaluation import (
+from requirement_intelligence.requirement_quality_governance.evaluation import (
     RULE_EVALUATOR_NAME,
     RULE_EVALUATOR_VERSION,
     DeterministicQualityRuleEvaluator,
     RuleEvaluationResult,
     RuleEvaluationStatus,
 )
-from requirement_intelligence.quality_governance.policy import (
+from requirement_intelligence.requirement_quality_governance.policy import (
     QualityReleaseRules,
     default_quality_policy,
 )
-from requirement_intelligence.quality_governance.rules import default_quality_rule_catalog
+from requirement_intelligence.requirement_quality_governance.rules import (
+    default_quality_rule_catalog,
+)
 from requirement_intelligence.validation.models import (
     ValidationVerdict as ValidationSubsystemVerdict,
 )

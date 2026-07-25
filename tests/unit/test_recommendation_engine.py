@@ -20,10 +20,6 @@ from requirement_intelligence.enhancement.models.enums import (
     ObservationCategory,
 )
 from requirement_intelligence.grounding.models.enums import SupportClassification
-from requirement_intelligence.quality_governance.models.enums import (
-    QualityDecision,
-    QualitySeverity,
-)
 from requirement_intelligence.recommendation.engine import DeterministicRecommendationEngine
 from requirement_intelligence.recommendation.models.enums import (
     RecommendationPriority,
@@ -43,6 +39,10 @@ from requirement_intelligence.recommendation.rules.recommendation_rule_catalog i
     RecommendationRuleCatalog,
 )
 from requirement_intelligence.recommendation.version import RECOMMENDATION_FRAMEWORK_VERSION
+from requirement_intelligence.requirement_quality_governance.models.enums import (
+    QualityDecision,
+    QualitySeverity,
+)
 from shared.enums.base import ValidationVerdict as CP1Verdict
 from tests.unit.recommendation_helpers import (
     make_cp1_finding,

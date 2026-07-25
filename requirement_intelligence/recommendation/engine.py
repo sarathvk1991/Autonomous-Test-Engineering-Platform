@@ -70,12 +70,6 @@ from requirement_intelligence.enhancement.models.result import RequirementEnhanc
 from requirement_intelligence.grounding.models.assessment import GroundingResult
 from requirement_intelligence.grounding.models.enums import SupportClassification
 from requirement_intelligence.grounding.models.findings import GroundingFinding
-from requirement_intelligence.quality_governance.models.enums import (
-    QualityDecision,
-    QualitySeverity,
-)
-from requirement_intelligence.quality_governance.models.findings import QualityFinding
-from requirement_intelligence.quality_governance.models.result import QualityGovernanceResult
 from requirement_intelligence.recommendation.identity.recommendation_identity import (
     RecommendationGroupId,
     RecommendationId,
@@ -114,6 +108,14 @@ from requirement_intelligence.recommendation.rules.recommendation_rule_catalog i
     RecommendationRuleCatalog,
 )
 from requirement_intelligence.recommendation.version import RECOMMENDATION_FRAMEWORK_VERSION
+from requirement_intelligence.requirement_quality_governance.models.enums import (
+    QualityDecision,
+    QualitySeverity,
+)
+from requirement_intelligence.requirement_quality_governance.models.findings import QualityFinding
+from requirement_intelligence.requirement_quality_governance.models.result import (
+    QualityGovernanceResult,
+)
 from requirement_intelligence.validation.models.validation_enums import ValidationSeverity
 from requirement_intelligence.validation.models.validation_issue import ValidationIssue
 from requirement_intelligence.validation.models.validation_result import ValidationResult

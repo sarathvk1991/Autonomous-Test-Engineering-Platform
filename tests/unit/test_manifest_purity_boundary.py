@@ -24,13 +24,13 @@ _EXECUTION_DIR = _REPO_ROOT / "requirement_intelligence" / "execution"
 #: list already enforced for the serializer in ``TestSerializationBoundary`` — the same
 #: containment rule, applied to the manifest and writer instead of the serializer.
 _FORBIDDEN_GOVERNANCE_RUNTIME_TOKENS = (
-    "quality_governance.evaluation",
-    "quality_governance.assessment",
-    "quality_governance.decision",
-    "quality_governance.pipeline",
-    "quality_governance.builder",
-    "quality_governance.policy",
-    "quality_governance.rules",
+    "requirement_quality_governance.evaluation",
+    "requirement_quality_governance.assessment",
+    "requirement_quality_governance.decision",
+    "requirement_quality_governance.pipeline",
+    "requirement_quality_governance.builder",
+    "requirement_quality_governance.policy",
+    "requirement_quality_governance.rules",
     "quality_governance_service",
     "QualityGovernancePipeline",
     "QualityRuleEvaluator",
@@ -127,7 +127,7 @@ class TestExecutionPackageIsProjectionOnly:
             if "quality_governance" not in line:
                 continue
             allowed = (
-                "quality_governance.serialization" in line
+                "requirement_quality_governance.serialization" in line
                 or "QualityGovernanceSerializer" in line
             )
             assert allowed, f"execution_writer.py may only import the serializer, found: {line!r}"

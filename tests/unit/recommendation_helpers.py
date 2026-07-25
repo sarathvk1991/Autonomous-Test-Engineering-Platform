@@ -63,20 +63,26 @@ from requirement_intelligence.grounding.version import (
     GROUNDING_FRAMEWORK_VERSION,
 )
 from requirement_intelligence.models.enums import SourceCategory
-from requirement_intelligence.quality_governance.identity.quality_identity import (
+from requirement_intelligence.requirement_quality_governance.identity.quality_identity import (
     QualityAssessmentId,
     QualityGovernanceResultId,
 )
-from requirement_intelligence.quality_governance.models.assessment import QualityAssessment
-from requirement_intelligence.quality_governance.models.enums import (
+from requirement_intelligence.requirement_quality_governance.models.assessment import (
+    QualityAssessment,
+)
+from requirement_intelligence.requirement_quality_governance.models.enums import (
     QualityDecision,
     QualitySeverity,
 )
-from requirement_intelligence.quality_governance.models.findings import QualityFinding
-from requirement_intelligence.quality_governance.models.result import QualityGovernanceResult
-from requirement_intelligence.quality_governance.models.summary import QualitySummary
-from requirement_intelligence.quality_governance.policy import default_quality_policy
-from requirement_intelligence.quality_governance.version import QUALITY_GOVERNANCE_FRAMEWORK_VERSION
+from requirement_intelligence.requirement_quality_governance.models.findings import QualityFinding
+from requirement_intelligence.requirement_quality_governance.models.result import (
+    QualityGovernanceResult,
+)
+from requirement_intelligence.requirement_quality_governance.models.summary import QualitySummary
+from requirement_intelligence.requirement_quality_governance.policy import default_quality_policy
+from requirement_intelligence.requirement_quality_governance.version import (
+    QUALITY_GOVERNANCE_FRAMEWORK_VERSION,
+)
 from requirement_intelligence.validation.models import (
     DEFAULT_VALIDATION_CONTRACT_VERSION,
     FRAMEWORK_VERSION,

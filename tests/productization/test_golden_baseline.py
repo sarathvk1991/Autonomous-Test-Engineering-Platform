@@ -733,7 +733,7 @@ class TestPhase4OutputVerification:
         self, golden_pipeline_result: PipelineResult
     ) -> None:
         """quality_governance_result.json is a verbatim, round-trippable projection."""
-        from requirement_intelligence.quality_governance import QualityGovernanceResult
+        from requirement_intelligence.requirement_quality_governance import QualityGovernanceResult
 
         on_disk = _load_json(golden_pipeline_result.output_dir / "quality_governance_result.json")
         assert (
@@ -1939,7 +1939,7 @@ class TestPhase5Determinism:
         provenance and so is byte-identical across runs; the JSON projection is identical
         once provenance is dropped; and each projection is a pure function of its input.
         """
-        from requirement_intelligence.quality_governance.serialization import (
+        from requirement_intelligence.requirement_quality_governance.serialization import (
             QualityGovernanceSerializer,
         )
 

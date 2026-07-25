@@ -3,7 +3,7 @@
 String-valued (:class:`~enum.StrEnum`) members serialise cleanly to JSON and compare
 equal to their plain-string value, matching the convention of
 :mod:`requirement_intelligence.enhancement.models.enums` and
-:mod:`requirement_intelligence.quality_governance.models.enums`. These enums carry
+:mod:`requirement_intelligence.requirement_quality_governance.models.enums`. These enums carry
 **no runtime logic**; they are the governed vocabulary the models are classified
 against. No recommendation is generated here — that is a future engine's job
 (ADR-0019, CAP-082B).

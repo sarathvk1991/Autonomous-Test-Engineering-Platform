@@ -22,9 +22,9 @@ from requirement_intelligence.enhancement.models.enums import (
 )
 from requirement_intelligence.execution.execution_writer import ExecutionWriter
 from requirement_intelligence.platform.platform_context import PlatformContext
-from requirement_intelligence.quality_governance.models.enums import QualityDecision
 from requirement_intelligence.recommendation.models.result import RecommendationResult
 from requirement_intelligence.recommendation.serialization import RecommendationSerializer
+from requirement_intelligence.requirement_quality_governance.models.enums import QualityDecision
 from tests.productization.conftest import _run_golden_pipeline
 from tests.unit.recommendation_helpers import (
     make_cp1_result,

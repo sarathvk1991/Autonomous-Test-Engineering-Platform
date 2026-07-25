@@ -948,7 +948,7 @@ class TestEngineContainment:
             "requirement_intelligence.grounding",
             "requirement_intelligence.validation",
             "requirement_intelligence.cp1",
-            "requirement_intelligence.quality_governance",
+            "requirement_intelligence.requirement_quality_governance",
         )
         for path in (_ENHANCEMENT_PKG / "rules").rglob("*.py"):
             source = path.read_text(encoding="utf-8")

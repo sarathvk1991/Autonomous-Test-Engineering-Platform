@@ -42,10 +42,10 @@ from requirement_intelligence.learning.serialization import LearningSerializer
 from requirement_intelligence.organizational_memory.serialization import (
     OrganizationalMemorySerializer,
 )
-from requirement_intelligence.quality_governance.serialization import (
+from requirement_intelligence.recommendation.serialization import RecommendationSerializer
+from requirement_intelligence.requirement_quality_governance.serialization import (
     QualityGovernanceSerializer,
 )
-from requirement_intelligence.recommendation.serialization import RecommendationSerializer
 
 _CORE_ARTIFACTS = (
     "consolidated_artifact.json",

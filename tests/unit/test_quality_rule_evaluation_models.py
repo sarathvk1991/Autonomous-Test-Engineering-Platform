@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from requirement_intelligence.quality_governance.evaluation import (
+from requirement_intelligence.requirement_quality_governance.evaluation import (
     RULE_EVALUATION_RESULT_VERSION,
     RULE_EVALUATION_VERSION,
     RuleCategory,
@@ -22,12 +22,12 @@ from requirement_intelligence.quality_governance.evaluation import (
     RuleEvaluationSummary,
     RuleSeverityCount,
 )
-from requirement_intelligence.quality_governance.identity import (
+from requirement_intelligence.requirement_quality_governance.identity import (
     QualityPolicyVersion,
     RuleEvaluationId,
     RuleEvaluationResultId,
 )
-from requirement_intelligence.quality_governance.models import QualitySeverity
+from requirement_intelligence.requirement_quality_governance.models import QualitySeverity
 
 _RID = RuleEvaluationResultId.for_run("an-1", "ex-1")
 

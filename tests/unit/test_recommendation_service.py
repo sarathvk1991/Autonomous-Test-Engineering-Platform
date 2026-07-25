@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from requirement_intelligence.platform.platform_context import PlatformContext
-from requirement_intelligence.quality_governance.models.enums import QualityDecision
 from requirement_intelligence.recommendation.models.result import RecommendationResult
 from requirement_intelligence.recommendation.policy import (
     RecommendationPolicy,
@@ -31,6 +30,7 @@ from requirement_intelligence.recommendation.rules import (
     RecommendationRuleCatalog,
     default_recommendation_rule_catalog,
 )
+from requirement_intelligence.requirement_quality_governance.models.enums import QualityDecision
 from tests.unit.recommendation_helpers import (
     make_cp1_result,
     make_enhancement_result,
@@ -180,7 +180,7 @@ class TestDependencyBoundaries:
             "requirement_intelligence.grounding",
             "requirement_intelligence.validation",
             "requirement_intelligence.cp1",
-            "requirement_intelligence.quality_governance",
+            "requirement_intelligence.requirement_quality_governance",
             "requirement_intelligence.analysis",
             "requirement_intelligence.context_orchestration",
         )

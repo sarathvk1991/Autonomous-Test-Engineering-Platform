@@ -11,7 +11,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from requirement_intelligence.quality_governance.identity import (
+from requirement_intelligence.requirement_quality_governance.identity import (
     RuleEvaluationId,
     RuleEvaluationResultId,
     RuleEvaluationResultVersion,

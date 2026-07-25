@@ -107,7 +107,7 @@ _LAYER_1_SUBSYSTEMS = (
     "requirement_intelligence.grounding",
     "requirement_intelligence.validation",
     "requirement_intelligence.cp1",
-    "requirement_intelligence.quality_governance",
+    "requirement_intelligence.requirement_quality_governance",
     "requirement_intelligence.recommendation",
     "requirement_intelligence.analysis",
     "requirement_intelligence.context_orchestration",

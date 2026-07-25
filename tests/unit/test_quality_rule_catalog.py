@@ -11,13 +11,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from requirement_intelligence.quality_governance.evaluation.models import RuleCategory
-from requirement_intelligence.quality_governance.identity import (
+from requirement_intelligence.requirement_quality_governance.evaluation.models import RuleCategory
+from requirement_intelligence.requirement_quality_governance.identity import (
     QualityRuleCatalogVersion,
     QualityRuleVersion,
 )
-from requirement_intelligence.quality_governance.models import QualitySeverity
-from requirement_intelligence.quality_governance.rules import (
+from requirement_intelligence.requirement_quality_governance.models import QualitySeverity
+from requirement_intelligence.requirement_quality_governance.rules import (
     QualityMetric,
     QualityMetricSubsystem,
     QualityReleaseToggle,

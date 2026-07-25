@@ -10,14 +10,14 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from requirement_intelligence.quality_governance.policy import (
+from requirement_intelligence.requirement_quality_governance.policy import (
     DEFAULT_QUALITY_POLICY_ID,
     QualityPolicy,
     QualityPolicyBuilder,
     QualityThresholds,
     default_quality_policy,
 )
-from requirement_intelligence.quality_governance.version import QUALITY_POLICY_VERSION
+from requirement_intelligence.requirement_quality_governance.version import QUALITY_POLICY_VERSION
 
 
 @pytest.mark.unit

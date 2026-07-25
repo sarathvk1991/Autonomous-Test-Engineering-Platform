@@ -15,28 +15,36 @@ from pathlib import Path
 
 import pytest
 
-import requirement_intelligence.quality_governance as qg_pkg
+import requirement_intelligence.requirement_quality_governance as qg_pkg
 from requirement_intelligence.cp1.models.cp1_result import CP1Result
 from requirement_intelligence.grounding.models import GroundingResult
 from requirement_intelligence.platform.platform_context import PlatformContext
-from requirement_intelligence.quality_governance import (
+from requirement_intelligence.requirement_quality_governance import (
     DefaultQualityGovernanceService,
     QualityGovernanceResult,
     QualityGovernanceResultBuilder,
 )
-from requirement_intelligence.quality_governance.assessment.models import QualityAssessmentResult
-from requirement_intelligence.quality_governance.assessment.quality_assessment_engine import (
+from requirement_intelligence.requirement_quality_governance.assessment.models import (
+    QualityAssessmentResult,
+)
+from requirement_intelligence.requirement_quality_governance.assessment.quality_assessment_engine import (  # noqa: E501
     QualityAssessmentEngine,
 )
-from requirement_intelligence.quality_governance.decision.models import QualityDecisionResult
-from requirement_intelligence.quality_governance.decision.quality_decision_engine import (
+from requirement_intelligence.requirement_quality_governance.decision.models import (
+    QualityDecisionResult,
+)
+from requirement_intelligence.requirement_quality_governance.decision.quality_decision_engine import (  # noqa: E501
     QualityDecisionEngine,
 )
-from requirement_intelligence.quality_governance.evaluation.models import RuleEvaluationResult
-from requirement_intelligence.quality_governance.evaluation.quality_rule_evaluator import (
+from requirement_intelligence.requirement_quality_governance.evaluation.models import (
+    RuleEvaluationResult,
+)
+from requirement_intelligence.requirement_quality_governance.evaluation.quality_rule_evaluator import (  # noqa: E501
     QualityRuleEvaluator,
 )
-from requirement_intelligence.quality_governance.pipeline import QualityGovernancePipeline
+from requirement_intelligence.requirement_quality_governance.pipeline import (
+    QualityGovernancePipeline,
+)
 from requirement_intelligence.validation.models.validation_result import ValidationResult
 from tests.unit.quality_governance_helpers import (
     make_cp1_result,
@@ -45,7 +53,7 @@ from tests.unit.quality_governance_helpers import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_QG_PKG = _REPO_ROOT / "requirement_intelligence" / "quality_governance"
+_QG_PKG = _REPO_ROOT / "requirement_intelligence" / "requirement_quality_governance"
 _FIXED = datetime(2026, 7, 12, 12, 0, 0, tzinfo=UTC)
 
 

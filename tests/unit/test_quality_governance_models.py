@@ -12,14 +12,14 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from requirement_intelligence.quality_governance.identity import (
+from requirement_intelligence.requirement_quality_governance.identity import (
     QualityAssessmentId,
     QualityGovernanceResultId,
     QualityGovernanceVersion,
     QualityPolicyId,
     QualityPolicyVersion,
 )
-from requirement_intelligence.quality_governance.models import (
+from requirement_intelligence.requirement_quality_governance.models import (
     ConsumedResultReference,
     QualityAssessment,
     QualityDecision,

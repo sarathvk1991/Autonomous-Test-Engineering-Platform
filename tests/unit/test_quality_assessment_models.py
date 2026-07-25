@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from requirement_intelligence.quality_governance.assessment import (
+from requirement_intelligence.requirement_quality_governance.assessment import (
     ASSESSMENT_OUTCOME_VERSION,
     ASSESSMENT_POLICY_VERSION,
     DEFAULT_ASSESSMENT_POLICY_ID,
@@ -27,17 +27,17 @@ from requirement_intelligence.quality_governance.assessment import (
     QualityAssessmentResult,
     default_assessment_policy,
 )
-from requirement_intelligence.quality_governance.evaluation import (
+from requirement_intelligence.requirement_quality_governance.evaluation import (
     RuleCategory,
     RuleEvaluationStatus,
 )
-from requirement_intelligence.quality_governance.identity import (
+from requirement_intelligence.requirement_quality_governance.identity import (
     AssessmentPolicyVersion,
     QualityAssessmentResultId,
     RuleEvaluationId,
     RuleEvaluationResultId,
 )
-from requirement_intelligence.quality_governance.models import QualitySeverity
+from requirement_intelligence.requirement_quality_governance.models import QualitySeverity
 
 _REVR = RuleEvaluationResultId.for_run("an-1", "ex-1")
 _AID = QualityAssessmentResultId.for_evaluation(str(_REVR))

@@ -11,8 +11,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from requirement_intelligence.quality_governance.assessment import AssessmentLevel
-from requirement_intelligence.quality_governance.decision import (
+from requirement_intelligence.requirement_quality_governance.assessment import AssessmentLevel
+from requirement_intelligence.requirement_quality_governance.decision import (
     DECISION_VERSION,
     QUALITY_DECISION_RESULT_VERSION,
     DecisionExplanation,
@@ -24,16 +24,16 @@ from requirement_intelligence.quality_governance.decision import (
     QualityDecisionResult,
     default_decision_policy,
 )
-from requirement_intelligence.quality_governance.decision.policy import (
+from requirement_intelligence.requirement_quality_governance.decision.policy import (
     DECISION_POLICY_VERSION,
     DEFAULT_DECISION_POLICY_ID,
 )
-from requirement_intelligence.quality_governance.identity import (
+from requirement_intelligence.requirement_quality_governance.identity import (
     DecisionPolicyVersion,
     QualityAssessmentResultId,
     QualityDecisionResultId,
 )
-from requirement_intelligence.quality_governance.models import QualityDecision
+from requirement_intelligence.requirement_quality_governance.models import QualityDecision
 
 _AID = QualityAssessmentResultId.for_evaluation("revr-x")
 _DID = QualityDecisionResultId.for_assessment(str(_AID))

@@ -10,24 +10,26 @@ from __future__ import annotations
 
 import pytest
 
-from requirement_intelligence.quality_governance.assessment import (
+from requirement_intelligence.requirement_quality_governance.assessment import (
     AssessmentConflictPolicy,
     AssessmentLevel,
     DeterministicQualityAssessmentEngine,
     QualityAssessmentResult,
     default_assessment_policy,
 )
-from requirement_intelligence.quality_governance.evaluation import (
+from requirement_intelligence.requirement_quality_governance.evaluation import (
     DeterministicQualityRuleEvaluator,
     RuleCategory,
     RuleEvaluationResult,
     RuleEvaluationStatus,
 )
-from requirement_intelligence.quality_governance.policy import (
+from requirement_intelligence.requirement_quality_governance.policy import (
     QualityReleaseRules,
     default_quality_policy,
 )
-from requirement_intelligence.quality_governance.rules import default_quality_rule_catalog
+from requirement_intelligence.requirement_quality_governance.rules import (
+    default_quality_rule_catalog,
+)
 from requirement_intelligence.validation.models import (
     ValidationVerdict as ValidationSubsystemVerdict,
 )
@@ -195,7 +197,7 @@ class TestReferencesAreReferences:
         assert ref_ids == failing_ids
 
     def test_reference_carries_no_duplicated_evaluation_payload(self) -> None:
-        from requirement_intelligence.quality_governance.assessment import (
+        from requirement_intelligence.requirement_quality_governance.assessment import (
             AssessmentFindingReference,
         )
 

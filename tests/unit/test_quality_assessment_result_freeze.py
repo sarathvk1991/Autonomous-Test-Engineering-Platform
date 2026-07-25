@@ -14,24 +14,26 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from requirement_intelligence.quality_governance.assessment import (
+from requirement_intelligence.requirement_quality_governance.assessment import (
     QUALITY_ASSESSMENT_RESULT_VERSION,
     QualityAssessmentResult,
     default_assessment_policy,
 )
-from requirement_intelligence.quality_governance.assessment.quality_assessment_engine import (
+from requirement_intelligence.requirement_quality_governance.assessment.quality_assessment_engine import (  # noqa: E501
     DeterministicQualityAssessmentEngine,
 )
-from requirement_intelligence.quality_governance.evaluation import (
+from requirement_intelligence.requirement_quality_governance.evaluation import (
     DeterministicQualityRuleEvaluator,
 )
-from requirement_intelligence.quality_governance.identity import (
+from requirement_intelligence.requirement_quality_governance.identity import (
     AssessmentOutcomeVersion,
     AssessmentPolicyVersion,
     QualityAssessmentResultVersion,
 )
-from requirement_intelligence.quality_governance.policy import default_quality_policy
-from requirement_intelligence.quality_governance.rules import default_quality_rule_catalog
+from requirement_intelligence.requirement_quality_governance.policy import default_quality_policy
+from requirement_intelligence.requirement_quality_governance.rules import (
+    default_quality_rule_catalog,
+)
 from tests.unit.quality_governance_helpers import (
     make_cp1_result,
     make_grounding_result,
@@ -39,7 +41,7 @@ from tests.unit.quality_governance_helpers import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_QG_PKG = _REPO_ROOT / "requirement_intelligence" / "quality_governance"
+_QG_PKG = _REPO_ROOT / "requirement_intelligence" / "requirement_quality_governance"
 _ASSESS_PKG = _QG_PKG / "assessment"
 
 
