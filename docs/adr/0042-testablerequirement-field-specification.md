@@ -47,6 +47,8 @@ Run-scoped envelope; replaces the deleted `RequirementPackage` (ADR-0034, ADR-00
 | `risks[]` | `Risk[]` | Decision 1(a). |
 | `traces_to[]` | `SourceRef[]` | Decision 4. |
 
+**Correction note (additive, 2026-07-25).** During Part 2 emitter implementation, `priority` was found to be marked required (no `optional`/`| null` marker) while `AnalysisResult` — the sole Layer 1 output this contract is populated from — carries no honest per-requirement priority signal (verified: the only priority signal is inbound `SourceArtifact.priority` formatted into the prompt, never emitted back). Per this ADR's own rule against fabricating absent signal, the field is corrected to **optional, nullable** for `contract_version` 1.0.0, emitting `null`. It remains in the schema as a reserved, known-future field: populating it requires a future Layer 1 signal (a categorization/prioritization capability), which is a new Layer 1 capability and therefore gated behind ADR-0032's freeze-lifting procedure. The field's presence-and-nullability is stable; only its future population is deferred.
+
 ### `AcceptanceCriterion`
 
 | Field | Type / value | Traces to |
@@ -66,6 +68,8 @@ Run-scoped envelope; replaces the deleted `RequirementPackage` (ADR-0034, ADR-00
 | `statement` | string |
 | `category` | `SECURITY` \| `QUALITY` \| `FUNCTIONAL` |
 | `traces_to[]` | `SourceRef[]` |
+
+**Correction note (additive, 2026-07-25).** During Part 2 emitter implementation, `Risk.category` was found to be marked required (no `optional`/`| null` marker) while `AnalysisResult` — the sole Layer 1 output this contract is populated from — carries no honest per-risk category signal (verified: risks are a flat string array with no categorization anywhere in the pipeline). Per this ADR's own rule against fabricating absent signal, the field is corrected to **optional, nullable** for `contract_version` 1.0.0, emitting `null`. It remains in the schema as a reserved, known-future field: populating it requires a future Layer 1 signal (a categorization capability), which is a new Layer 1 capability and therefore gated behind ADR-0032's freeze-lifting procedure. The field's presence-and-nullability is stable; only its future population is deferred.
 
 ### `SourceRef` — salvaged from `canonical_requirement.py`, actual fields (Decision 4)
 

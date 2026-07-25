@@ -170,6 +170,57 @@ class TestSupersedes:
 
 
 @pytest.mark.unit
+class TestOptionalCorrectionNote:
+    """ADR-0042 Decision 1's additive correction note (2026-07-25): priority and
+    Risk.category were specified required with no honest AnalysisResult signal
+    to populate them, so both are corrected to optional/nullable in v1.0.0."""
+
+    def test_priority_may_be_none(self) -> None:
+        requirement = build_testable_requirement(
+            title="Some requirement",
+            component="auth",
+            functional_tag="@auth",
+            priority=None,
+            traces_to=[_REF],
+        )
+        assert requirement.priority is None
+
+    def test_priority_none_serializes_to_null(self) -> None:
+        requirement = build_testable_requirement(
+            title="Some requirement",
+            component="auth",
+            functional_tag="@auth",
+            priority=None,
+            traces_to=[_REF],
+        )
+        dumped = requirement.model_dump(mode="json", by_alias=True)
+        assert dumped["priority"] is None
+
+    def test_risk_category_may_be_none(self) -> None:
+        requirement = build_testable_requirement(
+            title="Some requirement",
+            component="auth",
+            functional_tag="@auth",
+            priority=Priority.MEDIUM,
+            traces_to=[_REF],
+            risks=[RiskInput(category=None, statement="Unclassified risk", traces_to=(_REF,))],
+        )
+        assert requirement.risks[0].category is None
+
+    def test_risk_category_none_serializes_to_null(self) -> None:
+        requirement = build_testable_requirement(
+            title="Some requirement",
+            component="auth",
+            functional_tag="@auth",
+            priority=Priority.MEDIUM,
+            traces_to=[_REF],
+            risks=[RiskInput(category=None, statement="Unclassified risk", traces_to=(_REF,))],
+        )
+        dumped = requirement.model_dump(mode="json", by_alias=True)
+        assert dumped["risks"][0]["category"] is None
+
+
+@pytest.mark.unit
 class TestContentHash:
     def test_identical_input_yields_identical_hash(self) -> None:
         kwargs = dict(

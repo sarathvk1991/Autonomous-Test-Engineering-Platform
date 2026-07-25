@@ -86,10 +86,18 @@
     },
     "Risk": {
       "additionalProperties": false,
-      "description": "A delivery/security/quality risk Layer 1 identified \u2014 never a scenario.\n\nLayer 1 emits risks; Layer 2 makes scenarios (ADR-0042 Decision 1, boundary\nnote (a)).",
+      "description": "A delivery/security/quality risk Layer 1 identified \u2014 never a scenario.\n\nLayer 1 emits risks; Layer 2 makes scenarios (ADR-0042 Decision 1, boundary\nnote (a)).\n\n``category`` is optional/nullable per ADR-0042 Decision 1's additive\ncorrection note (2026-07-25): the field was originally specified required,\nbut ``AnalysisResult`` \u2014 the sole Layer 1 output this contract is populated\nfrom \u2014 carries no honest per-risk categorization signal. It emits ``null``\nin ``contract_version`` 1.0.0 until a future Layer 1 capability produces one.",
       "properties": {
         "category": {
-          "$ref": "#/$defs/Category"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Category"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "riskId": {
           "title": "Riskid",
@@ -109,8 +117,7 @@
       },
       "required": [
         "riskId",
-        "statement",
-        "category"
+        "statement"
       ],
       "title": "Risk",
       "type": "object"
@@ -158,7 +165,7 @@
     },
     "TestableRequirement": {
       "additionalProperties": false,
-      "description": "One platform-assigned, content-addressed, individually traceable requirement.\n\n``requirement_id`` and ``content_hash`` are never set directly \u2014 construct\ninstances via :func:`build_testable_requirement`, which mints both\ndeterministically per ADR-0042 Decisions 2 and 3.",
+      "description": "One platform-assigned, content-addressed, individually traceable requirement.\n\n``requirement_id`` and ``content_hash`` are never set directly \u2014 construct\ninstances via :func:`build_testable_requirement`, which mints both\ndeterministically per ADR-0042 Decisions 2 and 3.\n\n``priority`` is optional/nullable per ADR-0042 Decision 1's additive\ncorrection note (2026-07-25): the field was originally specified required,\nbut ``AnalysisResult`` \u2014 the sole Layer 1 output this contract is populated\nfrom \u2014 carries no honest per-requirement priority signal (the only priority\nsignal anywhere in the pipeline is inbound ``SourceArtifact.priority``,\nformatted into the prompt, never emitted back). It emits ``null`` in\n``contract_version`` 1.0.0 until a future Layer 1 capability produces one.",
       "properties": {
         "acceptanceCriteria": {
           "items": {
@@ -192,7 +199,15 @@
           "title": "Narrative"
         },
         "priority": {
-          "$ref": "#/$defs/Priority"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Priority"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "requirementId": {
           "title": "Requirementid",
@@ -235,8 +250,7 @@
         "contentHash",
         "title",
         "component",
-        "functionalTag",
-        "priority"
+        "functionalTag"
       ],
       "title": "TestableRequirement",
       "type": "object"

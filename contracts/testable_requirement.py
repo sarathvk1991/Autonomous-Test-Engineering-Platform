@@ -100,13 +100,19 @@ class Risk(Schema):
 
     Layer 1 emits risks; Layer 2 makes scenarios (ADR-0042 Decision 1, boundary
     note (a)).
+
+    ``category`` is optional/nullable per ADR-0042 Decision 1's additive
+    correction note (2026-07-25): the field was originally specified required,
+    but ``AnalysisResult`` — the sole Layer 1 output this contract is populated
+    from — carries no honest per-risk categorization signal. It emits ``null``
+    in ``contract_version`` 1.0.0 until a future Layer 1 capability produces one.
     """
 
     model_config = ConfigDict(alias_generator=to_camel)
 
     risk_id: str
     statement: str
-    category: Category
+    category: Category | None = None
     traces_to: tuple[SourceRef, ...] = Field(default_factory=tuple)
 
 
@@ -134,6 +140,14 @@ class TestableRequirement(Schema):
     ``requirement_id`` and ``content_hash`` are never set directly — construct
     instances via :func:`build_testable_requirement`, which mints both
     deterministically per ADR-0042 Decisions 2 and 3.
+
+    ``priority`` is optional/nullable per ADR-0042 Decision 1's additive
+    correction note (2026-07-25): the field was originally specified required,
+    but ``AnalysisResult`` — the sole Layer 1 output this contract is populated
+    from — carries no honest per-requirement priority signal (the only priority
+    signal anywhere in the pipeline is inbound ``SourceArtifact.priority``,
+    formatted into the prompt, never emitted back). It emits ``null`` in
+    ``contract_version`` 1.0.0 until a future Layer 1 capability produces one.
     """
 
     #: Not a pytest test class despite the name — silences pytest's Test* collector.
@@ -148,7 +162,7 @@ class TestableRequirement(Schema):
     component: str
     functional_tag: str
     narrative: str | None = None
-    priority: Priority
+    priority: Priority | None = None
     acceptance_criteria: tuple[AcceptanceCriterion, ...] = Field(default_factory=tuple)
     risks: tuple[Risk, ...] = Field(default_factory=tuple)
     traces_to: tuple[SourceRef, ...] = Field(default_factory=tuple)
@@ -209,7 +223,7 @@ class AcceptanceCriterionInput:
 class RiskInput:
     """Everything needed to build one :class:`Risk` except its id."""
 
-    category: Category
+    category: Category | None
     statement: str
     traces_to: tuple[SourceRef, ...] = ()
 
@@ -223,7 +237,7 @@ def build_testable_requirement(
     title: str,
     component: str,
     functional_tag: str,
-    priority: Priority,
+    priority: Priority | None,
     traces_to: Sequence[SourceRef],
     acceptance_criteria: Sequence[AcceptanceCriterionInput] = (),
     risks: Sequence[RiskInput] = (),
@@ -268,7 +282,7 @@ def build_testable_requirement(
         "component": component,
         "functionalTag": functional_tag,
         "narrative": narrative,
-        "priority": priority.value,
+        "priority": priority.value if priority is not None else None,
         "acceptanceCriteria": [
             ac.model_dump(mode="json", by_alias=True) for ac in built_criteria
         ],
