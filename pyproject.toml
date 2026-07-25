@@ -14,7 +14,7 @@ readme = "README.md"
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-src = [".", "app", "requirement_intelligence", "shared", "infrastructure"]
+src = [".", "app", "requirement_intelligence", "shared", "infrastructure", "contracts"]
 
 [tool.ruff.lint]
 # E/W pycodestyle, F pyflakes, I isort, N pep8-naming, UP pyupgrade,
@@ -27,7 +27,7 @@ ignore = ["S101"]                      # allow `assert` in tests
 
 [tool.ruff.lint.isort]
 known-first-party = [
-    "app", "requirement_intelligence", "shared", "infrastructure",
+    "app", "requirement_intelligence", "shared", "infrastructure", "contracts",
 ]
 
 # ---------------------------------------------------------------------------

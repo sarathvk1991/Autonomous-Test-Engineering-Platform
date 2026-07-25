@@ -1,0 +1,324 @@
+{
+  "$defs": {
+    "AcceptanceCriterion": {
+      "additionalProperties": false,
+      "description": "One structured, individually identified, atomic acceptance criterion.\n\nFree-prose acceptance criteria are prohibited (ADR-0034 property 3); this is\nthe structured unit Layer 2 scenarios (``SCN-*``) map to, never a requirement\ndirectly.",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/Category"
+        },
+        "criterionId": {
+          "title": "Criterionid",
+          "type": "string"
+        },
+        "dataFields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Datafields",
+          "type": "array"
+        },
+        "polarityHints": {
+          "items": {
+            "$ref": "#/$defs/PolarityHint"
+          },
+          "title": "Polarityhints",
+          "type": "array"
+        },
+        "statement": {
+          "title": "Statement",
+          "type": "string"
+        },
+        "tracesTo": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Tracesto",
+          "type": "array"
+        }
+      },
+      "required": [
+        "criterionId",
+        "category",
+        "statement"
+      ],
+      "title": "AcceptanceCriterion",
+      "type": "object"
+    },
+    "Category": {
+      "description": "The three acceptance-criteria / risk domains \u2014 ADR-0042 Decision 1.\n\nShared by :attr:`AcceptanceCriterion.category` and :attr:`Risk.category`: both\nfields name the same three-way domain axis.",
+      "enum": [
+        "functional",
+        "security",
+        "quality"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "PolarityHint": {
+      "description": "``AcceptanceCriterion.polarity_hints`` \u2014 ADR-0042 Decision 1.\n\n``POSITIVE`` and ``NEGATIVE`` trace to the Layer 2 LLD's own scenario\ntaxonomy; ``BOUNDARY`` is this contract's own refinement of the LLD's\nsuperseded boundary-data shape (ADR-0042's discrepancy note, Decision 1).",
+      "enum": [
+        "positive",
+        "negative",
+        "boundary"
+      ],
+      "title": "PolarityHint",
+      "type": "string"
+    },
+    "Priority": {
+      "description": "``TestableRequirement.priority`` \u2014 ADR-0042 Decision 1.",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "RequirementQualityGovernanceDecision": {
+      "description": "``provenance.requirement_quality_governance_decision`` \u2014 ADR-0034 property 4.\n\nDeliberately two-valued, not the three-valued\n:class:`~requirement_intelligence.requirement_quality_governance.models.enums.QualityDecision`\nit is derived from: a ``FAIL`` run never reaches this envelope at all (the gate\nis enforced by non-emission, not by a representable-but-unused value), so this\ncontract's own type cannot express ``FAIL`` in the first place.",
+      "enum": [
+        "pass",
+        "pass_with_warnings"
+      ],
+      "title": "RequirementQualityGovernanceDecision",
+      "type": "string"
+    },
+    "Risk": {
+      "additionalProperties": false,
+      "description": "A delivery/security/quality risk Layer 1 identified \u2014 never a scenario.\n\nLayer 1 emits risks; Layer 2 makes scenarios (ADR-0042 Decision 1, boundary\nnote (a)).",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/Category"
+        },
+        "riskId": {
+          "title": "Riskid",
+          "type": "string"
+        },
+        "statement": {
+          "title": "Statement",
+          "type": "string"
+        },
+        "tracesTo": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Tracesto",
+          "type": "array"
+        }
+      },
+      "required": [
+        "riskId",
+        "statement",
+        "category"
+      ],
+      "title": "Risk",
+      "type": "object"
+    },
+    "SourceRef": {
+      "additionalProperties": false,
+      "description": "Provenance pointer back to the originating record in a source system.\n\nSalvaged unchanged from the removed ``canonical_requirement.py`` (ADR-0042\nDecision 4) \u2014 same three fields, same shape, new home.",
+      "properties": {
+        "external_id": {
+          "title": "External Id",
+          "type": "string"
+        },
+        "system": {
+          "$ref": "#/$defs/SourceSystem"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "required": [
+        "system",
+        "external_id"
+      ],
+      "title": "SourceRef",
+      "type": "object"
+    },
+    "SourceSystem": {
+      "description": "Systems the Requirement Intelligence Layer can ingest from.",
+      "enum": [
+        "jira",
+        "sonarqube",
+        "owasp_zap"
+      ],
+      "title": "SourceSystem",
+      "type": "string"
+    },
+    "TestableRequirement": {
+      "additionalProperties": false,
+      "description": "One platform-assigned, content-addressed, individually traceable requirement.\n\n``requirement_id`` and ``content_hash`` are never set directly \u2014 construct\ninstances via :func:`build_testable_requirement`, which mints both\ndeterministically per ADR-0042 Decisions 2 and 3.",
+      "properties": {
+        "acceptanceCriteria": {
+          "items": {
+            "$ref": "#/$defs/AcceptanceCriterion"
+          },
+          "title": "Acceptancecriteria",
+          "type": "array"
+        },
+        "component": {
+          "title": "Component",
+          "type": "string"
+        },
+        "contentHash": {
+          "title": "Contenthash",
+          "type": "string"
+        },
+        "functionalTag": {
+          "title": "Functionaltag",
+          "type": "string"
+        },
+        "narrative": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Narrative"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority"
+        },
+        "requirementId": {
+          "title": "Requirementid",
+          "type": "string"
+        },
+        "risks": {
+          "items": {
+            "$ref": "#/$defs/Risk"
+          },
+          "title": "Risks",
+          "type": "array"
+        },
+        "supersedes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes"
+        },
+        "title": {
+          "maxLength": 70,
+          "title": "Title",
+          "type": "string"
+        },
+        "tracesTo": {
+          "items": {
+            "$ref": "#/$defs/SourceRef"
+          },
+          "title": "Tracesto",
+          "type": "array"
+        }
+      },
+      "required": [
+        "requirementId",
+        "contentHash",
+        "title",
+        "component",
+        "functionalTag",
+        "priority"
+      ],
+      "title": "TestableRequirement",
+      "type": "object"
+    },
+    "TestableRequirementSetProvenance": {
+      "additionalProperties": false,
+      "description": "The ``provenance`` block of :class:`TestableRequirementSet` \u2014 ADR-0042 Decision 1.",
+      "properties": {
+        "governanceReportRef": {
+          "title": "Governancereportref",
+          "type": "string"
+        },
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "promptId": {
+          "title": "Promptid",
+          "type": "string"
+        },
+        "promptSha256": {
+          "title": "Promptsha256",
+          "type": "string"
+        },
+        "promptVersion": {
+          "title": "Promptversion",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "requirementQualityGovernanceDecision": {
+          "$ref": "#/$defs/RequirementQualityGovernanceDecision"
+        }
+      },
+      "required": [
+        "promptId",
+        "promptVersion",
+        "promptSha256",
+        "provider",
+        "model",
+        "requirementQualityGovernanceDecision",
+        "governanceReportRef"
+      ],
+      "title": "TestableRequirementSetProvenance",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The run-scoped envelope; the sole functional replacement for the removed\n``RequirementPackage`` (ADR-0034, ADR-0035 item 3).\n\nOne instance per run, containing every :class:`TestableRequirement` the run\nproduced (ADR-0042 Decision 6 \u2014 not partitioned by component).",
+  "properties": {
+    "contractVersion": {
+      "default": "1.0.0",
+      "title": "Contractversion",
+      "type": "string"
+    },
+    "generatedAt": {
+      "format": "date-time",
+      "title": "Generatedat",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/TestableRequirementSetProvenance"
+    },
+    "requirements": {
+      "items": {
+        "$ref": "#/$defs/TestableRequirement"
+      },
+      "title": "Requirements",
+      "type": "array"
+    },
+    "runId": {
+      "title": "Runid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "runId",
+    "generatedAt",
+    "provenance"
+  ],
+  "title": "TestableRequirementSet",
+  "type": "object"
+}
