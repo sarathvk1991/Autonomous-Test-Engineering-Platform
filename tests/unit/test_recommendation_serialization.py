@@ -20,7 +20,7 @@ from requirement_intelligence.enhancement.models.enums import (
     EnhancementSeverity,
     ObservationCategory,
 )
-from requirement_intelligence.execution.execution_writer import ExecutionWriter
+from requirement_intelligence.execution_package.execution_writer import ExecutionWriter
 from requirement_intelligence.platform.platform_context import PlatformContext
 from requirement_intelligence.recommendation.models.result import RecommendationResult
 from requirement_intelligence.recommendation.serialization import RecommendationSerializer
@@ -261,4 +261,4 @@ class TestSerializationBoundary:
         source = (
             _REPO_ROOT / "requirement_intelligence" / "recommendation" / "models" / "result.py"
         ).read_text(encoding="utf-8")
-        assert "requirement_intelligence.execution" not in source
+        assert "requirement_intelligence.execution_package" not in source

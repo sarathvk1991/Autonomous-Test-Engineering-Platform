@@ -1,6 +1,6 @@
 """Execution writer — writes every artifact of an execution package.
 
-The CLI hands an :class:`~requirement_intelligence.execution.execution_data.ExecutionData`
+The CLI hands an :class:`~requirement_intelligence.execution_package.execution_data.ExecutionData`
 to :meth:`ExecutionWriter.write` and gets back a small result. All file-format
 knowledge (which files, their content, the manifest) lives here and in the
 per-file builders — never in the CLI.
@@ -19,21 +19,21 @@ from requirement_intelligence.continuous_improvement.serialization import (
     ContinuousImprovementSerializer,
 )
 from requirement_intelligence.enhancement.serialization import EnhancementSerializer
-from requirement_intelligence.execution.baseline_metrics_builder import (
+from requirement_intelligence.execution_package.baseline_metrics_builder import (
     BaselineMetricsBuilder,
 )
-from requirement_intelligence.execution.cp1_report_builder import CP1ReportBuilder
-from requirement_intelligence.execution.engineering_context_artifact import (
+from requirement_intelligence.execution_package.cp1_report_builder import CP1ReportBuilder
+from requirement_intelligence.execution_package.engineering_context_artifact import (
     EngineeringContextArtifactBuilder,
 )
-from requirement_intelligence.execution.execution_data import ExecutionData
-from requirement_intelligence.execution.execution_metrics import observe_response_counts
-from requirement_intelligence.execution.execution_summary_builder import (
+from requirement_intelligence.execution_package.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_metrics import observe_response_counts
+from requirement_intelligence.execution_package.execution_summary_builder import (
     ExecutionSummaryBuilder,
 )
-from requirement_intelligence.execution.manifest_builder import ManifestBuilder
-from requirement_intelligence.execution.review_builder import ReviewBuilder
-from requirement_intelligence.execution.validation_report_builder import (
+from requirement_intelligence.execution_package.manifest_builder import ManifestBuilder
+from requirement_intelligence.execution_package.review_builder import ReviewBuilder
+from requirement_intelligence.execution_package.validation_report_builder import (
     ValidationReportBuilder,
 )
 from requirement_intelligence.grounding.serialization import GroundingSerializer

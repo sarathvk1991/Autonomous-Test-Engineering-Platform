@@ -27,7 +27,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / "scripts" / "run_requirement_analysis.py"
 _KNOWLEDGE_GRAPH_PKG = _REPO_ROOT / "requirement_intelligence" / "knowledge_graph"
 _CONTINUOUS_IMPROVEMENT_PKG = _REPO_ROOT / "requirement_intelligence" / "continuous_improvement"
-_EXECUTION_PKG = _REPO_ROOT / "requirement_intelligence" / "execution"
+_EXECUTION_PKG = _REPO_ROOT / "requirement_intelligence" / "execution_package"
 
 
 @pytest.mark.unit

@@ -249,7 +249,7 @@ class TestRuntimeContainment:
             "OrganizationalMemoryPolicy",
             "PromotionRuleCatalog",
         )
-        for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py"):
+        for path in (_REPO_ROOT / "requirement_intelligence" / "execution_package").rglob("*.py"):
             source = path.read_text(encoding="utf-8")
             if "organizational_memory" not in source:
                 continue

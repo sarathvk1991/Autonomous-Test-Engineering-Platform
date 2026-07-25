@@ -853,7 +853,7 @@ _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/platform/platform_context.py"),
     Path("requirement_intelligence/prompts/requirement_prompt_builder.py"),
     Path("requirement_intelligence/analysis/requirement_analysis_service.py"),
-    Path("requirement_intelligence/execution/engineering_context_artifact.py"),
+    Path("requirement_intelligence/execution_package/engineering_context_artifact.py"),
     Path("requirement_intelligence/grounding/grounding_service.py"),
     Path("requirement_intelligence/grounding/builders/matching_context_builder.py"),
     Path("requirement_intelligence/grounding/pipeline.py"),
@@ -898,7 +898,15 @@ def test_only_the_permitted_modules_consume_the_orchestration_framework() -> Non
 @pytest.mark.unit
 def test_the_orchestration_framework_does_not_import_downstream_subsystems() -> None:
     """Acyclic: models <- consolidation <- context_orchestration. Never the reverse."""
-    forbidden = ("prompts", "analysis", "normalization", "validation", "cp1", "execution", "llm")
+    forbidden = (
+        "prompts",
+        "analysis",
+        "normalization",
+        "validation",
+        "cp1",
+        "execution_package",
+        "llm",
+    )
     package = _REPO_ROOT / "requirement_intelligence" / "context_orchestration"
     for module in package.rglob("*.py"):
         source = module.read_text(encoding="utf-8")

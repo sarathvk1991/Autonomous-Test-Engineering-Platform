@@ -27,7 +27,7 @@ from requirement_intelligence.consolidation.consolidation_engine import (
 )
 from requirement_intelligence.cp1.models import CP1Result
 from requirement_intelligence.cp1.response import CP1Service, ValidationToCP1Handoff
-from requirement_intelligence.execution import (
+from requirement_intelligence.execution_package import (
     BaselineMetricsBuilder,
     ExecutionData,
     ExecutionHistory,
@@ -37,7 +37,7 @@ from requirement_intelligence.execution import (
     ReviewBuilder,
     ValidationReportBuilder,
 )
-from requirement_intelligence.execution.execution_metrics import (
+from requirement_intelligence.execution_package.execution_metrics import (
     engineering_metrics,
     execution_package_identifier,
 )

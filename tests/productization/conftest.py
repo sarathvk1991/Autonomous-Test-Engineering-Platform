@@ -33,8 +33,8 @@ from requirement_intelligence.continuous_improvement.models import (
     HistoricalDatasetReference,
 )
 from requirement_intelligence.cp1.models.cp1_result import CP1Result
-from requirement_intelligence.execution.execution_data import ExecutionData
-from requirement_intelligence.execution.execution_writer import (
+from requirement_intelligence.execution_package.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_writer import (
     ExecutionWriter,
     ExecutionWriteResult,
 )

@@ -272,7 +272,7 @@ class ContextRanking(Schema):
     """The complete, ordered ranking the policy produced over every candidate.
 
     This is the orchestration decision record. Nothing downstream may re-derive
-    a rank: :class:`~requirement_intelligence.execution.execution_metrics` reads
+    a rank: :class:`~requirement_intelligence.execution_package.execution_metrics` reads
     :attr:`entries` rather than re-sorting the consolidated artifacts, because a
     second implementation of the ranking rule is a second ranking rule.
     """

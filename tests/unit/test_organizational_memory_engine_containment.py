@@ -57,7 +57,7 @@ _FORBIDDEN_IMPORT_TOKENS = (
     "requirement_intelligence.cp1",
     "requirement_intelligence.requirement_quality_governance",
     "requirement_intelligence.recommendation",
-    "requirement_intelligence.execution",
+    "requirement_intelligence.execution_package",
     "PlatformContext",
 )
 

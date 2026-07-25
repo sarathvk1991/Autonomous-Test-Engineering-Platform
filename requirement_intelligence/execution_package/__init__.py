@@ -13,26 +13,26 @@ ValidationReportBuilder— validation_report.md.
 CP1ReportBuilder       — cp1_report.md.
 """
 
-from requirement_intelligence.execution.baseline_metrics_builder import (
+from requirement_intelligence.execution_package.baseline_metrics_builder import (
     BaselineMetricsBuilder,
 )
-from requirement_intelligence.execution.cp1_report_builder import CP1ReportBuilder
-from requirement_intelligence.execution.engineering_context_artifact import (
+from requirement_intelligence.execution_package.cp1_report_builder import CP1ReportBuilder
+from requirement_intelligence.execution_package.engineering_context_artifact import (
     ENGINEERING_CONTEXT_ARTIFACT_VERSION,
     EngineeringContextArtifactBuilder,
 )
-from requirement_intelligence.execution.execution_data import ExecutionData
-from requirement_intelligence.execution.execution_history import ExecutionHistory
-from requirement_intelligence.execution.execution_summary_builder import (
+from requirement_intelligence.execution_package.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_history import ExecutionHistory
+from requirement_intelligence.execution_package.execution_summary_builder import (
     ExecutionSummaryBuilder,
 )
-from requirement_intelligence.execution.execution_writer import (
+from requirement_intelligence.execution_package.execution_writer import (
     ExecutionWriter,
     ExecutionWriteResult,
 )
-from requirement_intelligence.execution.manifest_builder import ManifestBuilder
-from requirement_intelligence.execution.review_builder import ReviewBuilder
-from requirement_intelligence.execution.validation_report_builder import (
+from requirement_intelligence.execution_package.manifest_builder import ManifestBuilder
+from requirement_intelligence.execution_package.review_builder import ReviewBuilder
+from requirement_intelligence.execution_package.validation_report_builder import (
     ValidationReportBuilder,
 )
 

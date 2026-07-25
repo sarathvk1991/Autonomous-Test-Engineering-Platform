@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from requirement_intelligence.execution.execution_writer import ExecutionWriter
+from requirement_intelligence.execution_package.execution_writer import ExecutionWriter
 from requirement_intelligence.organizational_memory.identity import (
     BestPracticeId,
     ExperienceId,
@@ -349,4 +349,4 @@ class TestSerializationBoundary:
             / "models"
             / "result.py"
         ).read_text(encoding="utf-8")
-        assert "requirement_intelligence.execution" not in source
+        assert "requirement_intelligence.execution_package" not in source

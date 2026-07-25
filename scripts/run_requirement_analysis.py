@@ -10,7 +10,7 @@ A thin, subcommand-based orchestration layer (git/docker/kubectl style). It only
 
 All dependency construction lives in
 ``requirement_intelligence.platform.PlatformContext`` and all execution-package
-file generation lives in ``requirement_intelligence.execution``. The CLT contains
+file generation lives in ``requirement_intelligence.execution_package``. The CLT contains
 no business logic and no file-format knowledge.
 
 Pipeline (no layer is bypassed; the provider is never called directly):
@@ -48,7 +48,7 @@ from requirement_intelligence.context_orchestration import (  # noqa: E402
 from requirement_intelligence.continuous_improvement.models import (  # noqa: E402
     HistoricalDatasetReference,
 )
-from requirement_intelligence.execution import (  # noqa: E402
+from requirement_intelligence.execution_package import (  # noqa: E402
     ExecutionData,
     ExecutionHistory,
     ExecutionWriter,

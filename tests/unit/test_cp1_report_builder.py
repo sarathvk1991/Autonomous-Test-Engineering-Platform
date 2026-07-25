@@ -28,7 +28,7 @@ from requirement_intelligence.cp1.models import (
     CP1Input,
     CP1Result,
 )
-from requirement_intelligence.execution.cp1_report_builder import CP1ReportBuilder
+from requirement_intelligence.execution_package.cp1_report_builder import CP1ReportBuilder
 from requirement_intelligence.llm.llm_models import LLMResponse
 from requirement_intelligence.normalization.framework.normalization_pipeline import (
     NormalizationPipeline,

@@ -35,7 +35,7 @@ from tests.productization.conftest import _run_golden_pipeline
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / "scripts" / "run_requirement_analysis.py"
 _ORGANIZATIONAL_MEMORY_PKG = _REPO_ROOT / "requirement_intelligence" / "organizational_memory"
-_EXECUTION_PKG = _REPO_ROOT / "requirement_intelligence" / "execution"
+_EXECUTION_PKG = _REPO_ROOT / "requirement_intelligence" / "execution_package"
 
 
 @pytest.mark.unit

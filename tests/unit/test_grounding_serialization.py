@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from requirement_intelligence.execution.execution_writer import ExecutionWriter
+from requirement_intelligence.execution_package.execution_writer import ExecutionWriter
 from requirement_intelligence.grounding import (
     GroundingAssessmentBuilder,
     GroundingMetricsBuilder,

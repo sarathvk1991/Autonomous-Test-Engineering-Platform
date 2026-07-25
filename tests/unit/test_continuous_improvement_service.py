@@ -252,7 +252,10 @@ class TestDependencyBoundaries:
         scope) — this is the structural guarantee that holds until a deliberate
         future milestone changes it.
         """
-        forbidden = ("requirement_intelligence.execution", "scripts.run_requirement_analysis")
+        forbidden = (
+            "requirement_intelligence.execution_package",
+            "scripts.run_requirement_analysis",
+        )
         for path in _CONTINUOUS_IMPROVEMENT_PKG.rglob("*.py"):
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line.strip().startswith(("import ", "from ")):

@@ -10,8 +10,8 @@ never to this performance table. Mixing them would conflate two different concer
 
 from __future__ import annotations
 
-from requirement_intelligence.execution.execution_data import ExecutionData
-from requirement_intelligence.execution.execution_metrics import (
+from requirement_intelligence.execution_package.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_metrics import (
     engineering_metrics,
     observe_response_counts,
     usage_tokens,

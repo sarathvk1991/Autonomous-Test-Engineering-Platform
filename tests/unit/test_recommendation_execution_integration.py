@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from requirement_intelligence.execution.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_data import ExecutionData
 from requirement_intelligence.recommendation.recommendation_service import (
     DeterministicRecommendationService,
 )

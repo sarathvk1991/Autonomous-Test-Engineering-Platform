@@ -247,11 +247,14 @@ class TestDependencyBoundaries:
 
         The dependency is one-way: the Execution Package (CAP-082C) imports the
         recommendation *serializer*, but nothing inside the ``recommendation``
-        package ever imports back into ``requirement_intelligence.execution`` or
+        package ever imports back into ``requirement_intelligence.execution_package`` or
         the CLI — this is the structural guarantee that holds even after runtime
         activation.
         """
-        forbidden = ("requirement_intelligence.execution", "scripts.run_requirement_analysis")
+        forbidden = (
+            "requirement_intelligence.execution_package",
+            "scripts.run_requirement_analysis",
+        )
         for path in _RECOMMENDATION_PKG.rglob("*.py"):
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line.strip().startswith(("import ", "from ")):

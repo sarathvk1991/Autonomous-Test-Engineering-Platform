@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 
-from requirement_intelligence.execution.manifest_builder import ManifestBuilder
+from requirement_intelligence.execution_package.manifest_builder import ManifestBuilder
 from tests.productization.conftest import _run_golden_pipeline
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_EXECUTION_DIR = _REPO_ROOT / "requirement_intelligence" / "execution"
+_EXECUTION_DIR = _REPO_ROOT / "requirement_intelligence" / "execution_package"
 
 #: Organizational Memory runtime tokens the Execution Package must never import.
 #: Mirrors the same containment rule enforced for the serializer

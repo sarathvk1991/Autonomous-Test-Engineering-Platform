@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 import pytest
 
-from requirement_intelligence.execution.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_data import ExecutionData
 from requirement_intelligence.organizational_memory.organizational_memory_service import (
     DeterministicOrganizationalMemoryService,
 )

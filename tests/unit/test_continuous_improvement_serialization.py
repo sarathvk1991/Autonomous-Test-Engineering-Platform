@@ -35,7 +35,7 @@ from requirement_intelligence.continuous_improvement.rules import default_improv
 from requirement_intelligence.continuous_improvement.serialization import (
     ContinuousImprovementSerializer,
 )
-from requirement_intelligence.execution.execution_writer import ExecutionWriter
+from requirement_intelligence.execution_package.execution_writer import ExecutionWriter
 from tests.productization.conftest import _run_golden_pipeline
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -274,4 +274,4 @@ class TestSerializationBoundary:
             / "models"
             / "result.py"
         ).read_text(encoding="utf-8")
-        assert "requirement_intelligence.execution" not in source
+        assert "requirement_intelligence.execution_package" not in source

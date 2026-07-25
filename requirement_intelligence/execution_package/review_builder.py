@@ -6,8 +6,8 @@ are authored by a human reviewer after reading the captured artifacts.
 
 from __future__ import annotations
 
-from requirement_intelligence.execution.execution_data import ExecutionData
-from requirement_intelligence.execution.execution_metrics import (
+from requirement_intelligence.execution_package.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_metrics import (
     execution_package_identifier,
     observe_response_counts,
 )

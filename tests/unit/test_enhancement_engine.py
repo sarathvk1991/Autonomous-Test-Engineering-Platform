@@ -941,7 +941,7 @@ class TestEngineContainment:
 
     def test_engine_imports_no_execution_package(self) -> None:
         source = (_ENHANCEMENT_PKG / "engine.py").read_text(encoding="utf-8")
-        assert "requirement_intelligence.execution" not in source
+        assert "requirement_intelligence.execution_package" not in source
 
     def test_rules_package_is_self_contained(self) -> None:
         forbidden = (

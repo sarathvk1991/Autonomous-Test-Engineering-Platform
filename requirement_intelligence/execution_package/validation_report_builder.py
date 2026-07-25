@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from requirement_intelligence.execution.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_data import ExecutionData
 
 # The implemented validation layers, in Rule-Catalog order. Used only to lay out
 # the per-layer roll-up; the counts themselves come entirely from the result's

@@ -1,7 +1,7 @@
 """Execution data — the immutable input bundle for the execution package.
 
 :class:`ExecutionData` carries the raw objects produced by one analysis run. The
-:class:`~requirement_intelligence.execution.execution_writer.ExecutionWriter` and
+:class:`~requirement_intelligence.execution_package.execution_writer.ExecutionWriter` and
 the markdown/manifest builders read from it; they never reach back into the CLI.
 """
 

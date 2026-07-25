@@ -20,7 +20,7 @@ import pytest
 from requirement_intelligence.continuous_improvement.continuous_improvement_service import (
     DeterministicContinuousImprovementService,
 )
-from requirement_intelligence.execution.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_data import ExecutionData
 from tests.productization.conftest import _run_golden_pipeline
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]

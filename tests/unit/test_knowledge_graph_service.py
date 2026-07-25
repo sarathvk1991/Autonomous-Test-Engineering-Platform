@@ -273,7 +273,10 @@ class TestDependencyBoundaries:
         structural guarantee that holds until a deliberate future milestone
         changes it.
         """
-        forbidden = ("requirement_intelligence.execution", "scripts.run_requirement_analysis")
+        forbidden = (
+            "requirement_intelligence.execution_package",
+            "scripts.run_requirement_analysis",
+        )
         for path in _KNOWLEDGE_GRAPH_PKG.rglob("*.py"):
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line.strip().startswith(("import ", "from ")):
@@ -297,7 +300,7 @@ class TestDependencyBoundaries:
             "KnowledgeGraphPolicy",
             "HistoricalDatasetProvider",
         )
-        for path in (_REPO_ROOT / "requirement_intelligence" / "execution").rglob("*.py"):
+        for path in (_REPO_ROOT / "requirement_intelligence" / "execution_package").rglob("*.py"):
             for line in path.read_text(encoding="utf-8").splitlines():
                 if line.strip().startswith(("import ", "from ")):
                     for token in forbidden:
@@ -312,7 +315,7 @@ class TestDependencyBoundaries:
         forbidden = (
             *_LAYER_1_SUBSYSTEMS,
             *_LAYER_2_PEERS,
-            "requirement_intelligence.execution",
+            "requirement_intelligence.execution_package",
             "scripts.run_requirement_analysis",
         )
         for path in engine_dir.rglob("*.py"):

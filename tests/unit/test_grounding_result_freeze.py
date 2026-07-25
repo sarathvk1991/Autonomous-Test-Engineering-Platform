@@ -75,7 +75,7 @@ class TestGroundingResultVersion:
 class TestRuntimeArtifactBoundary:
     def test_execution_package_imports_no_grounding_runtime(self) -> None:
         """Execution Package may consume GroundingResult but never a runtime component."""
-        execution_dir = _REPO_ROOT / "requirement_intelligence" / "execution"
+        execution_dir = _REPO_ROOT / "requirement_intelligence" / "execution_package"
         forbidden = (
             "grounding.strategies",
             "grounding.normalization",

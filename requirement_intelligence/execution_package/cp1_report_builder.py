@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from requirement_intelligence.execution.execution_data import ExecutionData
+from requirement_intelligence.execution_package.execution_data import ExecutionData
 
 _NO_FINDINGS = "No engineering readiness findings."
 
