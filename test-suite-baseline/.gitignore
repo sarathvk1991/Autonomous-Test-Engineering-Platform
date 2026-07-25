@@ -1,0 +1,6 @@
+# Build output (includes the messages.ndjson / cucumber.xml / report.html reporter output)
+target/
+
+# Untracked per-run workspace (ADR-0037): generated features/steps/pages/data land here.
+# Declared as a home for Layer 2/3 output; the baseline module generates nothing into it.
+workspace/
