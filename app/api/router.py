@@ -19,6 +19,6 @@ api_router.include_router(requirement_intelligence_router)
 # --- Future phases (mount as each layer is implemented) ----------------------
 # api_router.include_router(feature_engineering_router)
 # api_router.include_router(automation_engineering_router)
-# api_router.include_router(quality_governance_router)
-# api_router.include_router(execution_router)
+# api_router.include_router(suite_quality_governance_router)
+# api_router.include_router(test_execution_router)
 # api_router.include_router(failure_intelligence_router)
