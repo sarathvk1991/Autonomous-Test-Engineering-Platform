@@ -21,7 +21,6 @@ from requirement_intelligence.models.parsed_response import (
     PARSED_RESPONSE_VERSION,
     ParsedResponse,
 )
-from requirement_intelligence.models.requirement_package import RequirementPackage
 from requirement_intelligence.models.source_artifact import SourceArtifact
 
 __all__ = [
@@ -29,7 +28,6 @@ __all__ = [
     "CanonicalRequirement",
     "ConsolidatedArtifact",
     "ParsedResponse",
-    "RequirementPackage",
     "RiskLevel",
     "SourceArtifact",
     "SourceCategory",

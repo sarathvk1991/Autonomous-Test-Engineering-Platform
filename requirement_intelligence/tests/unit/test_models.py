@@ -20,7 +20,6 @@ from requirement_intelligence.models.enums import (
     SourceSystem,
     SourceType,
 )
-from requirement_intelligence.models.requirement_package import RequirementPackage
 from requirement_intelligence.models.source_artifact import SourceArtifact
 
 
@@ -172,16 +171,3 @@ def test_consolidated_artifact_accepts_source_artifacts() -> None:
     dumped = consolidated.model_dump(by_alias=True)
     assert dumped["functionalArtifacts"][0]["sourceSystem"] == "jira"
     assert dumped["securityArtifacts"][0]["sourceType"] == "dast"
-
-
-@pytest.mark.unit
-def test_requirement_package_accepts_supporting_artifacts() -> None:
-    package = RequirementPackage(
-        packageId="P-1",
-        module="auth",
-        requirements=["Account must lock after 5 failed attempts"],
-        supportingArtifacts=["ART-1", "S-1"],
-    )
-    dumped = package.model_dump(by_alias=True)
-    assert dumped["supportingArtifacts"] == ["ART-1", "S-1"]
-    assert dumped["packageId"] == "P-1"

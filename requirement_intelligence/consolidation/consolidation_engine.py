@@ -7,8 +7,8 @@ The engine sits between ingestion (Task 7) and the future Azure OpenAI layer:
 It applies only the deterministic heuristics in
 :mod:`requirement_intelligence.consolidation.consolidation_rules`. By design it
 does **not** call connectors or mappers, read source files, call Azure OpenAI,
-perform CP1 validation, or build a RequirementPackage. It only reorganises the
-artifacts it is handed into explainable groups.
+or perform CP1 validation. It only reorganises the artifacts it is handed into
+explainable groups.
 """
 
 from __future__ import annotations

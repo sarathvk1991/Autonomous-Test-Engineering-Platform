@@ -6,8 +6,7 @@ records that describe the *same* unit of work (typically a module / business
 area) from different domains — functional intent, security findings and
 quality signals — into one cohesive object.
 
-This is the bridge between raw, per-record ingestion and the AI-ready
-:class:`~requirement_intelligence.models.requirement_package.RequirementPackage`.
+This is the bridge between raw, per-record ingestion and AI-ready reasoning.
 It captures *what belongs together* and *how risky it is*, without yet making
 any AI / generative decisions.
 
