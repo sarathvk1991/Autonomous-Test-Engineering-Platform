@@ -900,26 +900,41 @@ def test_save_execution_creates_history_and_latest(
 def test_named_execution_persisted_with_manifest_entry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """ADR-0036: run_id, not --execution-name, is the directory name. The
+    given name is preserved only as the manifest's ``executionName`` label."""
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=2)])
     base = tmp_path / "executions"
     cli.main(["analyze", "--dry-run", "--execution-name", "prompt-v1.1", "--output-dir", str(base)])
-    target = base / "prompt-v1.1"
+    history_dirs = [p for p in base.iterdir() if p.is_dir()]
+    assert len(history_dirs) == 1
+    target = history_dirs[0]
+    assert target.name != "prompt-v1.1"
     assert (target / "manifest.json").exists()
     assert (tmp_path / "latest" / "manifest.json").exists()
     assert _read_manifest(target)["executionName"] == "prompt-v1.1"
 
 
 @pytest.mark.unit
-def test_named_execution_collision_never_overwrites(
+def test_named_execution_reuse_never_overwrites(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    base = tmp_path / "executions"
-    (base / "prompt-v1.1").mkdir(parents=True)
-    (base / "prompt-v1.1" / "sentinel.txt").write_text("keep", encoding="utf-8")
+    """ADR-0036: the directory name is the (globally unique) run_id, so
+    reusing the same --execution-name across runs can never collide -- each
+    run gets its own directory and neither's contents are disturbed."""
     _use_context(monkeypatch, [FakeArtifact("cons-a", quality=2)])
+    base = tmp_path / "executions"
     cli.main(["analyze", "--dry-run", "--execution-name", "prompt-v1.1", "--output-dir", str(base)])
-    assert (base / "prompt-v1.1" / "sentinel.txt").read_text() == "keep"
-    assert (base / "prompt-v1.1-1" / "manifest.json").exists()
+    first_dirs = {p for p in base.iterdir() if p.is_dir()}
+    assert len(first_dirs) == 1
+    first = next(iter(first_dirs))
+    first_manifest_bytes = (first / "manifest.json").read_bytes()
+
+    cli.main(["analyze", "--dry-run", "--execution-name", "prompt-v1.1", "--output-dir", str(base)])
+    all_dirs = {p for p in base.iterdir() if p.is_dir()}
+    assert len(all_dirs) == 2
+    assert (first / "manifest.json").read_bytes() == first_manifest_bytes
+    second = next(iter(all_dirs - first_dirs))
+    assert _read_manifest(second)["executionName"] == "prompt-v1.1"
 
 
 # ===========================================================================

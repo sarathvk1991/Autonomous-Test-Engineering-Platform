@@ -41,6 +41,7 @@ DEFAULT_OUTPUT_DIR = _REPO_ROOT / "output" / "executions"
 # Make the platform importable when run as a standalone script.
 sys.path.insert(0, str(_REPO_ROOT))
 
+from contracts.testable_requirement import CONTRACT_VERSION  # noqa: E402
 from requirement_intelligence.connectors.connector_exceptions import ConnectorError  # noqa: E402
 from requirement_intelligence.context_orchestration import (  # noqa: E402
     ContextOrchestrationError,
@@ -70,6 +71,13 @@ from requirement_intelligence.registry import (  # noqa: E402
     FILE_MODE,
     RegistryValidationError,
     resolve_execution_mode,
+)
+from requirement_intelligence.run_state import (  # noqa: E402
+    RunLock,
+    RunLockError,
+    RunStateCorruptError,
+    RunStateManager,
+    generate_run_id,
 )
 
 DEFAULT_PROVIDER = "gemini"
@@ -355,6 +363,30 @@ def _resolve_output_base(output_dir: str) -> Path:
     if not base.is_absolute():
         base = _REPO_ROOT / base
     return base.resolve()
+
+
+def target_dir_for_new_run(history: ExecutionHistory, effective_save: bool, run_id: str) -> Path:
+    """Where a brand-new run writes: ``latest/`` when not persisted, else
+    ``<output_base>/<run_id>`` (ADR-0036: the platform-assigned run_id is the
+    path, --execution-name is only ever a label recorded inside
+    run_state.json)."""
+    if not effective_save:
+        return history.latest_dir
+    return history.output_base / run_id
+
+
+def _file_mode_source_paths() -> list[Path]:
+    """The static FILE-mode source files (source-registry.json's own
+    ``inputPath`` values, resolved against the layer directory connectors run
+    from). Declared as the whole-run skip check's input so a change to the
+    underlying FILE-mode data correctly invalidates a would-be skip -- without
+    this, invariant (a) would be checking nothing, since no other artifact
+    this pipeline consumes is written to disk before the very last stage."""
+    return [
+        _LAYER_DIR / "input" / "jira" / "jira-issues.json",
+        _LAYER_DIR / "input" / "zap" / "zap-alerts.json",
+        _LAYER_DIR / "input" / "sonar" / "sonar-issues.json",
+    ]
 
 
 def run_validation_phase(
@@ -840,6 +872,80 @@ def handle_analyze(args: argparse.Namespace) -> int:
 
     context = PlatformContext()
 
+    # Run/stage state (ADR-0036, ADR-0032 carve-out 2): run_id becomes the run
+    # directory's name; --execution-name is recorded as an internal label only
+    # (D3). Resolved before any phase runs so run_state.json records progress
+    # as it happens, not once at the very end. Lock acquired here and released
+    # at every return point below (SIGKILL-safety is the stale-lock detector's
+    # job, not try/finally's -- no Python cleanup runs on an unblockable signal
+    # either way; see the module's run_state package for that mechanism).
+    output_base = _resolve_output_base(args.output_dir)
+    history = ExecutionHistory(output_base)
+    effective_save = args.save_execution or bool(args.execution_name) or bool(args.resume)
+    if args.resume:
+        run_id = args.resume
+        target_dir = output_base / run_id
+        if not target_dir.exists():
+            console.error(f"--resume: no run directory found at {target_dir}.")
+            return 2
+        try:
+            run_state_mgr = RunStateManager.try_load(
+                target_dir, current_contract_version=CONTRACT_VERSION
+            )
+        except RunStateCorruptError as exc:
+            console.error(f"--resume: {exc}")
+            return 1
+        if run_state_mgr is None:
+            console.error(
+                f"--resume: {target_dir} has no run_state.json (a pre-ADR-0036 run, "
+                "or not a run directory) -- cannot resume. Start a fresh run instead."
+            )
+            return 2
+    else:
+        run_id = generate_run_id()
+        target_dir = target_dir_for_new_run(history, effective_save, run_id)
+        history.prepare(target_dir)  # clears+recreates latest/, or mkdirs a fresh named dir
+        run_state_mgr = RunStateManager.create(
+            target_dir,
+            run_id=run_id,
+            execution_name=args.execution_name,
+            contract_version=CONTRACT_VERSION,
+        )
+
+    run_lock = RunLock(target_dir)
+    try:
+        run_lock.acquire()
+    except RunLockError as exc:
+        console.error(str(exc))
+        return 1
+
+    # Declared once, used as every live stage's (and the whole-run skip check's)
+    # input-hash basis: the static FILE-mode source files when in FILE mode, or
+    # nothing (API mode has no stable local file to hash -- skip stays an
+    # optimization that simply never fires there, never a correctness gap).
+    file_mode_inputs = _file_mode_source_paths() if mode == FILE_MODE else []
+
+    # Whole-run skip check (the one practically skippable unit today -- see
+    # requirement_intelligence/run_state/stages.py and this task's report for
+    # why per-stage skip is latent capability, not exercised by this CLI: every
+    # intermediate result lives in memory until ExecutionWriter().write() runs
+    # once, at the very end, so no earlier stage has an on-disk artifact to
+    # check before that point).
+    if args.resume:
+        prior = next(
+            (s for s in run_state_mgr.state.stages if s.stage_id == "execution_package_write"),
+            None,
+        )
+        prior_outputs = [target_dir / name for name in (prior.output_artifacts if prior else ())]
+        if prior_outputs and run_state_mgr.should_skip(
+            "execution_package_write",
+            input_artifacts=file_mode_inputs,
+            output_artifacts=prior_outputs,
+        ):
+            console.note(f"Run '{run_id}' is already complete and unchanged -- nothing to do.")
+            run_lock.release()
+            return 0
+
     # Resolve the governed Validation Profile up-front (fail fast on an unknown
     # name), only when validation is requested. PlatformContext owns selection;
     # the CLI just names the desired profile.
@@ -853,6 +959,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
             validation_profile = context.get_validation_profile(args.validation_profile)
         except UnknownValidationProfileError as exc:
             console.error(str(exc))
+            run_lock.release()
             return 2
 
     registry = context.create_connector_registry()
@@ -871,13 +978,16 @@ def handle_analyze(args: argparse.Namespace) -> int:
         candidates = _resolve_candidates(consolidated, args.artifact_id)
     except CliError as exc:
         console.error(str(exc))
+        run_lock.release()
         return 1
     except (ConnectorError, RegistryValidationError) as exc:
         console.error(f"Source ingestion failed ({mode} mode): {exc}")
         console.error("Run 'health' to check every configured source.")
+        run_lock.release()
         return 1
     except MapperError as exc:
         console.error(f"Source mapping failed ({mode} mode): {exc}")
+        run_lock.release()
         return 1
 
     # Engineering Context Orchestration (CAP-076C; multi-source since CAP-076D).
@@ -885,11 +995,18 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # returns the composed context plus the groups that composed it, in rank order.
     # The CLI ranks nothing, selects nothing, and budgets nothing.
     console.action("\nOrchestrating Engineering Context")
+    run_state_mgr.start_stage("engineering_context_orch", input_artifacts=file_mode_inputs)
     try:
         orchestration = context.create_engineering_context_orchestrator().orchestrate(candidates)
     except ContextOrchestrationError as exc:
+        run_state_mgr.fail_stage("engineering_context_orch", error=exc)
         console.error(f"Engineering context orchestration failed: {exc}")
+        run_lock.release()
         return 1
+    else:
+        run_state_mgr.succeed_stage(
+            "engineering_context_orch", output_artifacts=[target_dir / "engineering_context.json"]
+        )
     engineering_context = orchestration.context
     selected = orchestration.primary_group
     console.ok(f"{engineering_context.context_id}")
@@ -905,9 +1022,13 @@ def handle_analyze(args: argparse.Namespace) -> int:
         console.action("Dry run — skipping provider call")
         llm_request = prompt_request.to_llm_request(request_id=_DRY_RUN_REQUEST_ID)
         result: Any = None
+        run_state_mgr.skip_stage("requirement_analysis")  # consciously not run this invocation
         console.ok("Provider call skipped")
     else:
         console.action("Calling Provider")
+        run_state_mgr.start_stage(
+            "requirement_analysis", input_artifacts=[target_dir / "engineering_context.json"]
+        )
         provider = context.create_provider(args.provider, args.model)
         provider.validate_connection()
         service = context.create_requirement_analysis_service(
@@ -918,8 +1039,18 @@ def handle_analyze(args: argparse.Namespace) -> int:
         try:
             result = service.analyze(engineering_context)
         except Exception as exc:  # surface provider/orchestration errors cleanly
+            run_state_mgr.fail_stage("requirement_analysis", error=exc)
             console.error(f"Analysis failed: {exc}")
+            run_lock.release()
             return 1
+        else:
+            run_state_mgr.succeed_stage(
+                "requirement_analysis",
+                output_artifacts=[
+                    target_dir / "analysis_result.json",
+                    target_dir / "raw_llm_response.json",
+                ],
+            )
         console.ok("Success")
         llm_request = prompt_request.to_llm_request(request_id=result.execution_id)
 
@@ -931,12 +1062,21 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # Grounding/Validation/CP1.
     requirement_enhancement_result: Any = None
     if result is not None:
+        run_state_mgr.start_stage(
+            "requirement_enhancement", input_artifacts=[target_dir / "analysis_result.json"]
+        )
         try:
             requirement_enhancement_result = run_requirement_enhancement_phase(
                 context, engineering_context, result, console
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("requirement_enhancement", error=exc)
             console.error(f"Requirement enhancement failed: {exc}")
+        else:
+            run_state_mgr.succeed_stage(
+                "requirement_enhancement",
+                output_artifacts=[target_dir / "requirement_enhancement_result.json"],
+            )
 
     # Grounding phase (CAP-077F.2): strictly downstream of Analysis. It grades the
     # generated requirements against the evidence the reasoner actually saw and returns a
@@ -947,13 +1087,20 @@ def handle_analyze(args: argparse.Namespace) -> int:
     grounding_result: Any = None
     if result is not None:
         console.action("\nGrounding")
+        run_state_mgr.start_stage(
+            "grounding", input_artifacts=[target_dir / "analysis_result.json"]
+        )
         try:
             grounding_result = context.create_grounding_service().assess(
                 engineering_context, result
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("grounding", error=exc)
             console.error(f"Grounding failed: {exc}")
         else:
+            run_state_mgr.succeed_stage(
+                "grounding", output_artifacts=[target_dir / "grounding_result.json"]
+            )
             summary = grounding_result.assessment.summary
             console.ok(f"Grounding score: {summary.grounding_score}")
             console.note(f"  {summary.verdict}")
@@ -971,19 +1118,33 @@ def handle_analyze(args: argparse.Namespace) -> int:
     validation_result: Any = None
     cp1_result: Any = None
     if getattr(args, "validate", False) and result is not None:
+        run_state_mgr.start_stage(
+            "validation", input_artifacts=[target_dir / "analysis_result.json"]
+        )
         try:
             validation_result, normalization_result = run_validation_phase(
                 context, result, console, validation_profile
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("validation", error=exc)
             console.error(f"Response validation failed: {exc}")
         else:
+            run_state_mgr.succeed_stage(
+                "validation", output_artifacts=[target_dir / "validation_result.json"]
+            )
+            run_state_mgr.start_stage(
+                "cp1", input_artifacts=[target_dir / "validation_result.json"]
+            )
             try:
                 cp1_result = run_cp1_phase(
                     context, validation_result, normalization_result, console
                 )
             except Exception as exc:  # surface but never fail the analysis run
+                run_state_mgr.fail_stage("cp1", error=exc)
                 console.error(f"CP1 engineering-readiness evaluation failed: {exc}")
+            else:
+                cp1_outputs = [target_dir / "cp1_report.md"] if cp1_result is not None else []
+                run_state_mgr.succeed_stage("cp1", output_artifacts=cp1_outputs)
 
     # Quality Governance phase (CAP-080D): the terminal release authority, immediately after
     # CP1 and at the permanently frozen end of the pipeline (Grounding → Validation → CP1 →
@@ -993,25 +1154,42 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # is surfaced but never fatal, and never corrupts the already-completed upstream results.
     quality_governance_result: Any = None
     if grounding_result is not None and validation_result is not None and cp1_result is not None:
+        run_state_mgr.start_stage(
+            "requirement_quality_governance",
+            input_artifacts=[
+                target_dir / "grounding_result.json",
+                target_dir / "validation_result.json",
+            ],
+        )
         try:
             quality_governance_result = run_quality_governance_phase(
                 context, grounding_result, validation_result, cp1_result, console
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("requirement_quality_governance", error=exc)
             console.error(f"Quality governance evaluation failed: {exc}")
+        else:
+            run_state_mgr.succeed_stage(
+                "requirement_quality_governance",
+                output_artifacts=[target_dir / "quality_governance_result.json"],
+            )
 
     # TestableRequirementSet emission (ADR-0032 carve-out 1, ADR-0034, ADR-0042): the
     # Layer 1 -> Layer 2 boundary contract, immediately after Quality Governance since
-    # it gates on that decision alone (ADR-0034 property 4). run_id is interim here —
-    # result.execution_id, until ADR-0036's run/stage state model (a separate,
-    # subsequent milestone) establishes the canonical run_id this field is specified
-    # against. A surfaced-but-non-fatal failure mirrors every peer phase.
+    # it gates on that decision alone (ADR-0034 property 4). run_id now uses the real,
+    # canonical run_id (Part 3, ADR-0036) rather than Part 2's interim
+    # result.execution_id placeholder. A surfaced-but-non-fatal failure mirrors every
+    # peer phase.
     testable_requirement_set: Any = None
     if quality_governance_result is not None:
+        run_state_mgr.start_stage(
+            "testable_requirement_emission",
+            input_artifacts=[target_dir / "quality_governance_result.json"],
+        )
         try:
             testable_requirement_set = run_testable_requirement_emission_phase(
                 context,
-                result.execution_id,
+                run_id,
                 result,
                 engineering_context,
                 selected,
@@ -1019,7 +1197,17 @@ def handle_analyze(args: argparse.Namespace) -> int:
                 console,
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("testable_requirement_emission", error=exc)
             console.error(f"TestableRequirementSet emission failed: {exc}")
+        else:
+            trs_outputs = (
+                [target_dir / "testable_requirement_set.json"]
+                if testable_requirement_set is not None
+                else []
+            )
+            run_state_mgr.succeed_stage(
+                "testable_requirement_emission", output_artifacts=trs_outputs
+            )
 
     # Recommendation phase (CAP-082C): immediately after Quality Governance, at the
     # permanently frozen end of the pipeline (Requirement Enhancement → Grounding →
@@ -1037,6 +1225,9 @@ def handle_analyze(args: argparse.Namespace) -> int:
         and cp1_result is not None
         and quality_governance_result is not None
     ):
+        run_state_mgr.start_stage(
+            "recommendation", input_artifacts=[target_dir / "quality_governance_result.json"]
+        )
         try:
             recommendation_result = run_recommendation_phase(
                 context,
@@ -1048,7 +1239,12 @@ def handle_analyze(args: argparse.Namespace) -> int:
                 console,
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("recommendation", error=exc)
             console.error(f"Recommendation failed: {exc}")
+        else:
+            run_state_mgr.succeed_stage(
+                "recommendation", output_artifacts=[target_dir / "recommendation_result.json"]
+            )
 
     # Continuous Improvement phase (CAP-083C): Layer 2's first capability, immediately
     # after Recommendation, at the permanently frozen end of the pipeline (... →
@@ -1063,13 +1259,22 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # never corrupts the already-completed upstream results.
     continuous_improvement_result: Any = None
     if result is not None:
+        run_state_mgr.start_stage(
+            "continuous_improvement", input_artifacts=[target_dir / "analysis_result.json"]
+        )
         try:
             historical_dataset = _historical_dataset_reference_for_execution(result)
             continuous_improvement_result = run_continuous_improvement_phase(
                 context, historical_dataset, console
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("continuous_improvement", error=exc)
             console.error(f"Continuous improvement failed: {exc}")
+        else:
+            run_state_mgr.succeed_stage(
+                "continuous_improvement",
+                output_artifacts=[target_dir / "continuous_improvement_result.json"],
+            )
 
     # Knowledge Graph phase (CAP-084C): Layer 2's second capability, immediately
     # after Continuous Improvement, at the permanently frozen end of the pipeline
@@ -1085,6 +1290,9 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # never fatal, and never corrupts the already-completed upstream results.
     knowledge_graph_result: Any = None
     if result is not None:
+        run_state_mgr.start_stage(
+            "knowledge_graph", input_artifacts=[target_dir / "analysis_result.json"]
+        )
         try:
             kg_historical_dataset = _knowledge_graph_historical_dataset_reference_for_execution(
                 result
@@ -1093,7 +1301,12 @@ def handle_analyze(args: argparse.Namespace) -> int:
                 context, kg_historical_dataset, console
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("knowledge_graph", error=exc)
             console.error(f"Knowledge graph build failed: {exc}")
+        else:
+            run_state_mgr.succeed_stage(
+                "knowledge_graph", output_artifacts=[target_dir / "knowledge_graph_result.json"]
+            )
 
     # Organizational Memory phase (CAP-085C): Layer 2's third capability, immediately
     # after Knowledge Graph, at the permanently frozen end of the pipeline (... →
@@ -1106,12 +1319,25 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # already-completed upstream results.
     organizational_memory_result: Any = None
     if continuous_improvement_result is not None and knowledge_graph_result is not None:
+        run_state_mgr.start_stage(
+            "organizational_memory",
+            input_artifacts=[
+                target_dir / "continuous_improvement_result.json",
+                target_dir / "knowledge_graph_result.json",
+            ],
+        )
         try:
             organizational_memory_result = run_organizational_memory_phase(
                 context, continuous_improvement_result, knowledge_graph_result, console
             )
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("organizational_memory", error=exc)
             console.error(f"Organizational memory build failed: {exc}")
+        else:
+            run_state_mgr.succeed_stage(
+                "organizational_memory",
+                output_artifacts=[target_dir / "organizational_memory_result.json"],
+            )
 
     # Learning phase (CAP-086C): Layer 2's fourth and final capability,
     # immediately after Organizational Memory, at the permanently frozen end
@@ -1125,10 +1351,18 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # already-completed upstream results.
     learning_result: Any = None
     if organizational_memory_result is not None:
+        run_state_mgr.start_stage(
+            "learning", input_artifacts=[target_dir / "organizational_memory_result.json"]
+        )
         try:
             learning_result = run_learning_phase(context, organizational_memory_result, console)
         except Exception as exc:  # surface but never fail the analysis run
+            run_state_mgr.fail_stage("learning", error=exc)
             console.error(f"Learning build failed: {exc}")
+        else:
+            run_state_mgr.succeed_stage(
+                "learning", output_artifacts=[target_dir / "learning_result.json"]
+            )
 
     data = ExecutionData(
         selected=selected,
@@ -1158,24 +1392,32 @@ def handle_analyze(args: argparse.Namespace) -> int:
         testable_requirement_set=testable_requirement_set,
     )
 
-    effective_save = args.save_execution or bool(args.execution_name)
-    history = ExecutionHistory(_resolve_output_base(args.output_dir))
-    target_dir = history.resolve_target(
-        save_execution=effective_save, execution_name=args.execution_name
-    )
-    history.prepare(target_dir)
-
+    # target_dir, effective_save, history, and file_mode_inputs were already
+    # resolved up front (run/stage state setup, above) -- reused here.
+    run_state_mgr.start_stage("execution_package_write", input_artifacts=file_mode_inputs)
     console.action("Writing Execution Package")
-    write_result = ExecutionWriter().write(target_dir, data)
+    try:
+        write_result = ExecutionWriter().write(target_dir, data)
+    except Exception as exc:  # the one hard-fail phase: without it there is no package at all
+        run_state_mgr.fail_stage("execution_package_write", error=exc)
+        console.error(f"Execution package write failed: {exc}")
+        run_lock.release()
+        return 1
+    else:
+        output_paths = [target_dir / name for name in write_result.generated_artifacts]
+        output_paths.append(target_dir / "manifest.json")
+        run_state_mgr.succeed_stage("execution_package_write", output_artifacts=output_paths)
     history.finalize(target_dir, save_execution=effective_save)
     console.ok("Complete")
 
     console.note("\nExecution Finished")
+    console.note(f"  run_id  : {run_id}")
     console.note(f"  package : {write_result.target_dir}")
     console.note(f"  latest  : {history.latest_dir}")
     if result is not None:
         console.note(f"  provider={args.provider} model={result.model}")
         console.note(f"  json_valid={write_result.json_valid}")
+    run_lock.release()
     return 0
 
 
@@ -1361,7 +1603,22 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument(
         "--execution-name",
         default=None,
-        help="Name this execution; stored under output/executions/<name>/ (implies save).",
+        help=(
+            "Human-readable label recorded inside run_state.json (ADR-0036 D3); "
+            "implies save. The run directory itself is named by the platform-"
+            "assigned run_id, never this label."
+        ),
+    )
+    analyze.add_argument(
+        "--resume",
+        default=None,
+        metavar="RUN_ID",
+        help=(
+            "Resume the run at output/executions/<RUN_ID>/ (ADR-0036). If its "
+            "Execution Package is already complete and unchanged, exits "
+            "immediately; otherwise re-runs the full pipeline into the same "
+            "run directory."
+        ),
     )
     analyze.add_argument(
         "--dry-run",
