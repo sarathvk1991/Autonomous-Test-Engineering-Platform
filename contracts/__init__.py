@@ -26,6 +26,7 @@ from contracts.testable_requirement import (
     TestableRequirement,
     TestableRequirementSet,
     TestableRequirementSetProvenance,
+    build_risk,
     build_testable_requirement,
 )
 
@@ -43,5 +44,6 @@ __all__ = [
     "TestableRequirement",
     "TestableRequirementSet",
     "TestableRequirementSetProvenance",
+    "build_risk",
     "build_testable_requirement",
 ]

@@ -300,7 +300,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "The run-scoped envelope; the sole functional replacement for the removed\n``RequirementPackage`` (ADR-0034, ADR-0035 item 3).\n\nOne instance per run, containing every :class:`TestableRequirement` the run\nproduced (ADR-0042 Decision 6 \u2014 not partitioned by component).",
+  "description": "The run-scoped envelope; the sole functional replacement for the removed\n``RequirementPackage`` (ADR-0034, ADR-0035 item 3).\n\nOne instance per run, containing every :class:`TestableRequirement` the run\nproduced (ADR-0042 Decision 6 \u2014 not partitioned by component).\n\n``risks`` lives here, at the set level, per ADR-0042 Decision 1's structural\ncorrection note (2026-07-25): Layer 1's risks are a single flat, run-level\nlist with no per-requirement attribution, so a per-requirement-only home\n(the original placement) would force a choice between fabricating\nattribution or discarding honest signal. ``TestableRequirement.risks``\nstays in the schema, reserved, and always empty in ``contract_version``\n1.0.0 \u2014 see :func:`build_testable_requirement`.",
   "properties": {
     "contractVersion": {
       "default": "1.0.0",
@@ -320,6 +320,13 @@
         "$ref": "#/$defs/TestableRequirement"
       },
       "title": "Requirements",
+      "type": "array"
+    },
+    "risks": {
+      "items": {
+        "$ref": "#/$defs/Risk"
+      },
+      "title": "Risks",
       "type": "array"
     },
     "runId": {

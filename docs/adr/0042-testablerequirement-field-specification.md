@@ -30,6 +30,13 @@ Run-scoped envelope; replaces the deleted `RequirementPackage` (ADR-0034, ADR-00
 | `provenance.requirement_quality_governance_decision` | `PASS` \| `PASS_WITH_WARNINGS` | The run-level gate ADR-0034 property 4 already locked — `FAIL` runs never reach this envelope at all. |
 | `provenance.governance_report_ref` | string (artifact path) | Points at the Requirement Quality Governance report for this run, per ADR-0036's artifact-path-not-object discipline. |
 | `requirements[]` | `TestableRequirement[]` | — |
+| `risks[]` | `Risk[]` | Added by the structural correction note below (2026-07-25) — not part of this ADR's original Decision 1 table. |
+
+**Structural correction note (additive, 2026-07-25).** ADR-0042 placed `risks[]` only on `TestableRequirement` (per-requirement). Verified during Part 2: Layer 1's actual output carries risks as a single flat, run-level list (`AnalysisResult` / prompt output) with no per-requirement attribution — the same structural non-attribution documented for `AcceptanceCriterion.traces_to`, one level up. A per-requirement-only home for run-level risk data forces a false choice between fabricating attribution (attaching all risks to every requirement) and destroying honest signal (emitting empty and dropping the risks entirely). Neither is acceptable under this ADR's no-fabrication / no-silent-loss principles.
+
+Correction: `risks[]` is added to `TestableRequirementSet` at the **set** level, matching the data's true run-level granularity. In `contract_version` 1.0.0 the set-level `risks[]` is populated from Layer 1's run-level risk list; each `Risk` carries `traces_to` at the group level (honest, per the `Risk.traces_to` resolution above). `TestableRequirement.risks[]` is **retained** in the schema, emits empty in 1.0.0, and is reserved for future per-requirement risk attribution — a new Layer 1 capability, gated behind ADR-0032's freeze-lifting procedure.
+
+`contract_version` remains `1.0.0`: this corrects the contract's shape to match honest Layer 1 capability before any consumer shipped against it (this note is written during the first emitter's initial implementation, pre-release). The Part 1 schema-compatibility test's baseline is regenerated as part of this correction, deliberately and reported — the added field is a pre-release shape correction, not an unversioned change to a released contract.
 
 ### `TestableRequirement`
 

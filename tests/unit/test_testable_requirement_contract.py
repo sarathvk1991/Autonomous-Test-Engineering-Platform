@@ -27,6 +27,7 @@ from contracts.testable_requirement import (
     SourceRef,
     TestableRequirementSet,
     TestableRequirementSetProvenance,
+    build_risk,
     build_testable_requirement,
 )
 from shared.enums.base import SourceSystem
@@ -55,9 +56,9 @@ def _make_requirement_set() -> TestableRequirementSet:
                 polarity_hints=(PolarityHint.NEGATIVE,),
             ),
         ],
-        risks=[
-            RiskInput(category=Category.SECURITY, statement="Brute force risk", traces_to=(_REF,)),
-        ],
+    )
+    risk = build_risk(
+        RiskInput(category=Category.SECURITY, statement="Brute force risk", traces_to=(_REF,))
     )
     return TestableRequirementSet(
         run_id="run-1",
@@ -72,6 +73,7 @@ def _make_requirement_set() -> TestableRequirementSet:
             governance_report_ref="quality_governance_report.md",
         ),
         requirements=[requirement],
+        risks=[risk],
     )
 
 
@@ -196,27 +198,17 @@ class TestOptionalCorrectionNote:
         assert dumped["priority"] is None
 
     def test_risk_category_may_be_none(self) -> None:
-        requirement = build_testable_requirement(
-            title="Some requirement",
-            component="auth",
-            functional_tag="@auth",
-            priority=Priority.MEDIUM,
-            traces_to=[_REF],
-            risks=[RiskInput(category=None, statement="Unclassified risk", traces_to=(_REF,))],
+        risk = build_risk(
+            RiskInput(category=None, statement="Unclassified risk", traces_to=(_REF,))
         )
-        assert requirement.risks[0].category is None
+        assert risk.category is None
 
     def test_risk_category_none_serializes_to_null(self) -> None:
-        requirement = build_testable_requirement(
-            title="Some requirement",
-            component="auth",
-            functional_tag="@auth",
-            priority=Priority.MEDIUM,
-            traces_to=[_REF],
-            risks=[RiskInput(category=None, statement="Unclassified risk", traces_to=(_REF,))],
+        risk = build_risk(
+            RiskInput(category=None, statement="Unclassified risk", traces_to=(_REF,))
         )
-        dumped = requirement.model_dump(mode="json", by_alias=True)
-        assert dumped["risks"][0]["category"] is None
+        dumped = risk.model_dump(mode="json", by_alias=True)
+        assert dumped["category"] is None
 
     def test_acceptance_criterion_traces_to_is_always_empty(self) -> None:
         """ADR-0042 Decision 1's third correction note (2026-07-25):
@@ -308,6 +300,7 @@ class TestFieldShapes:
             "generated_at",
             "provenance",
             "requirements",
+            "risks",
         }
         assert set(TestableRequirementSet.model_fields) == expected
 
@@ -368,16 +361,41 @@ class TestFieldShapes:
         assert set(type(requirement.acceptance_criteria[0]).model_fields) == expected
 
     def test_risk_fields(self) -> None:
+        risk = build_risk(RiskInput(category=Category.QUALITY, statement="y"))
+        expected = {"risk_id", "statement", "category", "traces_to"}
+        assert set(type(risk).model_fields) == expected
+
+    def test_testable_requirement_risks_field_is_always_empty(self) -> None:
+        """TestableRequirement.risks stays in the schema, reserved, per ADR-0042
+        Decision 1's structural correction note (2026-07-25) — risks live on
+        TestableRequirementSet now."""
         requirement = build_testable_requirement(
             title="X",
             component="auth",
             functional_tag="@x",
             priority=Priority.LOW,
             traces_to=[_REF],
-            risks=[RiskInput(category=Category.QUALITY, statement="y")],
         )
-        expected = {"risk_id", "statement", "category", "traces_to"}
-        assert set(type(requirement.risks[0]).model_fields) == expected
+        assert requirement.risks == ()
+
+    def test_requirement_set_risks_are_populated(self) -> None:
+        risk = build_risk(RiskInput(category=Category.QUALITY, statement="y", traces_to=(_REF,)))
+        requirement_set = TestableRequirementSet(
+            run_id="run-1",
+            generated_at=datetime(2026, 7, 25, tzinfo=UTC),
+            provenance=TestableRequirementSetProvenance(
+                prompt_id="requirement-analysis",
+                prompt_version="1.0.0",
+                prompt_sha256="a" * 64,
+                provider="gemini",
+                model="gemini-3.1-flash-lite",
+                requirement_quality_governance_decision=RequirementQualityGovernanceDecision.PASS,
+                governance_report_ref="quality_governance_report.md",
+            ),
+            requirements=[],
+            risks=[risk],
+        )
+        assert requirement_set.risks == (risk,)
 
     def test_title_over_70_chars_accepted_unmodified(self) -> None:
         """title has no length constraint at Layer 1: the .gherkin-lintrc 70-char

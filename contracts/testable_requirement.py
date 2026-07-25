@@ -196,6 +196,14 @@ class TestableRequirementSet(Schema):
 
     One instance per run, containing every :class:`TestableRequirement` the run
     produced (ADR-0042 Decision 6 — not partitioned by component).
+
+    ``risks`` lives here, at the set level, per ADR-0042 Decision 1's structural
+    correction note (2026-07-25): Layer 1's risks are a single flat, run-level
+    list with no per-requirement attribution, so a per-requirement-only home
+    (the original placement) would force a choice between fabricating
+    attribution or discarding honest signal. ``TestableRequirement.risks``
+    stays in the schema, reserved, and always empty in ``contract_version``
+    1.0.0 — see :func:`build_testable_requirement`.
     """
 
     __test__ = False
@@ -207,6 +215,7 @@ class TestableRequirementSet(Schema):
     generated_at: datetime
     provenance: TestableRequirementSetProvenance
     requirements: tuple[TestableRequirement, ...] = Field(default_factory=tuple)
+    risks: tuple[Risk, ...] = Field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -234,11 +243,26 @@ class AcceptanceCriterionInput:
 
 @dataclass(frozen=True)
 class RiskInput:
-    """Everything needed to build one :class:`Risk` except its id."""
+    """Everything needed to build one set-level :class:`Risk` except its id.
+
+    Per ADR-0042 Decision 1's structural correction note (2026-07-25), risks
+    live on :class:`TestableRequirementSet`, not per-requirement — pass these to
+    :func:`build_risk`, once per run-level risk statement.
+    """
 
     category: Category | None
     statement: str
     traces_to: tuple[SourceRef, ...] = ()
+
+
+def build_risk(risk: RiskInput) -> Risk:
+    """The sole constructor of a :class:`Risk`. Mints ``risk_id`` (Decision 2)."""
+    return Risk(
+        risk_id=generate_risk_id(risk.statement, [ref.external_id for ref in risk.traces_to]),
+        statement=risk.statement,
+        category=risk.category,
+        traces_to=risk.traces_to,
+    )
 
 
 def _canonical_json(payload: Mapping[str, object]) -> str:
@@ -253,16 +277,20 @@ def build_testable_requirement(
     priority: Priority | None,
     traces_to: Sequence[SourceRef],
     acceptance_criteria: Sequence[AcceptanceCriterionInput] = (),
-    risks: Sequence[RiskInput] = (),
     narrative: str | None = None,
 ) -> TestableRequirement:
     """The sole constructor of a :class:`TestableRequirement`.
 
     Mints ``requirement_id`` (ADR-0042 Decision 2, over ``title`` + this
-    requirement's own ``traces_to`` external ids), every ``AC-*``/``RSK-*`` id
-    (Decision 2), and ``content_hash`` (Decision 3, over the requirement's
-    canonical JSON excluding ``requirement_id``, ``content_hash``, and
-    ``supersedes``) — never by the caller.
+    requirement's own ``traces_to`` external ids), every ``AC-*`` id (Decision
+    2), and ``content_hash`` (Decision 3, over the requirement's canonical JSON
+    excluding ``requirement_id``, ``content_hash``, and ``supersedes``) — never
+    by the caller.
+
+    Carries no ``risks`` parameter: per ADR-0042 Decision 1's structural
+    correction note (2026-07-25), risks live on
+    :class:`TestableRequirementSet` — build them with :func:`build_risk`.
+    ``TestableRequirement.risks`` is always constructed empty.
     """
     source_external_ids = [ref.external_id for ref in traces_to]
     requirement_id = generate_requirement_id(title, source_external_ids)
@@ -278,17 +306,6 @@ def build_testable_requirement(
         )
         for ordinal, criterion in enumerate(acceptance_criteria, start=1)
     )
-    built_risks = tuple(
-        Risk(
-            risk_id=generate_risk_id(
-                risk.statement, [ref.external_id for ref in risk.traces_to]
-            ),
-            statement=risk.statement,
-            category=risk.category,
-            traces_to=risk.traces_to,
-        )
-        for risk in risks
-    )
 
     content_fields = {
         "title": title,
@@ -299,7 +316,7 @@ def build_testable_requirement(
         "acceptanceCriteria": [
             ac.model_dump(mode="json", by_alias=True) for ac in built_criteria
         ],
-        "risks": [risk.model_dump(mode="json", by_alias=True) for risk in built_risks],
+        "risks": [],
         "tracesTo": [ref.model_dump(mode="json", by_alias=True) for ref in traces_to],
     }
     content_hash = compute_content_hash(_canonical_json(content_fields))
@@ -314,7 +331,7 @@ def build_testable_requirement(
         narrative=narrative,
         priority=priority,
         acceptance_criteria=built_criteria,
-        risks=built_risks,
+        risks=(),
         traces_to=tuple(traces_to),
     )
 
@@ -333,5 +350,6 @@ __all__ = [
     "TestableRequirement",
     "TestableRequirementSet",
     "TestableRequirementSetProvenance",
+    "build_risk",
     "build_testable_requirement",
 ]
