@@ -63,6 +63,8 @@ The freeze lifts only by a new, numbered ADR that:
 
 Until such an ADR exists, any pull request or proposal that allocates a new Layer 1 CAP number is out of policy under this ADR.
 
+**Resolution note (additive, 2026-07-25, ADR-0043).** ADR-0043 (Layer 2 Feature Engineering Architecture Freeze) is Layer 2's own Architecture Freeze — stage 1 of the six-stage lifecycle cited above (Architecture Freeze → Deterministic Implementation → Runtime Contract Freeze → **Runtime Integration** → Execution Package Integration → Golden Rebaseline), not stage 4. Precondition 1 above is therefore **not met** by ADR-0043 and **this freeze is not lifted by it** — ADR-0043 says so explicitly (its D8) rather than asserting a precondition that is plainly false against the repository's current state (no Layer 2 code exists). Preconditions 2 and 3 are consequently moot for ADR-0043; it names no Layer 1 CAP number. This freeze remains in full force, unmodified, until a separate, future, numbered ADR satisfies all three preconditions above — proposed only once Layer 2's own implementation (which ADR-0043 does authorize, on its own terms, independent of this freeze — see ADR-0043 D8) reaches Runtime Integration.
+
 ## Recommendations (permanent)
 
 1. **No new Layer 1 CAP number without a lifting ADR.** Enforced by review, not by tooling, at this stage.

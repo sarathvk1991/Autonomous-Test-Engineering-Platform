@@ -136,6 +136,8 @@ This is a governance contract, not runtime enforcement.
 5. No reflection / dynamic loading.
 6. Registry seals immediately after composition — no late registration.
 
+**Amendment note (additive, 2026-07-25, ADR-0043).** ADR-0043 (Layer 2 Feature Engineering Architecture Freeze) establishes Layer 2 as a **second consumer** of this registry (its D4) — Layer 2 reuses the existing `PromptRegistry`/`PromptLoader`/SHA-256-manifest machinery rather than building the second, LLD-proposed `prompt-registry.json`. This registry's package currently lives at `requirement_intelligence/prompts/`, a Layer-1-scoped location; ADR-0043 directs a future extraction to a shared, platform-level location so neither layer's package tree owns code the other imports directly, but does **not** itself decide or execute that extraction — it flags, and leaves open, whether the move fits within ADR-0032's five enumerated carve-outs or requires that freeze to be properly lifted first — forced at the point Layer 2 implementation first needs to import this registry, not deferred past that point (see ADR-0043 D4 for the full reasoning and the forcing clause). No architectural invariant A–H above changes; this note records a second consumer and a flagged future relocation, nothing else.
+
 ## Consequences
 
 ### Positive
