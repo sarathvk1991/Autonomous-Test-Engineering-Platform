@@ -143,6 +143,17 @@ class TestSourceRefSalvage:
             ref = SourceRef(system=system, external_id="x")
             assert ref.system == system
 
+    def test_serializes_camel_case_consistent_with_the_rest_of_the_document(self) -> None:
+        """Found while sanity-checking the emitter against a real run: SourceRef
+        originally had no alias generator, so tracesTo[] entries serialized
+        external_id in snake_case while every other field in the same document
+        is camelCase. SourceRef now carries the same alias_generator as its
+        siblings."""
+        ref = SourceRef(system=SourceSystem.JIRA, external_id="PROJ-1")
+        dumped = ref.model_dump(mode="json", by_alias=True)
+        assert dumped == {"system": "jira", "externalId": "PROJ-1", "url": None}
+        assert "external_id" not in dumped
+
 
 @pytest.mark.unit
 class TestSupersedes:

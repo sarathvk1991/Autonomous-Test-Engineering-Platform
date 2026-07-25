@@ -87,8 +87,15 @@ class SourceRef(Schema):
     """Provenance pointer back to the originating record in a source system.
 
     Salvaged unchanged from the removed ``canonical_requirement.py`` (ADR-0042
-    Decision 4) — same three fields, same shape, new home.
+    Decision 4) — same three fields, same shape, new home. ``model_config`` adds
+    the camelCase alias generator every other model in this module has (the
+    original ``canonical_requirement.py`` did not need one — this fixes a
+    same-document inconsistency found while sanity-checking the emitter
+    against a real run: without it, ``tracesTo`` arrays serialized
+    ``external_id`` in snake_case while the rest of the document is camelCase).
     """
+
+    model_config = ConfigDict(alias_generator=to_camel)
 
     system: SourceSystem
     external_id: str

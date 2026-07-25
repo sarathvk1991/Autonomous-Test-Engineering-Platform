@@ -207,4 +207,19 @@ class ManifestBuilder:
             manifest["learningReport"] = "learning_report.md"
             manifest["learningMetrics"] = "learning_metrics.md"
 
+        # TestableRequirementSet references (ADR-0032 carve-out 1, ADR-0034, ADR-0042):
+        # additive, and only when a set was emitted. When it was not (a FAIL governance
+        # decision, or governance not executing), the manifest is byte-identical to
+        # before — no key is added, no schema change (manifestSchemaVersion stays
+        # 1.0.0). The artifact already appears in ``generatedArtifacts`` via the same
+        # checksum mechanism as every other file. This key is package metadata only —
+        # a flag and the one artifact filename — never the contract's content itself.
+        # The canonical requirements, risks, and provenance live exclusively in
+        # ``testable_requirement_set.json``: the manifest references that artifact, it
+        # never duplicates its content.
+        testable_requirement_set = data.testable_requirement_set
+        if testable_requirement_set is not None:
+            manifest["testableRequirementSetExecuted"] = True
+            manifest["testableRequirementSetArtifact"] = "testable_requirement_set.json"
+
         return manifest

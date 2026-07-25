@@ -539,6 +539,46 @@ def run_quality_governance_phase(
     return governance_result
 
 
+def run_testable_requirement_emission_phase(
+    context: PlatformContext,
+    run_id: str,
+    analysis_result: Any,
+    engineering_context: Any,
+    consolidated_artifact: Any,
+    governance_result: Any,
+    console: Console,
+) -> Any:
+    """TestableRequirementSet emission — the Layer 1 -> Layer 2 boundary contract
+    (ADR-0032 carve-out 1, ADR-0034, ADR-0042).
+
+    Gated on Quality Governance's decision (ADR-0034 property 4): a ``FAIL`` run
+    emits nothing and this returns ``None``. This CLI is pure orchestration
+    glue — it constructs no contract field itself; ``emit_testable_requirement_set``
+    owns every mapping decision.
+    """
+    from requirement_intelligence.testable_requirement import emit_testable_requirement_set
+
+    console.action("\nEmitting TestableRequirementSet")
+    testable_requirement_set = emit_testable_requirement_set(
+        run_id=run_id,
+        analysis_result=analysis_result,
+        engineering_context=engineering_context,
+        consolidated_artifact=consolidated_artifact,
+        governance_result=governance_result,
+        prompt_registry=context.prompt_registry,
+    )
+    if testable_requirement_set is None:
+        console.note(
+            f"  Skipped — governance decision "
+            f"'{governance_result.assessment.decision}' does not cross the boundary "
+            "(ADR-0034 property 4)."
+        )
+        return None
+    console.ok(f"{len(testable_requirement_set.requirements)} requirement(s) emitted")
+    console.note(f"  Risks               : {len(testable_requirement_set.risks)}")
+    return testable_requirement_set
+
+
 def run_recommendation_phase(
     context: PlatformContext,
     enhancement_result: Any,
@@ -960,6 +1000,27 @@ def handle_analyze(args: argparse.Namespace) -> int:
         except Exception as exc:  # surface but never fail the analysis run
             console.error(f"Quality governance evaluation failed: {exc}")
 
+    # TestableRequirementSet emission (ADR-0032 carve-out 1, ADR-0034, ADR-0042): the
+    # Layer 1 -> Layer 2 boundary contract, immediately after Quality Governance since
+    # it gates on that decision alone (ADR-0034 property 4). run_id is interim here —
+    # result.execution_id, until ADR-0036's run/stage state model (a separate,
+    # subsequent milestone) establishes the canonical run_id this field is specified
+    # against. A surfaced-but-non-fatal failure mirrors every peer phase.
+    testable_requirement_set: Any = None
+    if quality_governance_result is not None:
+        try:
+            testable_requirement_set = run_testable_requirement_emission_phase(
+                context,
+                result.execution_id,
+                result,
+                engineering_context,
+                selected,
+                quality_governance_result,
+                console,
+            )
+        except Exception as exc:  # surface but never fail the analysis run
+            console.error(f"TestableRequirementSet emission failed: {exc}")
+
     # Recommendation phase (CAP-082C): immediately after Quality Governance, at the
     # permanently frozen end of the pipeline (Requirement Enhancement → Grounding →
     # Validation → CP1 → Quality Governance → Recommendation → Execution Package). It
@@ -1094,6 +1155,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         knowledge_graph_result=knowledge_graph_result,
         organizational_memory_result=organizational_memory_result,
         learning_result=learning_result,
+        testable_requirement_set=testable_requirement_set,
     )
 
     effective_save = args.save_execution or bool(args.execution_name)

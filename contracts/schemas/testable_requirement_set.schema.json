@@ -124,10 +124,10 @@
     },
     "SourceRef": {
       "additionalProperties": false,
-      "description": "Provenance pointer back to the originating record in a source system.\n\nSalvaged unchanged from the removed ``canonical_requirement.py`` (ADR-0042\nDecision 4) \u2014 same three fields, same shape, new home.",
+      "description": "Provenance pointer back to the originating record in a source system.\n\nSalvaged unchanged from the removed ``canonical_requirement.py`` (ADR-0042\nDecision 4) \u2014 same three fields, same shape, new home. ``model_config`` adds\nthe camelCase alias generator every other model in this module has (the\noriginal ``canonical_requirement.py`` did not need one \u2014 this fixes a\nsame-document inconsistency found while sanity-checking the emitter\nagainst a real run: without it, ``tracesTo`` arrays serialized\n``external_id`` in snake_case while the rest of the document is camelCase).",
       "properties": {
-        "external_id": {
-          "title": "External Id",
+        "externalId": {
+          "title": "Externalid",
           "type": "string"
         },
         "system": {
@@ -148,7 +148,7 @@
       },
       "required": [
         "system",
-        "external_id"
+        "externalId"
       ],
       "title": "SourceRef",
       "type": "object"

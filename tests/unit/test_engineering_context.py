@@ -849,6 +849,13 @@ def test_platform_context_returns_independent_instances() -> None:
 #: parameter the service signature already declared) to recover the evidence corpus.
 #: Still a dependency on the model only, and the subsystem stays unwired from the
 #: execution pipeline.
+#:
+#: ``testable_requirement/emitter.py`` joined in ADR-0032 carve-out 1 (Part 2 of
+#: the TestableRequirement contract build): ``emit_testable_requirement_set()``
+#: reads ``EngineeringContext.evidence`` to build ``TestableRequirement.traces_to``
+#: at run-level scope (every contributing group the reasoner actually saw, not
+#: just the primary ranked one — ADR-0042 Decision 1's ``traces_to`` correction
+#: note). A dependency on the model only, same as every entry above.
 _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/platform/platform_context.py"),
     Path("requirement_intelligence/prompts/requirement_prompt_builder.py"),
@@ -859,6 +866,7 @@ _PERMITTED_IMPORTERS = {
     Path("requirement_intelligence/grounding/pipeline.py"),
     Path("requirement_intelligence/enhancement/requirement_enhancement_service.py"),
     Path("requirement_intelligence/enhancement/engine.py"),
+    Path("requirement_intelligence/testable_requirement/emitter.py"),
     Path("scripts/run_requirement_analysis.py"),
 }
 

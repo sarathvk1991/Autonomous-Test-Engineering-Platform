@@ -393,6 +393,16 @@ class ExecutionWriter:
                 "learning_report.md",
                 "learning_metrics.md",
             ]
+        # TestableRequirementSet (ADR-0032 carve-out 1, ADR-0034, ADR-0042): appended
+        # only when a set was emitted — a FAIL governance decision, or governance not
+        # having executed, emits nothing (ADR-0034 property 4). Pure projection — the
+        # set is serialised as-is; nothing is re-emitted, re-mapped, or recomputed here.
+        if data.testable_requirement_set is not None:
+            _write_json(
+                target_dir / "testable_requirement_set.json",
+                data.testable_requirement_set.model_dump(mode="json", by_alias=True),
+            )
+            names.append("testable_requirement_set.json")
         return tuple(names)
 
     @staticmethod

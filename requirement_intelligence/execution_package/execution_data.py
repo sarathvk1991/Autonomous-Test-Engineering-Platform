@@ -168,6 +168,16 @@ class ExecutionData:
         ``learning_report.md`` / ``learning_metrics.md`` — a pure projection;
         nothing is re-collected, re-validated, re-generated, re-institutionalized,
         or recomputed.
+    testable_requirement_set:
+        The complete ``TestableRequirementSet`` produced by
+        ``emit_testable_requirement_set`` (ADR-0032 carve-out 1, ADR-0034,
+        ADR-0042) — the Layer 1 -> Layer 2 boundary contract for this run.
+        ``None`` when it was not emitted: a dry run, a run whose Requirement
+        Quality Governance decision is ``FAIL`` (ADR-0034 property 4 — a
+        ``FAIL`` run crosses the boundary with nothing), or governance itself
+        did not execute. When present, the execution package serialises it
+        as-is into ``testable_requirement_set.json`` — a pure projection;
+        nothing is re-emitted, re-mapped, or recomputed here.
     """
 
     selected: Any
@@ -195,6 +205,7 @@ class ExecutionData:
     knowledge_graph_result: Any | None = None
     organizational_memory_result: Any | None = None
     learning_result: Any | None = None
+    testable_requirement_set: Any | None = None
 
     @property
     def full_prompt(self) -> str:
