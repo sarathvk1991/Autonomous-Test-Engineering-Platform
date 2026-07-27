@@ -11,6 +11,14 @@
             "introduced_in_release": "1.0.0"
         },
         {
+            "prompt_id": "generate_feature",
+            "version": "1.1.0",
+            "file": "generate_feature_v1.1.0.txt",
+            "sha256": "cc7b1ba3439478e9eb63032e8032d395316e3c99f1d1b89a986d41f798702bed",
+            "lifecycle": "Draft",
+            "introduced_in_release": "1.1.0"
+        },
+        {
             "prompt_id": "fix_gherkin_lint",
             "version": "1.0.0",
             "file": "fix_gherkin_lint_v1.0.0.txt",

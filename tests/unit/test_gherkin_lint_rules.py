@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 
 from feature_engineering.gherkin_lint import load_config
-from feature_engineering.gherkin_lint.linter import lint_corpus, lint_file
+from feature_engineering.gherkin_lint.linter import lint_corpus, lint_file, lint_source
+from feature_engineering.gherkin_lint.source import parse_source_text
 
 CONFIG = load_config(Path("docs/reference/automation-poc/.gherkin-lintrc"))
 FIXTURES = Path("tests/unit/fixtures/gherkin_lint")
@@ -137,3 +138,26 @@ def test_smoke_feature_baseline_is_clean() -> None:
         "test-suite-baseline/src/test/resources/features/smoke.feature", CONFIG
     )
     assert result.violations == (), result.violations
+
+
+def test_lint_source_validates_in_memory_content_with_no_disk_io() -> None:
+    """For a caller that assembles content in memory (e.g. the Layer 2
+    generation core validating a file before ever writing it) -- proves
+    `lint_source` agrees exactly with `lint_file` for the same bytes."""
+    path = FIXTURES / "clean.feature"
+    in_memory_source = parse_source_text(path.read_text(encoding="utf-8"), path=str(path))
+
+    from_memory = lint_source(in_memory_source, CONFIG)
+    from_disk = lint_file(path, CONFIG)
+
+    assert from_memory.violations == from_disk.violations
+    assert from_memory.is_clean
+
+
+def test_lint_source_catches_a_violation_with_no_disk_io() -> None:
+    path = FIXTURES / "no_trailing_spaces_violation.feature"
+    in_memory_source = parse_source_text(path.read_text(encoding="utf-8"), path=str(path))
+
+    result = lint_source(in_memory_source, CONFIG)
+
+    assert {v.rule for v in result.violations} == {"no-trailing-spaces"}

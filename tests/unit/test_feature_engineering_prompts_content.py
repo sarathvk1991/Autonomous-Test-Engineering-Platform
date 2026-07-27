@@ -18,7 +18,11 @@ import pytest
 _VERSIONS_DIR = Path("feature_engineering/prompts/versions")
 
 _CONVERTED = {
-    "generate_feature": _VERSIONS_DIR / "generate_feature_v1.0.0.txt",
+    # generate_feature's *current* version is v1.1.0 -- v1.0.0 is superseded
+    # (see test_generate_feature_v1_0_0_is_superseded_but_kept_historical
+    # below) and every content proof here targets what the generation core
+    # actually consumes.
+    "generate_feature": _VERSIONS_DIR / "generate_feature_v1.1.0.txt",
     "fix_gherkin_lint": _VERSIONS_DIR / "fix_gherkin_lint_v1.0.0.txt",
     "validate_generated_feature": _VERSIONS_DIR / "validate_generated_feature_v1.0.0.txt",
 }
@@ -108,17 +112,49 @@ def test_generate_feature_input_is_structured_not_a_prose_blob() -> None:
         assert field in text
 
 
-def test_generate_feature_emits_tag_placeholder_structure_not_real_ids() -> None:
-    """D2: ids are platform-assigned, never LLM-assigned. The prompt emits
-    placeholder tag structure at the right scope; it never invents a value."""
+def test_generate_feature_writes_already_minted_ac_ids_verbatim() -> None:
+    """ADR-0043 D2: ac_id is already platform-minted by Layer 1 before Layer 2
+    ever runs ("the same discipline REQ-*/AC-*/RSK-* already carry") --
+    v1.1.0's correction over v1.0.0. The prompt is told to write it verbatim,
+    not invent a placeholder for a value it is already given."""
     text = _content("generate_feature")
-    assert "@REQ-PENDING" in text
+    assert "ac_id" in text
+    assert "already platform-assigned" in text or "already-minted" in text
+    assert "verbatim" in text
+    # The old, superseded placeholder convention must not appear in v1.1.0.
+    assert "@REQ-PENDING" not in text
+    assert "@AC-PENDING" not in text
+
+
+def test_generate_feature_never_writes_req_tag_itself() -> None:
+    """req_id has no per-scenario judgment to make -- unlike ac_id, the model
+    never writes it at all; the platform attaches it directly to the derived
+    Feature line. This also sidesteps a real Gherkin constraint: a tag
+    immediately before a Background: block is a parse error, so having the
+    model place a requirement-level tag anywhere in its own output was unsafe
+    regardless of scope."""
+    text = _content("generate_feature")
+    assert "never write a @req-* tag yourself" in text.lower()
+    assert "no @req-* tag anywhere" in text.lower()
+    assert "tags on background" in text.lower()
+
+
+def test_generate_feature_scn_is_the_one_true_placeholder() -> None:
+    """D2: SCN-* cannot exist before scenario content does, and is assigned
+    only after the remediation loop -- the one genuinely deferred id."""
+    text = _content("generate_feature")
     assert "@SCN-PENDING" in text
-    assert "@AC-PENDING" in text
-    assert "platform" in text.lower() and "replaces" in text.lower()
-    assert "Never write a real REQ-*, SCN-*, or AC-* value" in text
-    # And no example of a real-looking id value leaking into the template.
-    assert not re.search(r"@(REQ|SCN|AC)-[A-Za-z0-9]", text.replace("PENDING", ""))
+    assert "one true placeholder" in text.lower()
+    assert "never write a real scn-* value" in text.lower()
+    assert "never invent one" in text.lower()
+
+
+def test_generate_feature_v1_0_0_is_superseded_but_kept_historical() -> None:
+    """The defective v1.0.0 stays registered (SHA-verified, unchanged) rather
+    than being silently rewritten -- ADR-0014's own versioning discipline."""
+    old_text = (_VERSIONS_DIR / "generate_feature_v1.0.0.txt").read_text(encoding="utf-8")
+    assert "@REQ-PENDING" in old_text
+    assert "@AC-PENDING" in old_text
 
 
 def test_fix_gherkin_lint_drops_the_step_definition_constraint() -> None:

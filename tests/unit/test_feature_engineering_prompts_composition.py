@@ -18,11 +18,16 @@ _EXPECTED_PROMPT_IDS = {"generate_feature", "fix_gherkin_lint", "validate_genera
 
 
 def test_registry_seals_with_exactly_the_three_converted_prompts() -> None:
+    """4 registered *definitions* (generate_feature carries two versions: the
+    superseded v1.0.0, kept as a historical record, and the current v1.1.0),
+    but exactly the 3 converted prompt_ids."""
     registry = build_prompt_registry()
 
     assert registry.state is PromptRegistryState.SEALED
-    assert registry.count() == 3
+    assert registry.count() == 4
     assert set(registry.list_prompt_ids()) == _EXPECTED_PROMPT_IDS
+    assert registry.is_registered("generate_feature", "1.0.0")
+    assert registry.is_registered("generate_feature", "1.1.0")
 
 
 def test_every_registered_prompt_sha256_matches_the_manifest() -> None:

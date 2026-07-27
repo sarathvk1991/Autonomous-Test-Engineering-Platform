@@ -50,6 +50,16 @@ def _lint_sources(corpus: list[SourceFile], config: dict[str, Any]) -> LintResul
     return LintResult(violations=tuple(ordered))
 
 
+def lint_source(source: SourceFile, config: dict[str, Any]) -> LintResult:
+    """Lint one already-parsed, in-memory :class:`SourceFile` — no disk I/O.
+
+    For callers (e.g. the Layer 2 generation core) validating assembled
+    content before it is ever written to a file. Corpus-scoped rules run
+    against a single-source corpus, same as :func:`lint_file`.
+    """
+    return _lint_sources([source], config)
+
+
 def lint_file(path: str | Path, config: dict[str, Any]) -> LintResult:
     """Lint exactly one file.
 

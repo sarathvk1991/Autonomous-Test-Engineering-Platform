@@ -17,6 +17,7 @@ from contracts.id_generation import (
     generate_acceptance_criterion_id,
     generate_requirement_id,
     generate_risk_id,
+    generate_scenario_ids,
     normalize,
 )
 
@@ -144,3 +145,72 @@ class TestContentHash:
         digest = compute_content_hash("{}")
         assert len(digest) == 64
         int(digest, 16)  # raises ValueError if not valid hex
+
+
+@pytest.mark.unit
+class TestScenarioIds:
+    """ADR-0043 D2: SCN-* is content-addressed and stable, but -- unlike
+    REQ-*/AC-*/RSK-* -- cannot be minted from a single string alone, since
+    its ordinal is derived from a stable sort across every scenario mapped
+    to the same parent AC-*, not from caller-supplied position."""
+
+    def test_shape(self) -> None:
+        (scn_id,) = generate_scenario_ids("AC-abc12345-01", ["Given a\nWhen b\nThen c"])
+        assert scn_id == "SCN-abc12345-01-01"
+
+    def test_identical_input_yields_identical_ids(self) -> None:
+        contents = ["Given a\nWhen b\nThen c", "Given x\nWhen y\nThen z"]
+        a = generate_scenario_ids("AC-abc12345-01", contents)
+        b = generate_scenario_ids("AC-abc12345-01", contents)
+        assert a == b
+
+    def test_stable_regardless_of_input_order(self) -> None:
+        first = "Given a\nWhen b\nThen c"
+        second = "Given x\nWhen y\nThen z"
+        forward = generate_scenario_ids("AC-abc12345-01", [first, second])
+        reversed_order = generate_scenario_ids("AC-abc12345-01", [second, first])
+        # Same content, opposite input order -> each content string keeps
+        # the same id regardless of where it sits in the input list.
+        assert forward[0] == reversed_order[1]
+        assert forward[1] == reversed_order[0]
+
+    def test_changed_content_can_change_relative_ordinal(self) -> None:
+        """With a single sibling, the ordinal is trivially "01" regardless
+        of content -- the id encodes relative order among siblings mapped
+        to the same AC-*, not a hash of the scenario's own text. A second,
+        fixed sibling makes that relative-ordering effect observable: moving
+        one scenario's content across the fixed sibling's sort position
+        changes which ordinal each gets."""
+        companion = "Given m\nWhen m\nThen m"
+        a = generate_scenario_ids("AC-abc12345-01", ["Given a\nWhen b\nThen c", companion])
+        b = generate_scenario_ids("AC-abc12345-01", ["Given z\nWhen z\nThen z", companion])
+        assert a != b
+
+    def test_changed_parent_ac_yields_changed_id(self) -> None:
+        content = ["Given a\nWhen b\nThen c"]
+        a = generate_scenario_ids("AC-abc12345-01", content)
+        b = generate_scenario_ids("AC-abc12345-02", content)
+        assert a != b
+
+    def test_ordinal_is_two_digit_zero_padded_and_one_based(self) -> None:
+        contents = [f"scenario {i}" for i in range(3)]
+        ids = generate_scenario_ids("AC-abc12345-01", contents)
+        assert {i.rsplit("-", 1)[-1] for i in ids} == {"01", "02", "03"}
+
+    def test_deterministic_across_processes(self) -> None:
+        script = (
+            "from contracts.id_generation import generate_scenario_ids;"
+            "print(generate_scenario_ids('AC-abc12345-01', "
+            "['Given a\\nWhen b\\nThen c', 'Given x\\nWhen y\\nThen z']))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=".",
+        )
+        in_process = generate_scenario_ids(
+            "AC-abc12345-01", ["Given a\nWhen b\nThen c", "Given x\nWhen y\nThen z"]
+        )
+        assert result.stdout.strip() == str(in_process)

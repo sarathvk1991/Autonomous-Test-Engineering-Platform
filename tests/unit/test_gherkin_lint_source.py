@@ -11,9 +11,30 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from feature_engineering.gherkin_lint.source import read_source
+from feature_engineering.gherkin_lint.source import parse_source_text, read_source
 
 FIXTURES = Path("tests/unit/fixtures/gherkin_lint")
+
+
+def test_parse_source_text_matches_read_source_for_the_same_bytes() -> None:
+    """`read_source` is just `parse_source_text` plus a file read -- prove
+    they agree, since callers that assemble content in memory (e.g. the
+    Layer 2 generation core) must get the identical parse a written-to-disk
+    file would have gotten."""
+    path = FIXTURES / "clean.feature"
+    from_disk = read_source(path)
+    from_memory = parse_source_text(path.read_text(encoding="utf-8"))
+
+    assert from_memory.lines == from_disk.lines
+    assert from_memory.feature == from_disk.feature
+    assert from_memory.language == from_disk.language
+    assert from_memory.parse_error == from_disk.parse_error
+
+
+def test_parse_source_text_path_label_is_display_only() -> None:
+    source = parse_source_text("Feature: X\n", path="<memory:test>")
+    assert source.path == "<memory:test>"
+    assert source.feature is not None
 
 
 def test_source_file_keeps_raw_lines_and_ast_side_by_side() -> None:

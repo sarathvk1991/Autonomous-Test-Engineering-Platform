@@ -38,19 +38,27 @@ class SourceFile:
     parse_error: str | None = None
 
 
-def read_source(path: str | Path) -> SourceFile:
-    """Read and parse one ``.feature`` file into a :class:`SourceFile`."""
-    with open(path, encoding="utf-8", newline="") as handle:
-        text = handle.read()
+def parse_source_text(text: str, *, path: str = "<memory>") -> SourceFile:
+    """Parse already-in-memory ``.feature`` text into a :class:`SourceFile`.
+
+    No disk I/O — for callers (e.g. the Layer 2 generation core) that
+    assemble or validate feature content before it is ever written to a
+    file. ``path`` is a display label only; it is never read from.
+    """
     lines = tuple(_LINE_SPLIT.split(text))
 
     try:
         document = Parser().parse(text)
     except CompositeParserException as exc:
-        return SourceFile(
-            path=str(path), lines=lines, feature=None, language="en", parse_error=str(exc)
-        )
+        return SourceFile(path=path, lines=lines, feature=None, language="en", parse_error=str(exc))
 
     feature = document.get("feature")
     language = feature["language"] if feature else "en"
-    return SourceFile(path=str(path), lines=lines, feature=feature, language=language)
+    return SourceFile(path=path, lines=lines, feature=feature, language=language)
+
+
+def read_source(path: str | Path) -> SourceFile:
+    """Read and parse one ``.feature`` file into a :class:`SourceFile`."""
+    with open(path, encoding="utf-8", newline="") as handle:
+        text = handle.read()
+    return parse_source_text(text, path=str(path))

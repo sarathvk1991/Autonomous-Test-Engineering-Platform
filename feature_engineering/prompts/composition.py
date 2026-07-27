@@ -127,7 +127,16 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
     loader = PromptLoader()
     registry = PromptRegistry()
 
-    # --- generate_feature v1.0.0 ----------------------------------------
+    # --- generate_feature v1.0.0 (superseded — kept registered, historical) ---
+    # Structural defect found while building the first real consumer (the
+    # generation core): v1.0.0 asked the LLM for @REQ-PENDING/@AC-PENDING
+    # placeholders for ids that ADR-0043 D2 says are *already* platform-minted
+    # by Layer 1 before Layer 2 ever runs (REQ-*/AC-*/RSK-* "already carry"
+    # the platform-assigned discipline; only SCN-* is genuinely deferred,
+    # "assigned after the remediation loop"). Kept registered rather than
+    # rewritten in place, mirroring Layer 1's own requirement_analysis
+    # v1.0.0/v1.1.0 precedent: a wrong or superseded version stays as a
+    # historical, SHA-verified record; a new version carries the fix.
     loaded = loader.load(
         prompt_id="generate_feature",
         version="1.0.0",
@@ -142,17 +151,50 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 owner="Feature Engineering Layer",
                 lifecycle=PromptLifecycle.DRAFT,
                 description=(
-                    "Converts a structured TestableRequirement into Gherkin scenario "
-                    "content for one .feature file (ADR-0043 D1/D4). Emits "
-                    "@REQ-PENDING/@SCN-PENDING/@AC-PENDING tag placeholders at the "
-                    "D2-governed scope; the platform substitutes real, "
-                    "content-addressed ids after generation. Does not write the "
-                    "Feature: line itself — the platform derives it deterministically "
-                    "from the requirement's title. Layer 2 core generation prompt."
+                    "SUPERSEDED by v1.1.0 — kept registered as a historical, "
+                    "SHA-verified record only; do not consume this version. Defect: "
+                    "asked the LLM for @REQ-PENDING/@AC-PENDING placeholders for ids "
+                    "ADR-0043 D2 says Layer 1 already mints before Layer 2 runs; only "
+                    "@SCN-* is genuinely deferred. See v1.1.0's description."
                 ),
                 sha256=loaded.sha256,
                 compatibility=_GENERATE_FEATURE_COMPATIBILITY,
                 release_introduced="1.0.0",
+            ),
+            content=loaded.content,
+        )
+    )
+
+    # --- generate_feature v1.1.0 (current) -------------------------------
+    loaded = loader.load(
+        prompt_id="generate_feature",
+        version="1.1.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_feature",
+                name="Generate Feature File",
+                version="1.1.0",
+                owner="Feature Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Converts a structured TestableRequirement into Gherkin scenario "
+                    "content for one .feature file (ADR-0043 D1/D4). Every ac_id is "
+                    "already platform-minted (Layer 1) and is written verbatim, not "
+                    "as a placeholder; req_id is never written by the model at all — "
+                    "the platform attaches it directly to the Feature line it derives, "
+                    "since a requirement-level tag has no per-scenario judgment to "
+                    "make. Only @SCN-PENDING is a true placeholder, substituted with a "
+                    "real, content-addressed @SCN-* id after generation (D2 — scenario "
+                    "identity cannot exist before scenario content does). Does not "
+                    "write the Feature: line itself. The version the generation core "
+                    "consumes."
+                ),
+                sha256=loaded.sha256,
+                compatibility=_GENERATE_FEATURE_COMPATIBILITY,
+                release_introduced="1.1.0",
             ),
             content=loaded.content,
         )
