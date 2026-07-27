@@ -1,0 +1,30 @@
+{
+    "schema_version": "1.0",
+    "description": "Feature Engineering (Layer 2) Prompt Governance Version Manifest — authoritative index of all versioned prompt template files and their SHA-256 fingerprints.",
+    "prompts": [
+        {
+            "prompt_id": "generate_feature",
+            "version": "1.0.0",
+            "file": "generate_feature_v1.0.0.txt",
+            "sha256": "9828cd22c5c06a893aa8e681a8dc548a3682c9493c13989512d1e9fa80189d1c",
+            "lifecycle": "Draft",
+            "introduced_in_release": "1.0.0"
+        },
+        {
+            "prompt_id": "fix_gherkin_lint",
+            "version": "1.0.0",
+            "file": "fix_gherkin_lint_v1.0.0.txt",
+            "sha256": "f0b207acad026bfa861a1d5d2022bf93c023e084daeb6ffebebf4b9aa92c6e26",
+            "lifecycle": "Draft",
+            "introduced_in_release": "1.0.0"
+        },
+        {
+            "prompt_id": "validate_generated_feature",
+            "version": "1.0.0",
+            "file": "validate_generated_feature_v1.0.0.txt",
+            "sha256": "6ff1e24a5a9fff6ea9c1c30d40d27da67d34ae8d692f0dda094272dd52910e3e",
+            "lifecycle": "Draft",
+            "introduced_in_release": "1.0.0"
+        }
+    ]
+}
