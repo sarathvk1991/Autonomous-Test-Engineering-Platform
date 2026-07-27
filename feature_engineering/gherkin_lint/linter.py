@@ -60,6 +60,19 @@ def lint_source(source: SourceFile, config: dict[str, Any]) -> LintResult:
     return _lint_sources([source], config)
 
 
+def lint_in_memory_corpus(sources: list[SourceFile], config: dict[str, Any]) -> LintResult:
+    """Lint several already-parsed, in-memory :class:`SourceFile`\\ s as one
+    workspace-scoped corpus — no disk I/O.
+
+    The multi-source analogue of :func:`lint_source`: for a caller (CP2,
+    ADR-0043 D5) that has several assembled-but-not-yet-written features in
+    memory and needs a corpus-scoped rule -- `no-dupe-feature-names` is
+    cross-file by definition (D3) and cannot fire against a single-source
+    corpus, per :func:`lint_file`'s own docstring.
+    """
+    return _lint_sources(sources, config)
+
+
 def lint_file(path: str | Path, config: dict[str, Any]) -> LintResult:
     """Lint exactly one file.
 
