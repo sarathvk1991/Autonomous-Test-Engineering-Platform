@@ -26,6 +26,9 @@ tiktoken>=0.7,<1.0             # token accounting / prompt budgeting
 # --- Source connectors (Requirement Intelligence Layer) --------------------
 httpx>=0.27,<1.0               # JIRA / SonarQube / OWASP ZAP REST clients
 
+# --- Gherkin parsing (Feature Engineering Layer, ADR-0043 D3) ---------------
+gherkin-official>=24,<25       # the official Cucumber Gherkin parser
+
 # --- Persistence (PostgreSQL — wired in a future phase) --------------------
 sqlalchemy>=2.0,<3.0
 alembic>=1.13,<2.0
