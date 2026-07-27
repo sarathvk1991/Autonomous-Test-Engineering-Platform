@@ -77,14 +77,22 @@ def render_feature(
     title: str,
     feature_tags: list[str],
     body_blocks: list[str],
+    comment: str | None = None,
 ) -> str:
-    """Assemble the full file: Feature-level tags, the Feature: line, then
-    each already-rendered body block (background/scenario), blank-line
-    separated, ending with a single trailing newline (new-line-at-eof: yes)."""
-    lines = [
-        render_tags_line(feature_tags, FEATURE_INDENT),
-        " " * FEATURE_INDENT + f"Feature: {title}\n",
-    ]
+    """Assemble the full file: an optional leading comment line (ADR-0043
+    D1's Feature-name derivation note -- the full, untruncated requirement
+    title, when `title` itself had to be shortened to fit `name-length`),
+    Feature-level tags, the Feature: line, then each already-rendered body
+    block (background/scenario), blank-line separated, ending with a single
+    trailing newline (new-line-at-eof: yes).
+
+    The comment is placed *above* the tags line, never between the tags and
+    `Feature:` -- tags must immediately precede the element they annotate."""
+    lines: list[str] = []
+    if comment:
+        lines.append(" " * FEATURE_INDENT + comment + "\n")
+    lines.append(render_tags_line(feature_tags, FEATURE_INDENT))
+    lines.append(" " * FEATURE_INDENT + f"Feature: {title}\n")
     for block in body_blocks:
         lines.append("\n")
         lines.append(block)

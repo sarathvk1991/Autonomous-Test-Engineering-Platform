@@ -59,10 +59,65 @@ _SCN_PENDING_TAG = "@SCN-PENDING"
 _AC_TAG_RE = re.compile(r"^@AC-\S+$")
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
 
+#: `.gherkin-lintrc`'s own `name-length` limit for `Feature` (verified:
+#: `["on", {"Feature": 70, ...}]`), re-verified directly, not reimplemented
+#: as a second source of truth -- this constant only needs to stay in sync
+#: with that committed config, which this task does not touch.
+_FEATURE_NAME_LIMIT = 70
+
 
 def _slugify(text: str) -> str:
     slug = _SLUG_RE.sub("-", text.strip().lower()).strip("-")
     return slug or "feature"
+
+
+def derive_feature_name(title: str, requirement_id: str) -> tuple[str, str | None]:
+    """Deterministically derive a lint-valid (<=70 char) Feature name from
+    Layer 1's unconstrained `title` (ADR-0043 D1's hoist-extension note).
+
+    Same ``(title, requirement_id)`` in -> same ``(name, comment)`` out,
+    always -- the same content-addressing discipline the id mechanism
+    already carries, so a future SKIP/self-heal diff can depend on it.
+
+    When `title` already fits the limit, it *is* the name and no comment is
+    produced -- the common case is a complete no-op, byte-identical to
+    behaviour before this function existed.
+
+    When it does not fit, the name is truncated and `requirement_id`'s own
+    already-unique short hash is appended as a `[REQ-*]` suffix -- not only
+    when a collision is detected, but unconditionally, because this
+    function sees one requirement at a time and has no corpus-wide state to
+    detect a collision against. Since `requirement_id` is content-addressed
+    over the *full* title (`contracts.id_generation.generate_requirement_id`),
+    two distinct over-length titles that happen to share a truncation
+    prefix are (to cryptographic-hash certainty) never assigned the same
+    suffix, so they can never collide onto the same truncated name. The
+    Feature *name* itself is never hashed -- only `title` feeds `REQ-*`
+    (ADR-0042 Decision 2) -- so shortening the name has no effect on
+    `requirement_id` or `content_hash`; both are already fixed by the time
+    this function runs.
+
+    The full, untruncated title is never discarded: it is returned as a
+    Gherkin comment line to place above the Feature's tag line, verbatim
+    except for embedded newlines (defensively collapsed to spaces, since a
+    raw multi-line title would otherwise split across multiple comment
+    lines or trip raw-source lint rules the platform does not control).
+
+    Returns
+    -------
+    tuple[str, str | None]
+        ``(name, comment)`` -- `comment` is ``None`` exactly when `title`
+        already fit and nothing needed preserving separately.
+    """
+    if len(title) <= _FEATURE_NAME_LIMIT:
+        return title, None
+
+    suffix = f" [{requirement_id}]"
+    truncated_length = _FEATURE_NAME_LIMIT - len(suffix)
+    name = title[:truncated_length].rstrip() + suffix
+    single_line_title = title.replace("\n", " ")
+    comment = f"# Full requirement title: {single_line_title}"
+    return name, comment
 
 
 def _canonical_scenario_content(scenario: dict[str, Any]) -> str:
@@ -191,16 +246,25 @@ def generate_feature_file(
         for i, scn_id in zip(indices, generate_scenario_ids(parent_ac_id, contents), strict=True):
             scn_id_by_index[i] = scn_id
 
-    # Hoist: any id tag identical across every scenario moves to Feature
-    # level (D2, generalized). @REQ-* never enters this computation at all
-    # -- it is never per-scenario in this design -- so this only ever fires
-    # for AC-*/SCN-* in the edge case they coincide (e.g. one scenario).
-    per_scenario_id_tags = [
-        {f"@{ac}" for ac in item["ac_ids"]} | {f"@{scn_id_by_index[i]}"}
+    # Hoist: ANY tag identical across every scenario -- id tag or
+    # functional tag alike -- moves to Feature level (D2's hoist-extension
+    # note). A homogenous tag is a Feature-level fact by definition, and
+    # Cucumber resolves Feature-level and scenario-level tags identically
+    # for tag-filtered selection, so hoisting a functional tag changes
+    # nothing about which scenarios a filter selects. @REQ-* never enters
+    # this computation at all -- it is never per-scenario in this design.
+    # @SCN-* is unique per scenario by construction (content-addressed;
+    # a shared SCN-* would mean duplicate scenario content, itself a
+    # separate no-dupe-scenario-names violation), so it only ever appears
+    # in the intersection in the single-scenario case, same as before.
+    per_scenario_all_tags = [
+        set(item["functional_tags"])
+        | {f"@{ac}" for ac in item["ac_ids"]}
+        | {f"@{scn_id_by_index[i]}"}
         for i, item in enumerate(pending)
     ]
     hoisted_tags: set[str] = (
-        set.intersection(*per_scenario_id_tags) if per_scenario_id_tags else set()
+        set.intersection(*per_scenario_all_tags) if per_scenario_all_tags else set()
     )
 
     rendered_blocks: list[str] = []
@@ -214,7 +278,9 @@ def generate_feature_file(
         item = pending[scenario_index]
         scenario = item["scenario"]
         id_tags = [f"@{ac}" for ac in item["ac_ids"]] + [f"@{scn_id_by_index[scenario_index]}"]
-        scenario_tags = item["functional_tags"] + [t for t in id_tags if t not in hoisted_tags]
+        scenario_tags = [t for t in item["functional_tags"] if t not in hoisted_tags] + [
+            t for t in id_tags if t not in hoisted_tags
+        ]
         rendered_blocks.append(
             render_scenario(
                 keyword=scenario["keyword"],
@@ -235,10 +301,12 @@ def generate_feature_file(
 
     req_tag = f"@{requirement.requirement_id}"
     feature_tags = [req_tag, *sorted(hoisted_tags)]
+    feature_name, title_comment = derive_feature_name(requirement.title, requirement.requirement_id)
     assembled = render_feature(
-        title=requirement.title,
+        title=feature_name,
         feature_tags=feature_tags,
         body_blocks=rendered_blocks,
+        comment=title_comment,
     )
 
     lint_config = load_config(_LINTRC_PATH)

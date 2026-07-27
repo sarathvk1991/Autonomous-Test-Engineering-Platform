@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from feature_engineering.generation.assembler import (
     DEFAULT_FEATURES_ROOT,
+    derive_feature_name,
     generate_feature_file,
     write_generated_feature,
 )
@@ -33,6 +34,7 @@ __all__ = [
     "LiveGenerationError",
     "ScenarioAssignment",
     "StubFeatureContentGenerator",
+    "derive_feature_name",
     "generate_feature_file",
     "write_generated_feature",
 ]
