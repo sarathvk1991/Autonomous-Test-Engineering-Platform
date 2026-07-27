@@ -1,9 +1,9 @@
 """Layer 2 feature generation core.
 
 One `TestableRequirement` in, one validated `.feature` file out. See
-`assembler.py` for the deterministic, platform-owned mechanics, and
-`content_generator.py` for the seam a live LLM-backed implementation plugs
-into (a separate, later task -- not built here).
+`assembler.py` for the deterministic, platform-owned mechanics,
+`content_generator.py` for the seam, and `live_content_generator.py` for the
+llm_factory-backed implementation that plugs into it.
 """
 
 from __future__ import annotations
@@ -18,6 +18,10 @@ from feature_engineering.generation.content_generator import (
     StubFeatureContentGenerator,
 )
 from feature_engineering.generation.errors import FeatureGenerationError
+from feature_engineering.generation.live_content_generator import (
+    LiveFeatureContentGenerator,
+    LiveGenerationError,
+)
 from feature_engineering.generation.models import GeneratedFeature, ScenarioAssignment
 
 __all__ = [
@@ -25,6 +29,8 @@ __all__ = [
     "FeatureContentGenerator",
     "FeatureGenerationError",
     "GeneratedFeature",
+    "LiveFeatureContentGenerator",
+    "LiveGenerationError",
     "ScenarioAssignment",
     "StubFeatureContentGenerator",
     "generate_feature_file",
