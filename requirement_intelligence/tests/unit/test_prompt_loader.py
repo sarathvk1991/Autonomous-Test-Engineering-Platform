@@ -25,8 +25,8 @@ from pathlib import Path
 
 import pytest
 
-from requirement_intelligence.prompts.framework.prompt_exceptions import PromptLoaderError
-from requirement_intelligence.prompts.framework.prompt_loader import LoadedPrompt, PromptLoader
+from shared.prompts.framework.prompt_exceptions import PromptLoaderError
+from shared.prompts.framework.prompt_loader import LoadedPrompt, PromptLoader
 
 # ===========================================================================
 # Helpers

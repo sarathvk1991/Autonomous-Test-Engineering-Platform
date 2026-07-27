@@ -13,7 +13,7 @@ Convention
 ----------
 There was no pre-existing *identifier* pattern to follow, but there was a
 pre-existing **value object** pattern:
-:class:`~requirement_intelligence.prompts.models.prompt_version.PromptVersion`
+:class:`~shared.prompts.models.prompt_version.PromptVersion`
 is an immutable, comparable ``@dataclass(frozen=True, order=True)`` with a
 validating :meth:`parse` classmethod, a canonical :meth:`__str__` round-trip,
 and :class:`ValueError` on malformed input. This module adopts that pattern
@@ -149,7 +149,7 @@ class PolicyVersion:
     """Immutable, comparable semantic version of an ``OrchestrationPolicy``.
 
     Deliberately mirrors
-    :class:`~requirement_intelligence.prompts.models.prompt_version.PromptVersion`
+    :class:`~shared.prompts.models.prompt_version.PromptVersion`
     (same shape, same ``parse``/``__str__`` contract, same major-version
     compatibility rule) rather than importing it, which would couple this
     subsystem to Prompt Governance. ADR-0015 §C records the resulting

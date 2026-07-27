@@ -1,7 +1,7 @@
 """Prompt governance registry.
 
 The registry is the single source of truth for which
-:class:`~requirement_intelligence.prompts.models.PromptDefinition` instances
+:class:`~shared.prompts.models.PromptDefinition` instances
 are governed and available to the platform.
 
 Design notes
@@ -16,7 +16,7 @@ Design notes
 
 * **Duplicate detection.**  A ``(prompt_id, version)`` pair must be unique
   within a registry instance.  Attempting to register a duplicate raises
-  :class:`~requirement_intelligence.prompts.framework.prompt_exceptions.PromptRegistryError`.
+  :class:`~shared.prompts.framework.prompt_exceptions.PromptRegistryError`.
 
 * **Immutable after sealing.**  Once :meth:`seal` is called (or the canonical
   composition helper seals it), no further registrations are accepted.  This
@@ -25,7 +25,7 @@ Design notes
 
 * **Deterministic lookup.**  :meth:`get` returns the single registered
   definition for a given ``(prompt_id, version)`` pair, or raises
-  :class:`~requirement_intelligence.prompts.framework.prompt_exceptions.PromptNotFoundError`
+  :class:`~shared.prompts.framework.prompt_exceptions.PromptNotFoundError`
   when the pair is not found.  When ``version`` is omitted and exactly one
   version of the prompt is registered, that version is returned; when multiple
   versions are registered and no version is specified, the call raises to
@@ -38,11 +38,11 @@ from __future__ import annotations
 
 from enum import Enum
 
-from requirement_intelligence.prompts.framework.prompt_exceptions import (
+from shared.prompts.framework.prompt_exceptions import (
     PromptNotFoundError,
     PromptRegistryError,
 )
-from requirement_intelligence.prompts.models.prompt_definition import PromptDefinition
+from shared.prompts.models.prompt_definition import PromptDefinition
 
 
 class PromptRegistryState(Enum):
@@ -56,7 +56,7 @@ class PromptRegistryState(Enum):
     SEALED
         The registry is frozen against further registration.  Any call to
         :meth:`PromptRegistry.register` after sealing raises
-        :class:`~requirement_intelligence.prompts.framework.prompt_exceptions.PromptRegistryError`.
+        :class:`~shared.prompts.framework.prompt_exceptions.PromptRegistryError`.
         A registry is sealed explicitly via :meth:`PromptRegistry.seal`.
 
     The transition is **one-directional**: a sealed registry cannot be

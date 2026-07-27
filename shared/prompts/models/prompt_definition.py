@@ -1,9 +1,9 @@
 """PromptDefinition — the aggregate root of a governed prompt.
 
 :class:`PromptDefinition` is the single governed unit that the
-:class:`~requirement_intelligence.prompts.framework.prompt_registry.PromptRegistry`
+:class:`~shared.prompts.framework.prompt_registry.PromptRegistry`
 stores and the
-:class:`~requirement_intelligence.prompts.framework.prompt_loader.PromptLoader`
+:class:`~shared.prompts.framework.prompt_loader.PromptLoader`
 assembles.  It pairs the immutable :class:`PromptMetadata` (identity) with the
 immutable template content (substance).
 
@@ -29,8 +29,8 @@ advances additively; breaking changes are ADR-gated.
 
 from __future__ import annotations
 
-from requirement_intelligence.prompts.models.prompt_metadata import PromptMetadata
 from shared.contracts.base import Schema
+from shared.prompts.models.prompt_metadata import PromptMetadata
 
 #: Version of the :class:`PromptDefinition` *shape* — owned here as the single
 #: source of truth.  Advances additively; breaking changes are ADR-gated.

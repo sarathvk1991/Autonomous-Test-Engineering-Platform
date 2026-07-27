@@ -26,9 +26,9 @@ advances additively; breaking changes are ADR-gated.
 
 from __future__ import annotations
 
-from requirement_intelligence.prompts.models.prompt_compatibility import PromptCompatibility
-from requirement_intelligence.prompts.models.prompt_version import PromptLifecycle
 from shared.contracts.base import Schema
+from shared.prompts.models.prompt_compatibility import PromptCompatibility
+from shared.prompts.models.prompt_version import PromptLifecycle
 
 #: Version of the :class:`PromptMetadata` *shape* — owned here as the single
 #: source of truth.  Advances additively; breaking changes are ADR-gated.

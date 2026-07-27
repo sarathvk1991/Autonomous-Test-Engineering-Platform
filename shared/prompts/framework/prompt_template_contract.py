@@ -57,7 +57,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from requirement_intelligence.prompts.framework.prompt_exceptions import (
+from shared.prompts.framework.prompt_exceptions import (
     PromptTemplateContractError,
 )
 
@@ -96,7 +96,7 @@ def parse_governed_template(content: str) -> GovernedTemplate:
     ----------
     content:
         The raw template text, as loaded and SHA-verified by
-        :class:`~requirement_intelligence.prompts.framework.prompt_loader.PromptLoader`.
+        :class:`~shared.prompts.framework.prompt_loader.PromptLoader`.
 
     Raises
     ------

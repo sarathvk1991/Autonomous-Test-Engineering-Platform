@@ -32,31 +32,31 @@ build_prompt_registry    — canonical composition entry point
 from __future__ import annotations
 
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
-from requirement_intelligence.prompts.framework.prompt_exceptions import (
+from requirement_intelligence.prompts.requirement_prompt_builder import (
+    PromptRequest,
+    RequirementPromptBuilder,
+)
+from shared.prompts.framework.prompt_exceptions import (
     PromptFrameworkError,
     PromptLoaderError,
     PromptNotFoundError,
     PromptRegistryError,
     PromptTemplateContractError,
 )
-from requirement_intelligence.prompts.framework.prompt_loader import PromptLoader
-from requirement_intelligence.prompts.framework.prompt_registry import (
+from shared.prompts.framework.prompt_loader import PromptLoader
+from shared.prompts.framework.prompt_registry import (
     PromptRegistry,
     PromptRegistryState,
 )
-from requirement_intelligence.prompts.framework.prompt_template_contract import (
+from shared.prompts.framework.prompt_template_contract import (
     ARTIFACT_CONTEXT_PLACEHOLDER,
     GovernedTemplate,
     parse_governed_template,
 )
-from requirement_intelligence.prompts.models.prompt_compatibility import PromptCompatibility
-from requirement_intelligence.prompts.models.prompt_definition import PromptDefinition
-from requirement_intelligence.prompts.models.prompt_metadata import PromptMetadata
-from requirement_intelligence.prompts.models.prompt_version import PromptLifecycle, PromptVersion
-from requirement_intelligence.prompts.requirement_prompt_builder import (
-    PromptRequest,
-    RequirementPromptBuilder,
-)
+from shared.prompts.models.prompt_compatibility import PromptCompatibility
+from shared.prompts.models.prompt_definition import PromptDefinition
+from shared.prompts.models.prompt_metadata import PromptMetadata
+from shared.prompts.models.prompt_version import PromptLifecycle, PromptVersion
 
 __all__ = [
     "ARTIFACT_CONTEXT_PLACEHOLDER",

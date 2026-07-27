@@ -1,63 +1,23 @@
-"""Prompt Governance Framework.
+"""Prompt Governance Framework — Layer 1's composition root.
 
-This package provides the reusable, behaviour-free infrastructure that the
-Prompt Governance subsystem plugs into: a registry with an explicit registration
-contract, a loader that verifies template integrity, exceptions, and composition
-helpers.
-
-The framework knows nothing about:
-- Gemini, Azure OpenAI, Anthropic, Ollama, or any other LLM provider
-- The Requirement Analysis Service
-- The Response Validation subsystem
-- The CP1 subsystem
-- The Normalization subsystem
-
-It only governs prompts.
+The generic, behaviour-free framework mechanism (`PromptRegistry`,
+`PromptLoader`, exceptions, the governed template contract) relocated to
+`shared.prompts.framework` (additive, 2026-07-27, ADR-0043 D4 carve-out-3) —
+it carries no Layer-1 judgement logic and is a second-consumer-ready shared
+mechanism, not this layer's own content. What remains here is Layer-1-specific:
+`build_prompt_registry`, the canonical composition entry point that hardcodes
+Layer 1's own governed prompt registrations. See ADR-0014's and ADR-0043 D4's
+own relocation notes for the full reasoning.
 
 Public surface
 --------------
-PromptRegistryState     — lifecycle state of the registry (OPEN / SEALED)
-PromptRegistry          — explicit, deterministic, sealable prompt registry
-PromptLoader            — file-based prompt loader with SHA-256 verification
-PromptFrameworkError    — base exception for all framework errors
-PromptRegistryError     — registry-level failures
-PromptLoaderError       — file loading / integrity failures
-PromptNotFoundError     — lookup failures
-build_prompt_registry   — canonical composition entry point
+build_prompt_registry   — canonical composition entry point (Layer 1 content)
 """
 
 from __future__ import annotations
 
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
-from requirement_intelligence.prompts.framework.prompt_exceptions import (
-    PromptFrameworkError,
-    PromptLoaderError,
-    PromptNotFoundError,
-    PromptRegistryError,
-    PromptTemplateContractError,
-)
-from requirement_intelligence.prompts.framework.prompt_loader import PromptLoader
-from requirement_intelligence.prompts.framework.prompt_registry import (
-    PromptRegistry,
-    PromptRegistryState,
-)
-from requirement_intelligence.prompts.framework.prompt_template_contract import (
-    ARTIFACT_CONTEXT_PLACEHOLDER,
-    GovernedTemplate,
-    parse_governed_template,
-)
 
 __all__ = [
-    "ARTIFACT_CONTEXT_PLACEHOLDER",
-    "GovernedTemplate",
-    "PromptFrameworkError",
-    "PromptLoader",
-    "PromptLoaderError",
-    "PromptNotFoundError",
-    "PromptRegistry",
-    "PromptRegistryError",
-    "PromptRegistryState",
-    "PromptTemplateContractError",
     "build_prompt_registry",
-    "parse_governed_template",
 ]

@@ -75,11 +75,11 @@ from requirement_intelligence.context_orchestration.models.engineering_context i
 )
 from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
 from requirement_intelligence.models.source_artifact import SourceArtifact
-from requirement_intelligence.prompts.framework.prompt_registry import PromptRegistry
 from requirement_intelligence.prompts.requirement_prompt_builder import RUNTIME_PROMPT_ID
 from requirement_intelligence.requirement_quality_governance.models.result import (
     QualityGovernanceResult,
 )
+from shared.prompts.framework.prompt_registry import PromptRegistry
 
 #: The response arrays that hold generated requirements, mapped to their
 #: AcceptanceCriterion category, in canonical domain order. Mirrors

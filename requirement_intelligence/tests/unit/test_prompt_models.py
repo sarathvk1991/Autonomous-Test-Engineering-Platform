@@ -17,16 +17,16 @@ import dataclasses
 import pytest
 from pydantic import ValidationError
 
-from requirement_intelligence.prompts.models.prompt_compatibility import PromptCompatibility
-from requirement_intelligence.prompts.models.prompt_definition import (
+from shared.prompts.models.prompt_compatibility import PromptCompatibility
+from shared.prompts.models.prompt_definition import (
     PROMPT_DEFINITION_VERSION,
     PromptDefinition,
 )
-from requirement_intelligence.prompts.models.prompt_metadata import (
+from shared.prompts.models.prompt_metadata import (
     PROMPT_METADATA_VERSION,
     PromptMetadata,
 )
-from requirement_intelligence.prompts.models.prompt_version import PromptLifecycle, PromptVersion
+from shared.prompts.models.prompt_version import PromptLifecycle, PromptVersion
 
 # ===========================================================================
 # Helpers

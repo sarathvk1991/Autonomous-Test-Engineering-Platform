@@ -7,7 +7,7 @@ rooted base per subsystem, subclassed where a more specific error adds value.
 Malformed *identifier* input is **not** raised through this hierarchy. The
 identity value objects raise :class:`ValueError` from their ``parse``
 constructors, matching the convention set by
-:class:`~requirement_intelligence.prompts.models.prompt_version.PromptVersion`.
+:class:`~shared.prompts.models.prompt_version.PromptVersion`.
 """
 
 from __future__ import annotations

@@ -171,7 +171,7 @@ def _load_registry(
 def _check_prompt_registry() -> StartupCheck:
     """Validate that the governed prompt registry composes and verifies."""
     from requirement_intelligence.prompts.framework.composition import build_prompt_registry
-    from requirement_intelligence.prompts.framework.prompt_exceptions import (
+    from shared.prompts.framework.prompt_exceptions import (
         PromptFrameworkError,
     )
 

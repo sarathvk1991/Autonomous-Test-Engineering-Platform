@@ -44,12 +44,12 @@ from requirement_intelligence.context_orchestration.models.engineering_context i
 from requirement_intelligence.models.source_artifact import SourceArtifact
 from requirement_intelligence.prompts import prompt_constants as consts
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
-from requirement_intelligence.prompts.framework.prompt_registry import PromptRegistry
-from requirement_intelligence.prompts.framework.prompt_template_contract import (
+from shared.contracts.base import Schema
+from shared.prompts.framework.prompt_registry import PromptRegistry
+from shared.prompts.framework.prompt_template_contract import (
     parse_governed_template,
 )
-from requirement_intelligence.prompts.models.prompt_definition import PromptDefinition
-from shared.contracts.base import Schema
+from shared.prompts.models.prompt_definition import PromptDefinition
 
 if TYPE_CHECKING:
     from requirement_intelligence.llm.llm_models import LLMRequest

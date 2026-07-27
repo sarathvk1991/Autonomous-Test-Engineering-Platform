@@ -126,7 +126,6 @@ from requirement_intelligence.organizational_memory.policy import (
     default_organizational_memory_policy,
 )
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
-from requirement_intelligence.prompts.framework.prompt_registry import PromptRegistry
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
@@ -186,6 +185,7 @@ from requirement_intelligence.validation.response import (
     build_response_validator,
     build_response_validator_for_profile,
 )
+from shared.prompts.framework.prompt_registry import PromptRegistry
 
 
 class PlatformContext:

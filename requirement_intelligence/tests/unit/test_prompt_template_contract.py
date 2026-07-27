@@ -22,23 +22,23 @@ from pathlib import Path
 import pytest
 
 from requirement_intelligence.prompts.framework.composition import build_prompt_registry
-from requirement_intelligence.prompts.framework.prompt_exceptions import (
-    PromptTemplateContractError,
-)
-from requirement_intelligence.prompts.framework.prompt_registry import PromptRegistry
-from requirement_intelligence.prompts.framework.prompt_template_contract import (
-    ARTIFACT_CONTEXT_PLACEHOLDER,
-    SECTION_SEPARATOR,
-    parse_governed_template,
-)
-from requirement_intelligence.prompts.models.prompt_compatibility import PromptCompatibility
-from requirement_intelligence.prompts.models.prompt_definition import PromptDefinition
-from requirement_intelligence.prompts.models.prompt_metadata import PromptMetadata
-from requirement_intelligence.prompts.models.prompt_version import PromptLifecycle
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RUNTIME_PROMPT_ID,
     RequirementPromptBuilder,
 )
+from shared.prompts.framework.prompt_exceptions import (
+    PromptTemplateContractError,
+)
+from shared.prompts.framework.prompt_registry import PromptRegistry
+from shared.prompts.framework.prompt_template_contract import (
+    ARTIFACT_CONTEXT_PLACEHOLDER,
+    SECTION_SEPARATOR,
+    parse_governed_template,
+)
+from shared.prompts.models.prompt_compatibility import PromptCompatibility
+from shared.prompts.models.prompt_definition import PromptDefinition
+from shared.prompts.models.prompt_metadata import PromptMetadata
+from shared.prompts.models.prompt_version import PromptLifecycle
 
 _VERSIONS_DIR = Path(__file__).resolve().parents[2] / "prompts" / "versions"
 

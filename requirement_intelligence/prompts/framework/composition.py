@@ -38,12 +38,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from requirement_intelligence.prompts.framework.prompt_loader import PromptLoader
-from requirement_intelligence.prompts.framework.prompt_registry import PromptRegistry
-from requirement_intelligence.prompts.models.prompt_compatibility import PromptCompatibility
-from requirement_intelligence.prompts.models.prompt_definition import PromptDefinition
-from requirement_intelligence.prompts.models.prompt_metadata import PromptMetadata
-from requirement_intelligence.prompts.models.prompt_version import PromptLifecycle
+from shared.prompts.framework.prompt_loader import PromptLoader
+from shared.prompts.framework.prompt_registry import PromptRegistry
+from shared.prompts.models.prompt_compatibility import PromptCompatibility
+from shared.prompts.models.prompt_definition import PromptDefinition
+from shared.prompts.models.prompt_metadata import PromptMetadata
+from shared.prompts.models.prompt_version import PromptLifecycle
 
 # ---------------------------------------------------------------------------
 # Canonical versions directory

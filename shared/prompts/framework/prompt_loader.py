@@ -17,9 +17,9 @@ Non-responsibilities
 --------------------
 The loader knows nothing about:
 
-* The :class:`~requirement_intelligence.prompts.framework.prompt_registry.PromptRegistry`.
-* :class:`~requirement_intelligence.prompts.models.PromptMetadata` or
-  :class:`~requirement_intelligence.prompts.models.PromptDefinition` — it
+* The :class:`~shared.prompts.framework.prompt_registry.PromptRegistry`.
+* :class:`~shared.prompts.models.PromptMetadata` or
+  :class:`~shared.prompts.models.PromptDefinition` — it
   returns raw content; the caller assembles the model.
 * Any LLM provider.
 * The Runtime Prompt Builder (:class:`RequirementPromptBuilder`).
@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from requirement_intelligence.prompts.framework.prompt_exceptions import PromptLoaderError
+from shared.prompts.framework.prompt_exceptions import PromptLoaderError
 
 
 @dataclass(frozen=True)

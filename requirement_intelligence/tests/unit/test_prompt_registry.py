@@ -20,18 +20,18 @@ from __future__ import annotations
 
 import pytest
 
-from requirement_intelligence.prompts.framework.prompt_exceptions import (
+from shared.prompts.framework.prompt_exceptions import (
     PromptNotFoundError,
     PromptRegistryError,
 )
-from requirement_intelligence.prompts.framework.prompt_registry import (
+from shared.prompts.framework.prompt_registry import (
     PromptRegistry,
     PromptRegistryState,
 )
-from requirement_intelligence.prompts.models.prompt_compatibility import PromptCompatibility
-from requirement_intelligence.prompts.models.prompt_definition import PromptDefinition
-from requirement_intelligence.prompts.models.prompt_metadata import PromptMetadata
-from requirement_intelligence.prompts.models.prompt_version import PromptLifecycle
+from shared.prompts.models.prompt_compatibility import PromptCompatibility
+from shared.prompts.models.prompt_definition import PromptDefinition
+from shared.prompts.models.prompt_metadata import PromptMetadata
+from shared.prompts.models.prompt_version import PromptLifecycle
 
 # ===========================================================================
 # Helpers

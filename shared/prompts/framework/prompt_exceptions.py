@@ -14,7 +14,7 @@ Design notes
 These exceptions describe **framework-level failures** — problems with how the
 Prompt Governance infrastructure is configured, assembled, or invoked.  They
 are deliberately separate from prompt *definitions* (which are not exceptions
-but canonical :class:`~requirement_intelligence.prompts.models.PromptDefinition`
+but canonical :class:`~shared.prompts.models.PromptDefinition`
 objects produced when the framework operates normally).
 
 A :class:`PromptFrameworkError` means the framework itself could not perform its
@@ -66,7 +66,7 @@ class PromptTemplateContractError(PromptFrameworkError):
     """Raised when a governed template violates the runtime template contract.
 
     The contract is defined and enforced in
-    :mod:`~requirement_intelligence.prompts.framework.prompt_template_contract`.
+    :mod:`~shared.prompts.framework.prompt_template_contract`.
 
     Examples
     --------
