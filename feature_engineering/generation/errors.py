@@ -23,8 +23,24 @@ class FeatureGenerationError(Exception):
     the content generator's own raw output violated its tag contract before
     lint ever ran (e.g. a missing ``@SCN-PENDING`` tag, or a stray
     ``@REQ-*`` tag the contract forbids).
+
+    ``content`` carries the fully-assembled, already-tagged (but lint-dirty)
+    ``.feature`` text -- populated only alongside ``lint_result`` (a lint
+    failure has real assembled text to show; a pre-assembly tag-contract
+    violation does not). This is what ADR-0043 D5's bounded remediation
+    loop needs to operate on -- Tier 1's deterministic formatter and Tier
+    2's LLM remediation both require the actual dirty text, which this
+    exception previously discarded. Additive: existing callers that only
+    read ``lint_result`` are unaffected.
     """
 
-    def __init__(self, message: str, *, lint_result: LintResult | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        lint_result: LintResult | None = None,
+        content: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.lint_result = lint_result
+        self.content = content

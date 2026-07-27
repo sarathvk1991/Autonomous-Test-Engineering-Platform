@@ -317,6 +317,7 @@ def generate_feature_file(
             f"requirement_id={requirement.requirement_id!r}: assembled feature "
             f"failed lint: {lint_result.violations}",
             lint_result=lint_result,
+            content=assembled,
         )
 
     file_name = f"{_slugify(requirement.title)}-{requirement.requirement_id.lower()}.feature"
