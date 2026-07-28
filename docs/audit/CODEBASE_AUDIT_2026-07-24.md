@@ -916,6 +916,15 @@ as originally written, independently re-verified since by later work:**
   independently re-verified and resolved since by ADR-0033 (Naming Disambiguation) and
   ADR-0038 (Documentation Track Governance).
 
+**Post-audit disk-state update, noted for completeness (not a correction — the claim below was
+accurate when written):** the `platform/` dead-scaffold directory (§3.2, §4.3: "Empty, UNTRACKED
+scaffold for a Java microservice") no longer exists on disk — verified absent, and
+`git log --all -- platform/` confirms it was never tracked, so its removal happened outside
+version control at some point after this audit's own commit. The real
+`requirement_intelligence/platform/` package (`PlatformContext`, startup validation, health
+check) is a distinct, unrelated path and was never affected; no code anywhere depended on the
+root `platform/` path.
+
 **No decision made downstream of this audit — ADR-0032's Layer 1 capability freeze
 specifically — rests on the corrected figures.** ADR-0032 independently re-ran its own
 commit-count verification rather than citing this audit's number, and its own figure (252,
