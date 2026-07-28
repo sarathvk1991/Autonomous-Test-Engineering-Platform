@@ -49,8 +49,18 @@ from feature_engineering.gherkin_lint.linter import lint_source
 from feature_engineering.gherkin_lint.source import parse_source_text
 
 #: ADR-0037/ADR-0041: @SelectClasspathResource("features") requires exactly
-#: this relative path within the tracked Maven module. Not a default
-#: parameter value on `generate_feature_file` -- callers pass it explicitly.
+#: this relative path -- but within a Maven module, not necessarily THE
+#: tracked one. Not a default parameter value on `generate_feature_file` --
+#: callers pass it explicitly. Stage 14's own live-integration wiring
+#: (`feature_engineering.stage.execute_feature_engineering_stage`) does NOT
+#: use this constant: per ADR-0037 Path A, it materializes each run's own
+#: isolated copy of the tracked baseline
+#: (`feature_engineering.stage.workspace.materialize_workspace`) and computes
+#: `features_root` within THAT copy, never against this single, shared,
+#: tracked path -- sharing this path across runs (or with tracked source)
+#: is exactly what ADR-0037 D2 forbids. This constant remains for direct,
+#: single-workspace callers (e.g. this module's own tests) that intentionally
+#: want the tracked path itself.
 DEFAULT_FEATURES_ROOT = Path("test-suite-baseline/src/test/resources/features")
 
 _LINTRC_PATH = Path("docs/reference/automation-poc/.gherkin-lintrc")

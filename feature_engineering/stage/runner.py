@@ -29,7 +29,11 @@ Two functions:
   has an on-disk artifact to check before that point) -- stage 14 is the
   FIRST stage with its own on-disk artifacts before the pipeline's final
   bundle write, so this is also the first time a per-stage (not just
-  whole-run) skip check actually fires.
+  whole-run) skip check actually fires. This function also owns per-run
+  workspace materialization (`.workspace.materialize_workspace`, ADR-0037
+  Path A) -- it derives `features_root` itself rather than trusting a
+  caller-supplied path, so a caller can never accidentally point it at the
+  shared tracked baseline.
 
 Not hand-wired into `scripts/run_requirement_analysis.py`'s automatic
 `handle_analyze` sequence by this task (see the accompanying report):
@@ -107,6 +111,11 @@ from feature_engineering.stage.models import (
 )
 from feature_engineering.stage.report import build_report
 from feature_engineering.stage.traceability import TRACEABILITY_FILENAME, build_traceability_index
+from feature_engineering.stage.workspace import (
+    DEFAULT_BASELINE_ROOT,
+    features_root_for,
+    materialize_workspace,
+)
 from requirement_intelligence.run_state.atomic_write import atomic_write_json, read_json_if_valid
 from requirement_intelligence.run_state.run_state_manager import RunStateManager
 from shared.enums.base import ValidationVerdict
@@ -318,15 +327,24 @@ def execute_feature_engineering_stage(
     run_dir: Path,
     requirement_set: TestableRequirementSet,
     *,
-    features_root: Path,
     content_generator: FeatureContentGenerator,
     remediator: FeatureRemediator,
     input_artifacts: list[Path],
+    baseline_root: Path = DEFAULT_BASELINE_ROOT,
 ) -> FeatureEngineeringStageResult | None:
     """Wire stage 14 into `run_state_mgr` with the SAME
     `start_stage`/try-except/`fail_stage`/`succeed_stage` idiom every Layer 1
     phase already uses in `scripts/run_requirement_analysis.py` -- not a
     parallel mechanism.
+
+    Unlike `run_feature_engineering_stage` (which takes an explicit
+    `features_root` from its caller), this function derives its own
+    `features_root`: it materializes `run_dir`'s own isolated workspace copy
+    of `baseline_root` (`.workspace.materialize_workspace`, ADR-0037 Path A)
+    and generates into THAT copy's `src/test/resources/features/`, never
+    into the shared tracked `baseline_root` itself and never into another
+    run's copy. Materialization is idempotent -- a resumed run finds its
+    existing copy (and whatever it already generated) untouched.
 
     Returns `None` both when the stage was SKIPPED (both ADR-0036 skip
     invariants held) and when it FAILED (a genuine exception, recorded via
@@ -345,9 +363,10 @@ def execute_feature_engineering_stage(
 
     run_state_mgr.start_stage(STAGE_ID, input_artifacts=input_artifacts)
     try:
+        workspace_dir = materialize_workspace(run_dir, baseline_root=baseline_root)
         result = run_feature_engineering_stage(
             requirement_set,
-            features_root=features_root,
+            features_root=features_root_for(workspace_dir),
             run_dir=run_dir,
             content_generator=content_generator,
             remediator=remediator,

@@ -21,9 +21,17 @@ from feature_engineering.stage.runner import (
     run_feature_engineering_stage,
 )
 from feature_engineering.stage.traceability import TRACEABILITY_FILENAME, build_traceability_index
+from feature_engineering.stage.workspace import (
+    DEFAULT_BASELINE_ROOT,
+    FEATURES_SUBPATH,
+    features_root_for,
+    materialize_workspace,
+)
 
 __all__ = [
     "CONTRACT_VERSION",
+    "DEFAULT_BASELINE_ROOT",
+    "FEATURES_SUBPATH",
     "FEATURE_ENGINEERING_PACKAGE_FILENAME",
     "FEATURE_ENGINEERING_REPORT_FILENAME",
     "STAGE_ID",
@@ -33,5 +41,7 @@ __all__ = [
     "FeatureRecord",
     "build_traceability_index",
     "execute_feature_engineering_stage",
+    "features_root_for",
+    "materialize_workspace",
     "run_feature_engineering_stage",
 ]

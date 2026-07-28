@@ -17,6 +17,7 @@ exactly like the generation/CP2/remediation unit's own tests.
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -37,6 +38,8 @@ from feature_engineering.generation import FeatureGenerationError, StubFeatureCo
 from feature_engineering.remediation import StubFeatureRemediator
 from feature_engineering.stage import (
     execute_feature_engineering_stage,
+    features_root_for,
+    materialize_workspace,
     run_feature_engineering_stage,
 )
 from feature_engineering.stage.traceability import build_traceability_index
@@ -149,6 +152,13 @@ def _single_stub_generator(req: TestableRequirement) -> StubFeatureContentGenera
     return StubFeatureContentGenerator({req.requirement_id: _clean_content(req)})
 
 
+def _workspace_features_root(run_dir: Path) -> Path:
+    """Where `execute_feature_engineering_stage` (via ADR-0037 Path A
+    materialization) actually writes -- inside THIS run's own workspace
+    copy, not the shared tracked baseline."""
+    return features_root_for(run_dir / "workspace")
+
+
 @pytest.mark.unit
 class TestEndToEndStageRun:
     def test_two_requirements_generate_features_and_package(self, tmp_path: Path) -> None:
@@ -188,7 +198,6 @@ class TestEndToEndStageRun:
     def test_run_state_stage_succeeds_with_correct_artifacts(self, tmp_path: Path) -> None:
         req = _requirement()
         rs = _requirement_set([req])
-        features_root = tmp_path / "workspace" / "features"
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         trs_path = run_dir / "testable_requirement_set.json"
@@ -202,7 +211,6 @@ class TestEndToEndStageRun:
             run_state_mgr,
             run_dir,
             rs,
-            features_root=features_root,
             content_generator=generator,
             remediator=StubFeatureRemediator([]),
             input_artifacts=[trs_path],
@@ -334,7 +342,6 @@ class TestSkipSafety:
     ) -> None:
         req = _requirement()
         rs = _requirement_set([req])
-        features_root = tmp_path / "features"
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         trs_path = run_dir / "testable_requirement_set.json"
@@ -345,7 +352,6 @@ class TestSkipSafety:
             run_state_mgr,
             run_dir,
             rs,
-            features_root=features_root,
             content_generator=_CountingContentGenerator({req.requirement_id: _clean_content(req)}),
             remediator=StubFeatureRemediator([]),
             input_artifacts=[trs_path],
@@ -358,7 +364,6 @@ class TestSkipSafety:
             run_state_mgr,
             run_dir,
             rs,
-            features_root=features_root,
             content_generator=resumed_generator,
             remediator=StubFeatureRemediator([]),
             input_artifacts=[trs_path],
@@ -371,7 +376,6 @@ class TestSkipSafety:
     def test_deleting_a_workspace_feature_forces_a_rerun(self, tmp_path: Path) -> None:
         req = _requirement()
         rs = _requirement_set([req])
-        features_root = tmp_path / "features"
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         trs_path = run_dir / "testable_requirement_set.json"
@@ -382,7 +386,6 @@ class TestSkipSafety:
             run_state_mgr,
             run_dir,
             rs,
-            features_root=features_root,
             content_generator=_CountingContentGenerator({req.requirement_id: _clean_content(req)}),
             remediator=StubFeatureRemediator([]),
             input_artifacts=[trs_path],
@@ -390,6 +393,7 @@ class TestSkipSafety:
         assert first is not None
         record = first.package.record_for(req.requirement_id)
         assert record is not None and record.feature_path is not None
+        features_root = _workspace_features_root(run_dir)
         (features_root / record.feature_path).unlink()  # simulate loss/self-heal churn
 
         rerun_generator = _CountingContentGenerator({req.requirement_id: _clean_content(req)})
@@ -397,7 +401,6 @@ class TestSkipSafety:
             run_state_mgr,
             run_dir,
             rs,
-            features_root=features_root,
             content_generator=rerun_generator,
             remediator=StubFeatureRemediator([]),
             input_artifacts=[trs_path],
@@ -508,7 +511,6 @@ class TestEscalationHandling:
     ) -> None:
         req = _requirement()
         rs = _requirement_set([req])
-        features_root = tmp_path / "features"
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         trs_path = run_dir / "testable_requirement_set.json"
@@ -535,7 +537,6 @@ class TestEscalationHandling:
             run_state_mgr,
             run_dir,
             rs,
-            features_root=features_root,
             content_generator=StubFeatureContentGenerator({req.requirement_id: raw}),
             remediator=remediator,
             input_artifacts=[trs_path],
@@ -553,7 +554,7 @@ class TestEscalationHandling:
         # Not silently dropped: the (still-dirty) content is still written
         # to the workspace for a human to review.
         assert record.feature_path is not None
-        feature_file = features_root / record.feature_path
+        feature_file = _workspace_features_root(run_dir) / record.feature_path
         assert feature_file.exists()
         assert feature_file.read_text() == expected_dirty_content
 
@@ -562,6 +563,170 @@ class TestEscalationHandling:
         # (mirrors every other Layer 1 tail phase's own non-fatal posture).
         assert _find_stage(run_state_mgr, "feature_engineering").status == StageStatus.SUCCEEDED
         assert result.has_escalations is True
+
+
+@pytest.mark.unit
+class TestWorkspaceMaterialization:
+    """ADR-0037 Path A: each run gets its own isolated copy of the tracked
+    baseline; the tracked module itself is never written to."""
+
+    def test_two_runs_get_distinct_workspace_copies_no_collision(self, tmp_path: Path) -> None:
+        req_1 = _requirement(title="Run one requirement", component="auth")
+        req_2 = _requirement(title="Run two requirement", component="auth")
+        run_dir_1 = tmp_path / "run-1"
+        run_dir_2 = tmp_path / "run-2"
+        run_dir_1.mkdir(parents=True)
+        run_dir_2.mkdir(parents=True)
+
+        result_1 = run_feature_engineering_stage(
+            _requirement_set([req_1], run_id="run-1"),
+            features_root=features_root_for(materialize_workspace(run_dir_1)),
+            run_dir=run_dir_1,
+            content_generator=_single_stub_generator(req_1),
+            remediator=StubFeatureRemediator([]),
+        )
+        result_2 = run_feature_engineering_stage(
+            _requirement_set([req_2], run_id="run-2"),
+            features_root=features_root_for(materialize_workspace(run_dir_2)),
+            run_dir=run_dir_2,
+            content_generator=_single_stub_generator(req_2),
+            remediator=StubFeatureRemediator([]),
+        )
+
+        record_1 = result_1.package.record_for(req_1.requirement_id)
+        record_2 = result_2.package.record_for(req_2.requirement_id)
+        assert record_1 is not None and record_1.feature_path is not None
+        assert record_2 is not None and record_2.feature_path is not None
+        path_1 = _workspace_features_root(run_dir_1) / record_1.feature_path
+        path_2 = _workspace_features_root(run_dir_2) / record_2.feature_path
+
+        assert path_1 != path_2
+        assert path_1.exists()
+        assert path_2.exists()
+        # Distinct workspace ROOTS entirely -- run-2's copy never contains
+        # run-1's generated feature, and vice versa.
+        assert (run_dir_1 / "workspace") != (run_dir_2 / "workspace")
+        assert not (run_dir_2 / "workspace" / record_1.feature_path).exists()
+        assert not (run_dir_1 / "workspace" / record_2.feature_path).exists()
+
+    def test_tracked_baseline_is_never_written_to(self, tmp_path: Path) -> None:
+        req = _requirement()
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        baseline_smoke = Path("test-suite-baseline/src/test/resources/features/smoke.feature")
+        before_bytes = baseline_smoke.read_bytes()
+
+        run_feature_engineering_stage(
+            _requirement_set([req]),
+            features_root=features_root_for(materialize_workspace(run_dir)),
+            run_dir=run_dir,
+            content_generator=_single_stub_generator(req),
+            remediator=StubFeatureRemediator([]),
+        )
+
+        assert baseline_smoke.read_bytes() == before_bytes  # byte-identical
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "test-suite-baseline/"],
+            cwd=Path.cwd(),
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert status.stdout == ""  # tracked module reports clean
+
+    def test_run_copy_is_a_complete_runnable_maven_module(self, tmp_path: Path) -> None:
+        req = _requirement()
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        workspace_dir = materialize_workspace(run_dir)
+        run_feature_engineering_stage(
+            _requirement_set([req]),
+            features_root=features_root_for(workspace_dir),
+            run_dir=run_dir,
+            content_generator=_single_stub_generator(req),
+            remediator=StubFeatureRemediator([]),
+        )
+
+        # Framework files copied verbatim from the tracked baseline.
+        assert (workspace_dir / "pom.xml").exists()
+        runner_java = "src/test/java/com/automation/runners/RunCucumberTest.java"
+        assert (workspace_dir / runner_java).exists()
+        assert (workspace_dir / "src/test/java/com/automation/base/ConfigReader.java").exists()
+        assert (workspace_dir / "src/test/java/com/automation/base/BasePage.java").exists()
+        assert (workspace_dir / "src/test/resources/junit-platform.properties").exists()
+        assert (workspace_dir / "src/test/resources/config.properties").exists()
+        # The tracked smoke feature travels with the copy...
+        assert (workspace_dir / "src/test/resources/features/smoke.feature").exists()
+        # ...alongside the newly generated feature -- both resolvable by
+        # @SelectClasspathResource("features") within this one copy.
+        generated = list((workspace_dir / "src/test/resources/features").rglob("*.feature"))
+        assert any(p.name == "smoke.feature" for p in generated)
+        assert any(p.name != "smoke.feature" for p in generated)
+        # Build output is NOT copied -- it is Maven's to regenerate.
+        assert not (workspace_dir / "target").exists()
+
+    def test_resume_safety_materialization_never_wipes_prior_generation(
+        self, tmp_path: Path
+    ) -> None:
+        """The one hazard Path A introduces: resuming a run must find its
+        existing workspace intact, never a fresh baseline copy that
+        destroys already-generated features."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        workspace_dir = materialize_workspace(run_dir)
+        marker = workspace_dir / "src/test/resources/features/auth/marker.feature"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("# simulates prior generation", encoding="utf-8")
+
+        # A second materialize_workspace call -- e.g. a resumed run, or a
+        # retried stage-14 attempt within the same run -- must return the
+        # SAME directory, untouched.
+        again = materialize_workspace(run_dir)
+        assert again == workspace_dir
+        assert marker.exists()
+        assert marker.read_text(encoding="utf-8") == "# simulates prior generation"
+
+    def test_resume_via_execute_feature_engineering_stage_preserves_workspace(
+        self, tmp_path: Path
+    ) -> None:
+        """End-to-end version of the resume-safety proof, through the
+        actual stage-14 wiring: SKIP on resume must not touch the
+        workspace at all (materialization only happens on a genuine run)."""
+        req = _requirement()
+        rs = _requirement_set([req])
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        trs_path = run_dir / "testable_requirement_set.json"
+        trs_path.write_text(json.dumps(rs.model_dump(mode="json", by_alias=True)), encoding="utf-8")
+
+        run_state_mgr = _new_run_state_manager(run_dir)
+        first = execute_feature_engineering_stage(
+            run_state_mgr,
+            run_dir,
+            rs,
+            content_generator=_single_stub_generator(req),
+            remediator=StubFeatureRemediator([]),
+            input_artifacts=[trs_path],
+        )
+        assert first is not None
+        record = first.package.record_for(req.requirement_id)
+        assert record is not None and record.feature_path is not None
+        feature_file = _workspace_features_root(run_dir) / record.feature_path
+        content_before = feature_file.read_text(encoding="utf-8")
+
+        second = execute_feature_engineering_stage(
+            run_state_mgr,
+            run_dir,
+            rs,
+            content_generator=_single_stub_generator(req),
+            remediator=StubFeatureRemediator([]),
+            input_artifacts=[trs_path],
+        )
+
+        assert second is None  # SKIPPED
+        assert feature_file.read_text(encoding="utf-8") == content_before  # untouched
 
 
 @pytest.mark.unit
