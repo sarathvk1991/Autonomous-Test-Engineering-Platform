@@ -2382,3 +2382,217 @@ def test_cli_default_run_carries_no_governance_result(
 
     assert cli.main(["analyze", "--output-dir", str(tmp_path / "ex")]) == 0
     assert captured["data"].quality_governance_result is None
+
+
+# ---------------------------------------------------------------------------
+# Stage 14 (Feature Engineering) CLI wiring -- deterministic, fake-injected.
+#
+# No live LLM call anywhere below: `cli.LiveFeatureContentGenerator` and
+# `cli.LiveFeatureRemediator` (the CLASSES the CLI module itself imported and
+# calls, `LiveFeatureContentGenerator(provider)`/`LiveFeatureRemediator(provider)`)
+# are monkeypatched to deterministic fakes -- mirroring how every other
+# external dependency in this file (connectors, provider, analysis service)
+# is faked via FakeContext, never a real network call. This proves the CLI
+# WIRING (stage 14 joins the same run_state.json, in sequence, with the same
+# start_stage/should_skip/succeed_stage machinery Layer 1 already uses)
+# without needing a live model.
+# ---------------------------------------------------------------------------
+
+
+def _real_analysis_result_for_stage14() -> AnalysisResult:
+    """`_real_analysis_result()` with a prompt_version that is actually
+    registered in Layer 1's real prompt registry -- `emit_testable_requirement_set`
+    (which stage 14 needs a real `TestableRequirementSet` from) looks up
+    `analysis_result.prompt_version` there, and `_real_analysis_result()`'s own
+    placeholder ("p1") is not a registered version, which the governance-only
+    tests never noticed since they don't depend on emission succeeding."""
+    return _real_analysis_result().model_copy(update={"prompt_version": "1.1.0"})
+
+
+class _FakeLiveFeatureContentGenerator:
+    """Deterministic stand-in for LiveFeatureContentGenerator -- ignores the
+    injected provider entirely (mirrors how create_requirement_analysis_service's
+    own fake bypasses the provider for Layer 1's analysis call). Always
+    produces a lint-clean, CP2-passing feature."""
+
+    def __init__(self, provider: Any) -> None:
+        self.provider = provider
+
+    def generate(self, requirement: Any) -> str:
+        ac = requirement.acceptance_criteria[0]
+        return (
+            f"@smoke @{ac.criterion_id} @SCN-PENDING\n"
+            f"Scenario: {requirement.title}\n"
+            "  Given a precondition\n"
+            "  When an action occurs\n"
+            "  Then an outcome is observed\n"
+        )
+
+
+class _NeverCalledFeatureRemediator:
+    """Proves CP2 passed on the first try -- remediation must never be reached."""
+
+    def __init__(self, provider: Any) -> None:
+        self.provider = provider
+
+    def remediate(self, content: str, violations: Any) -> str:
+        raise AssertionError("remediate() must not be called for a clean generation")
+
+
+class _FakeDirtyLiveFeatureContentGenerator:
+    """Deterministic stand-in producing a genuinely CP2-failing feature
+    (duplicate scenario names) -- for the escalation-visibility proof."""
+
+    def __init__(self, provider: Any) -> None:
+        self.provider = provider
+
+    def generate(self, requirement: Any) -> str:
+        ac = requirement.acceptance_criteria[0]
+        return (
+            f"@smoke @{ac.criterion_id} @SCN-PENDING\n"
+            "Scenario: Duplicate name\n"
+            "  Given a\n  When b\n  Then c\n"
+            "\n"
+            f"@regression @{ac.criterion_id} @SCN-PENDING\n"
+            "Scenario: Duplicate name\n"
+            "  Given d\n  When e\n  Then f\n"
+        )
+
+
+class _NeverFixesFeatureRemediator:
+    """Always returns the SAME (still-broken) content -- forces D5 to exhaust
+    its 2 attempts and escalate, deterministically."""
+
+    def __init__(self, provider: Any) -> None:
+        self.provider = provider
+
+    def remediate(self, content: str, violations: Any) -> str:
+        return content
+
+
+def _patched_context_for_stage14(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Layer the same grounding/governance patches
+    `test_cli_end_to_end_runs_governance_exactly_once_and_places_result` uses,
+    plus `prompt_registry` (needed by `emit_testable_requirement_set`, which
+    that governance test never reaches) -- onto whatever `cli.PlatformContext`
+    already resolves to (a `FakeContext` instance, per `_use_context`, called
+    beforehand)."""
+    original_platform_context = cli.PlatformContext
+
+    def _patched() -> Any:
+        ctx = original_platform_context()
+        ctx.create_grounding_service = _StubGroundingService
+        ctx.create_quality_governance_service = (
+            lambda: PlatformContext().create_quality_governance_service()
+        )
+        ctx.prompt_registry = PlatformContext().prompt_registry
+        return ctx
+
+    monkeypatch.setattr(cli, "PlatformContext", _patched)
+
+
+@pytest.mark.unit
+def test_stage14_runs_after_layer1_in_sequence_with_correct_artifacts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(cli, "LiveFeatureContentGenerator", _FakeLiveFeatureContentGenerator)
+    monkeypatch.setattr(cli, "LiveFeatureRemediator", _NeverCalledFeatureRemediator)
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result_for_stage14()
+    )
+    _patched_context_for_stage14(monkeypatch)
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    exit_code = cli.main(
+        ["analyze", "--validate", "--save-execution", "--output-dir", str(tmp_path / "ex")]
+    )
+    assert exit_code == 0
+
+    run_dirs = [p for p in (tmp_path / "ex").iterdir() if p.is_dir()]
+    assert len(run_dirs) == 1
+    run_dir = run_dirs[0]
+
+    state = json.loads((run_dir / "run_state.json").read_text())
+    stage_ids_in_order = [s["stageId"] for s in state["stages"]]
+    layer1_tail_index = stage_ids_in_order.index("execution_package_write")
+    fe_index = stage_ids_in_order.index("feature_engineering")
+    assert fe_index > layer1_tail_index  # stage 14 recorded AFTER Layer 1's own stages
+
+    fe_record = next(s for s in state["stages"] if s["stageId"] == "feature_engineering")
+    assert fe_record["status"] == "succeeded"
+    assert any("testable_requirement_set.json" in p for p in fe_record["inputArtifacts"])
+    assert any("feature_engineering_package.json" in p for p in fe_record["outputArtifacts"])
+    assert any("workspace" in p and p.endswith(".feature") for p in fe_record["outputArtifacts"])
+
+    package = json.loads((run_dir / "feature_engineering_package.json").read_text())
+    assert len(package["records"]) >= 1
+    assert all(r["escalated"] is False for r in package["records"])
+
+    workspace_features = list((run_dir / "workspace").rglob("*.feature"))
+    assert len(workspace_features) >= 1
+
+
+@pytest.mark.unit
+def test_stage14_escalation_is_visible_in_cli_output_and_stage_still_succeeds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(cli, "LiveFeatureContentGenerator", _FakeDirtyLiveFeatureContentGenerator)
+    monkeypatch.setattr(cli, "LiveFeatureRemediator", _NeverFixesFeatureRemediator)
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result_for_stage14()
+    )
+    _patched_context_for_stage14(monkeypatch)
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    exit_code = cli.main(
+        ["analyze", "--validate", "--save-execution", "--output-dir", str(tmp_path / "ex")]
+    )
+    assert exit_code == 0
+    out = capsys.readouterr().out
+
+    # A human scanning the CLI's own output learns a run escalated WITHOUT
+    # opening the raw package JSON -- both the immediate per-stage line and
+    # the final run summary carry it.
+    assert "escalated" in out
+
+    run_dir = next(p for p in (tmp_path / "ex").iterdir() if p.is_dir())
+    state = json.loads((run_dir / "run_state.json").read_text())
+    fe_record = next(s for s in state["stages"] if s["stageId"] == "feature_engineering")
+    assert fe_record["status"] == "succeeded"  # escalation is content-level, never a stage FAIL
+
+    package = json.loads((run_dir / "feature_engineering_package.json").read_text())
+    assert any(r["escalated"] is True for r in package["records"])
+
+
+@pytest.mark.unit
+def test_stage14_resume_skips_layer1_and_skips_unchanged_stage14(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(cli, "LiveFeatureContentGenerator", _FakeLiveFeatureContentGenerator)
+    monkeypatch.setattr(cli, "LiveFeatureRemediator", _NeverCalledFeatureRemediator)
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result_for_stage14()
+    )
+    _patched_context_for_stage14(monkeypatch)
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    output_dir = tmp_path / "ex"
+    first_args = ["analyze", "--validate", "--save-execution", "--output-dir", str(output_dir)]
+    assert cli.main(first_args) == 0
+    capsys.readouterr()  # discard first run's output
+    run_dir = next(p for p in output_dir.iterdir() if p.is_dir())
+    run_id = run_dir.name
+
+    # Re-invoke with --resume against the SAME run_id and the SAME (unchanged)
+    # fakes: every Layer 1 stage and stage 14 should already be SUCCEEDED with
+    # unchanged inputs/outputs, so the whole-run skip check fires and nothing
+    # re-runs.
+    assert cli.main(["analyze", "--resume", run_id, "--output-dir", str(output_dir)]) == 0
+    out = capsys.readouterr().out
+    assert "already complete and unchanged" in out
+
+    state = json.loads((run_dir / "run_state.json").read_text())
+    fe_record = next(s for s in state["stages"] if s["stageId"] == "feature_engineering")
+    assert fe_record["status"] == "succeeded"  # untouched by the whole-run skip's early return

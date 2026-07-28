@@ -42,6 +42,11 @@ DEFAULT_OUTPUT_DIR = _REPO_ROOT / "output" / "executions"
 sys.path.insert(0, str(_REPO_ROOT))
 
 from contracts.testable_requirement import CONTRACT_VERSION  # noqa: E402
+from feature_engineering.generation.live_content_generator import (  # noqa: E402
+    LiveFeatureContentGenerator,
+)
+from feature_engineering.remediation.live_remediator import LiveFeatureRemediator  # noqa: E402
+from feature_engineering.stage import execute_feature_engineering_stage  # noqa: E402
 from requirement_intelligence.connectors.connector_exceptions import ConnectorError  # noqa: E402
 from requirement_intelligence.context_orchestration import (  # noqa: E402
     ContextOrchestrationError,
@@ -77,6 +82,7 @@ from requirement_intelligence.run_state import (  # noqa: E402
     RunLockError,
     RunStateCorruptError,
     RunStateManager,
+    StageStatus,
     generate_run_id,
 )
 
@@ -1407,8 +1413,54 @@ def handle_analyze(args: argparse.Namespace) -> int:
         output_paths = [target_dir / name for name in write_result.generated_artifacts]
         output_paths.append(target_dir / "manifest.json")
         run_state_mgr.succeed_stage("execution_package_write", output_artifacts=output_paths)
-    history.finalize(target_dir, save_execution=effective_save)
     console.ok("Complete")
+
+    # Feature Engineering (Layer 2, stage 14 -- ADR-0036, ADR-0043 D8): the last
+    # Layer 1 -> Layer 2 handoff, run only when a TestableRequirementSet was
+    # actually emitted -- never in --dry-run, where testable_requirement_set stays
+    # None throughout (the same gating every other tail phase already uses; no new
+    # flag or mode is introduced for this). `testable_requirement_set.json` was
+    # just written above, by execution_package_write, so it is a real, on-disk
+    # declared input artifact here, not merely an in-memory value (ADR-0036 D2).
+    # The provider is the SAME already-constructed, already-validated instance
+    # `requirement_analysis` obtained above via `context.create_provider(...)` --
+    # injected into both live impls, never re-constructed or re-validated here;
+    # this stage never imports llm_factory itself.
+    # execute_feature_engineering_stage owns its own start_stage/should_skip/
+    # fail_stage/succeed_stage transitions internally (unlike every other phase
+    # above, whose try/except lives in this CLI) -- see feature_engineering.stage
+    # .runner's own docstring for why: it is a ready-to-call, self-contained
+    # integration point, built and tested standalone before this task wired it in.
+    feature_engineering_result: Any = None
+    if testable_requirement_set is not None:
+        console.action("\nGenerating Features (Layer 2)")
+        feature_engineering_result = execute_feature_engineering_stage(
+            run_state_mgr,
+            target_dir,
+            testable_requirement_set,
+            content_generator=LiveFeatureContentGenerator(provider),
+            remediator=LiveFeatureRemediator(provider),
+            input_artifacts=[target_dir / "testable_requirement_set.json"],
+        )
+        fe_stage = next(
+            s for s in run_state_mgr.state.stages if s.stage_id == "feature_engineering"
+        )
+        if feature_engineering_result is not None:
+            records = feature_engineering_result.package.records
+            escalations = feature_engineering_result.package.escalated_records
+            console.ok(f"{len(records)} feature(s) generated")
+            if escalations:
+                console.note(
+                    f"  ⚠ {len(escalations)} feature(s) escalated for human "
+                    f"review (see {feature_engineering_result.package_path.name})"
+                )
+        elif fe_stage.status == StageStatus.SKIPPED:
+            console.note("  unchanged, skipped")
+        else:
+            error_message = fe_stage.error.message if fe_stage.error else "unknown error"
+            console.error(f"Feature Engineering failed: {error_message}")
+
+    history.finalize(target_dir, save_execution=effective_save)
 
     console.note("\nExecution Finished")
     console.note(f"  run_id  : {run_id}")
@@ -1417,6 +1469,13 @@ def handle_analyze(args: argparse.Namespace) -> int:
     if result is not None:
         console.note(f"  provider={args.provider} model={result.model}")
         console.note(f"  json_valid={write_result.json_valid}")
+    if feature_engineering_result is not None:
+        final_escalations = feature_engineering_result.package.escalated_records
+        if final_escalations:
+            console.note(
+                f"  escalations : {len(final_escalations)} "
+                f"(see {feature_engineering_result.package_path.name})"
+            )
     run_lock.release()
     return 0
 
