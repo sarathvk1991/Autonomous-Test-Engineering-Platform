@@ -120,6 +120,19 @@ def derive_feature_name(title: str, requirement_id: str) -> tuple[str, str | Non
     return name, comment
 
 
+def derive_feature_file_path(requirement: TestableRequirement, *, features_root: Path) -> Path:
+    """The deterministic target path one requirement's `.feature` file lands
+    at -- the same computation `generate_feature_file` performs internally,
+    exposed so a caller holding only a `FeatureGenerationError` (raised
+    before a `GeneratedFeature` ever existed, e.g. a lint-dirty assembled
+    file) can still know where that dirty/escalated content belongs in the
+    workspace (ADR-0036 stage 14, ADR-0043 D8) without recomputing the
+    naming scheme itself.
+    """
+    file_name = f"{_slugify(requirement.title)}-{requirement.requirement_id.lower()}.feature"
+    return features_root / requirement.component / file_name
+
+
 def _canonical_scenario_content(scenario: dict[str, Any]) -> str:
     """A scenario's own canonical text for content-addressing (D2) — its
     name, steps, and any Examples table, joined; distinct scenario intent
@@ -320,8 +333,7 @@ def generate_feature_file(
             content=assembled,
         )
 
-    file_name = f"{_slugify(requirement.title)}-{requirement.requirement_id.lower()}.feature"
-    file_path = features_root / requirement.component / file_name
+    file_path = derive_feature_file_path(requirement, features_root=features_root)
 
     return GeneratedFeature(
         requirement_id=requirement.requirement_id,

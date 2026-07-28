@@ -78,7 +78,7 @@ _AC_TAG_RE = re.compile(r"^@AC-\S+$")
 _SCN_TAG_RE = re.compile(r"^@SCN-\S+$")
 
 
-def _rebuild_generated_feature(
+def rebuild_generated_feature(
     requirement: TestableRequirement,
     content: str,
     req_tag: str,
@@ -89,8 +89,12 @@ def _rebuild_generated_feature(
     `generate_feature_file` computes while MINTING a feature the first
     time. Never mints an id: `content` already carries whatever `@SCN-*`/
     `@AC-*` values the remediator preserved or the formatter left
-    untouched. Used only to re-gate a remediation attempt via the SAME,
-    unmodified `evaluate_cp2` every other caller uses.
+    untouched. Used to re-gate a remediation attempt via the SAME,
+    unmodified `evaluate_cp2` every other caller uses, and reused by
+    stage 14's own wiring (`feature_engineering.stage`) to reconstruct a
+    `GeneratedFeature` for an unchanged, reused requirement's on-disk
+    content -- not a new mechanism, the same read-only reconstruction this
+    loop already needed.
     """
     source = parse_source_text(content)
     known_ac_ids = {ac.criterion_id for ac in requirement.acceptance_criteria}
@@ -145,7 +149,7 @@ def _cp2_result_for(
     lint_config: dict[str, Any],
 ) -> CP2Result:
     lint_result = _relint(content, lint_config)
-    feature = _rebuild_generated_feature(requirement, content, req_tag, lint_result)
+    feature = rebuild_generated_feature(requirement, content, req_tag, lint_result)
     return evaluate_cp2(feature)
 
 
@@ -272,4 +276,4 @@ def run_cp2_remediation(
     )
 
 
-__all__ = ["run_cp2_remediation"]
+__all__ = ["rebuild_generated_feature", "run_cp2_remediation"]

@@ -11,7 +11,7 @@ future human-in-the-loop trigger) -- neither built here.
 from __future__ import annotations
 
 from feature_engineering.remediation.formatter import format_feature_content
-from feature_engineering.remediation.loop import run_cp2_remediation
+from feature_engineering.remediation.loop import rebuild_generated_feature, run_cp2_remediation
 from feature_engineering.remediation.models import (
     MAX_LLM_REMEDIATION_ATTEMPTS,
     NON_REMEDIABLE_RULES,
@@ -30,5 +30,6 @@ __all__ = [
     "RemediationStatus",
     "StubFeatureRemediator",
     "format_feature_content",
+    "rebuild_generated_feature",
     "run_cp2_remediation",
 ]
