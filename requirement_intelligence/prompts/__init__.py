@@ -49,7 +49,7 @@ from shared.prompts.framework.prompt_registry import (
     PromptRegistryState,
 )
 from shared.prompts.framework.prompt_template_contract import (
-    ARTIFACT_CONTEXT_PLACEHOLDER,
+    CONTEXT_PLACEHOLDER,
     GovernedTemplate,
     parse_governed_template,
 )
@@ -59,7 +59,7 @@ from shared.prompts.models.prompt_metadata import PromptMetadata
 from shared.prompts.models.prompt_version import PromptLifecycle, PromptVersion
 
 __all__ = [
-    "ARTIFACT_CONTEXT_PLACEHOLDER",
+    "CONTEXT_PLACEHOLDER",
     "GovernedTemplate",
     "PromptCompatibility",
     "PromptDefinition",

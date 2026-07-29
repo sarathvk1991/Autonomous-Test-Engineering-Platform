@@ -31,7 +31,7 @@ from shared.prompts.framework.prompt_exceptions import (
 )
 from shared.prompts.framework.prompt_registry import PromptRegistry
 from shared.prompts.framework.prompt_template_contract import (
-    ARTIFACT_CONTEXT_PLACEHOLDER,
+    CONTEXT_PLACEHOLDER,
     SECTION_SEPARATOR,
     parse_governed_template,
 )
@@ -91,7 +91,7 @@ def test_shipped_template_conforms_to_contract(path: Path) -> None:
 @pytest.mark.parametrize("path", _shipped_templates(), ids=lambda p: p.name)
 def test_shipped_template_has_exactly_one_placeholder(path: Path) -> None:
     content = path.read_text(encoding="utf-8")
-    assert content.count(ARTIFACT_CONTEXT_PLACEHOLDER) == 1
+    assert content.count(CONTEXT_PLACEHOLDER) == 1
 
 
 @pytest.mark.parametrize("path", _shipped_templates(), ids=lambda p: p.name)
@@ -217,7 +217,7 @@ def test_substitution_preserves_literal_json_braces() -> None:
     rendered = template.render_user_prompt("CTX")
     assert '{"summary": ""}' in rendered
     assert "CTX" in rendered
-    assert ARTIFACT_CONTEXT_PLACEHOLDER not in rendered
+    assert CONTEXT_PLACEHOLDER not in rendered
 
 
 def test_production_template_json_contract_survives_substitution() -> None:
@@ -228,7 +228,7 @@ def test_production_template_json_contract_survives_substitution() -> None:
     assert '"summary": ""' in rendered
     assert '"recommendations": []' in rendered
     assert "ARTIFACT-CONTEXT-SENTINEL" in rendered
-    assert ARTIFACT_CONTEXT_PLACEHOLDER not in rendered
+    assert CONTEXT_PLACEHOLDER not in rendered
 
 
 def test_artifact_context_is_injected_at_the_placeholder_position() -> None:

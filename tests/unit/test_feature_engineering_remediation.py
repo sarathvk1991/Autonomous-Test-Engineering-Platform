@@ -339,6 +339,159 @@ class TestDeterminism:
         assert first.final_cp2_result == second.final_cp2_result
 
 
+class TestSplitScenarioRemint:
+    """ADR-0043 D2's split-scenario re-mint rule (2026-07-27 addendum;
+    baseline register §4 item 13) -- Part 1's construct-tested proof.
+
+    HONEST STATUS: two live runs (60 generations) observed ZERO scenario
+    splits -- there is no real fixture to test this against. Every test
+    below scripts a `StubFeatureRemediator` to construct a split by hand,
+    including the one failure mode D2 explicitly forbids (the LLM copying
+    the scenario-it-split-from's id onto BOTH resulting scenarios). This
+    proves the mechanism works against a plausible worst case; it does not
+    and cannot prove real model behaviour matches this shape.
+    """
+
+    def _dupe_name_dirty_content(self, req: TestableRequirement) -> str:
+        (ac,) = req.acceptance_criteria
+        raw = (
+            f"@smoke @{ac.criterion_id} @SCN-PENDING\n"
+            "Scenario: Duplicate name\n"
+            "  Given a\n"
+            "  When b\n"
+            "  Then c\n"
+            "\n"
+            f"@regression @{ac.criterion_id} @SCN-PENDING\n"
+            "Scenario: Duplicate name\n"
+            "  Given d\n"
+            "  When e\n"
+            "  Then f\n"
+        )
+        with pytest.raises(FeatureGenerationError) as excinfo:
+            generate_feature_file(
+                req,
+                StubFeatureContentGenerator({req.requirement_id: raw}),
+                features_root=Path("/tmp/unused"),
+            )
+        assert excinfo.value.content is not None
+        return excinfo.value.content
+
+    def _scn_ids_in_document_order(self, content: str) -> list[str]:
+        source = parse_source_text(content)
+        assert source.feature is not None
+        return [
+            next(t["name"] for t in child["scenario"]["tags"] if t["name"].startswith("@SCN-"))
+            for child in source.feature["children"]
+        ]
+
+    def _scn_tags_by_scenario(self, content: str) -> dict[str, str]:
+        source = parse_source_text(content)
+        assert source.feature is not None
+        return {
+            child["scenario"]["name"]: next(
+                t["name"] for t in child["scenario"]["tags"] if t["name"].startswith("@SCN-")
+            )
+            for child in source.feature["children"]
+        }
+
+    def _construct_split_response(self, dirty: str, first_id: str) -> str:
+        """Split scenario 1 ("Duplicate name", a/b/c) into a shortened
+        survivor (a/b) keeping `first_id` untouched, plus a genuinely new
+        scenario (c) the stub mis-tags with the SAME `first_id` -- copied
+        from the scenario it split from, exactly what D2 forbids. Scenario
+        2 is separately renamed to fix the original duplicate-name
+        violation, unrelated to the split."""
+        split = dirty.replace(
+            f"  @smoke {first_id}\n"
+            "  Scenario: Duplicate name\n"
+            "    Given a\n"
+            "    When b\n"
+            "    Then c\n",
+            f"  @smoke {first_id}\n"
+            "  Scenario: Duplicate name\n"
+            "    Given a\n"
+            "    When b\n"
+            "\n"
+            f"  @smoke {first_id}\n"
+            "  Scenario: Duplicate name split-off\n"
+            "    Then c\n",
+        )
+        assert split != dirty  # confirm the replace actually matched
+        return split.replace(
+            "Scenario: Duplicate name\n    Given d",
+            "Scenario: Renamed second scenario\n    Given d",
+        )
+
+    def test_survivor_keeps_id_new_scenario_gets_fresh_deterministic_id(self) -> None:
+        req = _requirement()
+        (ac,) = req.acceptance_criteria
+        ac_short = ac.criterion_id.removeprefix("AC-")
+        dirty = self._dupe_name_dirty_content(req)
+        # Both original scenarios share the name "Duplicate name" (that's
+        # the violation being fixed) -- `_scn_tags_by_scenario`'s name-keyed
+        # dict can't disambiguate them, so read ids positionally instead.
+        first_id, second_id = self._scn_ids_in_document_order(dirty)
+        assert first_id != second_id
+
+        split_response = self._construct_split_response(dirty, first_id)
+        remediator = StubFeatureRemediator([split_response])
+
+        result = run_cp2_remediation(
+            req, dirty, req_tag=f"@{req.requirement_id}", remediator=remediator
+        )
+
+        assert result.status == RemediationStatus.PASSED
+        assert result.llm_attempt_count == 1
+        assert _lint_clean(result.final_content)
+
+        final_tags = self._scn_tags_by_scenario(result.final_content)
+        assert final_tags["Duplicate name"] == first_id  # survivor: untouched
+        assert final_tags["Renamed second scenario"] == second_id  # unrelated survivor: untouched
+        new_id = final_tags["Duplicate name split-off"]
+        assert new_id not in (first_id, second_id)  # never copied from the original
+        assert new_id == f"@SCN-{ac_short}-03"  # deterministic: next free ordinal past 01/02
+
+    def test_determinism_same_split_content_yields_the_same_reminted_id(self) -> None:
+        req = _requirement()
+        dirty = self._dupe_name_dirty_content(req)
+        first_id, _second_id = self._scn_ids_in_document_order(dirty)
+        split_response = self._construct_split_response(dirty, first_id)
+        req_tag = f"@{req.requirement_id}"
+
+        first_run = run_cp2_remediation(
+            req, dirty, req_tag=req_tag, remediator=StubFeatureRemediator([split_response])
+        )
+        second_run = run_cp2_remediation(
+            req, dirty, req_tag=req_tag, remediator=StubFeatureRemediator([split_response])
+        )
+
+        assert first_run.status == second_run.status == RemediationStatus.PASSED
+        assert first_run.final_content == second_run.final_content
+        first_tags = self._scn_tags_by_scenario(first_run.final_content)
+        second_tags = self._scn_tags_by_scenario(second_run.final_content)
+        assert first_tags["Duplicate name split-off"] == second_tags["Duplicate name split-off"]
+
+    def test_no_split_the_common_case_is_a_byte_identical_no_op(self) -> None:
+        """All 60/60 live generations to date: a remediation that renames a
+        scenario (or otherwise fixes a violation) without splitting must
+        leave every SCN-* id exactly as the remediator returned it --
+        proving the re-mint step is inert on the path every real run has
+        actually taken."""
+        req = _requirement()
+        dirty = self._dupe_name_dirty_content(req)
+        head, _sep, tail = dirty.rpartition("Scenario: Duplicate name")
+        fixed = head + "Scenario: Renamed second scenario" + tail
+        remediator = StubFeatureRemediator([fixed])
+
+        result = run_cp2_remediation(
+            req, dirty, req_tag=f"@{req.requirement_id}", remediator=remediator
+        )
+
+        assert result.status == RemediationStatus.PASSED
+        assert result.final_content == fixed  # byte-identical: zero edits made
+        assert result.attempts[0].content_after == fixed
+
+
 class TestNoLlmNoNetworkNoIo:
     def test_remediation_package_never_imports_llm_factory(self) -> None:
         import ast

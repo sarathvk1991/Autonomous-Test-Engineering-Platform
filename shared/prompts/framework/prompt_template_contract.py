@@ -62,7 +62,11 @@ from shared.prompts.framework.prompt_exceptions import (
 )
 
 #: The single placeholder a governed template exposes for artifact injection.
-ARTIFACT_CONTEXT_PLACEHOLDER = "{artifact_context}"
+#: The value itself (``"{artifact_context}"``) is an external contract every
+#: committed governed template embeds literally — frozen, not renamed here.
+#: Only this Python symbol's name changed (layer-neutral, this module having
+#: relocated out of Layer 1's own package); no template file changes.
+CONTEXT_PLACEHOLDER = "{artifact_context}"
 
 #: The blank line that separates the system prompt from the user template.
 SECTION_SEPARATOR = "\n\n"
@@ -78,7 +82,7 @@ class GovernedTemplate:
         The role-establishing section — the template's first paragraph.
     user_template:
         The remainder, containing exactly one
-        :data:`ARTIFACT_CONTEXT_PLACEHOLDER`.
+        :data:`CONTEXT_PLACEHOLDER`.
     """
 
     system_prompt: str
@@ -86,7 +90,7 @@ class GovernedTemplate:
 
     def render_user_prompt(self, artifact_context: str) -> str:
         """Return the user prompt with *artifact_context* substituted in."""
-        return self.user_template.replace(ARTIFACT_CONTEXT_PLACEHOLDER, artifact_context)
+        return self.user_template.replace(CONTEXT_PLACEHOLDER, artifact_context)
 
 
 def parse_governed_template(content: str) -> GovernedTemplate:
@@ -121,11 +125,11 @@ def parse_governed_template(content: str) -> GovernedTemplate:
     if not user_template.strip():
         raise PromptTemplateContractError("Governed template has an empty user prompt section.")
 
-    occurrences = user_template.count(ARTIFACT_CONTEXT_PLACEHOLDER)
+    occurrences = user_template.count(CONTEXT_PLACEHOLDER)
     if occurrences != 1:
         raise PromptTemplateContractError(
             f"Governed template must contain exactly one "
-            f"{ARTIFACT_CONTEXT_PLACEHOLDER!r} placeholder; found {occurrences}."
+            f"{CONTEXT_PLACEHOLDER!r} placeholder; found {occurrences}."
         )
 
     return GovernedTemplate(system_prompt=system_prompt, user_template=user_template)

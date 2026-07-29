@@ -50,13 +50,13 @@ from shared.prompts.framework.prompt_registry import (
     PromptRegistryState,
 )
 from shared.prompts.framework.prompt_template_contract import (
-    ARTIFACT_CONTEXT_PLACEHOLDER,
+    CONTEXT_PLACEHOLDER,
     GovernedTemplate,
     parse_governed_template,
 )
 
 __all__ = [
-    "ARTIFACT_CONTEXT_PLACEHOLDER",
+    "CONTEXT_PLACEHOLDER",
     "GovernedTemplate",
     "PromptFrameworkError",
     "PromptLoader",

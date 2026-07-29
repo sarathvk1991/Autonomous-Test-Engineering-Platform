@@ -143,10 +143,17 @@ def derive_feature_file_path(requirement: TestableRequirement, *, features_root:
     return features_root / requirement.component / file_name
 
 
-def _canonical_scenario_content(scenario: dict[str, Any]) -> str:
+def canonical_scenario_content(scenario: dict[str, Any]) -> str:
     """A scenario's own canonical text for content-addressing (D2) — its
     name, steps, and any Examples table, joined; distinct scenario intent
-    always yields a distinct string here."""
+    always yields a distinct string here.
+
+    Public (not module-private): the post-remediation split-scenario re-mint
+    step (`feature_engineering.remediation.loop`, ADR-0043 D2's 2026-07-27
+    resolution note) reuses this exact function to decide scenario identity
+    across a remediation attempt — the same content-addressing computation
+    used at first-mint time, not a second, divergent one.
+    """
     parts = [scenario.get("name", "")]
     for step in scenario.get("steps", []):
         parts.append(step["keyword"] + step["text"])
@@ -251,7 +258,7 @@ def generate_feature_file(
                 "scenario": scenario,
                 "ac_ids": [t.removeprefix("@") for t in ac_ids],
                 "functional_tags": functional_tags,
-                "canonical_content": _canonical_scenario_content(scenario),
+                "canonical_content": canonical_scenario_content(scenario),
             }
         )
         for ac_id in pending[-1]["ac_ids"]:
