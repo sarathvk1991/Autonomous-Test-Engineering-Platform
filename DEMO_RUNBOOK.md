@@ -556,6 +556,70 @@ ls output/executions/demo-readiness-20260720/ | sort
 
 ---
 
+## Stage 17 — Feature Engineering (Layer 2, stage 14)
+
+**Purpose** — show the Layer 1 → Layer 2 handoff running live: one `TestableRequirement` in, one lint-clean, tagged, multi-scenario `.feature` file out, gated by a deterministic CP2 check with a bounded self-healing backstop behind it.
+
+**Second reference execution — this stage only.** `demo-readiness-20260720` (the execution behind every stage above) predates Layer 2 entirely: stage 14 was wired into `analyze` in a later task, so that execution never touched it. This stage instead cites a separate, real live execution where Layer 2 did run, end to end, against the same saucedemo.com corpus:
+
+| Field | Value |
+| --- | --- |
+| Run Id | `run-20260728T172651881816Z-c6695f94` |
+| Execution Name | `saucedemo-30req-measurement-clean` |
+| Folder | `output/executions/run-20260728T172651881816Z-c6695f94/` |
+| Requirements processed | 30 |
+| CP2 verdict | 30/30 `pass`, 0 remediated, 0 escalated |
+
+All paths below are relative to that folder, not `output/executions/demo-readiness-20260720/`.
+
+**Command executed** — the same `analyze` command already shown in Stage 1; **no new flag exists or is needed**. Stage 14 fires automatically whenever Layer 1 clears Quality Governance and emits a `TestableRequirementSet` (skipped only for `--dry-run`, where no `TestableRequirementSet` is ever emitted):
+```bash
+python scripts/run_requirement_analysis.py analyze --validate \
+    --execution-name <your-run-name> --verbose
+```
+
+**Expected outcome** — after the existing Stage 1–16 output, the console prints a new block:
+```
+Generating Features (Layer 2)
+  30 feature(s) generated
+```
+(a `⚠ N feature(s) escalated for human review` line appears only if CP2 still fails after D5's two remediation attempts — did not happen in this run.)
+
+**HONEST TIMING — read this before presenting live.** Layer 1 (Stages 1–16) finishes in ~5 seconds — one Gemini call. Layer 2 then makes up to `1 + N + 2N` additional Gemini calls for `N` requirements: one generation call per requirement, plus up to two bounded D5 remediation calls each, only if CP2 fails (ADR-0040 Decision 1 / ADR-0043 D5's fixed 2-attempt cap). For this 30-requirement corpus that ceiling is 91 calls; the actual count on a clean run is 30 (D5 never engaged — see below). On the Gemini free tier, `gemini-3.1-flash-lite` is quota-limited to **15 requests/minute** — this exact limit is what the API itself reported during this measurement (`generativelanguage.googleapis.com/generate_content_free_tier_requests`, `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`). One of the two live runs behind this doc hit it: generation failed outright at requirement #17 with a `429 RESOURCE_EXHAUSTED` error — the platform performs **no retries of its own** anywhere in this call path (`GeminiProvider`/`LiveFeatureContentGenerator` both make exactly one call and surface whatever comes back), so this is a real, visible failure, not silent backoff. **Do not promise a fixed duration.** Depending on free-tier quota state at demo time, expect anywhere from ~3 minutes (no quota hit, ~5–6s/requirement once under way) to 10+ minutes (one or more real 429s requiring a resume, below). If it happens on stage, that's expected, not a broken demo.
+
+**Recovery — if a 429 happens live:** the run is safely resumable, with no repeated LLM calls for work already done. Stage 14 skips any requirement whose `content_hash` is unchanged and whose feature file already exists on disk (ADR-0036/ADR-0043 D8) — a resume regenerates only what's left:
+```bash
+python scripts/run_requirement_analysis.py analyze --resume run-20260728T172651881816Z-c6695f94 --verbose
+```
+This is exactly what happened behind this reference execution: the first invocation failed at requirement #17; a `--resume` of the same run id, run a few minutes later, picked up at #17 and finished all 30 without touching the first 16 again. The overall `analyze` command still exits `0` on a stage 14 failure — only `execution_package_write` failing is treated as fatal — so a presenter sees a clean `Feature Engineering failed: ...` line, not a crash.
+
+**Artifacts produced**
+- `feature_engineering_package.json` — one structured `FeatureRecord` per requirement (CP2 verdict, remediation/escalation flags, `SCN-*`/`AC-*` coverage, feature path).
+- `feature_engineering_report.md` — the human-readable table version of the same.
+- `traceability.json` — derived index of every `REQ-*`/`AC-*`/`SCN-*` triple and its feature path (the source of truth is the Gherkin tags themselves, per ADR-0043 D2; this file is a read-back, not the source).
+- One `.feature` file per requirement, written to the **per-run, gitignored workspace** — see below.
+
+**Files to open during the demo**
+```bash
+cat "output/executions/run-20260728T172651881816Z-c6695f94/feature_engineering_report.md"
+
+cat "output/executions/run-20260728T172651881816Z-c6695f94/workspace/src/test/resources/features/Automation-POC:src/test/java/com/automation/pages/badexamples/BadCartPage.java/the-system-shall-redirect-authenticated-standard-user-to-the-inventory-page-upon-successful-login-req-8604e1d3.feature"
+```
+
+**Where generated output actually lives — and where it does NOT.** Generated `.feature` files land in `output/executions/<run_id>/workspace/src/test/resources/features/...` — an isolated, per-run copy of the tracked test-suite baseline, materialized fresh for this run alone (`feature_engineering/stage/workspace.py`, ADR-0037 Path A). **`test-suite-baseline/` at the repo root is deliberately never written to by this stage** — it is the source `materialize_workspace` copies *from*, read-only, so two runs (or a run and the tracked source) never share one directory. Confirmed clean: `git status --porcelain test-suite-baseline/` reports nothing. If someone asks "where's the generated code," the answer is the run's own `workspace/`, never `test-suite-baseline/`. The whole `output/` tree is gitignored (`.gitignore:39`), so none of this — including a presenter's own live-run output — is ever at risk of being committed.
+
+**Talking points**
+- **30/30 requirements passed CP2 on their first generation attempt** — lint-clean, correctly tagged (`@REQ-*` feature-level, `@AC-*`/`@SCN-*` scenario-level), full acceptance-criteria coverage. 0 remediated, 0 escalated (`feature_engineering_report.md`'s own `Remediated`/`Escalated` columns, all `False`).
+- **D5 (bounded, 2-attempt LLM remediation) is a proven backstop, not something this demo routinely exercises.** It is real, wired, and tested — but it has never fired on a live run: two live runs, 60 total generations, zero engagements. Do not claim "watch it self-heal" as expected behavior. If someone specifically wants to see D5 fire, the honest answer is to point at its test coverage (`tests/unit/test_feature_engineering_remediation.py`, `test_feature_engineering_live_remediator.py`) — construct-tested against deterministic stubs/fakes, never a live model — not to attempt forcing a live CP2 failure on stage, which is neither scripted nor guaranteed to reproduce.
+- **The functional requirements are real; the security/quality findings are representative fixtures, not real scans.** The JIRA issues behind this corpus (`requirement_intelligence/input/jira/jira-issues.json`) are real, hand-authored functional requirements describing saucedemo.com's actual behavior (login, inventory, cart, checkout) — its own `_fixtureNotice` says so plainly. The SonarQube and OWASP ZAP inputs are **REPRESENTATIVE FIXTURES**: every record is unmistakably marked (`ZAP-FIXTURE-*` plugin ids, `sonar-fixture:*` issue keys, an explicit `_fixtureNote`/`_fixtureNotice` on each file) — no ZAP or SonarQube scan has ever actually been run against saucedemo.com. This demo proves the **functional generation path end-to-end on real content**, and proves the **SAST/DAST-shaped generation path structurally** (a security/quality finding correctly becomes a tagged scenario) — it does not demonstrate real scanner integration. Say this plainly if asked.
+- Escalation is a real, wired outcome (a CLI `⚠` warning line, plus an `escalated: true` record with a reason) — it simply didn't occur in either live run behind this doc.
+
+**Suggested explanation** — "Layer 1 hands off a governed `TestableRequirementSet`; Layer 2 turns each requirement into a lint-clean, traceable `.feature` file behind a deterministic gate, with a bounded, 2-attempt self-healing loop behind that gate as a backstop, not a crutch. Every one of these 30 requirements passed clean on the first try — including the ones sourced from representative security/quality fixtures, not real scans, which I want to be upfront about."
+
+**Estimated speaking time** — 90 seconds (120 if walking through the 429/resume story).
+
+---
+
 ## Manifest
 
 **Purpose** — the canonical entry point to the whole execution: versions, hashes, timings, verdicts, and every subsystem's executed/report/metrics fields.
@@ -616,9 +680,10 @@ PY
 **Talking points**
 - Style: modular monolith, one deployable FastAPI unit.
 - Layer 1 (Requirement Intelligence): `requirement_intelligence/{connectors,mappers,consolidation,context_orchestration,prompts,llm,analysis,validation,cp1,execution}`.
-- Layer 2 (added post-CAP-077): `requirement_intelligence/{enhancement,grounding,quality_governance,recommendation,continuous_improvement,knowledge_graph,organizational_memory,learning}`.
+- "Layer 2" (added post-CAP-077): `requirement_intelligence/{enhancement,grounding,quality_governance,recommendation,continuous_improvement,knowledge_graph,organizational_memory,learning}` — internal, CAP-077-era naming that predates the platform's own 7-layer model (ADR-0031) and describes Requirement Enhancement through Learning, all still inside Layer 1's own package.
+- **Naming collision, worth knowing before someone asks:** the platform's *architecturally-defined* Layer 2 is Feature Engineering (ADR-0031, ADR-0043) — a physically separate top-level package, `feature_engineering/{generation,cp2,remediation,gherkin_lint,prompts,stage}` — demonstrated live in Stage 17 above. The two "Layer 2" labels name genuinely different things; if asked, say so plainly rather than picking one silently.
 - Runtime data flow is strictly linear and one-directional — see `README.md` § Runtime Architecture for the full diagram; every arrow in that diagram was exercised in this execution.
-- Full stage-by-stage architecture doc: `docs/architecture/overview.md`; execution package field reference: `docs/architecture/execution-package.md`.
+- Full stage-by-stage architecture doc: `docs/architecture/overview.md`; execution package field reference: `docs/architecture/execution-package.md`; Layer 2's own architecture freeze: `docs/adr/0043-layer-2-feature-engineering-architecture-freeze.md`.
 
 **Estimated speaking time** — 60s (only if asked)
 
@@ -630,7 +695,8 @@ PY
 
 **Talking points**
 - Phase 1 (Requirement Intelligence) is complete end to end, as this execution demonstrates.
-- Phases 2–7 (Feature Engineering, Automation Engineering, further Quality Governance, Execution, Failure Intelligence/Self-Healing, Governance Dashboard) are placeholders in the repo layout — directories exist, implementation does not.
+- **Phase 2 (Feature Engineering) is live, not a placeholder** — see Stage 17. Requirement → lint-clean, tagged, multi-scenario `.feature` file → deterministic CP2 gate → bounded D5 self-healing backstop → isolated per-run workspace, proven against 30/30 real saucedemo.com requirements across two live runs.
+- Phases 3–7 (Automation Engineering, further Quality Governance, Execution, Failure Intelligence/Self-Healing, Governance Dashboard) remain placeholders in the repo layout — directories exist, implementation does not.
 - Continuous Improvement, Organizational Memory, and Learning are architecturally live but data-starved on a single execution — running the demo pipeline repeatedly (see Stage 12 tip) is the fastest way to show them activate.
 
 **Estimated speaking time** — 30s
@@ -639,7 +705,7 @@ PY
 
 ## Total estimated demo time
 
-~10–12 minutes for the full walkthrough (Stages 0–16 + Manifest + Testing), or ~6 minutes if Architecture and Roadmap are skipped unless asked. Add ~3–4 minutes if walking through all four Platform Architecture diagrams.
+~10–12 minutes for the full walkthrough (Stages 0–16 + Manifest + Testing), or ~6 minutes if Architecture and Roadmap are skipped unless asked. Add ~3–4 minutes if walking through all four Platform Architecture diagrams. Add ~90 seconds to *narrate* Stage 17 from the already-archived reference execution's artifacts (no live wait). If Stage 17 is run **live**, budget separately and generously — anywhere from ~3 to 10+ minutes depending on free-tier quota state at the time (see Stage 17's own HONEST TIMING note) — and treat it as a distinct live segment, not part of the ~10–12 minute walkthrough estimate above.
 
 ---
 
@@ -665,9 +731,9 @@ Per-execution ingestion, reasoning, and governance. Every capability below repor
 | Quality Governance | ✓ | `qualityGovernanceExecuted: true`, decision `pass`, score 80 |
 | Recommendation | ✓ | `recommendationExecuted: true`, 1 recommendation generated |
 
-### Layer 2 — Continuous Learning
+### "Layer 2" — Continuous Learning
 
-Cross-execution history accumulation. All four capabilities executed successfully; three of the four correctly produced zero output because this was the platform's first execution in its history dataset (`single-execution:c1ab42ec…`), not because anything failed.
+Cross-execution history accumulation, living inside Layer 1's own package (`requirement_intelligence/{continuous_improvement,knowledge_graph,organizational_memory,learning}`) — CAP-077-era internal naming, not the platform's architecturally-defined Layer 2 (see the table below). All four capabilities executed successfully; three of the four correctly produced zero output because this was the platform's first execution in its history dataset (`single-execution:c1ab42ec…`), not because anything failed.
 
 | Capability | Completed | Evidence |
 | --- | --- | --- |
@@ -675,6 +741,18 @@ Cross-execution history accumulation. All four capabilities executed successfull
 | Knowledge Graph | ✓ | `knowledgeGraphExecuted: true` — 6 nodes, 6 edges, 1 fully-connected subgraph, 0 dangling refs |
 | Organizational Memory | ✓ | `organizationalMemoryExecuted: true` — 4 experiences captured, 0 lessons (expected on 1 execution) |
 | Learning | ✓ | `learningExecuted: true` — 0 candidates (gated on Organizational Memory best practices, none yet) |
+
+### Layer 2 — Feature Engineering (architecturally-defined, ADR-0031/ADR-0043)
+
+A physically separate package (`feature_engineering/`), not the "Layer 2" table above. **Evidence is from a separate reference execution** (`run-20260728T172651881816Z-c6695f94` — see Stage 17), since `demo-readiness-20260720` predates this stage's CLI wiring.
+
+| Capability | Completed | Evidence |
+| --- | --- | --- |
+| Feature generation (1 requirement → 1 `.feature`) | ✓ | 30/30 requirements produced a lint-clean, tagged feature |
+| CP2 (deterministic gate: lint + AC coverage + tag presence + duplicates) | ✓ | 30/30 `pass` on first attempt |
+| D5 (bounded, 2-attempt LLM remediation) | Wired, not engaged | 0/30 remediated — proven backstop, not exercised on this corpus |
+| Escalation (human-in-the-loop on D5 exhaustion) | Wired, not engaged | 0/30 escalated |
+| Isolated per-run workspace (ADR-0037 Path A) | ✓ | `test-suite-baseline/` untouched; output under `output/executions/<run_id>/workspace/` |
 
 ### Execution Package — Governed Outputs
 
@@ -706,8 +784,9 @@ Cross-execution history accumulation. All four capabilities executed successfull
 - **Diagram 2 (Complete Runtime Data Flow)** — bring this up immediately after Diagram 1 as the map you'll be walking through for the rest of the demo.
 
 **Keep visible while demonstrating artifacts**
-- **Diagram 2** — keep it up (or reopen it) at the start of each numbered Stage section (0–16) so the audience always knows where the file they're looking at sits in the pipeline.
+- **Diagram 2** — keep it up (or reopen it) at the start of each numbered Stage section (0–16) so the audience always knows where the file they're looking at sits in the pipeline. Note: Diagram 2 is built from `demo-readiness-20260720`, which predates Layer 2 — it does not show stage 14. Stage 17 cites its own, separate reference execution instead of extending this diagram to a run it wasn't built from.
 - **Diagram 3 (Runtime Contract Flow)** — reopen this specifically during Stages 6–15 (Enhancement through Learning), since each of those stages' report tables explicitly names the upstream result id it consumed — the diagram makes that chain visible at a glance.
+- **Stage 17 (Feature Engineering)** — if presenting live rather than narrating from the archived artifacts, read its HONEST TIMING note first and be ready for a real free-tier 429 mid-run; the recovery is one `--resume` command, already given, not a failure to explain away.
 
 **Only show if architecture questions are asked**
 - **Diagram 4 (Execution Package Composition)** — this is a "how do you know it's trustworthy" diagram, not a narrative one. Hold it back unless someone asks how the manifest/checksums/reports relate, then pair it with the Testing section's live checksum re-verification.

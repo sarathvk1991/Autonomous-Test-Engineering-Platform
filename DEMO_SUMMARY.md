@@ -81,6 +81,26 @@ Requirement Enhancement through Quality Governance and Recommendation. Enhanceme
 
 Continuous Improvement, Knowledge Graph, Organizational Memory, and Learning all executed successfully and produced internally consistent output. Knowledge Graph built a fully-connected 6-node graph with zero dangling references. Organizational Memory captured 4 low-confidence experiences from it. Continuous Improvement and Learning both correctly report **zero output** for this run — both are gated on accumulated history (Continuous Improvement needs multiple executions to detect a trend; Learning needs Organizational Memory to have promoted at least one best practice, which itself needs repeated experience). This is the deterministic learning architecture behaving exactly as governed: nothing is fabricated to look active on a single run.
 
+## Feature Engineering Summary (Layer 2, architecturally-defined)
+
+Requirement → lint-clean, tagged, multi-scenario `.feature` file → deterministic CP2 gate → bounded D5 self-healing backstop → isolated per-run workspace. This is the platform's *architecturally-defined* Layer 2 (ADR-0031, ADR-0043 — `feature_engineering/`), distinct from the "Layer 2" label used above for Requirement Enhancement through Learning (CAP-077-era naming, still inside Layer 1's own package; see `DEMO_RUNBOOK.md`'s Architecture section for the full disambiguation). Not covered by the execution above — `demo-readiness-20260720` predates Layer 2's CLI wiring. Instead, proven directly, live, twice, against a real 30-requirement saucedemo.com corpus:
+
+| Field | Value |
+| --- | --- |
+| Reference run | `run-20260728T172651881816Z-c6695f94` (`--execution-name saucedemo-30req-measurement-clean`) |
+| Requirements processed | 30 |
+| CP2 result | **30/30 passed on the first generation attempt** |
+| D5 remediation engaged | 0/30 — wired, tested, a proven backstop; never fired live |
+| Escalated to human review | 0/30 — wired, never fired live |
+| Output location | `output/executions/<run_id>/workspace/src/test/resources/features/...` (isolated per-run copy; `test-suite-baseline/` untouched) |
+
+**One run, not a rate across runs.** 30/30 is this corpus's own first-attempt-clean result, observed identically across two independent live invocations (60 total generations, 0 remediations, 0 escalations) — a strong, repeated signal on one corpus, not a statistically established rate across corpora or requirement types.
+
+**Honesty framing, load-bearing for this section:**
+- **Functional-real, SAST/DAST-representative.** The JIRA issues behind this corpus are real, hand-authored functional requirements describing saucedemo.com's actual behavior — its own input file says so directly. The SonarQube and OWASP ZAP inputs are explicitly marked **REPRESENTATIVE FIXTURES** (`ZAP-FIXTURE-*` plugin ids, `sonar-fixture:*` issue keys) — no real scan has been run against saucedemo.com. This proves the functional path end-to-end on real content and the SAST/DAST path structurally, not real scanner integration.
+- **D5 is a backstop, not a headline feature.** It is real and tested (`tests/unit/test_feature_engineering_remediation.py`, `test_feature_engineering_live_remediator.py` — both construct-tested against stubs/fakes, never a live model in CI), but it has never engaged on a live run. Do not present "self-healing" as something this demo routinely shows in action.
+- **A real provider failure occurred during measurement, and recovery worked.** One of the two live runs hit the Gemini free tier's 15-requests/minute quota partway through and failed outright at requirement #17 with `429 RESOURCE_EXHAUSTED` — the platform performs no retries of its own anywhere in this path, so this surfaced as a real, visible failure, not silent backoff. A `--resume <run_id>` a few minutes later picked up exactly where it left off (stage 14's per-requirement `content_hash` reuse never re-generates or re-calls the model for already-completed requirements) and finished clean. `analyze` exits `0` even on this failure — only the execution-package write is treated as fatal.
+
 ## Known Caveats
 
 1. **This run used live API data, not the golden FILE baseline.** The Golden Baseline (`docs/productization/golden-baseline.md`, dataset v1.1.0) is a fixed regression fixture; this execution instead exercised the live JIRA/SonarQube/OWASP ZAP path with `EXECUTION_MODE=API`, which is a stronger demo (real systems) but not the frozen regression comparison point.
@@ -88,10 +108,14 @@ Continuous Improvement, Knowledge Graph, Organizational Memory, and Learning all
 3. **`platformVersion` in the manifest (1.0.0) does not match the documented `Architecture Version` (1.2.0)** referenced in `README.md` and the golden baseline doc. Both numbers are legitimate — the manifest tracks the execution-package/manifest schema lineage, the architecture version tracks the overall capability milestone — but a presenter should be ready to explain the distinction if asked.
 4. **API mode banner reads `CONFIGURED`, not `READY`.** By design — startup validation deliberately makes no network call; use `health` for live reachability proof (Stage 0 of the runbook already does this).
 5. **Grounding score and Quality score are both 80/100, not 100.** This is the actual, unmassaged result of this live run — no threshold was lowered to make the demo look better. Worth stating plainly if asked.
+6. **The JIRA input is real authored content; the SonarQube and OWASP ZAP inputs are representative fixtures, not real scans.** See the Feature Engineering Summary above. Do not let a presenter imply live ZAP/SonarQube scan integration — it does not exist yet.
+7. **Feature Engineering (the architecturally-defined Layer 2) is not covered by this execution's own artifacts.** `demo-readiness-20260720` predates its CLI wiring. It is proven live and separately, in `DEMO_RUNBOOK.md` Stage 17, against `run-20260728T172651881816Z-c6695f94`. On the Gemini free tier, running it live risks a real `429` partway through (observed once already) — recoverable with one `--resume` command, but budget demo time generously and read Stage 17's HONEST TIMING note before presenting it live.
+8. **D5 self-healing has never engaged on a live run.** It is real, wired, and tested against deterministic stubs/fakes — but 60/60 live generations across two runs passed CP2 on the first attempt. Present it as a proven backstop, not as something the demo will show firing.
 
 ## Demo Recommendations
 
 - Use the **live API-mode run** for the "wow" moment (real JIRA/SonarQube/ZAP data, not canned fixtures) — Stage 1–2 of `DEMO_RUNBOOK.md`.
 - Spend the most time on **Grounding** (Stage 7) and **Learning** (Stage 15) — they're the two stages that most directly answer "how do you know the AI isn't hallucinating or faking progress," and both have a clean, defensible answer from this exact run.
 - If there's time, run `analyze --validate` two more times live to show Continuous Improvement and Organizational Memory activate with real trend/lesson data — this is called out as a demo tip in the runbook.
+- **Feature Engineering (Stage 17) is the strongest "the platform builds real test artifacts" moment** — open a generated `.feature` file directly and read it aloud; it is real, lint-clean Gherkin, not a mockup. Decide in advance whether to run it live (real, but timing-variable — see Caveat 7) or narrate it from the archived reference execution (fast, zero risk, still fully real).
 - Keep `manifest.json` open in a second window throughout — it's the single file that answers almost any "how do you know" question via SHA-256/byte-count cross-reference.
