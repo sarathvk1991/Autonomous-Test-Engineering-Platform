@@ -30,20 +30,61 @@ here.
 
 The three checks, in ADR-0044 D4's own order
 ---------------------------------------------
-(a) confidence >= threshold; (b) content-hash freshness; (c) signature/
-parameter fit. All three must pass for :class:`TrustedReuse`; any one
-failing produces an :class:`Escalation` naming exactly that check -- never a
-silent fallback to a different check or a reduced-confidence acceptance
-(ADR-0044 D4's own "a match that clears confidence but fails either
-deterministic check... escalates, the same outcome as failing (a)
-outright"). Checks are evaluated in order and the function returns at the
-first failure, so a candidate failing more than one check is still reported
-against the earliest one -- deterministic, not incidental.
+(a) confidence >= threshold; (b) content-hash freshness; (c) structural fit.
+All three must pass for :class:`TrustedReuse`; any one failing produces an
+:class:`Escalation` naming exactly that check -- never a silent fallback to
+a different check or a reduced-confidence acceptance (ADR-0044 D4's own "a
+match that clears confidence but fails either deterministic check...
+escalates, the same outcome as failing (a) outright"). Checks are evaluated
+in order and the function returns at the first failure, so a candidate
+failing more than one check is still reported against the earliest one --
+deterministic, not incidental.
+
+Check (c), generalized: signature-fit and method-fit
+-------------------------------------------------------
+ADR-0044 D4's own text exemplifies check (c) on step definitions
+("Signature/parameter fit between the step definition and the Gherkin step
+it is bound to"). This module reads that check's underlying principle -- a
+plausible match whose STRUCTURE doesn't fit the binding must escalate,
+never be trusted on confidence alone -- as asset-type-agnostic (D4's own
+rationale paragraph names no asset type; D1/D3 already establish the
+catalog and reuse-first discipline as spanning step definitions, page
+objects, AND utilities alike). A page-object/utility candidate therefore
+gets the SAME discipline under a different structural dimension:
+METHOD-FIT (``_check_method_fit``) in place of SIGNATURE-FIT
+(``_check_signature_fit``) -- closing the page-object analogue of the
+1-capture-to-2-param mis-binding D4 exists to prevent (a confident,
+current-hash match to a page object that lacks the method the binding
+needs). See the additive clarification note on ADR-0044 D4
+(`docs/adr/0044-layer-3-automation-engineering-architecture-freeze.md`) for
+the full reasoning; the step-definition path (``_check_signature_fit``) is
+completely unchanged by this generalization.
+
+**Method-fit is a COARSE, decision-time check, by necessity, not by
+oversight.** At this decision point, the engine knows a candidate
+page-object/utility class's full method inventory (the catalog, D3) and
+the step-need's own required capture shape (`GherkinStepNeed.captures`) --
+enough to check "does *some* method on this class have a parameter shape
+that could accept this call." It does NOT know, and cannot know here,
+WHICH specific method a not-yet-written step definition will actually
+invoke -- that choice, and the PRECISE verification that the chosen method
+is both structurally AND semantically the right one, is the future
+generator's own obligation, not performed here (`TrustedReuse`'s own
+docstring records this contract: the full `asset.methods` inventory is
+handed over precisely so that future check has what it needs).
 """
 
 from __future__ import annotations
 
-from automation_engineering.catalog.models import AssetCatalog, StepDefinitionAsset
+from automation_engineering.catalog.alignment import CUCUMBER_EXPRESSION_TYPES
+from automation_engineering.catalog.models import (
+    AssetCatalog,
+    JavaMethod,
+    PageObjectAsset,
+    StepCapture,
+    StepDefinitionAsset,
+    UtilityAsset,
+)
 from automation_engineering.reuse.matcher import SemanticMatcher
 from automation_engineering.reuse.models import (
     Escalation,
@@ -102,9 +143,9 @@ def decide_reuse(
     if hash_escalation is not None:
         return hash_escalation
 
-    signature_escalation = _check_signature_fit(need, catalog, best)
-    if signature_escalation is not None:
-        return signature_escalation
+    structural_escalation = _check_structural_fit(need, catalog, best)
+    if structural_escalation is not None:
+        return structural_escalation
 
     # Both deterministic checks passed; the catalog lookup performed inside
     # `_check_content_hash` already proved the asset exists and is current --
@@ -160,27 +201,38 @@ def _check_content_hash(
     return None
 
 
-def _check_signature_fit(
+def _check_structural_fit(
     need: GherkinStepNeed, catalog: AssetCatalog, candidate: MatchCandidate
 ) -> Escalation | None:
-    """ADR-0044 D4(c): the candidate's own recorded capture-parameter
+    """ADR-0044 D4(c), generalized (module docstring): dispatches to the
+    realization that fits the candidate's own catalog asset kind --
+    SIGNATURE-FIT for a step definition (`_check_signature_fit`, unchanged),
+    METHOD-FIT for a page object or utility (`_check_method_fit`, new).
+
+    The catalog lookup happens exactly once, here, and the resolved asset
+    is threaded into whichever check applies -- neither check re-looks it
+    up. `asset` is guaranteed non-`None` at this point: `_check_content_hash`
+    (called immediately before this, in `decide_reuse`) already proved the
+    candidate's `asset_id` resolves in a fresh catalog lookup, or this
+    function would never have been reached.
+    """
+    asset = catalog.get(candidate.asset_id)
+    assert asset is not None  # proven by _check_content_hash's own lookup
+    if isinstance(asset, StepDefinitionAsset):
+        return _check_signature_fit(need, asset, candidate)
+    return _check_method_fit(need, asset, candidate)
+
+
+def _check_signature_fit(
+    need: GherkinStepNeed, asset: StepDefinitionAsset, candidate: MatchCandidate
+) -> Escalation | None:
+    """ADR-0044 D4(c), step-definition realization -- UNCHANGED by this
+    generalization. The candidate's own recorded capture-parameter
     correlation (`StepDefinitionAsset.signature_alignment`, computed once by
     :func:`automation_engineering.catalog.alignment.correlate` and never
     re-derived here) must FIT `need`'s own required captures -- count,
     order, and type.
-
-    Only :class:`StepDefinitionAsset` carries a signature to fit against; a
-    page-object/utility candidate (no Gherkin-step capture concept applies
-    to either) passes this check vacuously -- there is nothing here for it
-    to fail. A future page-object/utility reuse discipline, if one is ever
-    needed, is out of this task's scope (the prompt's own D4(c) example --
-    "a 1-capture step -> 2-param method" -- is a step-definition-only
-    concern).
     """
-    asset = catalog.get(candidate.asset_id)
-    if not isinstance(asset, StepDefinitionAsset):
-        return None
-
     if not asset.signature_alignment.is_aligned:
         return Escalation(
             need=need,
@@ -229,6 +281,95 @@ def _check_signature_fit(
             )
 
     return None
+
+
+def _check_method_fit(
+    need: GherkinStepNeed,
+    asset: PageObjectAsset | UtilityAsset,
+    candidate: MatchCandidate,
+) -> Escalation | None:
+    """COARSE, decision-time CLASS-COMPATIBILITY SCREEN -- this is
+    everything this function does, stated plainly up front so it is never
+    mistaken for more: it escalates ONLY if the candidate class has NO
+    method whose parameter shape (arity, per-position type, via
+    `CUCUMBER_EXPRESSION_TYPES`) is compatible with `need`'s own required
+    captures. It does NOT verify the candidate provides the SPECIFIC method
+    the binding will actually call.
+
+    **What this catches, and what it structurally cannot.** It catches
+    GROSS class-level incompatibility -- e.g. a step needing an `{int}`
+    argument matched to a page object whose every method is zero-arg. It
+    CANNOT catch a page object that has SOME shape-compatible method but
+    not the RIGHT one -- e.g. a `LoginPage` reused for a step that needs
+    `clickForgotPasswordLink()` (no capture) passes this screen the moment
+    `LoginPage` has ANY other zero-arg method (`open()`, say), even though
+    it has no `clickForgotPasswordLink` at all. That gap is not an
+    oversight: which specific method a not-yet-written step definition
+    will call is not knowable at reuse-decision time (module docstring,
+    "Method-fit is a COARSE, decision-time check, by necessity") -- only
+    the future generator, at the point it actually writes the call, knows
+    the target method's name and can verify it precisely. `TrustedReuse`'s
+    own docstring records that obligation and the data (`asset.methods`,
+    the full inventory) the generator needs to discharge it; this function
+    does not attempt it.
+
+    Utilities get the SAME coarse screen as page objects, not a weaker
+    one: the catalog records both identically (a `.methods` tuple of
+    `JavaMethod`s, D3), and this task found no principled reason to trust a
+    utility's structural fit less rigorously than a page object's. In
+    practice a utility "need" will often carry zero captures (D7's
+    config-driven utility classes are typically called with no step-derived
+    arguments) -- the screen is still REAL for that case (only a genuine
+    zero-arg method qualifies; a utility class with none still escalates),
+    not vacuous, even though it is exactly as coarse as the page-object
+    case above.
+    """
+    need_captures = need.captures
+    if any(_method_shape_fits(method, need_captures) for method in asset.methods):
+        return None
+    return Escalation(
+        need=need,
+        check=EscalationCheck.METHOD_FIT,
+        candidate=candidate,
+        detail=(
+            f"asset_id={candidate.asset_id!r} ({type(asset).__name__}) provides no "
+            f"method whose parameter shape fits the {len(need_captures)} required "
+            f"capture(s); available method signature(s): "
+            f"{_method_signatures(asset.methods)!r}"
+        ),
+    )
+
+
+def _method_shape_fits(method: JavaMethod, need_captures: tuple[StepCapture, ...]) -> bool:
+    """Arity plus per-position type compatibility -- the same two
+    dimensions `_check_signature_fit` compares, applied to one candidate
+    method's own parameters instead of a step definition's correlated
+    captures."""
+    if len(method.parameters) != len(need_captures):
+        return False
+    return all(
+        _capture_type_compatible(capture, parameter.java_type)
+        for capture, parameter in zip(need_captures, method.parameters, strict=True)
+    )
+
+
+def _capture_type_compatible(capture: StepCapture, java_type: str) -> bool:
+    """Mirrors `automation_engineering.catalog.alignment`'s own (private)
+    capture/parameter type-compatibility rule exactly, via the same
+    exported `CUCUMBER_EXPRESSION_TYPES` table -- not re-derived, reused."""
+    if capture.expression_type is None:
+        return True  # regex capture -- no independently declared type to disagree with
+    accepted = CUCUMBER_EXPRESSION_TYPES.get(capture.expression_type)
+    if accepted is None:
+        return True  # unrecognized/custom expression type -- not determinable, not a mismatch
+    return java_type in accepted
+
+
+def _method_signatures(methods: tuple[JavaMethod, ...]) -> tuple[str, ...]:
+    return tuple(
+        f"{method.name}({', '.join(p.java_type for p in method.parameters)})"
+        for method in methods
+    )
 
 
 __all__ = ["DEFAULT_CONFIDENCE_THRESHOLD", "decide_reuse"]

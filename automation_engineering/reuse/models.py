@@ -9,12 +9,16 @@ Two boundary concepts, kept deliberately distinct:
 * :class:`GherkinStepNeed` -- the asset-need being satisfied: a Gherkin step
   a (future, not-built-here) generator would otherwise have to write code
   for, unless a reuse binding can be trusted instead. ``captures`` is this
-  step's own required capture shape (count, order, type) -- the exact shape
-  ADR-0044 D4(c)'s signature-fit check compares against a catalogued step
-  definition's own recorded ``SignatureAlignment.captures``
-  (:mod:`automation_engineering.catalog.alignment`). Deriving that shape from
-  raw natural-language step text is a generation-time concern, out of scope
-  for this task (the future generator); this engine takes it as an
+  step's own required capture shape (count, order, type) -- the same values
+  a bound step definition would receive AND, in turn, would pass through to
+  whichever page-object/utility method it calls. This one shape now backs
+  BOTH of check (c)'s two realizations (:mod:`.engine`): against a
+  catalogued step definition's own recorded ``SignatureAlignment.captures``
+  (:mod:`automation_engineering.catalog.alignment`) for SIGNATURE-FIT, and
+  against a catalogued page-object's/utility's own recorded ``.methods``
+  parameter shapes for METHOD-FIT. Deriving this shape from raw
+  natural-language step text is a generation-time concern, out of scope for
+  this task (the future generator); this engine takes it as an
   already-known input, the same way it takes the catalog as an input.
 * :class:`MatchCandidate` -- one :class:`~automation_engineering.reuse.matcher.SemanticMatcher`
   result: an ``asset_id`` plus a confidence score, PLUS the ``content_hash``
@@ -78,11 +82,27 @@ class EscalationCheck(StrEnum):
     the checks are evaluated in the ADR's own (a) -> (b) -> (c) order, so a
     candidate failing multiple checks at once is still reported for the
     earliest one, never silently for a later one instead.
+
+    Check (c) -- "structural fit" -- has two realizations, one per catalog
+    asset shape (see the ADR-0044 clarification note added to D4 alongside
+    this change): :attr:`SIGNATURE_FIT` for a
+    :class:`~automation_engineering.catalog.models.StepDefinitionAsset`
+    (unchanged, the ADR's own literal example) and :attr:`METHOD_FIT` for a
+    :class:`~automation_engineering.catalog.models.PageObjectAsset`/
+    :class:`~automation_engineering.catalog.models.UtilityAsset` candidate
+    (:mod:`.engine`'s ``_check_method_fit``). Both close the SAME gap check
+    (c) exists for -- a confident, current-hash match whose STRUCTURE
+    doesn't fit the binding -- just measured against a different structural
+    dimension (Gherkin-annotation captures vs. class methods). Unlike
+    signature-fit, method-fit is COARSE at decision time (:mod:`.engine`'s
+    own docstring) -- it is a class-level compatibility screen, not proof
+    the specific method the binding needs exists.
     """
 
     CONFIDENCE = "confidence"
     CONTENT_HASH = "content_hash"
     SIGNATURE_FIT = "signature_fit"
+    METHOD_FIT = "method_fit"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +110,23 @@ class TrustedReuse:
     """ADR-0044 D4's ``TRUSTED_REUSE(asset)`` outcome -- all three checks
     passed. ``asset`` is the fresh catalog entry the binding actually
     resolves to (not merely the candidate's ``asset_id``), so a caller never
-    has to re-look it up."""
+    has to re-look it up.
+
+    For a page-object/utility asset, METHOD-FIT (:mod:`.engine`) is a
+    COARSE, decision-time class-compatibility screen only -- it proves
+    *some* method with a fitting shape exists on the class, never that the
+    class provides the SPECIFIC method a not-yet-written step definition
+    will actually call. ``asset.methods`` (the full method inventory,
+    names included) is exposed here precisely so the future generator --
+    the only place the specific call target is chosen, and the only place
+    that information exists -- can perform the PRECISE check this engine
+    structurally cannot: **the generator MUST, before binding a step to a
+    reused page object/utility, verify the SPECIFIC method it is about to
+    call is actually present on ``asset.methods``, and escalate/regenerate
+    if it is not.** This is the decision/generation split's own contract:
+    this engine hands over the data that check needs (this field); it does
+    not, and cannot, perform the check itself.
+    """
 
     asset: CatalogAsset
     candidate: MatchCandidate
