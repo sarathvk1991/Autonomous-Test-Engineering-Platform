@@ -44,6 +44,7 @@ from pathlib import Path
 
 import javalang
 
+from automation_engineering.catalog.alignment import correlate
 from automation_engineering.catalog.java_source import (
     CUCUMBER_STEP_ANNOTATIONS,
     ParsedFile,
@@ -169,6 +170,7 @@ def _extract_step_definitions(
                     return_type=type_name(method.return_type),
                     source_file=parsed.path,
                     content_hash=content_hash,
+                    signature_alignment=correlate(pattern, params),
                     semantic_tags=tags,
                 )
             )

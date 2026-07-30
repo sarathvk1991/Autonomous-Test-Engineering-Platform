@@ -70,6 +70,52 @@ class JavaField:
 
 
 @dataclass(frozen=True, slots=True)
+class StepCapture:
+    """One ordered capture from a step-definition's own Gherkin-annotation
+    pattern -- a Cucumber Expression placeholder (``{string}``, ``{int}``,
+    ...) or a regex capturing group, whichever style the annotation uses.
+
+    ``expression_type`` is the raw, lowercased placeholder name (e.g.
+    ``"string"``, ``"int"``) for a Cucumber Expression capture; ``None``
+    for a regex capture (a regex group has no independently declared type
+    -- Cucumber-JVM binds it via the target parameter's own Java type) or
+    for an unrecognized/custom Cucumber Expression placeholder name.
+    """
+
+    index: int
+    style: str
+    expression_type: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ParameterCorrelation:
+    """One capture <-> method-parameter pairing, in declared order."""
+
+    capture: StepCapture
+    parameter: JavaParameter
+    type_compatible: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SignatureAlignment:
+    """ADR-0044 D4(c)'s signature-fit data for one step definition, RECORDED
+    (not judged) by the catalog -- whether this step definition's own
+    parameters correspond to its own Gherkin-annotation captures: count,
+    order, and type. A future reuse-safety check (ADR-0044 D4) compares
+    this data against a *different* Gherkin step's own captures; this
+    catalog only records what a step definition's own annotation and
+    method already declare about themselves (``automation_engineering.
+    catalog.alignment.correlate``).
+    """
+
+    captures: tuple[StepCapture, ...]
+    correlations: tuple[ParameterCorrelation, ...]
+    non_capture_parameters: tuple[JavaParameter, ...]
+    is_aligned: bool
+    mismatch_reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class StepDefinitionAsset:
     """One Cucumber-annotated step-definition method -- the unit ADR-0044 D3's
     semantic reuse matching binds a Gherkin step to, and D4's signature-fit
@@ -85,6 +131,7 @@ class StepDefinitionAsset:
     return_type: str
     source_file: str
     content_hash: str
+    signature_alignment: SignatureAlignment
     semantic_tags: tuple[str, ...] = field(default_factory=tuple)
     kind: AssetKind = AssetKind.STEP_DEFINITION
 
@@ -214,12 +261,44 @@ def _fields_from_dicts(fields: list[dict[str, object]]) -> tuple[JavaField, ...]
     return tuple(JavaField(**f) for f in fields)  # type: ignore[arg-type]
 
 
+def _step_captures_from_dicts(captures: list[dict[str, object]]) -> tuple[StepCapture, ...]:
+    return tuple(StepCapture(**c) for c in captures)  # type: ignore[arg-type]
+
+
+def _correlation_from_dict(c: dict[str, object]) -> ParameterCorrelation:
+    return ParameterCorrelation(
+        capture=StepCapture(**c["capture"]),  # type: ignore[arg-type]
+        parameter=JavaParameter(**c["parameter"]),  # type: ignore[arg-type]
+        type_compatible=bool(c["type_compatible"]),
+    )
+
+
+def _correlations_from_dicts(
+    correlations: list[dict[str, object]],
+) -> tuple[ParameterCorrelation, ...]:
+    return tuple(_correlation_from_dict(c) for c in correlations)
+
+
+def _signature_alignment_from_dict(d: dict[str, object]) -> SignatureAlignment:
+    captures = _step_captures_from_dicts(d["captures"])  # type: ignore[arg-type]
+    correlations = _correlations_from_dicts(d["correlations"])  # type: ignore[arg-type]
+    mismatch_reason = d["mismatch_reason"]
+    return SignatureAlignment(
+        captures=captures,
+        correlations=correlations,
+        non_capture_parameters=_parameters_from_dicts(d["non_capture_parameters"]),  # type: ignore[arg-type]
+        is_aligned=bool(d["is_aligned"]),
+        mismatch_reason=str(mismatch_reason) if mismatch_reason is not None else None,
+    )
+
+
 def _step_definition_from_dict(d: dict[str, object]) -> StepDefinitionAsset:
     base = _without_kind(d)
     return StepDefinitionAsset(
         **{
             **base,
             "parameters": _parameters_from_dicts(d["parameters"]),  # type: ignore[arg-type]
+            "signature_alignment": _signature_alignment_from_dict(d["signature_alignment"]),  # type: ignore[arg-type]
             "semantic_tags": tuple(d["semantic_tags"]),  # type: ignore[arg-type]
         }
     )
@@ -258,6 +337,9 @@ __all__ = [
     "JavaMethod",
     "JavaParameter",
     "PageObjectAsset",
+    "ParameterCorrelation",
+    "SignatureAlignment",
+    "StepCapture",
     "StepDefinitionAsset",
     "UtilityAsset",
 ]

@@ -19,6 +19,12 @@ future reuse-discovery module calls against is exactly:
   MATCH step iterates over), ``.get(asset_id)`` (identity lookup),
   ``.by_content_hash(...)`` (the exact identity check ADR-0045 D2(b)
   reuses, unchanged, as its promotion-time anti-duplicate gate).
+
+Each :class:`StepDefinitionAsset` also carries ``signature_alignment``
+(:class:`SignatureAlignment`) -- the capture-to-parameter correlation data
+(count, order, type) ADR-0044 D4(c)'s signature-fit check needs, recorded
+here (``automation_engineering.catalog.alignment.correlate``) rather than
+re-derived by D4 itself.
 """
 
 from __future__ import annotations
@@ -31,6 +37,9 @@ from automation_engineering.catalog.models import (
     JavaMethod,
     JavaParameter,
     PageObjectAsset,
+    ParameterCorrelation,
+    SignatureAlignment,
+    StepCapture,
     StepDefinitionAsset,
     UtilityAsset,
 )
@@ -44,6 +53,9 @@ __all__ = [
     "JavaMethod",
     "JavaParameter",
     "PageObjectAsset",
+    "ParameterCorrelation",
+    "SignatureAlignment",
+    "StepCapture",
     "StepDefinitionAsset",
     "UtilityAsset",
     "reconcile",
