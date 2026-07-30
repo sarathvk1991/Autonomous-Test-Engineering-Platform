@@ -49,6 +49,8 @@ Layer 4 (Suite Quality Governance) is **not** a Gherkin-lint or per-artifact qua
 
 This supersedes ADR-0031's original Layer 4 description ("validates layers 2 and 3 via SonarQube + Gherkin lint").
 
+**Amendment note (additive, 2026-07-30, ADR-0045).** ADR-0045 (Scoped Asset Promotion — Layer 3 Capstone, pulled from Layer 4) pulls **one** item forward out of what would otherwise have been a future Layer 4 concern: the workspace → tracked-baseline promotion decision ADR-0037 left open, resolved by ADR-0045 as Layer 3's own capstone build step, because Layer 3's reuse catalog (ADR-0044 D3) cannot grow across runs without it. This is a narrow, motivated exception, not a reopening of this Decision's scope: orphaned-glue detection, the suite-wide near-duplicate sweep (broader than the single-asset anti-duplicate check ADR-0045 D2(b) performs at promotion time), and the aggregate release gate all remain exactly as this Decision lists them — unclaimed by ADR-0045, still Layer 4's to build. Layer 4's own future architecture-freeze ADR may still wrap ADR-0045's promotion decision in richer suite-level governance; it is not required to. This Decision's own list is otherwise unchanged. See ADR-0045 for the full decision.
+
 ## Consequences
 
 - The package name `suite_quality_governance/` (ADR-0033's rename target) remains correct, and is now more accurate — no further renaming.
