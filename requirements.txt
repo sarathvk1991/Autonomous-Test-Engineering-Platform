@@ -29,6 +29,15 @@ httpx>=0.27,<1.0               # JIRA / SonarQube / OWASP ZAP REST clients
 # --- Gherkin parsing (Feature Engineering Layer, ADR-0043 D3) ---------------
 gherkin-official>=24,<25       # the official Cucumber Gherkin parser
 
+# --- Java parsing (Automation Engineering Layer, ADR-0044 D3) ---------------
+# A real Java parser (AST-based), not a regex scrape: the asset catalog's
+# content-hash/signature identity feeds ADR-0044 D4's reuse-safety checks
+# directly, so extraction accuracy matters. javalang does not parse Java 14+
+# switch expressions (e.g. the tracked baseline's own DriverFactory.java) --
+# scanning excludes that framework package regardless (out of catalog scope),
+# and any other file it cannot parse is skipped and reported, never fatal.
+javalang>=0.13,<1.0
+
 # --- Persistence (PostgreSQL — wired in a future phase) --------------------
 sqlalchemy>=2.0,<3.0
 alembic>=1.13,<2.0
