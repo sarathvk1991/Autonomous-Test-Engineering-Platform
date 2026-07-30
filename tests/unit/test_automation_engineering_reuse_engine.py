@@ -17,6 +17,8 @@ not a hand-rolled stand-in.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pytest
 
 from automation_engineering.catalog.alignment import correlate
