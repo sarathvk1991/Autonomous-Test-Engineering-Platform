@@ -1,28 +1,32 @@
-"""Layer 3's three Gherkin-derived generators: step definitions, page
-objects, and utilities (ADR-0044 D3/D4/D5, D8).
+"""Layer 3's four generators: step definitions, page objects, utilities,
+and test data (ADR-0044 D1/D3/D4/D5/D7/D8).
 
 Generates Java code for needs the reuse engine
 (:mod:`automation_engineering.reuse`) returned NO_MATCH for, binds
 TRUSTED_REUSE needs to existing catalog assets without regenerating them,
 and surfaces ESCALATION needs for human review -- never silently generating
-or reusing a binding the reuse engine itself would not trust.
+or reusing a binding the reuse engine itself would not trust. That
+discipline governs THREE of the four generators here (step definitions,
+page objects, utilities); the fourth (test data) deliberately breaks it --
+see :mod:`.test_data_orchestrator`'s own module docstring for the
+investigation that resolved test-data is SPEC-DRIVEN, not reuse-first, and
+why.
 
 The precise method-fit obligation ADR-0044 D4's clarification note recorded
 (before a page-object/utility binding is trusted, verify the SPECIFIC
-method a step definition is about to call actually exists) is now
-DISCHARGED for BOTH page objects and utilities (:mod:`.method_fit`, wired
-into :mod:`.orchestrator`'s own NO_MATCH branch) -- carried forward,
-undischarged, by the step-definition build that first wrote this package;
-discharged for page objects by that build's successor; discharged for
-utilities by this build, after investigating (not assuming) that utilities
-carry the identical risk -- see :mod:`.utility_orchestrator`'s own module
-docstring for the investigation.
+method a step definition is about to call actually exists) is DISCHARGED
+for BOTH page objects and utilities (:mod:`.method_fit`, wired into
+:mod:`.orchestrator`'s own NO_MATCH branch).
 
-All three catalog asset kinds (D3) are now legitimately handled. There is
-no fourth, still-deferred asset kind.
+All three catalog asset kinds (D3) are legitimately handled; there is no
+fourth, still-deferred asset kind AMONG THOSE THREE. Test data is not a
+reuse-catalog asset kind at all (see :mod:`.test_data_orchestrator`).
 
-Builds utilities + the utility method-fit resolution; NOT test-data
-classes, CP3, CP4, or promotion (this build's own scope boundary).
+Builds test-data generation from Layer 2's own specification (ADR-0044
+D7); NOT CP3, CP4, or promotion (this build's own scope boundary). Records
+an honest gap this build found: Layer 2 does not implement emission of the
+D7 specification today -- this generator is built and proven against the
+CONTRACT that specification defines, not a real emission (none exists).
 
 Public surface
 --------------
@@ -76,6 +80,20 @@ DEFAULT_CUSTOMQA_UTILITY_CONSTRAINTS -- customqa:* constraints for utility gener
 
 verify_specific_method_fit          -- THE precise method-fit discharge
                                         (shared: page objects + utilities)
+
+TestDataGenerator                   -- the test-data generation seam (Protocol)
+TestDataGenerationContext           -- the seam's own input contract
+StubTestDataGenerator               -- deterministic test/dev stand-in + spy
+LiveTestDataGenerator               -- the live, provider-backed peer
+TestDataLiveGenerationError         -- the test-data live generator's own boundary error
+TestDataFieldSpec                   -- one field + its required positive/negative/boundary variants
+TestDataSpecification               -- Layer 3's own model of ADR-0043 D7's handoff contract
+GeneratedTestDataClass              -- the ONLY outcome (no reuse decision -- see module docstring)
+TestDataBoundaryError               -- raised on an env/data boundary violation (ADR-0037 D3)
+generate_test_data_class            -- always-generate orchestration, one specification
+generate_test_data_classes          -- always-generate orchestration, a full set of specifications
+DEFAULT_TEST_DATA_TARGET_PACKAGE    -- com.automation.utils
+DEFAULT_CUSTOMQA_TEST_DATA_CONSTRAINTS -- customqa:* constraints for test-data generation
 """
 
 from __future__ import annotations
@@ -91,6 +109,12 @@ from automation_engineering.generation.live_step_definition_generator import (
 )
 from automation_engineering.generation.live_step_definition_generator import (
     LiveStepDefinitionGenerator,
+)
+from automation_engineering.generation.live_test_data_generator import (
+    LiveGenerationError as TestDataLiveGenerationError,
+)
+from automation_engineering.generation.live_test_data_generator import (
+    LiveTestDataGenerator,
 )
 from automation_engineering.generation.live_utility_generator import (
     LiveGenerationError as UtilityLiveGenerationError,
@@ -108,10 +132,13 @@ from automation_engineering.generation.models import (
     EscalatedUtilityMethodNeed,
     GeneratedPageObject,
     GeneratedStepDefinition,
+    GeneratedTestDataClass,
     GeneratedUtility,
     PageObjectMethodNeed,
     PageObjectMethodOutcome,
     StepDefinitionOutcome,
+    TestDataFieldSpec,
+    TestDataSpecification,
     UtilityMethodNeed,
     UtilityMethodOutcome,
 )
@@ -139,6 +166,18 @@ from automation_engineering.generation.step_definition_generator import (
     StepDefinitionGenerator,
     StubStepDefinitionGenerator,
 )
+from automation_engineering.generation.test_data_generator import (
+    StubTestDataGenerator,
+    TestDataGenerationContext,
+    TestDataGenerator,
+)
+from automation_engineering.generation.test_data_orchestrator import (
+    DEFAULT_CUSTOMQA_TEST_DATA_CONSTRAINTS,
+    DEFAULT_TEST_DATA_TARGET_PACKAGE,
+    TestDataBoundaryError,
+    generate_test_data_class,
+    generate_test_data_classes,
+)
 from automation_engineering.generation.utility_generator import (
     StubUtilityGenerator,
     UtilityGenerationContext,
@@ -156,9 +195,11 @@ from automation_engineering.generation.utility_orchestrator import (
 __all__ = [
     "DEFAULT_CUSTOMQA_PAGE_OBJECT_CONSTRAINTS",
     "DEFAULT_CUSTOMQA_STEP_DEFINITION_CONSTRAINTS",
+    "DEFAULT_CUSTOMQA_TEST_DATA_CONSTRAINTS",
     "DEFAULT_CUSTOMQA_UTILITY_CONSTRAINTS",
     "DEFAULT_PAGE_OBJECT_TARGET_PACKAGE",
     "DEFAULT_TARGET_PACKAGE",
+    "DEFAULT_TEST_DATA_TARGET_PACKAGE",
     "DEFAULT_UTILITY_TARGET_PACKAGE",
     "BoundPageObjectMethod",
     "BoundStepDefinition",
@@ -168,9 +209,11 @@ __all__ = [
     "EscalatedUtilityMethodNeed",
     "GeneratedPageObject",
     "GeneratedStepDefinition",
+    "GeneratedTestDataClass",
     "GeneratedUtility",
     "LivePageObjectGenerator",
     "LiveStepDefinitionGenerator",
+    "LiveTestDataGenerator",
     "LiveUtilityGenerator",
     "PageObjectBindingRequest",
     "PageObjectGenerationContext",
@@ -184,7 +227,14 @@ __all__ = [
     "StepDefinitionOutcome",
     "StubPageObjectGenerator",
     "StubStepDefinitionGenerator",
+    "StubTestDataGenerator",
     "StubUtilityGenerator",
+    "TestDataBoundaryError",
+    "TestDataFieldSpec",
+    "TestDataGenerationContext",
+    "TestDataGenerator",
+    "TestDataLiveGenerationError",
+    "TestDataSpecification",
     "UtilityBindingRequest",
     "UtilityGenerationContext",
     "UtilityGenerator",
@@ -195,6 +245,8 @@ __all__ = [
     "derive_utility_class_name",
     "generate_page_object_methods",
     "generate_step_definitions",
+    "generate_test_data_class",
+    "generate_test_data_classes",
     "generate_utility_methods",
     "orchestrate_page_object_method",
     "orchestrate_step_definition",

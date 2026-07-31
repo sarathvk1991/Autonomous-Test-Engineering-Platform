@@ -25,6 +25,14 @@
             "sha256": "44b5e49d8d9eda815b388f1b9742cb8dee414447e3ce9fbe3abe555afbde2151",
             "lifecycle": "Draft",
             "introduced_in_release": "1.0.0"
+        },
+        {
+            "prompt_id": "generate_test_data",
+            "version": "1.0.0",
+            "file": "generate_test_data_v1.0.0.txt",
+            "sha256": "4cd24b024dce58a4d2cdc9f3616fe4ca6394c772476aa4a81e20260b1a0e81b5",
+            "lifecycle": "Draft",
+            "introduced_in_release": "1.0.0"
         }
     ]
 }

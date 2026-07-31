@@ -38,8 +38,8 @@ Non-responsibilities
   (:mod:`automation_engineering.generation.step_definition_generator` and
   :mod:`automation_engineering.generation.live_step_definition_generator`
   consume this registry's prompts; they are not built here).
-* It does not build test-data classes, CP3, CP4, or promotion (each build's
-  own scope boundary).
+* It does not build CP3, CP4, or promotion (each build's own scope
+  boundary).
 """
 
 from __future__ import annotations
@@ -88,6 +88,18 @@ _GENERATE_PAGE_OBJECTS_COMPATIBILITY = PromptCompatibility(
 #: Same two Layer-3 dimensions as the other two prompts -- the third
 #: registrant, still the same genuine reuse, not re-invention.
 _GENERATE_UTILITIES_COMPATIBILITY = PromptCompatibility(
+    dimensions={
+        "output_schema_version": "1.0.0",
+        "customqa_profile_version": "1.0.0",
+    }
+)
+
+#: Same two Layer-3 dimensions as the other three prompts -- the fourth
+#: registrant, and the one whose OWN output_schema_version tracks a
+#: different contract (ADR-0043 D7's test-data specification shape) than
+#: the other three's Gherkin-step-need-derived contracts, even though the
+#: dimension NAME is shared.
+_GENERATE_TEST_DATA_COMPATIBILITY = PromptCompatibility(
     dimensions={
         "output_schema_version": "1.0.0",
         "customqa_profile_version": "1.0.0",
@@ -225,6 +237,48 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 ),
                 sha256=loaded.sha256,
                 compatibility=_GENERATE_UTILITIES_COMPATIBILITY,
+                release_introduced="1.0.0",
+            ),
+            content=loaded.content,
+        )
+    )
+
+    # --- generate_test_data v1.0.0 ------------------------------------------
+    loaded = loader.load(
+        prompt_id="generate_test_data",
+        version="1.0.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_test_data",
+                name="Generate Test Data",
+                version="1.0.0",
+                owner="Automation Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Generates one Java test-data class from Layer 2's own test-data "
+                    "specification (ADR-0043 D7 -- 'which fields are needed, and for each, "
+                    "whether positive/negative/boundary variants are required, seeded by "
+                    "AcceptanceCriterion.polarity_hints[]'). BREAKS the reuse-first triad "
+                    "pattern deliberately (ADR-0044 D3): this generator's input is never a "
+                    "Gherkin step need, and generation never consults the reuse engine -- a "
+                    "test-data class's own field set is intrinsically specific to the one "
+                    "requirement/AC that seeded it, unlike a step-def/page-object/utility's "
+                    "generic, requirement-independent capability. Reconciles the converted "
+                    "POC prompt (docs/reference/automation-poc/prompts/generate-test-data.md, "
+                    "which called a ConfigReader.get(...) method the tracked baseline's real "
+                    "ConfigReader never had) against the walking-skeleton's actual env()/data() "
+                    "split (ADR-0037 D3): every generated value is ConfigReader.data(...)- "
+                    "mediated or a literal constant, never ConfigReader.env(...) and never a "
+                    "new env.* config.properties key. Targets the tracked baseline's own "
+                    "package com.automation.utils convention (ADR-0044 D7's own lock -- the "
+                    "SAME package generic utilities target). Never generates page objects, "
+                    "generic utilities, or a runner/test class (ADR-0044 D2)."
+                ),
+                sha256=loaded.sha256,
+                compatibility=_GENERATE_TEST_DATA_COMPATIBILITY,
                 release_introduced="1.0.0",
             ),
             content=loaded.content,
