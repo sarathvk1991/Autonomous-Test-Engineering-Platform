@@ -38,8 +38,8 @@ Non-responsibilities
   (:mod:`automation_engineering.generation.step_definition_generator` and
   :mod:`automation_engineering.generation.live_step_definition_generator`
   consume this registry's prompts; they are not built here).
-* It does not build page objects, utilities, test-data classes, CP3, CP4, or
-  promotion (ADR-0044's own scope boundary for this build).
+* It does not build utilities, test-data classes, CP3, CP4, or promotion
+  (each build's own scope boundary).
 """
 
 from __future__ import annotations
@@ -68,6 +68,17 @@ _VERSIONS_DIR: Path = Path(__file__).parent / "versions"
 #: SonarQube quality-profile version its CONSTRAINTS section was authored
 #: against, ADR-0044 D5's "constrain at generation" role for that profile).
 _GENERATE_STEP_DEFINITIONS_COMPATIBILITY = PromptCompatibility(
+    dimensions={
+        "output_schema_version": "1.0.0",
+        "customqa_profile_version": "1.0.0",
+    }
+)
+
+#: Same two Layer-3 dimensions as `generate_step_definitions` -- the same
+#: KIND of contract (a generated-Java shape, and the customqa:* profile
+#: version its own CONSTRAINTS section was authored against), genuinely
+#: reused rather than re-invented for a second Layer 3 prompt.
+_GENERATE_PAGE_OBJECTS_COMPATIBILITY = PromptCompatibility(
     dimensions={
         "output_schema_version": "1.0.0",
         "customqa_profile_version": "1.0.0",
@@ -134,6 +145,40 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 ),
                 sha256=loaded.sha256,
                 compatibility=_GENERATE_STEP_DEFINITIONS_COMPATIBILITY,
+                release_introduced="1.0.0",
+            ),
+            content=loaded.content,
+        )
+    )
+
+    # --- generate_page_objects v1.0.0 --------------------------------------
+    loaded = loader.load(
+        prompt_id="generate_page_objects",
+        version="1.0.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_page_objects",
+                name="Generate Page Objects",
+                version="1.0.0",
+                owner="Automation Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Generates one Java page-object class for a page-object action the "
+                    "reuse engine (automation_engineering.reuse.engine.decide_reuse) "
+                    "returned NO_MATCH for (ADR-0044 D3/D4). Born compliant with the "
+                    "customqa:* quality profile (ADR-0044 D5) -- unlike step definitions, "
+                    "page objects are exactly where WebDriver calls legitimately live, so "
+                    "the injected constraints constrain HOW WebDriver is used (long-method, "
+                    "constructor-injected driver per ADR-0041 D5), not WHETHER it is used. "
+                    "Targets the tracked test-suite-baseline's own package "
+                    "com.automation.pages convention, extending BasePage. Never generates "
+                    "utilities, test-data classes, or a runner/test class (ADR-0044 D2)."
+                ),
+                sha256=loaded.sha256,
+                compatibility=_GENERATE_PAGE_OBJECTS_COMPATIBILITY,
                 release_introduced="1.0.0",
             ),
             content=loaded.content,

@@ -9,8 +9,15 @@ call:
 * ESCALATION -> neither generated nor bound, surfaced for review.
 * customqa:* constraints are actually injected into what the generation seam
   receives (so a live call would be constrained).
-* The inherited, NOT-discharged precise method-fit obligation on reused page
-  objects: `page_object_interface` is never populated by this orchestration.
+* The precise method-fit obligation (ADR-0044 D4's clarification note),
+  NOW DISCHARGED: when a `page_object_request` is supplied, a step whose
+  required page-object call resolves to a TRUSTED_REUSE with the SPECIFIC
+  method present binds and generates against it; one whose specific method
+  is ABSENT escalates the whole step, never silently generating against an
+  unverified call. Omitted, behavior is unchanged: `page_object_interface`
+  stays `None`. See `test_automation_engineering_generation_page_object_orchestrator.py`
+  for the method-fit discharge's own dedicated proofs (insufficient
+  escalates, sufficient passes, the coarse/precise contrast).
 * Determinism, and no live LLM call anywhere in the orchestration path.
 
 Builds on the real catalog shapes (`automation_engineering.catalog.models`)
@@ -298,16 +305,21 @@ class TestCustomqaConstraintsAreInjectedIntoGeneration:
 
 
 # ---------------------------------------------------------------------------
-# THE INHERITED PRECISE METHOD-FIT OBLIGATION -- carried forward, not
-# discharged here (ADR-0044 D4's clarification note).
+# THE PRECISE METHOD-FIT OBLIGATION -- now DISCHARGED (ADR-0044 D4's
+# clarification note). The dedicated insufficient/sufficient/contrast
+# proofs live in
+# `tests/unit/test_automation_engineering_generation_page_object_orchestrator.py`;
+# this class proves the WIRING at the step-def orchestrator's own binding
+# point, plus the AST guard's own deliberate, documented update: page
+# objects are now legitimately handled here; utilities are still not.
 # ---------------------------------------------------------------------------
 
 
-class TestInheritedPageObjectMethodFitObligationIsCarriedForwardNotDischarged:
-    def test_generation_context_never_carries_a_page_object_hint(self) -> None:
-        """This orchestration never performs a page-object catalog lookup --
-        page-object reuse/generation is the next task. Every context this
-        module constructs carries `page_object_interface=None`."""
+class TestPageObjectMethodFitObligationNowDischargedUtilitiesStillGuarded:
+    def test_generation_context_defaults_to_no_page_object_hint(self) -> None:
+        """Unchanged default: when no `page_object_request` is supplied,
+        behavior is identical to before this build --
+        `page_object_interface` stays `None`."""
         need = _need("I log out")
         catalog = _catalog()
         matcher = StubSemanticMatcher({need.text: ()})
@@ -317,29 +329,154 @@ class TestInheritedPageObjectMethodFitObligationIsCarriedForwardNotDischarged:
 
         assert generator.received_contexts[0].page_object_interface is None
 
-    def test_orchestrator_module_never_looks_up_page_objects_or_utilities(self) -> None:
-        """A structural guard, not just a behavioral one: the orchestrator's
-        own source never references `catalog.page_objects` or
-        `catalog.utilities` at all -- the obligation is carried forward by
-        never reaching for that data, not by reaching for it and discarding
-        the result."""
-        source = Path("automation_engineering/generation/orchestrator.py").read_text(
+    def test_generation_context_carries_the_verified_class_name_when_request_supplied(
+        self,
+    ) -> None:
+        """THE discharge, proven at the ACTUAL binding point: a
+        `page_object_request` whose page-object need resolves to a
+        TRUSTED_REUSE with the specific method PRESENT populates
+        `page_object_interface` with the reused class's own verified
+        `class_name` -- never a name this orchestrator merely hopes is
+        right."""
+        from automation_engineering.catalog.models import JavaMethod, PageObjectAsset
+        from automation_engineering.generation.models import PageObjectMethodNeed
+        from automation_engineering.generation.page_object_generator import (
+            StubPageObjectGenerator,
+        )
+        from automation_engineering.generation.page_object_orchestrator import (
+            PageObjectBindingRequest,
+        )
+
+        login_page = PageObjectAsset(
+            asset_id="PAGE-login01",
+            class_name="com.automation.pages.LoginPage",
+            extends="BasePage",
+            fields=(),
+            locators=(),
+            methods=(
+                JavaMethod(name="clickForgotPasswordLink", parameters=(), return_type="void"),
+            ),
+            source_file="com/automation/pages/LoginPage.java",
+            content_hash="hash1",
+        )
+        catalog = AssetCatalog(baseline_root="test-suite-baseline", page_objects=(login_page,))
+        step_need = _need("I click forgot password")
+        step_matcher = StubSemanticMatcher({step_need.text: ()})
+        step_generator = StubStepDefinitionGenerator(
+            {step_need.text: "package com.automation.steps;\n"}
+        )
+        po_need_text = "click the forgot password link"
+        po_candidate = MatchCandidate(
+            asset_id="PAGE-login01", confidence=0.9, content_hash="hash1"
+        )
+        po_matcher = StubSemanticMatcher({po_need_text: (po_candidate,)})
+        method_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(text=po_need_text, step_type="PageAction", captures=()),
+            method_name="clickForgotPasswordLink",
+        )
+        page_object_request = PageObjectBindingRequest(
+            method_need=method_need, matcher=po_matcher, generator=StubPageObjectGenerator({})
+        )
+
+        outcome = orchestrate_step_definition(
+            step_need,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_request=page_object_request,
+        )
+
+        assert isinstance(outcome, GeneratedStepDefinition)
+        assert (
+            step_generator.received_contexts[0].page_object_interface
+            == "com.automation.pages.LoginPage"
+        )
+
+    def test_whole_step_escalates_when_the_specific_page_object_method_is_absent(self) -> None:
+        """The precise check catches what the coarse screen could not: a
+        TRUSTED_REUSE page object (coarse compatibility passed -- it has
+        SOME zero-arg method) that lacks the SPECIFIC method the step is
+        about to call. The step is NOT generated against an unverified
+        call -- it escalates, and the step-def seam is never touched."""
+        from automation_engineering.catalog.models import JavaMethod, PageObjectAsset
+        from automation_engineering.generation.models import PageObjectMethodNeed
+        from automation_engineering.generation.page_object_generator import (
+            StubPageObjectGenerator,
+        )
+        from automation_engineering.generation.page_object_orchestrator import (
+            PageObjectBindingRequest,
+        )
+
+        login_page = PageObjectAsset(
+            asset_id="PAGE-login01",
+            class_name="com.automation.pages.LoginPage",
+            extends="BasePage",
+            fields=(),
+            locators=(),
+            methods=(JavaMethod(name="open", parameters=(), return_type="void"),),
+            source_file="com/automation/pages/LoginPage.java",
+            content_hash="hash1",
+        )
+        catalog = AssetCatalog(baseline_root="test-suite-baseline", page_objects=(login_page,))
+        step_need = _need("I click forgot password")
+        step_matcher = StubSemanticMatcher({step_need.text: ()})
+        step_generator = StubStepDefinitionGenerator({})  # must never be called
+        po_need_text = "click the forgot password link"
+        po_candidate = MatchCandidate(
+            asset_id="PAGE-login01", confidence=0.9, content_hash="hash1"
+        )
+        po_matcher = StubSemanticMatcher({po_need_text: (po_candidate,)})
+        method_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(text=po_need_text, step_type="PageAction", captures=()),
+            method_name="clickForgotPasswordLink",
+        )
+        page_object_request = PageObjectBindingRequest(
+            method_need=method_need, matcher=po_matcher, generator=StubPageObjectGenerator({})
+        )
+
+        outcome = orchestrate_step_definition(
+            step_need,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_request=page_object_request,
+        )
+
+        assert isinstance(outcome, EscalatedStepNeed)
+        assert outcome.escalation.check == EscalationCheck.METHOD_FIT
+        assert step_generator.call_count == 0
+
+    def test_orchestrator_now_imports_page_object_orchestrator_but_utilities_stays_unreferenced(
+        self,
+    ) -> None:
+        """A structural guard, updated deliberately -- not deleted, not
+        broken accidentally. Page objects are now legitimately handled: the
+        step-def orchestrator's own source imports
+        `page_object_orchestrator`. Utilities remain out of scope: across
+        every generation module this build touches, `utilities` never
+        appears as an attribute name -- the same "never reaching for that
+        data" guard the prior build used for page objects, now scoped
+        precisely to the one asset kind still deferred."""
+        orchestrator_source = Path("automation_engineering/generation/orchestrator.py").read_text(
             encoding="utf-8"
         )
-        tree = ast.parse(source)
-        attribute_names = {
-            node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
-        }
-        assert "page_objects" not in attribute_names
-        assert "utilities" not in attribute_names
+        assert "page_object_orchestrator" in orchestrator_source
 
-    def test_module_docstring_records_the_deferral_explicitly(self) -> None:
+        generation_dir = Path("automation_engineering/generation")
+        for py_file in generation_dir.glob("*.py"):
+            tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+            attribute_names = {
+                node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+            }
+            assert "utilities" not in attribute_names, f"{py_file}: references .utilities"
+
+    def test_module_docstring_records_the_discharge_explicitly(self) -> None:
         import automation_engineering.generation.orchestrator as orchestrator_module
 
         doc = (orchestrator_module.__doc__ or "").lower()
+        assert "discharged" in doc
         assert "inherited" in doc
-        assert "does not discharge" in doc or "not discharge" in doc
-        assert "next task" in doc or "page-object generator" in doc
+        assert "utilities remain out of this build" in doc or "utilities" in doc
 
 
 # ---------------------------------------------------------------------------

@@ -1,23 +1,25 @@
-"""Registration + SHA-256 verification proof for Layer 3's first governed
-prompt, `generate_step_definitions` v1.0.0 (ADR-0044 D8).
+"""Registration + SHA-256 verification proof for Layer 3's governed prompts:
+`generate_step_definitions` v1.0.0 (ADR-0044 D8) and `generate_page_objects`
+v1.0.0 (this build).
 
 Mirrors `tests/unit/test_feature_engineering_prompts_composition.py`'s shape
 for Layer 2's registry, and `requirement_intelligence/tests/unit/
 test_prompt_composition.py`'s shape for Layer 1's -- same shared mechanism,
-same discipline, independent registry instance and independent content
-(ADR-0044 D8).
+same discipline, independent registry instance and independent content.
 
 This module also proves the `PromptCompatibility` generalization
-(`shared/prompts/models/prompt_compatibility.py`) this registration
-triggered: Layer 3 declares its OWN dimensions here, and Layer 1's/Layer 2's
-own registrations still work unmodified under the generalized model
-(cross-checked directly, not merely asserted independently in their own
-test modules).
+(`shared/prompts/models/prompt_compatibility.py`) `generate_step_definitions`'
+registration triggered: Layer 3 declares its OWN dimensions here, and Layer
+1's/Layer 2's own registrations still work unmodified under the generalized
+model (cross-checked directly, not merely asserted independently in their
+own test modules).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+import pytest
 
 from automation_engineering.prompts.composition import build_prompt_registry
 from shared.prompts.framework.prompt_loader import PromptLoader
@@ -25,16 +27,17 @@ from shared.prompts.framework.prompt_registry import PromptRegistryState
 from shared.prompts.framework.prompt_template_contract import parse_governed_template
 from shared.prompts.models.prompt_version import PromptLifecycle
 
-_EXPECTED_PROMPT_IDS = {"generate_step_definitions"}
+_EXPECTED_PROMPT_IDS = {"generate_step_definitions", "generate_page_objects"}
 
 
-def test_registry_seals_with_exactly_the_one_registered_prompt() -> None:
+def test_registry_seals_with_exactly_the_two_registered_prompts() -> None:
     registry = build_prompt_registry()
 
     assert registry.state is PromptRegistryState.SEALED
-    assert registry.count() == 1
+    assert registry.count() == 2
     assert set(registry.list_prompt_ids()) == _EXPECTED_PROMPT_IDS
     assert registry.is_registered("generate_step_definitions", "1.0.0")
+    assert registry.is_registered("generate_page_objects", "1.0.0")
 
 
 def test_registered_prompt_sha256_matches_the_manifest() -> None:
@@ -53,20 +56,21 @@ def test_registered_prompt_sha256_matches_the_manifest() -> None:
 
 def test_registered_as_draft() -> None:
     """Not yet exercised by any live pipeline (no orchestration wired into a
-    CLI, no CP3) -- Draft is the honest lifecycle."""
+    CLI, no CP3/CP4) -- Draft is the honest lifecycle."""
     registry = build_prompt_registry()
 
     for definition in registry.get_all():
         assert definition.metadata.lifecycle == PromptLifecycle.DRAFT
 
 
-def test_template_conforms_to_the_governed_system_user_contract() -> None:
-    """Unlike Layer 2's `generate_feature` (which does not carry an
-    `{artifact_context}` placeholder at all), `generate_step_definitions`
-    v1.0.0 DOES conform to the full governed template contract -- proven
-    directly by parsing it, not merely by construction."""
+@pytest.mark.parametrize("prompt_id", ["generate_step_definitions", "generate_page_objects"])
+def test_template_conforms_to_the_governed_system_user_contract(prompt_id: str) -> None:
+    """Both Layer 3 prompts conform to the full governed template contract
+    (unlike Layer 2's `generate_feature`, which carries no `{artifact_context}`
+    placeholder at all) -- proven directly by parsing each, not merely by
+    construction."""
     registry = build_prompt_registry()
-    definition = registry.get("generate_step_definitions", "1.0.0")
+    definition = registry.get(prompt_id, "1.0.0")
 
     template = parse_governed_template(definition.content)
 
@@ -75,26 +79,39 @@ def test_template_conforms_to_the_governed_system_user_contract() -> None:
     assert template.user_template.count("{artifact_context}") == 1
 
 
-def test_template_embeds_the_evidenced_customqa_constraints() -> None:
+@pytest.mark.parametrize("prompt_id", ["generate_step_definitions", "generate_page_objects"])
+def test_template_embeds_the_evidenced_customqa_constraints(prompt_id: str) -> None:
     """Born-compliant generation (ADR-0044 D5): the customqa:* rules this
-    task evidenced against this repo's own real SonarQube fixture data
+    build evidenced against this repo's own real SonarQube fixture data
     (`requirement_intelligence/input/sonar/sonar-issues.json`) are baked
-    into the static, versioned CONSTRAINTS section -- unconditionally
+    into each prompt's static, versioned CONSTRAINTS section -- unconditionally
     present in every render, never optional at runtime."""
     registry = build_prompt_registry()
-    definition = registry.get("generate_step_definitions", "1.0.0")
+    definition = registry.get(prompt_id, "1.0.0")
 
     assert "customqa:direct-webdriver-action" in definition.content
     assert "customqa:long-method" in definition.content
 
 
-def test_compatibility_declares_layer3s_own_dimensions_not_layer1s() -> None:
+def test_page_object_template_frames_webdriver_calls_as_legitimate_here() -> None:
+    """The one deliberate asymmetry between the two prompts: step definitions
+    are told WebDriver calls never belong there; page objects are told the
+    OPPOSITE -- this is exactly where those calls legitimately live."""
+    registry = build_prompt_registry()
+    definition = registry.get("generate_page_objects", "1.0.0")
+
+    assert "legitimately" in definition.content.lower()
+    assert "webdriver" in definition.content.lower()
+
+
+@pytest.mark.parametrize("prompt_id", ["generate_step_definitions", "generate_page_objects"])
+def test_compatibility_declares_layer3s_own_dimensions_not_layer1s(prompt_id: str) -> None:
     """Layer 3 declares dimensions genuinely its own -- neither Layer 1's
     five subsystem-named fields nor a fabricated "n/a" for any of them
     (ADR-0044 D8's own generalization; see
     `shared/prompts/models/prompt_compatibility.py`)."""
     registry = build_prompt_registry()
-    definition = registry.get("generate_step_definitions", "1.0.0")
+    definition = registry.get(prompt_id, "1.0.0")
 
     compat = definition.metadata.compatibility
     assert compat.dimensions == {

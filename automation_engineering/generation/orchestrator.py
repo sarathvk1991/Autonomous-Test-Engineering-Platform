@@ -30,47 +30,61 @@ implementation is wired in. It also never imports a live embedding provider
 :class:`~automation_engineering.reuse.matcher.SemanticMatcher`, for the same
 reason.
 
-THE INHERITED PRECISE METHOD-FIT OBLIGATION -- carried forward, not discharged
---------------------------------------------------------------------------------
-ADR-0044 D4's own clarification note (and this platform's reuse-engine build,
-``automation_engineering/reuse/engine.py``) records that binding a step
+THE INHERITED PRECISE METHOD-FIT OBLIGATION -- now DISCHARGED
+------------------------------------------------------------------
+ADR-0044 D4's own clarification note recorded that binding a step
 definition to a REUSED PAGE OBJECT requires a PRECISE check -- does the
-specific method the generated call is about to invoke actually exist on that
-page object -- which only the generator that WRITES that call can perform,
-because only it knows which method it is about to name. This module is that
-generator's step-definition half, but it does **not** discharge that
-obligation, because it never reaches the situation the obligation describes:
-page-object reuse or generation does not exist yet (the next task, per this
-build's own scope boundary). Concretely:
+specific method the generated call is about to invoke actually exist on
+that page object -- and named it "the generator's own obligation, not this
+engine's." The step-definition build that first wrote this module carried
+that obligation forward, undischarged, because it never reached the
+situation the obligation describes: no page-object generator existed yet.
 
-* ``StepDefinitionGenerationContext.page_object_interface`` is a bare,
-  optional hint field on the seam's own input contract (see
-  :mod:`.step_definition_generator`) -- this orchestrator never populates
-  it. Every context this module constructs carries
-  ``page_object_interface=None``; there is no catalog lookup against
-  ``catalog.page_objects``/``catalog.utilities`` anywhere in this file. A
-  test proves this directly (`test_generation_context_never_carries_a_page_object_hint`).
-* The reuse engine's own ``TrustedReuse.asset`` -- when this task's
-  orchestration binds a step (the ``BoundStepDefinition`` branch) -- is
-  always a :class:`~automation_engineering.catalog.models.StepDefinitionAsset`
-  in practice, never a page object or utility, because the only matcher this
-  build wires in (:class:`~automation_engineering.reuse.matcher.SemanticMatcher`'s
-  live realization, :class:`~automation_engineering.reuse.live_matcher.LiveSemanticMatcher`)
-  only ever searches ``catalog.step_definitions`` (that module's own
-  docstring: "Only step definitions are matched"). A step-definition-to-
-  reused-PAGE-OBJECT binding therefore cannot even occur inside this
-  orchestration as built -- it becomes possible only once a page-object-aware
-  generator exists to make that binding decision, at which point the
-  reuse engine's own coarse method-fit screen (already built,
-  ``_check_method_fit``) and the full ``asset.methods`` inventory
-  (`TrustedReuse`'s own docstring) are exactly what that future generator
-  needs, and were built precisely so this obligation is discharge-*able*
-  then, not now.
+**That generator now exists** (:mod:`.page_object_orchestrator`,
+:mod:`.method_fit`, this build), and this module is where its result is
+consumed -- the ACTUAL binding point the obligation names. Concretely:
 
-This module does not fake discharging that obligation by, say, silently
-approving every generated step's page-object call as "fine" -- it simply
-never generates a call against a *reused* page object at all, because no
-reused page object is ever in scope here.
+* ``page_object_request: PageObjectBindingRequest | None`` is a new,
+  OPTIONAL parameter on :func:`orchestrate_step_definition`/
+  :func:`generate_step_definitions`. Omitted (the default), behavior is
+  UNCHANGED from before this build: ``page_object_interface`` stays
+  ``None``, exactly as the prior obligation-carried-forward note described.
+* SUPPLIED, and the step needs to be GENERATED (NO_MATCH): this module
+  calls :func:`~.page_object_orchestrator.orchestrate_page_object_method`
+  BEFORE calling the step-definition generation seam. That call runs the
+  SAME reuse engine (:func:`automation_engineering.reuse.engine.decide_reuse`,
+  unmodified) against ``catalog.page_objects``, and -- when it returns a
+  ``TrustedReuse`` -- the PRECISE check
+  (:func:`automation_engineering.generation.method_fit.verify_specific_method_fit`)
+  verifies the SPECIFIC method (``page_object_request.method_need.method_name``)
+  is actually present on the reused class's real inventory
+  (``TrustedReuse.asset.methods``), not merely that SOME method has a
+  compatible shape (the coarse screen's own, narrower guarantee).
+  - Verified -> ``page_object_interface`` is populated with the reused
+    class's own ``class_name``, and the step definition is generated
+    against a page-object binding that is now FULLY verified (coarse +
+    precise, D4(c) complete for page objects).
+  - NOT verified (absent, or present with the wrong shape) -> the WHOLE
+    step escalates (``EscalatedStepNeed``, carrying the precise check's own
+    ``Escalation``) -- the step is not generated against a page-object call
+    this platform cannot trust, mirroring D4's own "any one failing routes
+    to human review, never a silent fallback."
+  - No catalogued page object even coarsely matches -> a brand-new page
+    object is generated (:mod:`.page_object_generator`'s own seam), and
+    ``page_object_interface`` is populated with the freshly derived class
+    name.
+
+This closes the gap D4 exists to close for page objects: check (c) is now
+COARSE (decision-time, `_check_method_fit`) **and** PRECISE (generation-time,
+this module wired to :mod:`.method_fit`), both realized, neither one alone
+mistaken for the whole of (c).
+
+**Utilities remain out of this build's scope**, the same honest deferral
+this module itself used for page objects before this build existed:
+nothing in this module, :mod:`.page_object_orchestrator`, or
+:mod:`.method_fit` ever looks up ``catalog.utilities`` -- a structural
+guard test proves it directly
+(`test_orchestrator_still_never_looks_up_utilities`).
 """
 
 from __future__ import annotations
@@ -79,10 +93,16 @@ from collections.abc import Sequence
 
 from automation_engineering.catalog.models import AssetCatalog
 from automation_engineering.generation.models import (
+    BoundPageObjectMethod,
     BoundStepDefinition,
     EscalatedStepNeed,
+    GeneratedPageObject,
     GeneratedStepDefinition,
     StepDefinitionOutcome,
+)
+from automation_engineering.generation.page_object_orchestrator import (
+    PageObjectBindingRequest,
+    orchestrate_page_object_method,
 )
 from automation_engineering.generation.step_definition_generator import (
     StepDefinitionGenerationContext,
@@ -124,6 +144,7 @@ def orchestrate_step_definition(
     target_package: str = DEFAULT_TARGET_PACKAGE,
     customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_STEP_DEFINITION_CONSTRAINTS,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    page_object_request: PageObjectBindingRequest | None = None,
 ) -> StepDefinitionOutcome:
     """Reuse-first orchestration for exactly one Gherkin step-need.
 
@@ -134,6 +155,12 @@ def orchestrate_step_definition(
     :class:`~.step_definition_generator.StubStepDefinitionGenerator`); the
     only nondeterministic calls (a live semantic match, a live generation)
     live entirely behind those two seams, never in this function.
+
+    ``page_object_request``, when supplied, resolves the page object the
+    generated step will call BEFORE generation happens -- the precise
+    method-fit discharge (module docstring, "THE INHERITED PRECISE
+    METHOD-FIT OBLIGATION"). Omitted, behavior is unchanged from before this
+    build: ``page_object_interface`` stays ``None``.
     """
     decision = decide_reuse(need, catalog, matcher, confidence_threshold=confidence_threshold)
 
@@ -144,14 +171,44 @@ def orchestrate_step_definition(
         return EscalatedStepNeed(need=need, escalation=decision)
 
     if isinstance(decision, NoMatch):
+        page_object_interface = None
+        page_object_outcome: GeneratedPageObject | BoundPageObjectMethod | None = None
+
+        if page_object_request is not None:
+            resolved = orchestrate_page_object_method(
+                page_object_request.method_need,
+                catalog,
+                page_object_request.matcher,
+                page_object_request.generator,
+                target_package=page_object_request.target_package,
+                customqa_constraints=page_object_request.customqa_constraints,
+                confidence_threshold=confidence_threshold,
+            )
+            if not isinstance(resolved, (GeneratedPageObject, BoundPageObjectMethod)):
+                # EscalatedPageObjectMethodNeed -- the step cannot be safely
+                # generated against a page-object binding this platform does
+                # not trust; the WHOLE step escalates, carrying the
+                # page-object side's own Escalation (module docstring).
+                return EscalatedStepNeed(need=need, escalation=resolved.escalation)
+            page_object_outcome = resolved
+            page_object_interface = (
+                resolved.asset.class_name
+                if isinstance(resolved, BoundPageObjectMethod)
+                else resolved.class_name
+            )
+
         context = StepDefinitionGenerationContext(
             need=need,
             target_package=target_package,
             customqa_constraints=customqa_constraints,
+            page_object_interface=page_object_interface,
         )
         java_source = generator.generate(context)
         return GeneratedStepDefinition(
-            need=need, java_source=java_source, target_package=target_package
+            need=need,
+            java_source=java_source,
+            target_package=target_package,
+            page_object_outcome=page_object_outcome,
         )
 
     raise AssertionError(f"unreachable: unknown ReuseDecision variant {decision!r}")
@@ -166,9 +223,13 @@ def generate_step_definitions(
     target_package: str = DEFAULT_TARGET_PACKAGE,
     customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_STEP_DEFINITION_CONSTRAINTS,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    page_object_request: PageObjectBindingRequest | None = None,
 ) -> tuple[StepDefinitionOutcome, ...]:
     """Reuse-first orchestration for a feature's full set of step-needs --
-    one :func:`orchestrate_step_definition` call per need, in order."""
+    one :func:`orchestrate_step_definition` call per need, in order. When
+    supplied, the SAME ``page_object_request`` is used for every need in the
+    batch -- a caller needing per-step page-object requests calls
+    :func:`orchestrate_step_definition` directly, per step."""
     return tuple(
         orchestrate_step_definition(
             need,
@@ -178,6 +239,7 @@ def generate_step_definitions(
             target_package=target_package,
             customqa_constraints=customqa_constraints,
             confidence_threshold=confidence_threshold,
+            page_object_request=page_object_request,
         )
         for need in needs
     )

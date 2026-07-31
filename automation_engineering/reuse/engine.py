@@ -325,7 +325,7 @@ def _check_method_fit(
     case above.
     """
     need_captures = need.captures
-    if any(_method_shape_fits(method, need_captures) for method in asset.methods):
+    if any(method_shape_fits(method, need_captures) for method in asset.methods):
         return None
     return Escalation(
         need=need,
@@ -340,11 +340,23 @@ def _check_method_fit(
     )
 
 
-def _method_shape_fits(method: JavaMethod, need_captures: tuple[StepCapture, ...]) -> bool:
+def method_shape_fits(method: JavaMethod, need_captures: tuple[StepCapture, ...]) -> bool:
     """Arity plus per-position type compatibility -- the same two
     dimensions `_check_signature_fit` compares, applied to one candidate
     method's own parameters instead of a step definition's correlated
-    captures."""
+    captures.
+
+    **Public** (unlike this module's other check helpers) because the
+    page-object/utility generator (`automation_engineering.generation.
+    method_fit`) needs this exact shape-compatibility rule a second time --
+    once here, for the COARSE decision-time class-compatibility screen
+    (`_check_method_fit`, above), and once there, for the PRECISE
+    generation-time check on one already-named method (ADR-0044 D4's own
+    clarification note: the precise check is "the generator's own
+    obligation, not this engine's"). Promoted rather than duplicated so both
+    checks apply IDENTICAL shape logic, never two hand-maintained copies
+    that could silently drift apart.
+    """
     if len(method.parameters) != len(need_captures):
         return False
     return all(
@@ -372,4 +384,4 @@ def _method_signatures(methods: tuple[JavaMethod, ...]) -> tuple[str, ...]:
     )
 
 
-__all__ = ["DEFAULT_CONFIDENCE_THRESHOLD", "decide_reuse"]
+__all__ = ["DEFAULT_CONFIDENCE_THRESHOLD", "decide_reuse", "method_shape_fits"]
