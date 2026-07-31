@@ -1,0 +1,163 @@
+"""The real SonarQube adapter (ADR-0044 D5's own hard-gate mechanics).
+
+SonarQube has no REST endpoint that accepts raw source text for scanning --
+analysis is always performed by the scanner engine against an on-disk,
+buildable project (the ``sonar-scanner`` CLI or a build-tool plugin).
+Given ADR-0041's own Maven/JDK21 stack, this adapter submits via
+``mvn sonar:sonar`` against `project_root` (an already-on-disk Maven
+project -- writing generated Java to that location is promotion's own job,
+out of this build's scope, ADR-0045). On success, the Sonar Maven plugin
+writes ``target/sonar/report-task.txt`` (``key=value`` lines including
+``ceTaskId``) -- the real, documented hand-off between "scan submitted" and
+"poll the Compute Engine task API for it."
+
+Polling (`GET /api/ce/task?id=...`) and the quality-gate fetch
+(`GET /api/qualitygates/project_status?projectKey=...`) are SonarQube's own
+stable, documented Web API endpoints, called via ``httpx`` (already a
+runtime dependency of this platform -- ``requirement_intelligence``'s own
+JIRA/SonarQube/ZAP connectors use it; NOT reused directly here, since
+those connectors are Layer 1's own internal module and this platform's
+layers do not import each other's internals -- this adapter makes its own,
+independent ``httpx`` calls). No new third-party dependency was added for
+this build.
+
+The token authenticates as the HTTP Basic-auth username with an empty
+password -- SonarQube's own documented token-auth convention -- and is
+passed to the Maven subprocess via the ``SONAR_TOKEN`` environment
+variable, never a CLI argument, so it never appears in a process listing.
+
+**Not exercised against a real server in this build.** `curl --max-time 3
+http://localhost:9000/api/system/status` from this environment returns no
+connection (verified directly, not assumed) -- there is no SonarQube
+server reachable here. This module's own HTTP/subprocess mechanics are
+therefore proven correct only by direct reading and by
+:mod:`automation_engineering.cp3.sonar.stub_adapter`'s equivalent, faked
+call sequence -- never by a passing live integration test. Stated
+honestly, per ADR-0044 D5's own instruction not to fabricate a live pass.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import time
+from pathlib import Path
+
+import httpx
+
+from automation_engineering.cp3.sonar.adapter import SonarScanError
+from automation_engineering.cp3.sonar.models import (
+    SonarQualityGateCondition,
+    SonarQualityGateResult,
+)
+
+_TERMINAL_TASK_STATUSES = frozenset({"SUCCESS", "FAILED", "CANCELED"})
+_REPORT_TASK_RELATIVE_PATH = Path("target/sonar/report-task.txt")
+
+
+class LiveSonarQualityGateAdapter:
+    """Real ``mvn sonar:sonar`` + SonarQube Web API implementation of
+    :class:`~automation_engineering.cp3.sonar.adapter.SonarQualityGateAdapter`
+    (structural -- no explicit base class, matching this platform's own
+    ``Protocol`` discipline).
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        timeout_seconds: float = 30.0,
+        poll_interval_seconds: float = 2.0,
+        max_poll_attempts: int = 150,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._token = token
+        self._timeout_seconds = timeout_seconds
+        self._poll_interval_seconds = poll_interval_seconds
+        self._max_poll_attempts = max_poll_attempts
+
+    def submit_scan(self, project_root: Path, project_key: str) -> str:
+        env = {**os.environ, "SONAR_TOKEN": self._token}
+        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell, no untrusted input
+            [  # noqa: S607 - `mvn` resolved via PATH, the same convention every dev/CI shell uses
+                "mvn",
+                "-q",
+                "-f",
+                str(project_root / "pom.xml"),
+                "sonar:sonar",
+                f"-Dsonar.host.url={self._base_url}",
+                f"-Dsonar.projectKey={project_key}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        if completed.returncode != 0:
+            raise SonarScanError(
+                f"mvn sonar:sonar exited {completed.returncode} for {project_root}: "
+                f"{completed.stderr.strip() or completed.stdout.strip()}"
+            )
+        report_path = project_root / _REPORT_TASK_RELATIVE_PATH
+        if not report_path.exists():
+            raise SonarScanError(
+                f"mvn sonar:sonar exited 0 but wrote no report-task.txt at {report_path}"
+            )
+        properties = dict(
+            line.split("=", 1)
+            for line in report_path.read_text(encoding="utf-8").splitlines()
+            if "=" in line
+        )
+        task_id = properties.get("ceTaskId")
+        if not task_id:
+            raise SonarScanError(f"{report_path} has no ceTaskId entry")
+        return task_id
+
+    def poll_for_completion(self, task_id: str) -> None:
+        with httpx.Client(
+            base_url=self._base_url, auth=self._basic_auth(), timeout=self._timeout_seconds
+        ) as client:
+            for _ in range(self._max_poll_attempts):
+                response = client.get("/api/ce/task", params={"id": task_id})
+                response.raise_for_status()
+                status = response.json()["task"]["status"]
+                if status == "SUCCESS":
+                    return
+                if status in _TERMINAL_TASK_STATUSES:
+                    raise SonarScanError(
+                        f"SonarQube analysis task {task_id} ended with status {status}"
+                    )
+                time.sleep(self._poll_interval_seconds)
+        raise SonarScanError(
+            f"SonarQube analysis task {task_id} did not complete within "
+            f"{self._max_poll_attempts} polls"
+        )
+
+    def fetch_quality_gate_result(self, project_key: str) -> SonarQualityGateResult:
+        with httpx.Client(
+            base_url=self._base_url, auth=self._basic_auth(), timeout=self._timeout_seconds
+        ) as client:
+            response = client.get(
+                "/api/qualitygates/project_status", params={"projectKey": project_key}
+            )
+            response.raise_for_status()
+            project_status = response.json()["projectStatus"]
+        conditions = tuple(
+            SonarQualityGateCondition(
+                metric_key=condition["metricKey"],
+                status=condition["status"],
+                actual_value=condition.get("actualValue", ""),
+                error_threshold=condition.get("errorThreshold"),
+            )
+            for condition in project_status.get("conditions", [])
+        )
+        return SonarQualityGateResult(
+            passed=project_status["status"] == "OK", conditions=conditions
+        )
+
+    def _basic_auth(self) -> httpx.BasicAuth:
+        return httpx.BasicAuth(self._token, "")
+
+
+__all__ = ["LiveSonarQualityGateAdapter"]
