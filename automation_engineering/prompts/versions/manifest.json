@@ -1,0 +1,14 @@
+{
+    "schema_version": "1.0",
+    "description": "Automation Engineering (Layer 3) Prompt Governance Version Manifest — authoritative index of all versioned prompt template files and their SHA-256 fingerprints.",
+    "prompts": [
+        {
+            "prompt_id": "generate_step_definitions",
+            "version": "1.0.0",
+            "file": "generate_step_definitions_v1.0.0.txt",
+            "sha256": "06c6207b7f9e87850e92a8708e277be9c26f8f111244fd2e251c70f4bb148d35",
+            "lifecycle": "Draft",
+            "introduced_in_release": "1.0.0"
+        }
+    ]
+}

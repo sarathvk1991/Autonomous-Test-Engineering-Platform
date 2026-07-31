@@ -58,23 +58,25 @@ _VERSIONS_DIR: Path = Path(__file__).parent.parent / "versions"
 # at runtime from the file content; metadata is a governed architecture record.
 
 _REQUIREMENT_ANALYSIS_COMPATIBILITY = PromptCompatibility(
-    # Normalization contract version this prompt was verified against.
-    # Source: NORMALIZATION_CONTRACT_VERSION in response-normalization-contract.md
-    normalization_version="1.0",
-    # Validation contract version this prompt was verified against.
-    # Source: DEFAULT_VALIDATION_CONTRACT_VERSION in ai-response-validation.md
-    validation_version="1.0",
-    # CP1 criteria contract version this prompt was verified against.
-    # Source: DEFAULT_CP1_CRITERIA_CONTRACT_VERSION (ADR-0012)
-    cp1_version="1.0",
-    # Golden dataset version the prompt's regression suite used.
-    # Source: GOLDEN_DATASET_VERSION in golden-baseline.md
-    golden_dataset_version="1.0.0",
-    # Output schema version this prompt targets.
-    # Defined by JSON_RESPONSE_REQUIREMENTS in prompt_constants.py:
-    # summary, functional_requirements, security_requirements,
-    # quality_requirements, risks, recommendations.
-    output_schema_version="1.0.0",
+    dimensions={
+        # Normalization contract version this prompt was verified against.
+        # Source: NORMALIZATION_CONTRACT_VERSION in response-normalization-contract.md
+        "normalization_version": "1.0",
+        # Validation contract version this prompt was verified against.
+        # Source: DEFAULT_VALIDATION_CONTRACT_VERSION in ai-response-validation.md
+        "validation_version": "1.0",
+        # CP1 criteria contract version this prompt was verified against.
+        # Source: DEFAULT_CP1_CRITERIA_CONTRACT_VERSION (ADR-0012)
+        "cp1_version": "1.0",
+        # Golden dataset version the prompt's regression suite used.
+        # Source: GOLDEN_DATASET_VERSION in golden-baseline.md
+        "golden_dataset_version": "1.0.0",
+        # Output schema version this prompt targets.
+        # Defined by JSON_RESPONSE_REQUIREMENTS in prompt_constants.py:
+        # summary, functional_requirements, security_requirements,
+        # quality_requirements, risks, recommendations.
+        "output_schema_version": "1.0.0",
+    }
 )
 
 # v1.1.0 is an additive, wording-only clarification of v1.0.0 (CAP-073 Prompt

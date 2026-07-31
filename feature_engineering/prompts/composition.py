@@ -29,19 +29,21 @@ Non-responsibilities
 * It does not build CP2 or the remediation loop (ADR-0043 D5) — those are
   later, separate milestones that will *consume* this registry's prompts.
 
-Compatibility caveat (recorded, not resolved here)
-----------------------------------------------------
-:class:`~shared.prompts.models.prompt_compatibility.PromptCompatibility`'s
-five fields (`normalization_version`, `validation_version`, `cp1_version`,
-`golden_dataset_version`, `output_schema_version`) are Layer-1-subsystem
-names (open item, `architecture-baseline-v2.md` §4 item 12). None of the
-first four apply to a Layer 2 prompt — Layer 2 prompts are never validated
-against Layer 1's Normalization, Validation, CP1, or golden-dataset
-contracts, so claiming a version there would be a fabricated compatibility
-signal. Each Layer 2 prompt below declares those four as the literal string
-`"n/a"` — an honest absence, not a copied Layer 1 value — and gives only
-`output_schema_version` a real value: the version of *this prompt's own*
-output contract (the Gherkin/tag-structure or check-report shape it targets).
+Compatibility (generalized, ADR-0044 D8 -- resolved here)
+------------------------------------------------------------
+:class:`~shared.prompts.models.prompt_compatibility.PromptCompatibility` was
+originally five Layer-1-subsystem-named fields (open item,
+`architecture-baseline-v2.md` §4 item 12(b)); none of the first four ever
+applied to a Layer 2 prompt, so every Layer 2 registration declared them as
+the literal string `"n/a"` -- an honest absence, but a field-shape that was
+never genuinely general. The model is now a mapping of named dimensions
+(generalized when Layer 3 became a third, structurally different consumer --
+see `shared/prompts/models/prompt_compatibility.py`'s own docstring). Each
+Layer 2 prompt below declares exactly one dimension, `output_schema_version`
+-- the version of *this prompt's own* output contract (the Gherkin/tag-
+structure or check-report shape it targets) -- and no longer fabricates the
+other four as `"n/a"`: a dimension a prompt has nothing to say about is now
+simply absent, not present with a placeholder value.
 """
 
 from __future__ import annotations
@@ -61,37 +63,28 @@ from shared.prompts.models.prompt_version import PromptLifecycle
 
 _VERSIONS_DIR: Path = Path(__file__).parent / "versions"
 
-#: Not applicable to any Layer 2 prompt (see module docstring) — an explicit,
-#: honest absence rather than a fabricated or copied Layer 1 value.
-_NOT_APPLICABLE = "n/a"
-
 _GENERATE_FEATURE_COMPATIBILITY = PromptCompatibility(
-    normalization_version=_NOT_APPLICABLE,
-    validation_version=_NOT_APPLICABLE,
-    cp1_version=_NOT_APPLICABLE,
-    golden_dataset_version=_NOT_APPLICABLE,
-    # This prompt's own output contract: scenario content plus the
-    # @REQ-PENDING/@SCN-PENDING/@AC-PENDING tag-placeholder structure (D2).
-    output_schema_version="1.0.0",
+    dimensions={
+        # This prompt's own output contract: scenario content plus the
+        # @REQ-PENDING/@SCN-PENDING/@AC-PENDING tag-placeholder structure (D2).
+        "output_schema_version": "1.0.0",
+    }
 )
 
 _FIX_GHERKIN_LINT_COMPATIBILITY = PromptCompatibility(
-    normalization_version=_NOT_APPLICABLE,
-    validation_version=_NOT_APPLICABLE,
-    cp1_version=_NOT_APPLICABLE,
-    golden_dataset_version=_NOT_APPLICABLE,
-    # This prompt's own output contract: a ---FEATURE---/---CHANGES--- pair.
-    output_schema_version="1.0.0",
+    dimensions={
+        # This prompt's own output contract: a ---FEATURE---/---CHANGES--- pair.
+        "output_schema_version": "1.0.0",
+    }
 )
 
 _VALIDATE_GENERATED_FEATURE_COMPATIBILITY = PromptCompatibility(
-    normalization_version=_NOT_APPLICABLE,
-    validation_version=_NOT_APPLICABLE,
-    cp1_version=_NOT_APPLICABLE,
-    golden_dataset_version=_NOT_APPLICABLE,
-    # This prompt's own output contract: the two-line advisory check report,
-    # not the Gherkin/tag-structure contract the other two prompts target.
-    output_schema_version="1.0.0",
+    dimensions={
+        # This prompt's own output contract: the two-line advisory check
+        # report, not the Gherkin/tag-structure contract the other two
+        # prompts target.
+        "output_schema_version": "1.0.0",
+    }
 )
 
 # ---------------------------------------------------------------------------

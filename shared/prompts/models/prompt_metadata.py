@@ -66,8 +66,11 @@ class PromptMetadata(Schema):
         ``promptSha256`` recorded in ``manifest.json``, which fingerprints the
         fully assembled prompt including the injected artifact context.
     compatibility:
-        Explicit compatibility declarations — which downstream subsystem
-        versions this prompt was verified against (Phase 7).
+        Explicit compatibility declarations — a mapping of named dimensions
+        (each consumer's own choice, e.g. Layer 1's ``cp1_version``, Layer
+        3's ``customqa_profile_version``) to the governed version this
+        prompt was verified against (Phase 7; generalized Phase 9, ADR-0044
+        D8 — see :class:`~shared.prompts.models.prompt_compatibility.PromptCompatibility`).
     release_introduced:
         Platform release in which this prompt version first appeared
         (e.g. ``"1.0.0"``).

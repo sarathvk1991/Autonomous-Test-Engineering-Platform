@@ -72,11 +72,13 @@ class TestBuildPromptRegistry:
                 description="Should not register.",
                 sha256="a" * 64,
                 compatibility=PromptCompatibility(
-                    normalization_version="1.0",
-                    validation_version="1.0",
-                    cp1_version="1.0",
-                    golden_dataset_version="1.0.0",
-                    output_schema_version="1.0.0",
+                    dimensions={
+                        "normalization_version": "1.0",
+                        "validation_version": "1.0",
+                        "cp1_version": "1.0",
+                        "golden_dataset_version": "1.0.0",
+                        "output_schema_version": "1.0.0",
+                    }
                 ),
                 release_introduced="1.0.0",
             ),
@@ -168,27 +170,27 @@ class TestRequirementAnalysisCompatibility:
     @pytest.mark.unit
     def test_normalization_version(self) -> None:
         d = build_prompt_registry().get("requirement_analysis", "1.0.0")
-        assert d.metadata.compatibility.normalization_version == "1.0"
+        assert d.metadata.compatibility.dimensions["normalization_version"] == "1.0"
 
     @pytest.mark.unit
     def test_validation_version(self) -> None:
         d = build_prompt_registry().get("requirement_analysis", "1.0.0")
-        assert d.metadata.compatibility.validation_version == "1.0"
+        assert d.metadata.compatibility.dimensions["validation_version"] == "1.0"
 
     @pytest.mark.unit
     def test_cp1_version(self) -> None:
         d = build_prompt_registry().get("requirement_analysis", "1.0.0")
-        assert d.metadata.compatibility.cp1_version == "1.0"
+        assert d.metadata.compatibility.dimensions["cp1_version"] == "1.0"
 
     @pytest.mark.unit
     def test_golden_dataset_version(self) -> None:
         d = build_prompt_registry().get("requirement_analysis", "1.0.0")
-        assert d.metadata.compatibility.golden_dataset_version == "1.0.0"
+        assert d.metadata.compatibility.dimensions["golden_dataset_version"] == "1.0.0"
 
     @pytest.mark.unit
     def test_output_schema_version(self) -> None:
         d = build_prompt_registry().get("requirement_analysis", "1.0.0")
-        assert d.metadata.compatibility.output_schema_version == "1.0.0"
+        assert d.metadata.compatibility.dimensions["output_schema_version"] == "1.0.0"
 
 
 # ===========================================================================
@@ -378,7 +380,7 @@ class TestRequirementAnalysisV110:
         v100 = build_prompt_registry().get("requirement_analysis", "1.0.0")
         v110 = build_prompt_registry().get("requirement_analysis", "1.1.0")
         assert v110.metadata.compatibility == v100.metadata.compatibility
-        assert v110.metadata.compatibility.output_schema_version == "1.0.0"
+        assert v110.metadata.compatibility.dimensions["output_schema_version"] == "1.0.0"
 
     @pytest.mark.unit
     def test_output_schema_json_contract_unchanged(self) -> None:

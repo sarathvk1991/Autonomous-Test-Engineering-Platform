@@ -35,11 +35,13 @@ from shared.prompts.models.prompt_version import PromptLifecycle, PromptVersion
 
 def _compat() -> PromptCompatibility:
     return PromptCompatibility(
-        normalization_version="1.0",
-        validation_version="1.0",
-        cp1_version="1.0",
-        golden_dataset_version="1.0.0",
-        output_schema_version="1.0.0",
+        dimensions={
+            "normalization_version": "1.0",
+            "validation_version": "1.0",
+            "cp1_version": "1.0",
+            "golden_dataset_version": "1.0.0",
+            "output_schema_version": "1.0.0",
+        }
     )
 
 
@@ -256,29 +258,40 @@ class TestPromptCompatibility:
     @pytest.mark.unit
     def test_construction(self) -> None:
         c = _compat()
-        assert c.normalization_version == "1.0"
-        assert c.validation_version == "1.0"
-        assert c.cp1_version == "1.0"
-        assert c.golden_dataset_version == "1.0.0"
-        assert c.output_schema_version == "1.0.0"
+        assert c.dimensions["normalization_version"] == "1.0"
+        assert c.dimensions["validation_version"] == "1.0"
+        assert c.dimensions["cp1_version"] == "1.0"
+        assert c.dimensions["golden_dataset_version"] == "1.0.0"
+        assert c.dimensions["output_schema_version"] == "1.0.0"
+
+    @pytest.mark.unit
+    def test_get_returns_declared_dimension(self) -> None:
+        c = _compat()
+        assert c.get("output_schema_version") == "1.0.0"
+
+    @pytest.mark.unit
+    def test_get_returns_default_for_undeclared_dimension(self) -> None:
+        c = PromptCompatibility(dimensions={"output_schema_version": "1.0.0"})
+        assert c.get("cp1_version") is None
+        assert c.get("cp1_version", "n/a") == "n/a"
 
     @pytest.mark.unit
     def test_immutable(self) -> None:
         c = _compat()
         with pytest.raises(ValidationError):
-            c.normalization_version = "2.0"  # type: ignore[misc]
+            c.dimensions = {"output_schema_version": "2.0"}  # type: ignore[misc]
 
     @pytest.mark.unit
     def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError):
             PromptCompatibility(  # type: ignore[call-arg]
-                normalization_version="1.0",
-                validation_version="1.0",
-                cp1_version="1.0",
-                golden_dataset_version="1.0.0",
-                output_schema_version="1.0.0",
+                dimensions={"output_schema_version": "1.0.0"},
                 extra_field="oops",
             )
+
+    @pytest.mark.unit
+    def test_default_dimensions_is_empty(self) -> None:
+        assert PromptCompatibility().dimensions == {}
 
 
 # ===========================================================================

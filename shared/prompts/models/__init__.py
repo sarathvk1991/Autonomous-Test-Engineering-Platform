@@ -14,8 +14,9 @@ Public surface
 --------------
 PromptVersion       — semantic version value object with ordering and bumping rules
 PromptLifecycle     — governed lifecycle states (Draft → Archived)
-PromptCompatibility — explicit compatibility declarations (Normalization/Validation/
-                      CP1/GoldenDataset/OutputSchema versions)
+PromptCompatibility — explicit compatibility declarations (a mapping of named
+                      dimensions to versions; each consumer declares its own,
+                      ADR-0044 D8)
 PromptMetadata      — complete descriptive identity of one versioned prompt
 PromptDefinition    — aggregate of metadata + immutable template content
 """

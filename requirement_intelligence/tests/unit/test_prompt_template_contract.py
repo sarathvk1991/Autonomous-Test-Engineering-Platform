@@ -43,11 +43,13 @@ from shared.prompts.models.prompt_version import PromptLifecycle
 _VERSIONS_DIR = Path(__file__).resolve().parents[2] / "prompts" / "versions"
 
 _COMPAT = PromptCompatibility(
-    normalization_version="1.0",
-    validation_version="1.0",
-    cp1_version="1.0",
-    golden_dataset_version="1.0.0",
-    output_schema_version="1.0.0",
+    dimensions={
+        "normalization_version": "1.0",
+        "validation_version": "1.0",
+        "cp1_version": "1.0",
+        "golden_dataset_version": "1.0.0",
+        "output_schema_version": "1.0.0",
+    }
 )
 
 

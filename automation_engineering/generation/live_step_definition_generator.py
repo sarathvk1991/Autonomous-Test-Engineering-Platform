@@ -1,0 +1,185 @@
+"""The live, provider-backed
+:class:`~automation_engineering.generation.step_definition_generator.StepDefinitionGenerator`
+implementation.
+
+:class:`LiveStepDefinitionGenerator` is a peer of
+:class:`~automation_engineering.generation.step_definition_generator.StubStepDefinitionGenerator`
+behind the same seam -- it satisfies
+:class:`~automation_engineering.generation.step_definition_generator.StepDefinitionGenerator`
+unchanged and is the only thing this module adds. It renders the governed
+``generate_step_definitions`` prompt (v1.0.0) with one
+:class:`~automation_engineering.generation.step_definition_generator.StepDefinitionGenerationContext`
+and returns the raw response text (generated Java source); the orchestrator
+(:mod:`automation_engineering.generation.orchestrator`) performs no parsing,
+no compilation, and no lint of that text -- CP3 (a later, out-of-scope task)
+is where generated Java is actually verified.
+
+Same mechanism as Layer 1 and Layer 2, not a parallel one
+------------------------------------------------------------
+Mirrors
+:class:`~feature_engineering.generation.live_content_generator.LiveFeatureContentGenerator`'s
+own boundary exactly: an
+:class:`~requirement_intelligence.llm.providers.base_provider.LLMProvider` is
+constructor-injected, never constructed here -- provider selection
+(``llm_factory.create_provider``) and ``validate_connection()`` are the
+caller's responsibility. This module never imports ``llm_factory`` (proven by
+the same ``test_generation_module_never_imports_llm_factory``-style guard the
+Layer 2 generation core's own tests already carry), and performs no retries.
+
+Unlike Layer 2's ``generate_feature`` (which does not conform to the governed
+system/user template contract -- see ``LiveFeatureContentGenerator``'s own
+docstring), ``generate_step_definitions`` v1.0.0 DOES conform: it carries
+exactly one ``{artifact_context}`` placeholder
+(:func:`~shared.prompts.framework.prompt_template_contract.parse_governed_template`).
+This generator therefore renders it the same way Layer 1's
+``RequirementPromptBuilder`` does -- system prompt plus
+``render_user_prompt(artifact_context)`` -- rather than Layer 2's
+append-a-final-section workaround.
+"""
+
+from __future__ import annotations
+
+import json
+from uuid import uuid4
+
+from automation_engineering.generation.step_definition_generator import (
+    StepDefinitionGenerationContext,
+)
+from automation_engineering.prompts.composition import build_prompt_registry
+from requirement_intelligence.llm.llm_models import LLMRequest
+from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from shared.enums.base import ExecutionStatus
+from shared.prompts.framework.prompt_registry import PromptRegistry
+from shared.prompts.framework.prompt_template_contract import parse_governed_template
+
+_PROMPT_ID = "generate_step_definitions"
+_PROMPT_VERSION = "1.0.0"
+
+#: Deterministic sampling by default, matching the platform-wide convention
+#: (``LLMRequest.temperature`` itself defaults to 0.0).
+_DEFAULT_TEMPERATURE = 0.0
+
+#: Combines the governed template's system prompt and rendered user prompt
+#: into one request string -- the same separator
+#: ``RequirementPromptBuilder.PromptRequest.full_prompt`` uses.
+_SECTION_SEPARATOR = "\n\n"
+
+
+class LiveGenerationError(Exception):
+    """Raised when the LLM boundary fails to produce usable content.
+
+    Covers exactly three failure modes at this boundary -- a provider
+    exception (including a timeout, which the provider wraps rather than
+    letting an SDK exception escape), a non-``COMPLETED`` normalized
+    execution outcome, and an empty/whitespace-only response. Anything the
+    model *did* return, however malformed as Java, is not this exception's
+    concern -- that is CP3's job (a later, out-of-scope task), not this
+    boundary's.
+    """
+
+
+class LiveStepDefinitionGenerator:
+    """``generate_step_definitions`` v1.0.0-backed step-definition generator.
+
+    Parameters
+    ----------
+    provider:
+        An already-constructed, already-validated
+        :class:`LLMProvider` (e.g. via ``llm_factory.create_provider`` +
+        ``provider.validate_connection()``). This class never selects or
+        constructs a provider itself.
+    prompt_registry:
+        The sealed Layer 3 :class:`PromptRegistry` to resolve
+        ``generate_step_definitions`` v1.0.0 from. When *None*, the
+        canonical registry is composed via
+        :func:`~automation_engineering.prompts.composition.build_prompt_registry`.
+    temperature:
+        Sampling temperature forwarded to the provider. Defaults to ``0.0``,
+        matching :class:`LLMRequest`'s own platform-wide default.
+    """
+
+    def __init__(
+        self,
+        provider: LLMProvider,
+        *,
+        prompt_registry: PromptRegistry | None = None,
+        temperature: float = _DEFAULT_TEMPERATURE,
+    ) -> None:
+        self._provider = provider
+        registry = prompt_registry if prompt_registry is not None else build_prompt_registry()
+        definition = registry.get(_PROMPT_ID, _PROMPT_VERSION)
+        self._definition = definition
+        self._template = parse_governed_template(definition.content)
+        self._temperature = temperature
+
+    def generate(self, context: StepDefinitionGenerationContext) -> str:
+        """Return generated Java step-definition source for ``context``.
+
+        Raises
+        ------
+        LiveGenerationError
+            If the provider call fails (including a timeout), the response's
+            normalized ``execution_status`` is not ``COMPLETED``, or the
+            returned text is empty/whitespace-only.
+        """
+        request = LLMRequest(
+            request_id=str(uuid4()),
+            prompt=self._build_prompt(context),
+            temperature=self._temperature,
+            metadata={
+                "prompt_id": self._definition.metadata.prompt_id,
+                "prompt_version": self._definition.metadata.version,
+                "step_text": context.need.text,
+            },
+        )
+
+        try:
+            response = self._provider.generate(request)
+        except Exception as exc:  # provider boundary catch-all, mirroring
+            # LiveFeatureContentGenerator.generate -- no provider-specific
+            # exception (including an SDK timeout) is allowed to cross this
+            # boundary unwrapped.
+            raise LiveGenerationError(
+                f"step_text={context.need.text!r}: LLM provider call failed: {exc}"
+            ) from exc
+
+        if response.execution_status != ExecutionStatus.COMPLETED:
+            raise LiveGenerationError(
+                f"step_text={context.need.text!r}: LLM execution did not "
+                f"complete (execution_status={response.execution_status!r})."
+            )
+
+        generated_text = response.generated_text
+        if not generated_text or not generated_text.strip():
+            raise LiveGenerationError(
+                f"step_text={context.need.text!r}: LLM returned an empty response."
+            )
+        return generated_text
+
+    def _build_prompt(self, context: StepDefinitionGenerationContext) -> str:
+        """Render the governed template's system prompt plus its user
+        template, with the structured generation context substituted into
+        the single ``{artifact_context}`` placeholder -- only the fields
+        ``generate_step_definitions`` v1.0.0's own INPUT CONTRACT names.
+        """
+        input_payload = {
+            "step_text": context.need.text,
+            "step_type": context.need.step_type,
+            "captures": [
+                {
+                    "index": capture.index,
+                    "style": capture.style,
+                    "expression_type": capture.expression_type,
+                }
+                for capture in context.need.captures
+            ],
+            "target_package": context.target_package,
+            "page_object_interface": context.page_object_interface,
+            "customqa_constraints": list(context.customqa_constraints),
+        }
+        artifact_context = json.dumps(input_payload, indent=2, sort_keys=True)
+        user_prompt = self._template.render_user_prompt(artifact_context)
+        return f"{self._template.system_prompt}{_SECTION_SEPARATOR}{user_prompt}"
+
+
+__all__ = ["LiveGenerationError", "LiveStepDefinitionGenerator"]

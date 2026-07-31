@@ -55,19 +55,25 @@ def test_all_three_are_registered_as_draft() -> None:
         assert definition.metadata.lifecycle == PromptLifecycle.DRAFT
 
 
-def test_compatibility_declares_layer1_dimensions_as_not_applicable() -> None:
+def test_compatibility_declares_only_its_own_dimension() -> None:
     """None of these prompts was ever validated against Layer 1's
-    Normalization/Validation/CP1/golden-dataset contracts -- claiming a
-    version there would be a fabricated signal, so each declares "n/a"."""
+    Normalization/Validation/CP1/golden-dataset contracts. Under the
+    generalized `PromptCompatibility` (ADR-0044 D8), a dimension a prompt has
+    nothing to say about is simply absent -- no fabricated "n/a" placeholder
+    -- and each prompt declares exactly the one dimension genuinely its own:
+    `output_schema_version`."""
     registry = build_prompt_registry()
 
     for definition in registry.get_all():
         compat = definition.metadata.compatibility
-        assert compat.normalization_version == "n/a"
-        assert compat.validation_version == "n/a"
-        assert compat.cp1_version == "n/a"
-        assert compat.golden_dataset_version == "n/a"
-        assert compat.output_schema_version == "1.0.0"
+        assert compat.dimensions == {"output_schema_version": "1.0.0"}
+        for layer1_dimension in (
+            "normalization_version",
+            "validation_version",
+            "cp1_version",
+            "golden_dataset_version",
+        ):
+            assert layer1_dimension not in compat.dimensions
 
 
 def test_registry_instance_is_independent_of_layer_ones() -> None:
