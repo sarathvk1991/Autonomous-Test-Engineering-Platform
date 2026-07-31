@@ -86,14 +86,19 @@ TestDataGenerationContext           -- the seam's own input contract
 StubTestDataGenerator               -- deterministic test/dev stand-in + spy
 LiveTestDataGenerator               -- the live, provider-backed peer
 TestDataLiveGenerationError         -- the test-data live generator's own boundary error
-TestDataFieldSpec                   -- one field + its required positive/negative/boundary variants
-TestDataSpecification               -- Layer 3's own model of ADR-0043 D7's handoff contract
 GeneratedTestDataClass              -- the ONLY outcome (no reuse decision -- see module docstring)
 TestDataBoundaryError               -- raised on an env/data boundary violation (ADR-0037 D3)
 generate_test_data_class            -- always-generate orchestration, one specification
 generate_test_data_classes          -- always-generate orchestration, a full set of specifications
+derive_test_data_class_name         -- deterministic UpperCamelCase + "TestData" derivation
 DEFAULT_TEST_DATA_TARGET_PACKAGE    -- com.automation.utils
 DEFAULT_CUSTOMQA_TEST_DATA_CONSTRAINTS -- customqa:* constraints for test-data generation
+
+TestDataFieldSpec/TestDataSpecification -- the Layer 2 -> Layer 3 boundary
+                                        contract itself now lives in
+                                        `contracts.test_data_specification`,
+                                        not re-exported from this package
+                                        (import it from `contracts` directly).
 """
 
 from __future__ import annotations
@@ -137,8 +142,6 @@ from automation_engineering.generation.models import (
     PageObjectMethodNeed,
     PageObjectMethodOutcome,
     StepDefinitionOutcome,
-    TestDataFieldSpec,
-    TestDataSpecification,
     UtilityMethodNeed,
     UtilityMethodOutcome,
 )
@@ -175,6 +178,7 @@ from automation_engineering.generation.test_data_orchestrator import (
     DEFAULT_CUSTOMQA_TEST_DATA_CONSTRAINTS,
     DEFAULT_TEST_DATA_TARGET_PACKAGE,
     TestDataBoundaryError,
+    derive_test_data_class_name,
     generate_test_data_class,
     generate_test_data_classes,
 )
@@ -230,11 +234,9 @@ __all__ = [
     "StubTestDataGenerator",
     "StubUtilityGenerator",
     "TestDataBoundaryError",
-    "TestDataFieldSpec",
     "TestDataGenerationContext",
     "TestDataGenerator",
     "TestDataLiveGenerationError",
-    "TestDataSpecification",
     "UtilityBindingRequest",
     "UtilityGenerationContext",
     "UtilityGenerator",
@@ -242,6 +244,7 @@ __all__ = [
     "UtilityMethodNeed",
     "UtilityMethodOutcome",
     "derive_page_object_class_name",
+    "derive_test_data_class_name",
     "derive_utility_class_name",
     "generate_page_object_methods",
     "generate_step_definitions",

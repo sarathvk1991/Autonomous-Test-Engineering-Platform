@@ -7,31 +7,30 @@ THE INPUT-SHAPE BREAK
 The other three generators consume a
 :class:`~automation_engineering.reuse.models.GherkinStepNeed` -- semantic
 action text matched against a reuse catalog. This generator consumes a
-:class:`~automation_engineering.generation.models.TestDataSpecification`:
-"which fields are needed, and for each, whether positive/negative/boundary
+:class:`~contracts.test_data_specification.TestDataSpecification`: "which
+fields are needed, and for each, whether positive/negative/boundary
 variants are required" (ADR-0043 D7's own words). There is no Gherkin
 action text here at all -- a test-data specification names FIELDS, not an
 ACTION, so there is nothing for a semantic matcher to compare against.
 
-**Layer 2 does not implement emission of this specification today.**
-Verified directly: no `TestDataSpec`/`test_data_spec`-shaped code exists
-anywhere in `feature_engineering/` (a repo-wide search for both spellings
-returns nothing), and no test-data-specific module exists there either.
-ADR-0043 D7 locks the specification as an architectural DECISION -- "a
-handoff contract, not a dataset and not Java" -- but that decision has never
-been implemented as code. `TestDataSpecification` (`.models`) is therefore
-defined on THIS, the consuming side, matching D7's own prose contract
-field-for-field (`requirement_id`, `target_class_name`, `target_package`,
-and one `TestDataFieldSpec` per named field, `required_variants` reusing
-:class:`~contracts.testable_requirement.PolarityHint` unchanged). This
-generator is built and proven against that CONTRACT -- a representative,
-hand-authored specification, the same way
-:class:`~automation_engineering.reuse.matcher.StubSemanticMatcher` proves
-the reuse engine's own contract without a live embeddings call. The
-honest gap this records: the real end-to-end path (Layer 2 emits a real
-specification -> Layer 3 consumes it) is NOT exercisable today, because
-Layer 2 emits nothing to consume. That is Layer 2's own gap, out of this
-build's scope to close (this build is the test-data GENERATOR only).
+**Layer 2 now implements emission of this specification.** A prior build
+found no `TestDataSpec`/`test_data_spec`-shaped code anywhere in
+`feature_engineering/` and defined this shape unilaterally, on the
+consuming side, to build and prove this generator against ADR-0043 D7's
+own prose contract without a real emission to consume. THIS build
+implements that emission
+(:mod:`feature_engineering.stage.test_data_spec`) and reconciles the two
+sides: `TestDataSpecification`/`TestDataFieldSpec` now live in
+`contracts.test_data_specification` -- the SAME shared home
+:class:`~contracts.testable_requirement.TestableRequirement` itself uses
+for its own Layer 1 -> Layer 2 boundary -- with no Java-shape fields at
+all (`target_class_name`/`target_package` moved OUT of the shared contract
+and into this module's own :func:`derive_test_data_class_name`, since
+Layer 2 has no business deciding Java naming). The real end-to-end path
+(Layer 2 emits a real specification -> Layer 3 generates a real class) is
+now genuinely exercisable -- proven directly against the saucedemo corpus
+(see the accompanying report for what that corpus's own real
+`polarity_hints`/`data_fields` actually contain, honestly, not padded).
 
 THE REUSE QUESTION -- resolved, not assumed: test-data is SPEC-DRIVEN
 ------------------------------------------------------------------------
@@ -88,11 +87,14 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from automation_engineering.generation.models import GeneratedTestDataClass, TestDataSpecification
+from automation_engineering.generation.models import GeneratedTestDataClass
 from automation_engineering.generation.test_data_generator import (
     TestDataGenerationContext,
     TestDataGenerator,
 )
+from contracts.test_data_specification import TestDataSpecification
+
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
 
 #: ADR-0044 D7's own package lock -- the SAME package generic utilities
 #: target (`automation_engineering.generation.utility_orchestrator.
@@ -125,6 +127,30 @@ class TestDataBoundaryError(Exception):
     #: heuristic for a production exception that happens to share ADR-0043
     #: D7's own "test-data" naming.
     __test__ = False
+
+
+def derive_test_data_class_name(requirement_id: str) -> str:
+    """Deterministic UpperCamelCase + ``TestData`` derivation from a
+    specification's own ``requirement_id`` -- Layer 3's OWN naming
+    decision, mirroring
+    :func:`~.page_object_orchestrator.derive_page_object_class_name`/
+    :func:`~.utility_orchestrator.derive_utility_class_name` exactly, and
+    for the same reason those exist: `contracts.test_data_specification`
+    carries no Java-shape fields at all (ADR-0043 D7's own "not a dataset
+    and not Java"), so naming the generated class is entirely this
+    orchestrator's own job, never something Layer 2's specification
+    supplies.
+
+    Unlike the action-text-derived names the other two `derive_*`
+    functions produce, a `requirement_id` is a platform-minted,
+    content-addressed identifier (ADR-0042 Decision 2 -- short, hash-based,
+    not human-readable prose), so the derived name is correspondingly
+    plain (e.g. ``"REQ-8604e1d3"`` -> ``"Req8604e1d3TestData"``) --
+    deterministic and always available, not a fabricated business name the
+    specification's own data does not support.
+    """
+    words = _WORD_RE.findall(requirement_id)
+    return "".join(word.capitalize() for word in words) + "TestData"
 
 
 def _check_no_env_binding(java_source: str) -> None:
@@ -160,8 +186,11 @@ def generate_test_data_class(
     TestDataBoundaryError
         If the generated source crosses the SUT-binding boundary.
     """
+    class_name = derive_test_data_class_name(specification.requirement_id)
     context = TestDataGenerationContext(
         specification=specification,
+        class_name=class_name,
+        target_package=target_package,
         customqa_constraints=customqa_constraints,
     )
     java_source = generator.generate(context)
@@ -170,7 +199,7 @@ def generate_test_data_class(
         specification=specification,
         java_source=java_source,
         target_package=target_package,
-        class_name=specification.target_class_name,
+        class_name=class_name,
     )
 
 
@@ -197,6 +226,7 @@ __all__ = [
     "DEFAULT_CUSTOMQA_TEST_DATA_CONSTRAINTS",
     "DEFAULT_TEST_DATA_TARGET_PACKAGE",
     "TestDataBoundaryError",
+    "derive_test_data_class_name",
     "generate_test_data_class",
     "generate_test_data_classes",
 ]

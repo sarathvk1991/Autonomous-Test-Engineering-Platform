@@ -8,7 +8,12 @@ fixtures are built around a `TestDataSpecification` (fields + required
 positive/negative/boundary variants), never a `GherkinStepNeed` -- this
 generator's own input-shape break (see
 `automation_engineering.generation.test_data_orchestrator`'s own module
-docstring).
+docstring). `TestDataSpecification` is the REAL Layer 2 -> Layer 3 boundary
+contract (`contracts.test_data_specification`) -- it carries no
+`target_class_name`/`target_package` (Layer 2's own contract stays
+Java-shape-free, ADR-0043 D7), so this module's `_context` fixture supplies
+those on `TestDataGenerationContext` directly, the same way the orchestrator
+itself does.
 
 No test in this module calls a real LLM. `LiveTestDataGenerator` is proven
 against a hand-written fake provider (`FakeProvider`, mirroring
@@ -28,11 +33,11 @@ from automation_engineering.generation.live_test_data_generator import (
     LiveGenerationError,
     LiveTestDataGenerator,
 )
-from automation_engineering.generation.models import TestDataFieldSpec, TestDataSpecification
 from automation_engineering.generation.test_data_generator import (
     StubTestDataGenerator,
     TestDataGenerationContext,
 )
+from contracts.test_data_specification import TestDataFieldSpec, TestDataSpecification
 from contracts.testable_requirement import PolarityHint
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
@@ -43,18 +48,13 @@ pytestmark = pytest.mark.unit
 
 def _specification(
     requirement_id: str = "REQ-checkout01",
-    target_class_name: str = "CheckoutTestData",
     fields: tuple[TestDataFieldSpec, ...] | None = None,
 ) -> TestDataSpecification:
     default_fields = (
-        TestDataFieldSpec(
-            field_name="username", required_variants=frozenset({PolarityHint.POSITIVE})
-        ),
+        TestDataFieldSpec(field_name="username", required_variants=(PolarityHint.POSITIVE,)),
     )
     return TestDataSpecification(
         requirement_id=requirement_id,
-        target_class_name=target_class_name,
-        target_package="com.automation.utils",
         fields=fields if fields is not None else default_fields,
     )
 
@@ -64,6 +64,8 @@ def _context(
 ) -> TestDataGenerationContext:
     defaults: dict[str, object] = {
         "specification": specification if specification is not None else _specification(),
+        "class_name": "CheckoutTestData",
+        "target_package": "com.automation.utils",
         "customqa_constraints": ("c1",),
     }
     defaults.update(overrides)
@@ -203,15 +205,19 @@ class TestInputAssemblyDeterminism:
     def test_input_block_carries_every_field_the_seam_context_names(self) -> None:
         spec = _specification(
             requirement_id="REQ-login01",
-            target_class_name="LoginTestData",
             fields=(
                 TestDataFieldSpec(
                     field_name="username",
-                    required_variants=frozenset({PolarityHint.POSITIVE, PolarityHint.BOUNDARY}),
+                    required_variants=(PolarityHint.POSITIVE, PolarityHint.BOUNDARY),
                 ),
             ),
         )
-        context = _context(spec, customqa_constraints=("rule-a", "rule-b"))
+        context = _context(
+            spec,
+            class_name="LoginTestData",
+            target_package="com.automation.utils",
+            customqa_constraints=("rule-a", "rule-b"),
+        )
         provider = FakeProvider()
         generator = LiveTestDataGenerator(provider)
 

@@ -27,19 +27,24 @@ method PASSES the precise check, :class:`EscalatedUtilityMethodNeed` for
 either a reuse-engine escalation OR a TRUSTED_REUSE whose specific method
 FAILS the precise check.
 
-Test-data outcomes (this build -- BREAKS the pattern above, deliberately):
-:class:`TestDataSpecification`/:class:`TestDataFieldSpec` are Layer 3's own
-input-side model of ADR-0043 D7's own "handoff contract, not a dataset"
-prose (Layer 2 does not implement emission of this yet -- see
-:mod:`.test_data_orchestrator`'s own module docstring for the honest gap
-this records). :class:`GeneratedTestDataClass` is the ONLY outcome --
-there is no :class:`~automation_engineering.reuse.models.TrustedReuse` bind
-and no reuse-engine `Escalation` variant here, because this build's own
-pre-flight investigation found test-data is SPEC-DRIVEN, not reuse-first
-(see that module docstring for the reasoning): a test-data class's own
-field set is intrinsically specific to the one requirement/AC that seeded
-it, unlike a step-definition/page-object/utility's GENERIC, requirement-
-independent capability.
+Test-data outcomes (BREAKS the pattern above, deliberately):
+:class:`GeneratedTestDataClass` is the ONLY outcome -- there is no
+:class:`~automation_engineering.reuse.models.TrustedReuse` bind and no
+reuse-engine `Escalation` variant here, because test-data is SPEC-DRIVEN,
+not reuse-first (see :mod:`.test_data_orchestrator`'s own module docstring
+for the investigation that resolved this): a test-data class's own field
+set is intrinsically specific to the one requirement/AC that seeded it,
+unlike a step-definition/page-object/utility's GENERIC, requirement-
+independent capability. ``GeneratedTestDataClass.specification`` is
+:class:`~contracts.test_data_specification.TestDataSpecification` -- the
+REAL Layer 2 -> Layer 3 boundary contract (`contracts/`, this platform's
+existing shared home for exactly this kind of cross-layer shape, the SAME
+one :class:`~contracts.testable_requirement.TestableRequirement` uses),
+not a Layer-3-only shape defined here: this module originally defined that
+shape unilaterally (Layer 2 emitted nothing to consume at the time); it now
+lives in `contracts.test_data_specification`, the single definition both
+layers reference, since Layer 2's own emission
+(:mod:`feature_engineering.stage.test_data_spec`) now exists.
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ from dataclasses import dataclass
 
 from automation_engineering.catalog.models import CatalogAsset
 from automation_engineering.reuse.models import Escalation, GherkinStepNeed
-from contracts.testable_requirement import PolarityHint
+from contracts.test_data_specification import TestDataSpecification
 
 # ---------------------------------------------------------------------------
 # Page-object need
@@ -309,66 +314,8 @@ UtilityMethodOutcome = GeneratedUtility | BoundUtilityMethod | EscalatedUtilityM
 
 
 # ---------------------------------------------------------------------------
-# Test-data specification + outcome (this build -- breaks the pattern above)
+# Test-data outcome (this build -- breaks the pattern above)
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class TestDataFieldSpec:
-    """One field ADR-0043 D7's own test-data specification names: "which
-    fields are needed, and for each, whether positive/negative/boundary
-    variants are required." ``required_variants`` reuses
-    :class:`~contracts.testable_requirement.PolarityHint` UNCHANGED (ADR-0042)
-    -- D7's own text names it explicitly ("seeded by
-    ``AcceptanceCriterion.polarity_hints[]``"), so this shape ties directly
-    back to the real, already-governed platform type rather than a parallel
-    enum invented here.
-
-    Nothing beyond "field name + which variants" is modeled -- D7's own
-    prose contract says no more than that, and adding a Java-type or
-    literal-vs-config-driven dimension here would be inventing specification
-    surface ADR-0043 never locked, not implementing what it did.
-    """
-
-    #: Not a test class -- silences pytest's default `Test*` collection
-    #: heuristic for a production dataclass that happens to share ADR-0043
-    #: D7's own "test-data" naming.
-    __test__ = False
-
-    field_name: str
-    required_variants: frozenset[PolarityHint]
-
-
-@dataclass(frozen=True, slots=True)
-class TestDataSpecification:
-    """Layer 3's own input-side model of ADR-0043 D7's test-data
-    specification -- "a handoff contract, not a dataset and not Java."
-
-    Layer 2 does not implement emission of this today (verified directly:
-    no `TestDataSpec`/`test_data_spec`-shaped code exists anywhere in
-    `feature_engineering/`) -- see
-    :mod:`automation_engineering.generation.test_data_orchestrator`'s own
-    module docstring for the full account of that gap. This shape is
-    therefore defined here, on the CONSUMING side, matching D7's own prose
-    contract field-for-field; a future Layer 2 implementation either
-    constructs this same shape or this shape is revisited once real
-    emission exists to compare against.
-
-    ``target_class_name``/``target_package`` identify the ONE Java class
-    this specification becomes (ADR-0044 D7's own package lock,
-    `com.automation.utils` -- the SAME package generic utilities target,
-    per that Decision's own text, not a package this build invents).
-    ``requirement_id`` is carried through for traceability only -- this
-    shape performs no lookup against it.
-    """
-
-    #: Not a test class -- see `TestDataFieldSpec`'s own note above.
-    __test__ = False
-
-    requirement_id: str
-    target_class_name: str
-    target_package: str
-    fields: tuple[TestDataFieldSpec, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,8 +323,20 @@ class GeneratedTestDataClass:
     """The ONLY test-data outcome -- see module docstring for why there is
     no bind/escalate variant here (test-data is SPEC-DRIVEN, not
     reuse-first; ADR-0044 D3's reuse-first discipline does not apply to
-    this asset kind, a finding this build's own pre-flight investigation
-    reached, not an assumption)."""
+    this asset kind). ``specification`` is the REAL
+    :class:`~contracts.test_data_specification.TestDataSpecification` Layer
+    2 emitted (:mod:`feature_engineering.stage.test_data_spec`) -- not a
+    Layer-3-only shape. ``class_name``/``target_package`` are Layer 3's OWN
+    derivation (:func:`~.test_data_orchestrator.derive_test_data_class_name`),
+    computed from ``specification.requirement_id`` at generation time, never
+    carried on the specification itself -- Layer 2's own contract stays
+    Java-shape-free, per ADR-0043 D7's own "not a dataset and not Java."
+    """
+
+    #: Not a test class -- silences pytest's default `Test*` collection
+    #: heuristic for a production dataclass that happens to share ADR-0043
+    #: D7's own "test-data" naming.
+    __test__ = False
 
     specification: TestDataSpecification
     java_source: str
@@ -399,8 +358,6 @@ __all__ = [
     "PageObjectMethodNeed",
     "PageObjectMethodOutcome",
     "StepDefinitionOutcome",
-    "TestDataFieldSpec",
-    "TestDataSpecification",
     "UtilityMethodNeed",
     "UtilityMethodOutcome",
 ]

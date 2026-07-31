@@ -137,13 +137,21 @@ class FeatureEngineeringStageResult:
     """Everything the stage-14 wiring (`.runner.execute_feature_engineering_stage`)
     needs to record the stage's own run-state outcome: every output path
     (workspace `.feature` files plus the run-dir package/report/
-    traceability), and whether any requirement escalated (for a future HITL
-    surface to read -- not built here)."""
+    traceability/test-data-specifications), and whether any requirement
+    escalated (for a future HITL surface to read -- not built here).
+
+    ``test_data_specifications_path`` is ADR-0043 D7's own test-data
+    specification emission (`.test_data_spec`) -- additive to this result
+    shape, not a new stage: it lands alongside the existing package/
+    traceability/report artifacts, in the same run directory, from the
+    same stage-14 invocation.
+    """
 
     package: FeatureEngineeringPackage
     package_path: Path
     traceability_path: Path
     report_path: Path
+    test_data_specifications_path: Path
     workspace_feature_paths: tuple[Path, ...]
 
     @property
@@ -156,6 +164,7 @@ class FeatureEngineeringStageResult:
             self.package_path,
             self.traceability_path,
             self.report_path,
+            self.test_data_specifications_path,
             *self.workspace_feature_paths,
         )
 

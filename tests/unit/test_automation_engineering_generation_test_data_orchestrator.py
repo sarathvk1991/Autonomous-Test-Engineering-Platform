@@ -31,19 +31,17 @@ from pathlib import Path
 
 import pytest
 
-from automation_engineering.generation.models import (
-    GeneratedTestDataClass,
-    TestDataFieldSpec,
-    TestDataSpecification,
-)
+from automation_engineering.generation.models import GeneratedTestDataClass
 from automation_engineering.generation.test_data_generator import StubTestDataGenerator
 from automation_engineering.generation.test_data_orchestrator import (
     DEFAULT_CUSTOMQA_TEST_DATA_CONSTRAINTS,
     DEFAULT_TEST_DATA_TARGET_PACKAGE,
     TestDataBoundaryError,
+    derive_test_data_class_name,
     generate_test_data_class,
     generate_test_data_classes,
 )
+from contracts.test_data_specification import TestDataFieldSpec, TestDataSpecification
 from contracts.testable_requirement import PolarityHint
 
 pytestmark = pytest.mark.unit
@@ -62,19 +60,16 @@ _COMPLIANT_JAVA = (
 
 def _specification(
     requirement_id: str = "REQ-checkout01",
-    target_class_name: str = "CheckoutTestData",
     fields: tuple[TestDataFieldSpec, ...] | None = None,
 ) -> TestDataSpecification:
     default_fields = (
         TestDataFieldSpec(
             field_name="username",
-            required_variants=frozenset({PolarityHint.POSITIVE, PolarityHint.BOUNDARY}),
+            required_variants=(PolarityHint.POSITIVE, PolarityHint.BOUNDARY),
         ),
     )
     return TestDataSpecification(
         requirement_id=requirement_id,
-        target_class_name=target_class_name,
-        target_package="com.automation.utils",
         fields=fields if fields is not None else default_fields,
     )
 
@@ -101,7 +96,7 @@ class TestGenerationAlwaysHappens:
             == DEFAULT_TEST_DATA_TARGET_PACKAGE
             == "com.automation.utils"
         )
-        assert outcome.class_name == "CheckoutTestData"
+        assert outcome.class_name == derive_test_data_class_name("REQ-checkout01")
         assert generator.call_count == 1
 
     def test_generator_is_called_exactly_once_per_specification(self) -> None:
@@ -119,8 +114,8 @@ class TestReuseResolutionIsSpecDrivenNotReuseFirst:
     reuse decision, no catalog lookup, no bind path at all."""
 
     def test_two_different_specifications_both_generate_independently(self) -> None:
-        spec_a = _specification(requirement_id="REQ-a", target_class_name="ATestData")
-        spec_b = _specification(requirement_id="REQ-b", target_class_name="BTestData")
+        spec_a = _specification(requirement_id="REQ-a")
+        spec_b = _specification(requirement_id="REQ-b")
         generator = StubTestDataGenerator(
             {"REQ-a": _COMPLIANT_JAVA, "REQ-b": _COMPLIANT_JAVA.replace("Checkout", "B")}
         )
@@ -266,9 +261,9 @@ class TestEnvDataBoundaryIsEnforced:
 
 class TestBatchOrchestration:
     def test_generate_test_data_classes_processes_each_specification_in_order(self) -> None:
-        spec_a = _specification(requirement_id="REQ-a", target_class_name="ATestData")
-        spec_b = _specification(requirement_id="REQ-b", target_class_name="BTestData")
-        spec_c = _specification(requirement_id="REQ-c", target_class_name="CTestData")
+        spec_a = _specification(requirement_id="REQ-a")
+        spec_b = _specification(requirement_id="REQ-b")
+        spec_c = _specification(requirement_id="REQ-c")
         generator = StubTestDataGenerator(
             {
                 "REQ-a": _COMPLIANT_JAVA,

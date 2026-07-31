@@ -116,7 +116,7 @@ class LiveTestDataGenerator:
                 "prompt_id": self._definition.metadata.prompt_id,
                 "prompt_version": self._definition.metadata.version,
                 "requirement_id": context.specification.requirement_id,
-                "class_name": context.specification.target_class_name,
+                "class_name": context.class_name,
             },
         )
 
@@ -155,14 +155,16 @@ class LiveTestDataGenerator:
         specification = context.specification
         input_payload = {
             "requirement_id": specification.requirement_id,
-            "target_class_name": specification.target_class_name,
-            "target_package": specification.target_package,
+            "target_class_name": context.class_name,
+            "target_package": context.target_package,
             "fields": [
                 {
                     "field_name": field.field_name,
-                    "required_variants": sorted(
-                        variant.value for variant in field.required_variants
-                    ),
+                    # `Schema.model_config` sets `use_enum_values=True`, so
+                    # `field.required_variants` already holds plain strings
+                    # (e.g. "positive"), not `PolarityHint` members -- `str`
+                    # itself is sortable directly, no `.value` unwrap needed.
+                    "required_variants": sorted(field.required_variants),
                 }
                 for field in specification.fields
             ],

@@ -15,8 +15,13 @@ Two functions:
   nothing about `RunStateManager`. Given a `TestableRequirementSet`, it
   produces or reuses one `.feature` file per requirement in the untracked
   workspace (`features_root`) and one Validated Feature Package (this run's
-  per-requirement CP2/remediation outcomes, a report, and a derived
-  `traceability.json`) in the run directory.
+  per-requirement CP2/remediation outcomes, a report, a derived
+  `traceability.json`, and ADR-0043 D7's own test-data specification --
+  `test_data_specifications.json`, one entry per requirement, derived
+  fresh every run from that requirement's own acceptance criteria; see
+  `.test_data_spec`'s own module docstring for the derivation and its
+  honest-empty finding against the real, live corpus) in the run
+  directory.
 * :func:`execute_feature_engineering_stage` -- the SAME
   `start_stage`/try-except/`fail_stage`/`succeed_stage` idiom every Layer 1
   phase already uses, applied to stage 14, plus stage 14's own
@@ -110,6 +115,11 @@ from feature_engineering.stage.models import (
     FeatureRecord,
 )
 from feature_engineering.stage.report import build_report
+from feature_engineering.stage.test_data_spec import (
+    TEST_DATA_SPECIFICATIONS_FILENAME,
+    build_test_data_specifications,
+    test_data_specifications_to_json,
+)
 from feature_engineering.stage.traceability import TRACEABILITY_FILENAME, build_traceability_index
 from feature_engineering.stage.workspace import (
     DEFAULT_BASELINE_ROOT,
@@ -313,11 +323,19 @@ def run_feature_engineering_stage(
     report_path = run_dir / FEATURE_ENGINEERING_REPORT_FILENAME
     report_path.write_text(build_report(package), encoding="utf-8")
 
+    test_data_specifications = build_test_data_specifications(requirement_set.requirements)
+    test_data_specifications_path = run_dir / TEST_DATA_SPECIFICATIONS_FILENAME
+    atomic_write_json(
+        test_data_specifications_path,
+        test_data_specifications_to_json(test_data_specifications),
+    )
+
     return FeatureEngineeringStageResult(
         package=package,
         package_path=package_path,
         traceability_path=traceability_path,
         report_path=report_path,
+        test_data_specifications_path=test_data_specifications_path,
         workspace_feature_paths=tuple(workspace_paths),
     )
 

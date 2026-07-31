@@ -194,6 +194,45 @@ class TestEndToEndStageRun:
         assert result.package_path.exists()
         assert result.traceability_path.exists()
         assert result.report_path.exists()
+        assert result.test_data_specifications_path.exists()
+
+    def test_test_data_specifications_json_has_one_entry_per_requirement(
+        self, tmp_path: Path
+    ) -> None:
+        """ADR-0043 D7's own emission, additive to this stage
+        (`.test_data_spec`): one specification per requirement,
+        unconditionally -- proven here at the actual stage-output level,
+        not only against the emitter function directly."""
+        req_a = _requirement(title="User can reset password", component="auth")
+        req_b = _requirement(title="User can view profile", component="profile")
+        rs = _requirement_set([req_a, req_b])
+        features_root = tmp_path / "workspace" / "src" / "test" / "resources" / "features"
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        generator = _CountingContentGenerator(
+            {
+                req_a.requirement_id: _clean_content(req_a),
+                req_b.requirement_id: _clean_content(req_b),
+            }
+        )
+        result = run_feature_engineering_stage(
+            rs,
+            features_root=features_root,
+            run_dir=run_dir,
+            content_generator=generator,
+            remediator=StubFeatureRemediator([]),
+        )
+
+        on_disk = json.loads(result.test_data_specifications_path.read_text(encoding="utf-8"))
+        assert {entry["requirementId"] for entry in on_disk["specifications"]} == {
+            req_a.requirement_id,
+            req_b.requirement_id,
+        }
+        # Neither of these fixture requirements carries data_fields -- the
+        # honest-empty finding, reproduced at the stage-output level.
+        for entry in on_disk["specifications"]:
+            assert entry["fields"] == []
 
     def test_run_state_stage_succeeds_with_correct_artifacts(self, tmp_path: Path) -> None:
         req = _requirement()

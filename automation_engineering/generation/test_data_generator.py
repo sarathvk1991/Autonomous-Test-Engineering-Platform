@@ -5,12 +5,22 @@ orchestration-owned (:mod:`.test_data_orchestrator`), never this module's
 concern. Mirrors :mod:`.utility_generator`/:mod:`.page_object_generator`
 exactly in SHAPE -- same "stub now, live peer alongside it" split -- but its
 input is fundamentally different: a
-:class:`~automation_engineering.generation.models.TestDataSpecification`
-(fields + required positive/negative/boundary variants), never a
+:class:`~contracts.test_data_specification.TestDataSpecification` (fields +
+required positive/negative/boundary variants), never a
 :class:`~automation_engineering.reuse.models.GherkinStepNeed` (there is no
 Gherkin action text to semantically match against; see
 :mod:`.test_data_orchestrator`'s own module docstring for the full
 reasoning this asset kind breaks the triad's pattern).
+
+``TestDataSpecification`` is the REAL Layer 2 -> Layer 3 boundary contract
+(`contracts.test_data_specification`, emitted by
+:mod:`feature_engineering.stage.test_data_spec`) -- it carries no Java-shape
+fields (ADR-0043 D7: "not a dataset and not Java"), so
+``TestDataGenerationContext`` carries ``class_name``/``target_package``
+itself, computed by the orchestrator
+(:func:`~.test_data_orchestrator.derive_test_data_class_name`), the same
+way :class:`~.page_object_generator.PageObjectGenerationContext` already
+carries its own orchestrator-derived ``class_name``.
 
 :class:`TestDataGenerator` is the one interface the orchestration
 (:mod:`.test_data_orchestrator`) depends on. Two implementations exist:
@@ -32,7 +42,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
-from automation_engineering.generation.models import TestDataSpecification
+from contracts.test_data_specification import TestDataSpecification
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,12 +50,14 @@ class TestDataGenerationContext:
     """Everything a :class:`TestDataGenerator` needs to generate one
     test-data class -- the seam's own input contract.
 
-    ``specification`` is the caller-supplied
-    :class:`~automation_engineering.generation.models.TestDataSpecification`
-    -- Layer 3's own model of ADR-0043 D7's handoff contract (see that
-    class's own docstring for why it is modeled here rather than imported
-    from a real Layer 2 emission -- Layer 2 does not implement emission
-    today).
+    ``specification`` is the caller-supplied, REAL Layer 2 emission
+    (:class:`~contracts.test_data_specification.TestDataSpecification`,
+    ADR-0043 D7's own handoff contract). ``class_name``/``target_package``
+    are NOT read off the specification (it carries no Java-shape fields at
+    all) -- they are the orchestrator's own derivation
+    (:func:`~.test_data_orchestrator.derive_test_data_class_name`), the
+    same split :class:`~.page_object_generator.PageObjectGenerationContext`
+    already establishes for page objects.
     """
 
     #: Not a test class -- silences pytest's default `Test*` collection
@@ -54,6 +66,8 @@ class TestDataGenerationContext:
     __test__ = False
 
     specification: TestDataSpecification
+    class_name: str
+    target_package: str
     customqa_constraints: tuple[str, ...]
 
 

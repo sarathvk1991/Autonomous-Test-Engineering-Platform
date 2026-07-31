@@ -20,6 +20,12 @@ from feature_engineering.stage.runner import (
     execute_feature_engineering_stage,
     run_feature_engineering_stage,
 )
+from feature_engineering.stage.test_data_spec import (
+    TEST_DATA_SPECIFICATIONS_FILENAME,
+    build_test_data_specification,
+    build_test_data_specifications,
+    test_data_specifications_to_json,
+)
 from feature_engineering.stage.traceability import TRACEABILITY_FILENAME, build_traceability_index
 from feature_engineering.stage.workspace import (
     DEFAULT_BASELINE_ROOT,
@@ -35,13 +41,17 @@ __all__ = [
     "FEATURE_ENGINEERING_PACKAGE_FILENAME",
     "FEATURE_ENGINEERING_REPORT_FILENAME",
     "STAGE_ID",
+    "TEST_DATA_SPECIFICATIONS_FILENAME",
     "TRACEABILITY_FILENAME",
     "FeatureEngineeringPackage",
     "FeatureEngineeringStageResult",
     "FeatureRecord",
+    "build_test_data_specification",
+    "build_test_data_specifications",
     "build_traceability_index",
     "execute_feature_engineering_stage",
     "features_root_for",
     "materialize_workspace",
     "run_feature_engineering_stage",
+    "test_data_specifications_to_json",
 ]
