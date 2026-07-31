@@ -315,11 +315,11 @@ class TestCustomqaConstraintsAreInjectedIntoGeneration:
 # ---------------------------------------------------------------------------
 
 
-class TestPageObjectMethodFitObligationNowDischargedUtilitiesStillGuarded:
-    def test_generation_context_defaults_to_no_page_object_hint(self) -> None:
-        """Unchanged default: when no `page_object_request` is supplied,
-        behavior is identical to before this build --
-        `page_object_interface` stays `None`."""
+class TestPageObjectAndUtilityMethodFitBothDischarged:
+    def test_generation_context_defaults_to_no_hints(self) -> None:
+        """Unchanged default: when neither `page_object_request` nor
+        `utility_request` is supplied, behavior is identical to before any
+        of this -- both interface fields stay `None`."""
         need = _need("I log out")
         catalog = _catalog()
         matcher = StubSemanticMatcher({need.text: ()})
@@ -327,7 +327,9 @@ class TestPageObjectMethodFitObligationNowDischargedUtilitiesStillGuarded:
 
         orchestrate_step_definition(need, catalog, matcher, generator)
 
-        assert generator.received_contexts[0].page_object_interface is None
+        received = generator.received_contexts[0]
+        assert received.page_object_interface is None
+        assert received.utility_interface is None
 
     def test_generation_context_carries_the_verified_class_name_when_request_supplied(
         self,
@@ -446,29 +448,127 @@ class TestPageObjectMethodFitObligationNowDischargedUtilitiesStillGuarded:
         assert outcome.escalation.check == EscalationCheck.METHOD_FIT
         assert step_generator.call_count == 0
 
-    def test_orchestrator_now_imports_page_object_orchestrator_but_utilities_stays_unreferenced(
+    def test_generation_context_carries_the_verified_utility_class_name_when_request_supplied(
         self,
     ) -> None:
-        """A structural guard, updated deliberately -- not deleted, not
-        broken accidentally. Page objects are now legitimately handled: the
-        step-def orchestrator's own source imports
-        `page_object_orchestrator`. Utilities remain out of scope: across
-        every generation module this build touches, `utilities` never
-        appears as an attribute name -- the same "never reaching for that
-        data" guard the prior build used for page objects, now scoped
-        precisely to the one asset kind still deferred."""
+        """The SAME discharge, mirrored for utilities: a `utility_request`
+        whose utility need resolves to a TRUSTED_REUSE with the specific
+        method PRESENT populates `utility_interface` with the reused
+        class's own verified `class_name`."""
+        from automation_engineering.catalog.models import JavaMethod, UtilityAsset
+        from automation_engineering.generation.models import UtilityMethodNeed
+        from automation_engineering.generation.utility_generator import StubUtilityGenerator
+        from automation_engineering.generation.utility_orchestrator import (
+            UtilityBindingRequest,
+        )
+
+        config_reader = UtilityAsset(
+            asset_id="UTIL-config01",
+            class_name="com.automation.utils.ConfigReader",
+            fields=(),
+            methods=(JavaMethod(name="data", parameters=(), return_type="String"),),
+            source_file="com/automation/utils/ConfigReader.java",
+            content_hash="hash1",
+        )
+        catalog = AssetCatalog(baseline_root="test-suite-baseline", utilities=(config_reader,))
+        step_need = _need("I read the stored username")
+        step_matcher = StubSemanticMatcher({step_need.text: ()})
+        step_generator = StubStepDefinitionGenerator(
+            {step_need.text: "package com.automation.steps;\n"}
+        )
+        util_need_text = "read a test-data value"
+        util_candidate = MatchCandidate(
+            asset_id="UTIL-config01", confidence=0.9, content_hash="hash1"
+        )
+        util_matcher = StubSemanticMatcher({util_need_text: (util_candidate,)})
+        method_need = UtilityMethodNeed(
+            need=GherkinStepNeed(text=util_need_text, step_type="UtilityAction", captures=()),
+            method_name="data",
+        )
+        utility_request = UtilityBindingRequest(
+            method_need=method_need, matcher=util_matcher, generator=StubUtilityGenerator({})
+        )
+
+        outcome = orchestrate_step_definition(
+            step_need,
+            catalog,
+            step_matcher,
+            step_generator,
+            utility_request=utility_request,
+        )
+
+        assert isinstance(outcome, GeneratedStepDefinition)
+        assert (
+            step_generator.received_contexts[0].utility_interface
+            == "com.automation.utils.ConfigReader"
+        )
+
+    def test_whole_step_escalates_when_the_specific_utility_method_is_absent(self) -> None:
+        """The precise check catches what the coarse screen could not, for
+        utilities too: a TRUSTED_REUSE `ConfigReader`-shaped utility (coarse
+        compatibility passed) that lacks the SPECIFIC method the step is
+        about to call escalates the WHOLE step; the step-def seam is never
+        touched."""
+        from automation_engineering.catalog.models import JavaMethod, UtilityAsset
+        from automation_engineering.generation.models import UtilityMethodNeed
+        from automation_engineering.generation.utility_generator import StubUtilityGenerator
+        from automation_engineering.generation.utility_orchestrator import (
+            UtilityBindingRequest,
+        )
+
+        config_reader = UtilityAsset(
+            asset_id="UTIL-config01",
+            class_name="com.automation.utils.ConfigReader",
+            fields=(),
+            methods=(JavaMethod(name="env", parameters=(), return_type="String"),),
+            source_file="com/automation/utils/ConfigReader.java",
+            content_hash="hash1",
+        )
+        catalog = AssetCatalog(baseline_root="test-suite-baseline", utilities=(config_reader,))
+        step_need = _need("I read the stored username")
+        step_matcher = StubSemanticMatcher({step_need.text: ()})
+        step_generator = StubStepDefinitionGenerator({})  # must never be called
+        util_need_text = "read a test-data value"
+        util_candidate = MatchCandidate(
+            asset_id="UTIL-config01", confidence=0.9, content_hash="hash1"
+        )
+        util_matcher = StubSemanticMatcher({util_need_text: (util_candidate,)})
+        method_need = UtilityMethodNeed(
+            need=GherkinStepNeed(text=util_need_text, step_type="UtilityAction", captures=()),
+            method_name="data",  # absent -- only "env" exists, same shape
+        )
+        utility_request = UtilityBindingRequest(
+            method_need=method_need, matcher=util_matcher, generator=StubUtilityGenerator({})
+        )
+
+        outcome = orchestrate_step_definition(
+            step_need,
+            catalog,
+            step_matcher,
+            step_generator,
+            utility_request=utility_request,
+        )
+
+        assert isinstance(outcome, EscalatedStepNeed)
+        assert outcome.escalation.check == EscalationCheck.METHOD_FIT
+        assert step_generator.call_count == 0
+
+    def test_orchestrator_now_imports_both_page_object_and_utility_orchestrators(
+        self,
+    ) -> None:
+        """A structural guard, updated deliberately a second time -- not
+        deleted, not broken accidentally. All three catalog asset kinds
+        (step definitions, page objects, utilities) are now legitimately
+        handled somewhere in this generation package: the step-def
+        orchestrator's own source imports BOTH `page_object_orchestrator`
+        AND `utility_orchestrator`. There is no fourth, still-deferred
+        asset kind for a "never reaches for X" guard to protect -- this
+        test is a positive completeness check, not a restriction."""
         orchestrator_source = Path("automation_engineering/generation/orchestrator.py").read_text(
             encoding="utf-8"
         )
         assert "page_object_orchestrator" in orchestrator_source
-
-        generation_dir = Path("automation_engineering/generation")
-        for py_file in generation_dir.glob("*.py"):
-            tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
-            attribute_names = {
-                node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
-            }
-            assert "utilities" not in attribute_names, f"{py_file}: references .utilities"
+        assert "utility_orchestrator" in orchestrator_source
 
     def test_module_docstring_records_the_discharge_explicitly(self) -> None:
         import automation_engineering.generation.orchestrator as orchestrator_module
@@ -476,7 +576,8 @@ class TestPageObjectMethodFitObligationNowDischargedUtilitiesStillGuarded:
         doc = (orchestrator_module.__doc__ or "").lower()
         assert "discharged" in doc
         assert "inherited" in doc
-        assert "utilities remain out of this build" in doc or "utilities" in doc
+        assert "utilit" in doc  # matches "utility"/"utilities"
+        assert "no fourth" in doc or "no still-deferred" in doc
 
 
 # ---------------------------------------------------------------------------

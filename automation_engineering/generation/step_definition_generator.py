@@ -37,20 +37,19 @@ class StepDefinitionGenerationContext:
     """Everything a :class:`StepDefinitionGenerator` needs to generate one
     step-definition method -- the seam's own input contract.
 
-    ``page_object_interface`` is deliberately a bare, optional hint (a
-    fully-qualified class name the generated code MAY reference), never a
-    verified binding: page-object reuse/generation is the next task, not
-    this one (see :mod:`.orchestrator`'s own module docstring, "THE
-    INHERITED PRECISE METHOD-FIT OBLIGATION"). This task's own orchestrator
-    never populates it -- it stays ``None`` on every context this build
-    produces -- but the field exists so a future caller (or a future
-    page-object-aware orchestration) can supply it without a seam change.
+    ``page_object_interface``/``utility_interface`` are bare hint fields (a
+    fully-qualified class name the generated code MAY reference). Both stay
+    ``None`` unless the step-def orchestrator (:mod:`.orchestrator`) was
+    supplied a ``page_object_request``/``utility_request`` for this need and
+    that resolution VERIFIED the binding (coarse + precise method-fit,
+    ADR-0044 D4(c)) -- see :mod:`.orchestrator`'s own module docstring.
     """
 
     need: GherkinStepNeed
     target_package: str
     customqa_constraints: tuple[str, ...]
     page_object_interface: str | None = None
+    utility_interface: str | None = None
 
 
 class StepDefinitionGenerator(Protocol):

@@ -38,8 +38,8 @@ Non-responsibilities
   (:mod:`automation_engineering.generation.step_definition_generator` and
   :mod:`automation_engineering.generation.live_step_definition_generator`
   consume this registry's prompts; they are not built here).
-* It does not build utilities, test-data classes, CP3, CP4, or promotion
-  (each build's own scope boundary).
+* It does not build test-data classes, CP3, CP4, or promotion (each build's
+  own scope boundary).
 """
 
 from __future__ import annotations
@@ -79,6 +79,15 @@ _GENERATE_STEP_DEFINITIONS_COMPATIBILITY = PromptCompatibility(
 #: version its own CONSTRAINTS section was authored against), genuinely
 #: reused rather than re-invented for a second Layer 3 prompt.
 _GENERATE_PAGE_OBJECTS_COMPATIBILITY = PromptCompatibility(
+    dimensions={
+        "output_schema_version": "1.0.0",
+        "customqa_profile_version": "1.0.0",
+    }
+)
+
+#: Same two Layer-3 dimensions as the other two prompts -- the third
+#: registrant, still the same genuine reuse, not re-invention.
+_GENERATE_UTILITIES_COMPATIBILITY = PromptCompatibility(
     dimensions={
         "output_schema_version": "1.0.0",
         "customqa_profile_version": "1.0.0",
@@ -179,6 +188,43 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 ),
                 sha256=loaded.sha256,
                 compatibility=_GENERATE_PAGE_OBJECTS_COMPATIBILITY,
+                release_introduced="1.0.0",
+            ),
+            content=loaded.content,
+        )
+    )
+
+    # --- generate_utilities v1.0.0 -----------------------------------------
+    loaded = loader.load(
+        prompt_id="generate_utilities",
+        version="1.0.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_utilities",
+                name="Generate Utilities",
+                version="1.0.0",
+                owner="Automation Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Generates one Java utility class for a utility action the reuse "
+                    "engine (automation_engineering.reuse.engine.decide_reuse) returned "
+                    "NO_MATCH for (ADR-0044 D3/D4). Born compliant with the customqa:* "
+                    "quality profile (ADR-0044 D5) -- only customqa:long-method is "
+                    "evidenced as applicable (customqa:direct-webdriver-action's own "
+                    "evidenced target is a page-object file specifically; a utility that "
+                    "needs WebDriver is architecturally a page object, not a utility, so "
+                    "the constraint here is structural -- no WebDriver import at all -- "
+                    "not a customqa:* rule restated). Targets the tracked baseline's own "
+                    "package com.automation.utils convention, mirroring the real "
+                    "ConfigReader shape (final class, private constructor, static methods "
+                    "only). Never generates page objects, test-data classes, or a "
+                    "runner/test class (ADR-0044 D2)."
+                ),
+                sha256=loaded.sha256,
+                compatibility=_GENERATE_UTILITIES_COMPATIBILITY,
                 release_introduced="1.0.0",
             ),
             content=loaded.content,

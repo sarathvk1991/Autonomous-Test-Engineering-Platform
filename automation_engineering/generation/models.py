@@ -10,14 +10,22 @@ Step-definition outcomes: :class:`GeneratedStepDefinition` for NO_MATCH,
 :class:`BoundStepDefinition` for TRUSTED_REUSE, :class:`EscalatedStepNeed`
 for ESCALATION.
 
-Page-object outcomes (this build's own addition -- the page-object generator
-plus the precise method-fit discharge, ADR-0044 D4's clarification note):
-:class:`GeneratedPageObject` for NO_MATCH, :class:`BoundPageObjectMethod` for
-a TRUSTED_REUSE whose specific method PASSES the precise check,
+Page-object outcomes (the page-object build's own addition -- the page-object
+generator plus the precise method-fit discharge, ADR-0044 D4's clarification
+note): :class:`GeneratedPageObject` for NO_MATCH, :class:`BoundPageObjectMethod`
+for a TRUSTED_REUSE whose specific method PASSES the precise check,
 :class:`EscalatedPageObjectMethodNeed` for either a reuse-engine escalation
-OR a TRUSTED_REUSE whose specific method FAILS the precise check (the
-obligation this build discharges -- see
-:mod:`automation_engineering.generation.method_fit`).
+OR a TRUSTED_REUSE whose specific method FAILS the precise check.
+
+Utility outcomes (this build's own addition -- utilities get the IDENTICAL
+precise method-fit discharge page objects did; see
+:mod:`automation_engineering.generation.utility_orchestrator`'s own module
+docstring for the usage-pattern investigation that resolved utilities need
+it too, not merely "the same treatment by analogy"): :class:`GeneratedUtility`
+for NO_MATCH, :class:`BoundUtilityMethod` for a TRUSTED_REUSE whose specific
+method PASSES the precise check, :class:`EscalatedUtilityMethodNeed` for
+either a reuse-engine escalation OR a TRUSTED_REUSE whose specific method
+FAILS the precise check.
 """
 
 from __future__ import annotations
@@ -57,6 +65,23 @@ class PageObjectMethodNeed:
     method_name: str
 
 
+@dataclass(frozen=True, slots=True)
+class UtilityMethodNeed:
+    """The utility action a step definition is ABOUT to call -- the exact
+    same shape as :class:`PageObjectMethodNeed`, for the exact same reason
+    (``method_name`` is always CALLER-supplied, never derived from
+    ``need.text``; see that class's own docstring). Kept as its own,
+    separate type rather than a shared generic -- mirroring this package's
+    own established convention of parallel, asset-specific types
+    (:class:`GeneratedStepDefinition`/:class:`GeneratedPageObject` are two
+    types, not one generic ``GeneratedAsset``) -- so each asset kind's own
+    vocabulary stays self-explanatory at the call site.
+    """
+
+    need: GherkinStepNeed
+    method_name: str
+
+
 # ---------------------------------------------------------------------------
 # Step-definition outcomes
 # ---------------------------------------------------------------------------
@@ -69,11 +94,11 @@ class GeneratedStepDefinition:
     freshly generated Java step-definition (:mod:`.step_definition_generator`'s
     own seam, never regeneration of an existing asset).
 
-    ``page_object_outcome`` is ``None`` unless the caller supplied a
-    ``page_object_request`` to the step-def orchestrator (:mod:`.orchestrator`)
-    -- when supplied, it is always :class:`GeneratedPageObject` or
-    :class:`BoundPageObjectMethod`, never :class:`EscalatedPageObjectMethodNeed`:
-    a page-object-side escalation diverts the WHOLE step to
+    ``page_object_outcome``/``utility_outcome`` are ``None`` unless the
+    caller supplied a ``page_object_request``/``utility_request`` to the
+    step-def orchestrator (:mod:`.orchestrator`) -- when supplied, each is
+    always its own GENERATE/BIND outcome, never its own ESCALATE outcome: a
+    page-object-side OR utility-side escalation diverts the WHOLE step to
     :class:`EscalatedStepNeed` instead of reaching this outcome at all (see
     :mod:`.orchestrator`'s own module docstring).
     """
@@ -82,6 +107,7 @@ class GeneratedStepDefinition:
     java_source: str
     target_package: str
     page_object_outcome: GeneratedPageObject | BoundPageObjectMethod | None = None
+    utility_outcome: GeneratedUtility | BoundUtilityMethod | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,14 +225,86 @@ PageObjectMethodOutcome = (
     GeneratedPageObject | BoundPageObjectMethod | EscalatedPageObjectMethodNeed
 )
 
+
+# ---------------------------------------------------------------------------
+# Utility outcomes (this build)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedUtility:
+    """ADR-0044 D3's reuse-or-generate boundary's "generate" side, for
+    utilities: no catalogued utility even coarsely matched the need, so a
+    brand-new utility class is generated (:mod:`.utility_generator`'s own
+    seam). ``class_name`` is the deterministically derived name
+    (:func:`~.utility_orchestrator.derive_utility_class_name`) the
+    generation context instructed the seam to use -- informational, the
+    same trust level :class:`GeneratedPageObject.class_name` already uses.
+    """
+
+    method_need: UtilityMethodNeed
+    java_source: str
+    target_package: str
+    class_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class BoundUtilityMethod:
+    """A utility need whose reuse binding was trusted by ALL of ADR-0044
+    D4(a)/(b)/(c) -- (c) fully realized for utilities exactly as it is for
+    page objects: the COARSE class-compatibility screen at decision time
+    (`automation_engineering.reuse.engine._check_method_fit`) AND the
+    PRECISE, specific-method check at generation time
+    (:mod:`automation_engineering.generation.method_fit`, reused unchanged
+    -- it was already written generically over ``PageObjectAsset |
+    UtilityAsset``). Never regenerated. ``asset`` is the same
+    :class:`~automation_engineering.reuse.models.TrustedReuse.asset` the
+    reuse engine resolved -- a
+    :class:`~automation_engineering.catalog.models.UtilityAsset` in
+    practice, since this orchestration's own matcher only ever matches a
+    utility need against ``catalog.utilities``.
+    """
+
+    method_need: UtilityMethodNeed
+    asset: CatalogAsset
+
+
+@dataclass(frozen=True, slots=True)
+class EscalatedUtilityMethodNeed:
+    """A utility need that was neither generated nor bound -- either the
+    reuse engine's own three checks (a)/(b)/(c)-coarse failed, OR the coarse
+    screen passed but the PRECISE method-fit discharge
+    (:mod:`automation_engineering.generation.method_fit`) found the reused
+    class lacks the SPECIFIC method this need requires -- this build's own
+    resolution of the obligation the page-object build's clarification note
+    left open for utilities ("that remains the next task's own obligation
+    to discharge"). Both routes produce the identical
+    :class:`~automation_engineering.reuse.models.Escalation` shape.
+    """
+
+    method_need: UtilityMethodNeed
+    escalation: Escalation
+
+
+#: ADR-0044 D3's reuse-or-generate-or-escalate vocabulary, realized for the
+#: utility generator, WITH check (c) fully realized (coarse + precise) --
+#: the same completeness page objects already have. A caller handles all
+#: three; there is no fourth case.
+UtilityMethodOutcome = GeneratedUtility | BoundUtilityMethod | EscalatedUtilityMethodNeed
+
 __all__ = [
     "BoundPageObjectMethod",
     "BoundStepDefinition",
+    "BoundUtilityMethod",
     "EscalatedPageObjectMethodNeed",
     "EscalatedStepNeed",
+    "EscalatedUtilityMethodNeed",
     "GeneratedPageObject",
     "GeneratedStepDefinition",
+    "GeneratedUtility",
     "PageObjectMethodNeed",
     "PageObjectMethodOutcome",
     "StepDefinitionOutcome",
+    "UtilityMethodNeed",
+    "UtilityMethodOutcome",
 ]

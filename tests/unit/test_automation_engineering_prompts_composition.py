@@ -1,6 +1,7 @@
 """Registration + SHA-256 verification proof for Layer 3's governed prompts:
-`generate_step_definitions` v1.0.0 (ADR-0044 D8) and `generate_page_objects`
-v1.0.0 (this build).
+`generate_step_definitions` v1.0.0 (ADR-0044 D8), `generate_page_objects`
+v1.0.0, and `generate_utilities` v1.0.0 (this build) -- the last of the
+three Gherkin-derived generators.
 
 Mirrors `tests/unit/test_feature_engineering_prompts_composition.py`'s shape
 for Layer 2's registry, and `requirement_intelligence/tests/unit/
@@ -27,17 +28,18 @@ from shared.prompts.framework.prompt_registry import PromptRegistryState
 from shared.prompts.framework.prompt_template_contract import parse_governed_template
 from shared.prompts.models.prompt_version import PromptLifecycle
 
-_EXPECTED_PROMPT_IDS = {"generate_step_definitions", "generate_page_objects"}
+_ALL_PROMPT_IDS = ["generate_step_definitions", "generate_page_objects", "generate_utilities"]
+_EXPECTED_PROMPT_IDS = set(_ALL_PROMPT_IDS)
 
 
-def test_registry_seals_with_exactly_the_two_registered_prompts() -> None:
+def test_registry_seals_with_exactly_the_three_registered_prompts() -> None:
     registry = build_prompt_registry()
 
     assert registry.state is PromptRegistryState.SEALED
-    assert registry.count() == 2
+    assert registry.count() == 3
     assert set(registry.list_prompt_ids()) == _EXPECTED_PROMPT_IDS
-    assert registry.is_registered("generate_step_definitions", "1.0.0")
-    assert registry.is_registered("generate_page_objects", "1.0.0")
+    for prompt_id in _ALL_PROMPT_IDS:
+        assert registry.is_registered(prompt_id, "1.0.0")
 
 
 def test_registered_prompt_sha256_matches_the_manifest() -> None:
@@ -63,12 +65,12 @@ def test_registered_as_draft() -> None:
         assert definition.metadata.lifecycle == PromptLifecycle.DRAFT
 
 
-@pytest.mark.parametrize("prompt_id", ["generate_step_definitions", "generate_page_objects"])
+@pytest.mark.parametrize("prompt_id", _ALL_PROMPT_IDS)
 def test_template_conforms_to_the_governed_system_user_contract(prompt_id: str) -> None:
-    """Both Layer 3 prompts conform to the full governed template contract
-    (unlike Layer 2's `generate_feature`, which carries no `{artifact_context}`
-    placeholder at all) -- proven directly by parsing each, not merely by
-    construction."""
+    """All three Layer 3 prompts conform to the full governed template
+    contract (unlike Layer 2's `generate_feature`, which carries no
+    `{artifact_context}` placeholder at all) -- proven directly by parsing
+    each, not merely by construction."""
     registry = build_prompt_registry()
     definition = registry.get(prompt_id, "1.0.0")
 
@@ -79,24 +81,52 @@ def test_template_conforms_to_the_governed_system_user_contract(prompt_id: str) 
     assert template.user_template.count("{artifact_context}") == 1
 
 
-@pytest.mark.parametrize("prompt_id", ["generate_step_definitions", "generate_page_objects"])
-def test_template_embeds_the_evidenced_customqa_constraints(prompt_id: str) -> None:
-    """Born-compliant generation (ADR-0044 D5): the customqa:* rules this
-    build evidenced against this repo's own real SonarQube fixture data
-    (`requirement_intelligence/input/sonar/sonar-issues.json`) are baked
-    into each prompt's static, versioned CONSTRAINTS section -- unconditionally
+@pytest.mark.parametrize("prompt_id", _ALL_PROMPT_IDS)
+def test_template_embeds_customqa_long_method(prompt_id: str) -> None:
+    """`customqa:long-method` is evidenced (`requirement_intelligence/input/
+    sonar/sonar-issues.json`, the same fixture every Layer 3 constraint set
+    cites) as applicable to all three generated-code shapes -- unconditionally
     present in every render, never optional at runtime."""
     registry = build_prompt_registry()
     definition = registry.get(prompt_id, "1.0.0")
 
-    assert "customqa:direct-webdriver-action" in definition.content
     assert "customqa:long-method" in definition.content
 
 
+@pytest.mark.parametrize("prompt_id", ["generate_step_definitions", "generate_page_objects"])
+def test_only_step_defs_and_page_objects_embed_customqa_direct_webdriver_action(
+    prompt_id: str,
+) -> None:
+    """`customqa:direct-webdriver-action`'s own evidenced target
+    (`BadCheckoutPage.java`) and message ("route through the BasePage
+    action helpers") are page-object-specific -- it applies to step
+    definitions (prohibited there) and page objects (constrained, not
+    prohibited, there), never fabricated for utilities."""
+    registry = build_prompt_registry()
+    definition = registry.get(prompt_id, "1.0.0")
+
+    assert "customqa:direct-webdriver-action" in definition.content
+
+
+def test_utility_template_does_not_fabricate_direct_webdriver_action() -> None:
+    """The honest negative: `generate_utilities` never claims
+    `customqa:direct-webdriver-action` applies -- there is no evidence tying
+    that rule to a non-page-object class. It states the architectural
+    boundary (no WebDriver at all) in plain English instead of dressing it
+    up as a customqa:* rule this platform never evidenced against a
+    utility file."""
+    registry = build_prompt_registry()
+    definition = registry.get("generate_utilities", "1.0.0")
+
+    assert "customqa:direct-webdriver-action" not in definition.content
+    assert "webdriver" in definition.content.lower()  # the plain-English prohibition
+
+
 def test_page_object_template_frames_webdriver_calls_as_legitimate_here() -> None:
-    """The one deliberate asymmetry between the two prompts: step definitions
-    are told WebDriver calls never belong there; page objects are told the
-    OPPOSITE -- this is exactly where those calls legitimately live."""
+    """The one deliberate asymmetry between step defs and page objects:
+    step definitions are told WebDriver calls never belong there; page
+    objects are told the OPPOSITE -- this is exactly where those calls
+    legitimately live."""
     registry = build_prompt_registry()
     definition = registry.get("generate_page_objects", "1.0.0")
 
@@ -104,7 +134,7 @@ def test_page_object_template_frames_webdriver_calls_as_legitimate_here() -> Non
     assert "webdriver" in definition.content.lower()
 
 
-@pytest.mark.parametrize("prompt_id", ["generate_step_definitions", "generate_page_objects"])
+@pytest.mark.parametrize("prompt_id", _ALL_PROMPT_IDS)
 def test_compatibility_declares_layer3s_own_dimensions_not_layer1s(prompt_id: str) -> None:
     """Layer 3 declares dimensions genuinely its own -- neither Layer 1's
     five subsystem-named fields nor a fabricated "n/a" for any of them

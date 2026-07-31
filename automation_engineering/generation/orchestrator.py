@@ -79,12 +79,33 @@ COARSE (decision-time, `_check_method_fit`) **and** PRECISE (generation-time,
 this module wired to :mod:`.method_fit`), both realized, neither one alone
 mistaken for the whole of (c).
 
-**Utilities remain out of this build's scope**, the same honest deferral
-this module itself used for page objects before this build existed:
-nothing in this module, :mod:`.page_object_orchestrator`, or
-:mod:`.method_fit` ever looks up ``catalog.utilities`` -- a structural
-guard test proves it directly
-(`test_orchestrator_still_never_looks_up_utilities`).
+UTILITIES -- now ALSO discharged (this build)
+--------------------------------------------------
+The utilities build examined how utilities are actually invoked in this
+platform (:mod:`.utility_orchestrator`'s own module docstring has the full
+investigation) and found the SAME precise-method-fit risk applies to
+utilities -- concretely worse, in fact, for a class like the tracked
+baseline's own `ConfigReader`, whose `env(String)` and `data(String)`
+accessors share an IDENTICAL parameter shape a coarse screen cannot tell
+apart. ``utility_request: UtilityBindingRequest | None`` is a second,
+OPTIONAL parameter mirroring ``page_object_request`` exactly -- same
+resolution order (coarse via `decide_reuse`, precise via
+`verify_specific_method_fit`), same escalation discipline (an unverified
+utility call escalates the WHOLE step, never a silent fallback), same
+default (omitted, ``utility_interface`` stays ``None``, unchanged from
+before this build). A step may supply either, both, or neither binding
+request independently; page-object resolution runs first, utility
+resolution second, whichever escalates first wins (both routes produce the
+identical, unedited `Escalation` shape either way).
+
+**There is no fourth, still-deferred asset kind left.** All three catalog
+asset kinds this platform's reuse engine spans (D3) -- step definitions,
+page objects, utilities -- are now legitimately reached somewhere in this
+generation package. The prior structural AST guard ("this module never
+references `catalog.page_objects`/`catalog.utilities`") is retired for
+exactly that reason; what replaces it is a positive completeness check
+(`test_all_three_asset_kinds_are_now_legitimately_handled`), not a "still
+forbidden" guard with nothing left to forbid.
 """
 
 from __future__ import annotations
@@ -95,9 +116,11 @@ from automation_engineering.catalog.models import AssetCatalog
 from automation_engineering.generation.models import (
     BoundPageObjectMethod,
     BoundStepDefinition,
+    BoundUtilityMethod,
     EscalatedStepNeed,
     GeneratedPageObject,
     GeneratedStepDefinition,
+    GeneratedUtility,
     StepDefinitionOutcome,
 )
 from automation_engineering.generation.page_object_orchestrator import (
@@ -107,6 +130,10 @@ from automation_engineering.generation.page_object_orchestrator import (
 from automation_engineering.generation.step_definition_generator import (
     StepDefinitionGenerationContext,
     StepDefinitionGenerator,
+)
+from automation_engineering.generation.utility_orchestrator import (
+    UtilityBindingRequest,
+    orchestrate_utility_method,
 )
 from automation_engineering.reuse.engine import DEFAULT_CONFIDENCE_THRESHOLD, decide_reuse
 from automation_engineering.reuse.matcher import SemanticMatcher
@@ -145,6 +172,7 @@ def orchestrate_step_definition(
     customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_STEP_DEFINITION_CONSTRAINTS,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
     page_object_request: PageObjectBindingRequest | None = None,
+    utility_request: UtilityBindingRequest | None = None,
 ) -> StepDefinitionOutcome:
     """Reuse-first orchestration for exactly one Gherkin step-need.
 
@@ -156,11 +184,12 @@ def orchestrate_step_definition(
     only nondeterministic calls (a live semantic match, a live generation)
     live entirely behind those two seams, never in this function.
 
-    ``page_object_request``, when supplied, resolves the page object the
-    generated step will call BEFORE generation happens -- the precise
-    method-fit discharge (module docstring, "THE INHERITED PRECISE
-    METHOD-FIT OBLIGATION"). Omitted, behavior is unchanged from before this
-    build: ``page_object_interface`` stays ``None``.
+    ``page_object_request``/``utility_request``, when supplied, resolve the
+    page object/utility the generated step will call BEFORE generation
+    happens -- the precise method-fit discharge (module docstring).
+    Omitted, behavior is unchanged: the corresponding interface field stays
+    ``None``. Page-object resolution runs first, utility resolution second;
+    either one escalating diverts the whole step.
     """
     decision = decide_reuse(need, catalog, matcher, confidence_threshold=confidence_threshold)
 
@@ -173,9 +202,11 @@ def orchestrate_step_definition(
     if isinstance(decision, NoMatch):
         page_object_interface = None
         page_object_outcome: GeneratedPageObject | BoundPageObjectMethod | None = None
+        utility_interface = None
+        utility_outcome: GeneratedUtility | BoundUtilityMethod | None = None
 
         if page_object_request is not None:
-            resolved = orchestrate_page_object_method(
+            resolved_page_object = orchestrate_page_object_method(
                 page_object_request.method_need,
                 catalog,
                 page_object_request.matcher,
@@ -184,17 +215,38 @@ def orchestrate_step_definition(
                 customqa_constraints=page_object_request.customqa_constraints,
                 confidence_threshold=confidence_threshold,
             )
-            if not isinstance(resolved, (GeneratedPageObject, BoundPageObjectMethod)):
+            if not isinstance(resolved_page_object, (GeneratedPageObject, BoundPageObjectMethod)):
                 # EscalatedPageObjectMethodNeed -- the step cannot be safely
                 # generated against a page-object binding this platform does
                 # not trust; the WHOLE step escalates, carrying the
                 # page-object side's own Escalation (module docstring).
-                return EscalatedStepNeed(need=need, escalation=resolved.escalation)
-            page_object_outcome = resolved
+                return EscalatedStepNeed(need=need, escalation=resolved_page_object.escalation)
+            page_object_outcome = resolved_page_object
             page_object_interface = (
-                resolved.asset.class_name
-                if isinstance(resolved, BoundPageObjectMethod)
-                else resolved.class_name
+                resolved_page_object.asset.class_name
+                if isinstance(resolved_page_object, BoundPageObjectMethod)
+                else resolved_page_object.class_name
+            )
+
+        if utility_request is not None:
+            resolved_utility = orchestrate_utility_method(
+                utility_request.method_need,
+                catalog,
+                utility_request.matcher,
+                utility_request.generator,
+                target_package=utility_request.target_package,
+                customqa_constraints=utility_request.customqa_constraints,
+                confidence_threshold=confidence_threshold,
+            )
+            if not isinstance(resolved_utility, (GeneratedUtility, BoundUtilityMethod)):
+                # EscalatedUtilityMethodNeed -- same discipline as the
+                # page-object branch above: the WHOLE step escalates.
+                return EscalatedStepNeed(need=need, escalation=resolved_utility.escalation)
+            utility_outcome = resolved_utility
+            utility_interface = (
+                resolved_utility.asset.class_name
+                if isinstance(resolved_utility, BoundUtilityMethod)
+                else resolved_utility.class_name
             )
 
         context = StepDefinitionGenerationContext(
@@ -202,6 +254,7 @@ def orchestrate_step_definition(
             target_package=target_package,
             customqa_constraints=customqa_constraints,
             page_object_interface=page_object_interface,
+            utility_interface=utility_interface,
         )
         java_source = generator.generate(context)
         return GeneratedStepDefinition(
@@ -209,6 +262,7 @@ def orchestrate_step_definition(
             java_source=java_source,
             target_package=target_package,
             page_object_outcome=page_object_outcome,
+            utility_outcome=utility_outcome,
         )
 
     raise AssertionError(f"unreachable: unknown ReuseDecision variant {decision!r}")
@@ -224,11 +278,12 @@ def generate_step_definitions(
     customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_STEP_DEFINITION_CONSTRAINTS,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
     page_object_request: PageObjectBindingRequest | None = None,
+    utility_request: UtilityBindingRequest | None = None,
 ) -> tuple[StepDefinitionOutcome, ...]:
     """Reuse-first orchestration for a feature's full set of step-needs --
     one :func:`orchestrate_step_definition` call per need, in order. When
-    supplied, the SAME ``page_object_request`` is used for every need in the
-    batch -- a caller needing per-step page-object requests calls
+    supplied, the SAME ``page_object_request``/``utility_request`` is used
+    for every need in the batch -- a caller needing per-step requests calls
     :func:`orchestrate_step_definition` directly, per step."""
     return tuple(
         orchestrate_step_definition(
@@ -240,6 +295,7 @@ def generate_step_definitions(
             customqa_constraints=customqa_constraints,
             confidence_threshold=confidence_threshold,
             page_object_request=page_object_request,
+            utility_request=utility_request,
         )
         for need in needs
     )
