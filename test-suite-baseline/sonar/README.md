@@ -67,13 +67,41 @@ curl -u <ADMIN_TOKEN>: \
 # expect one profile in the response: "name": "customqa"
 ```
 
-## The live proof this unlocks (not run by this build — no verdict faked)
+## The live proof (run 2026-08-04, against the live 26.4.0.121862 server — real, not faked)
 
-Once assigned, a real scan should flag a method over 40 lines and leave a
-method under 40 lines clean. To prove it, add a small throwaway Java file
-under `test-suite-baseline/src/test/java/com/automation/` such as:
+Import and assignment were executed with an admin `USER_TOKEN`
+(`customqa-admin-setup`, `permissions.global` including `admin` and
+`profileadmin`) — never the pipeline's own `SONAR_TOKEN`, which stayed the
+same `PROJECT_ANALYSIS_TOKEN`, unchanged, throughout:
+
+- `POST /api/qualityprofiles/restore` → `{"profile":{"name":"customqa",...},
+  "ruleSuccesses":550,"ruleFailures":0}`. `GET /api/rules/search?qprofile=
+  <key>&activation=true&rule_key=java:S138&f=actives` confirms the active
+  param directly: `"params":[{"key":"max","value":"40"}]` (not just rule
+  presence — the actual activation value).
+- `POST /api/qualityprofiles/add_project?qualityProfile=customqa&language=
+  java&project=Automation-POC` → `204`. `GET /api/qualityprofiles/search?
+  project=Automation-POC&language=java` confirms exactly one profile on the
+  project: `"name":"customqa"`, `projectCount:1`.
+
+**Correction to this section's own prior instruction:** it said to add the
+throwaway file under `test-suite-baseline/src/test/java/com/automation/`.
+That is wrong and was verified wrong directly, not assumed: `java:S138`'s
+own rule metadata (`GET /api/rules/show?key=java:S138`) carries
+`"scope":"MAIN"` — SonarQube evaluates `MAIN`-scope rules only against
+files the scanner classifies as source (Maven's `sourceDirectory`, default
+`src/main/java`), never against files under `testSourceDirectory`
+(`src/test/java`). Placed under `src/test/java` as originally written, the
+proof file scanned clean — 0 `java:S138` issues, confirmed via
+`/api/issues/search?componentKeys=Automation-POC&rules=java:S138` returning
+`"total":0` — not because the profile/rule didn't work, but because the
+rule never ran against it at all. The throwaway file must go under
+`src/main/java` instead (this project has no pre-existing `src/main` tree;
+creating one temporarily for this proof, then deleting it afterward, is
+correct and was done):
 
 ```java
+// test-suite-baseline/src/main/java/com/automation/scratch/CustomqaProofOfConcept.java
 package com.automation.scratch;
 
 public final class CustomqaProofOfConcept {
@@ -93,23 +121,46 @@ public final class CustomqaProofOfConcept {
 }
 ```
 
-Then run the same scan CP3's own `LiveSonarQualityGateAdapter` runs
-(fully-qualified goal, per the F3 fix's own portability note):
+Scanned via CP3's own `LiveSonarQualityGateAdapter.submit_scan` (real
+subprocess call, `SONAR_TOKEN` — the analysis-scoped pipeline token, exactly
+what it's for — passed via env, never a CLI arg), which runs:
 
 ```bash
-mvn -f test-suite-baseline/pom.xml \
-  org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+mvn -f test-suite-baseline/pom.xml sonar:sonar \
   -Dsonar.host.url=http://localhost:9000 \
   -Dsonar.projectKey=Automation-POC
 ```
 
-And check the finding:
+Real server verdict, `GET /api/issues/search?componentKeys=Automation-POC:
+src/main/java/com/automation/scratch/CustomqaProofOfConcept.java`:
 
-```bash
-curl -u <ADMIN_TOKEN>: \
-  "http://localhost:9000/api/issues/search?componentKeys=Automation-POC&rules=java:S138"
-# expect exactly one issue, on longMethod(), none on shortMethod()
-```
+- `longMethod()` (declared line 12, 47 lines): **flagged** —
+  `"rule":"java:S138"`, `"message":"This method has 47 lines, which is
+  greater than the 40 lines authorized. Split it into smaller methods."`
+- `shortMethod()` (line 6-8): **not flagged** — zero `java:S138` issues on
+  it (the file's other 36 issues are unrelated `java:S106`, System.out
+  usage, one per `println`).
 
-Delete the throwaway file afterward — it exists only to produce this proof,
-not as tracked-baseline framework code.
+The throwaway file (and the `src/main` tree created only to hold it) was
+deleted afterward — this project has no tracked `src/main`, and none was
+reintroduced.
+
+## Open gap this proof surfaced (not closed by this build)
+
+The proof above establishes the profile/rule *mechanism* works. It does
+**not** establish that `customqa:long-method` protects this platform's real
+generated code. `automation_engineering/catalog/scanner.py`'s own
+`JAVA_SOURCE_SUBPATH = Path("src/test/java")` and
+`automation_engineering/promotion/identity.py` both confirm every class CP3
+generates or promotes — step definitions, page objects, utilities — is
+placed under `src/test/java`, by this platform's own deliberate
+architecture (ADR-0037 Path A), not by accident. Because `java:S138` is
+permanently `scope:"MAIN"` (a SonarQube rule-catalog property, not
+something a quality profile's activation can override), it will **never**
+evaluate any of that real generated code, on this server, on this project,
+regardless of the `customqa` profile being correctly assigned. The
+long-method gate is live and correct as a mechanism; it is currently inert
+against the actual pipeline output it was built to check. Closing this gap
+(e.g. reclassifying the scanner's source/test split, or moving long-method
+enforcement to the same static Layer 3 check `customqa:direct-webdriver-
+action` already uses) is a separate, not-yet-scoped follow-up.
