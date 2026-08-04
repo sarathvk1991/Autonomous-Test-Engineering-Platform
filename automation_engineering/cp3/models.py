@@ -7,9 +7,20 @@ a fifth, hard-gating criterion this ADR locks as binding, not deferred:
 "CP3 does not pass unless a running SonarQube server scans the generated
 Java and its quality gate -- evaluated against the ``customqa:*`` profile
 -- passes." Reuse percentage is REPORTED (:class:`Cp3ReuseReport`), never
-one of these five gating criteria -- D5's own words: "reuse % is reported,
+one of these gating criteria -- D5's own words: "reuse % is reported,
 never gated," mirroring ADR-0043 D5's exact-floors-not-percentages
 discipline for CP2.
+
+**Sixth criterion, added 2026-08-04 (ADR-0044 D5 revision, the F4 discovery's
+Path A).** The fifth criterion's own ``customqa:*`` profile splits: only
+part of it (``long-method``) is expressible as a SonarQube rule at all --
+``direct-webdriver-action`` is an architectural, caller-class-role
+constraint SonarQube cannot natively express. It is verified instead by a
+static, ``javalang``-based check (:mod:`automation_engineering.cp3
+.architecture`), a sixth CP3 criterion, not a Sonar-side addition -- CP3's
+own composite gate is therefore coverage (four criteria) + the Sonar
+quality gate (the ``customqa:*`` subset Sonar CAN express) + this static
+check (the subset it cannot), all six required for ``PASS``.
 
 Mirrors :mod:`feature_engineering.cp2.models` deliberately -- same
 ``<Prefix>CriterionResult``/``<Prefix>Result`` shape, same ``.criterion(name)``
@@ -28,12 +39,20 @@ from automation_engineering.generation.models import StepDefinitionOutcome
 from shared.enums.base import ValidationVerdict
 
 #: D5's own four deterministic coverage criteria, verbatim, plus the fifth
-#: (Sonar) criterion D5 locks as a hard CP3 requirement.
+#: (Sonar) criterion D5 locks as a hard CP3 requirement, plus a sixth --
+#: direct_webdriver_action (ADR-0044 D5 revision, 2026-08-04) -- the
+#: customqa:* half SonarQube cannot natively express, verified instead by
+#: a static, javalang-based check (:mod:`automation_engineering.cp3
+#: .architecture`). CP3's composite gate is now: coverage (four criteria,
+#: static) + the Sonar quality gate (the customqa:* subset Sonar CAN
+#: express, today just long-method) + this static architectural check
+#: (the subset Sonar cannot). All six required for PASS.
 CRITERION_STEP_COVERAGE = "step_coverage"
 CRITERION_SCENARIO_COVERAGE = "scenario_coverage"
 CRITERION_UNMAPPED_STEPS = "unmapped_steps"
 CRITERION_DUPLICATE_STEPS = "duplicate_steps"
 CRITERION_SONAR_QUALITY_GATE = "sonar_quality_gate"
+CRITERION_DIRECT_WEBDRIVER_ACTION = "direct_webdriver_action"
 
 CP3_CRITERIA: tuple[str, ...] = (
     CRITERION_STEP_COVERAGE,
@@ -41,6 +60,7 @@ CP3_CRITERIA: tuple[str, ...] = (
     CRITERION_UNMAPPED_STEPS,
     CRITERION_DUPLICATE_STEPS,
     CRITERION_SONAR_QUALITY_GATE,
+    CRITERION_DIRECT_WEBDRIVER_ACTION,
 )
 
 
@@ -107,8 +127,8 @@ class Cp3CoverageInput:
 class Cp3Result:
     """The single output of one CP3 evaluation (:func:`automation_engineering.
     cp3.gate.evaluate_cp3`). ``overall_verdict`` is ``PASS`` iff every one
-    of the five named criteria is ``PASS`` -- the coverage gate AND the
-    Sonar gate, both required (D5)."""
+    of the six named criteria is ``PASS`` -- the coverage gate, the Sonar
+    gate, AND the static direct-webdriver-action check, all required."""
 
     overall_verdict: ValidationVerdict
     criteria: tuple[Cp3CriterionResult, ...]
@@ -134,6 +154,7 @@ class Cp3Result:
 
 __all__ = [
     "CP3_CRITERIA",
+    "CRITERION_DIRECT_WEBDRIVER_ACTION",
     "CRITERION_DUPLICATE_STEPS",
     "CRITERION_SCENARIO_COVERAGE",
     "CRITERION_SONAR_QUALITY_GATE",

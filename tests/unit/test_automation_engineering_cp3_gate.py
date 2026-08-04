@@ -122,6 +122,52 @@ def test_coverage_fail_and_sonar_fail_yields_cp3_fail() -> None:
     assert result.criterion(CRITERION_SONAR_QUALITY_GATE).verdict == ValidationVerdict.FAIL
 
 
+def test_coverage_pass_and_sonar_pass_and_direct_webdriver_action_fail_yields_cp3_fail() -> None:
+    """ADR-0044 D5 revision (2026-08-04): the static architectural check is
+    a HARD sixth criterion, not advisory -- a clean coverage gate and a
+    passing Sonar scan do not rescue CP3 from a step-definition class that
+    calls WebDriver directly."""
+    from automation_engineering.cp3.architecture import (
+        CRITERION_DIRECT_WEBDRIVER_ACTION,
+        Cp3GeneratedClassInput,
+    )
+
+    violating_step_def = Cp3GeneratedClassInput(
+        class_name="LoginSteps",
+        java_source=(
+            "package com.automation.steps;\n"
+            "import org.openqa.selenium.WebDriver;\n"
+            "public class LoginSteps {\n"
+            "    private WebDriver driver;\n"
+            "    public void doLogin() { driver.click(); }\n"
+            "}\n"
+        ),
+    )
+    adapter = StubSonarQualityGateAdapter(result=SonarQualityGateResult(passed=True))
+    result = evaluate_cp3(
+        _covering_input(), _SONAR_INPUT, adapter, generated_classes=[violating_step_def]
+    )
+
+    assert result.overall_verdict == ValidationVerdict.FAIL
+    assert result.criterion(CRITERION_STEP_COVERAGE).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_SONAR_QUALITY_GATE).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_DIRECT_WEBDRIVER_ACTION).verdict == ValidationVerdict.FAIL
+
+
+def test_direct_webdriver_action_pass_does_not_rescue_a_sonar_failure() -> None:
+    """The converse: a clean static architectural check does not rescue
+    CP3 from an independent Sonar failure -- each of the six criteria
+    fails CP3 independently (D5)."""
+    from automation_engineering.cp3.architecture import CRITERION_DIRECT_WEBDRIVER_ACTION
+
+    adapter = StubSonarQualityGateAdapter(result=SonarQualityGateResult(passed=False))
+    result = evaluate_cp3(_covering_input(), _SONAR_INPUT, adapter, generated_classes=[])
+
+    assert result.overall_verdict == ValidationVerdict.FAIL
+    assert result.criterion(CRITERION_DIRECT_WEBDRIVER_ACTION).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_SONAR_QUALITY_GATE).verdict == ValidationVerdict.FAIL
+
+
 def test_a_scan_error_fails_the_sonar_criterion_cleanly_not_a_crash() -> None:
     from automation_engineering.cp3.sonar.adapter import SonarScanError
 

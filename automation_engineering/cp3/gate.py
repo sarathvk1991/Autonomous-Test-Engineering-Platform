@@ -1,21 +1,29 @@
-"""CP3's combined verdict (ADR-0044 D5): the deterministic coverage gate
-AND the hard SonarQube quality gate, BOTH required to PASS -- "CP3 does not
+"""CP3's combined verdict (ADR-0044 D5, revised 2026-08-04): the
+deterministic coverage gate, the hard SonarQube quality gate, AND the
+static direct-webdriver-action check, ALL required to PASS -- "CP3 does not
 pass unless a running SonarQube server scans the generated Java and its
 quality gate ... passes" is additive to the four coverage criteria, never a
-replacement for them.
+replacement for them; the static check is additive again, for the
+customqa:* half Sonar cannot express (the F4 discovery's Path A).
 
 :func:`evaluate_cp3` is a pure function once its adapter's own calls
 return: no code in this module decides pass/fail from anything other than
-:func:`~.coverage.evaluate_coverage`'s four criteria and the Sonar
-adapter's own quality-gate verdict (ADR-0040 Decision 2 -- deterministic
-evidence only, no LLM judgment anywhere in this gate).
+:func:`~.coverage.evaluate_coverage`'s four criteria, the Sonar adapter's
+own quality-gate verdict, and :func:`~.architecture.evaluate_direct_webdriver_action`'s
+own static verdict (ADR-0040 Decision 2 -- deterministic evidence only, no
+LLM judgment anywhere in this gate).
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from automation_engineering.cp3.architecture import (
+    Cp3GeneratedClassInput,
+    evaluate_direct_webdriver_action,
+)
 from automation_engineering.cp3.coverage import evaluate_coverage
 from automation_engineering.cp3.models import (
     CRITERION_SONAR_QUALITY_GATE,
@@ -44,9 +52,11 @@ def evaluate_cp3(
     coverage_input: Cp3CoverageInput,
     sonar_input: Cp3SonarInput,
     sonar_adapter: SonarQualityGateAdapter,
+    generated_classes: Sequence[Cp3GeneratedClassInput] = (),
 ) -> Cp3Result:
-    """Evaluate CP3's five criteria -- four deterministic coverage checks
-    plus the hard Sonar gate -- and combine them into one verdict.
+    """Evaluate CP3's six criteria -- four deterministic coverage checks,
+    the hard Sonar gate, and the static direct-webdriver-action check --
+    and combine them into one verdict.
 
     Parameters
     ----------
@@ -61,16 +71,26 @@ def evaluate_cp3(
         (production, where a SonarQube server exists) -- this function
         never constructs one itself, mirroring every other seam in this
         platform (constructor-injected, never selected here).
+    generated_classes:
+        Every generated class this run produced -- step definitions AND
+        page objects alike, never pre-filtered by the caller
+        (:mod:`.architecture` determines each one's own role from its own
+        parsed ``package`` declaration). Defaults to empty, which passes
+        vacuously -- the same convention
+        :func:`automation_engineering.cp4.gate.evaluate_cp4` already
+        establishes for an empty ``page_objects`` tuple.
 
     Returns
     -------
     Cp3Result
-        ``overall_verdict`` is ``PASS`` iff all five named criteria are
-        ``PASS`` -- coverage AND Sonar, both required (D5).
+        ``overall_verdict`` is ``PASS`` iff all six named criteria are
+        ``PASS`` -- coverage, Sonar, AND the static architectural check,
+        all required (D5, revised 2026-08-04).
     """
     coverage_criteria, reuse_report = evaluate_coverage(coverage_input)
     sonar_criterion = _evaluate_sonar_gate(sonar_input, sonar_adapter)
-    criteria = (*coverage_criteria, sonar_criterion)
+    architecture_criterion = evaluate_direct_webdriver_action(generated_classes)
+    criteria = (*coverage_criteria, sonar_criterion, architecture_criterion)
     overall = (
         ValidationVerdict.PASS
         if all(c.verdict == ValidationVerdict.PASS for c in criteria)
