@@ -34,6 +34,21 @@ therefore proven correct only by direct reading and by
 :mod:`automation_engineering.cp3.sonar.stub_adapter`'s equivalent, faked
 call sequence -- never by a passing live integration test. Stated
 honestly, per ADR-0044 D5's own instruction not to fabricate a live pass.
+
+Which quality profile a scan is graded against (2026-08-04, F4 revision
+build task 1): SonarQube resolves this ENTIRELY server-side, from whatever
+profile is assigned to ``project_key`` at scan time -- confirmed directly
+against a live server (26.4.0.121862, ``GET /api/settings/list_definitions``
+carries no ``sonar.profile`` key at all; that per-scan analysis parameter
+was removed from SonarQube years before this version). There is therefore
+no argument this adapter's own ``submit_scan`` could pass to select
+:data:`CUSTOMQA_PROFILE_NAME` -- assigning it to a project is a one-time,
+server-side administrative action (``POST /api/qualityprofiles/add_project``
+or the SonarQube UI), never a per-scan parameter, and never something this
+low-privilege, submit-a-scan-only adapter should be doing at runtime
+even if it could (least privilege, `.env.example`'s own Security Guidelines
+section). See ``test-suite-baseline/sonar/README.md`` for the exact,
+runnable one-time admin procedure and the live proof it produces.
 """
 
 from __future__ import annotations
@@ -53,6 +68,17 @@ from automation_engineering.cp3.sonar.models import (
 
 _TERMINAL_TASK_STATUSES = frozenset({"SUCCESS", "FAILED", "CANCELED"})
 _REPORT_TASK_RELATIVE_PATH = Path("target/sonar/report-task.txt")
+
+#: The quality profile name CP3's Sonar gate expects to be assigned to
+#: whatever project it scans (ADR-0044 D5 revision, ADR-0037 Recommendation
+#: 3) -- documentation only, since SonarQube has no scanner-time parameter
+#: to select it (see this module's own docstring). The versioned artifact
+#: this name refers to lives at ``test-suite-baseline/sonar/customqa-profile
+#: .xml``; ``test-suite-baseline/sonar/README.md`` is the runnable
+#: import/assign procedure. Verifies only the Sonar-expressible half of
+#: ``customqa:*`` (today: ``java:S138``/long-method) -- never
+#: ``direct-webdriver-action``, a static Layer 3 check, not a Sonar rule.
+CUSTOMQA_PROFILE_NAME = "customqa"
 
 
 class LiveSonarQualityGateAdapter:

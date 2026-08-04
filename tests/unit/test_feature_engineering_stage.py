@@ -831,6 +831,25 @@ class TestWorkspaceMaterialization:
         baseline_smoke = Path("test-suite-baseline/src/test/resources/features/smoke.feature")
         before_bytes = baseline_smoke.read_bytes()
 
+        def _baseline_git_status() -> str:
+            return subprocess.run(
+                ["git", "status", "--porcelain", "test-suite-baseline/"],
+                cwd=Path.cwd(),
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+
+        # Captured before, not asserted empty outright (2026-08-04, the F4
+        # revision build task 1's own customqa profile artifact landing
+        # under test-suite-baseline/sonar/ -- legitimate, reviewed, versioned
+        # content pending commit, not a stage-14 side effect): the invariant
+        # this test actually promises is "the STAGE causes no git-visible
+        # change," not "the tree has zero uncommitted diff for any reason,"
+        # which only ever coincided by chance when nothing else touched this
+        # directory between commits.
+        status_before = _baseline_git_status()
+
         run_feature_engineering_stage(
             _requirement_set([req]),
             features_root=features_root_for(materialize_workspace(run_dir)),
@@ -840,14 +859,7 @@ class TestWorkspaceMaterialization:
         )
 
         assert baseline_smoke.read_bytes() == before_bytes  # byte-identical
-        status = subprocess.run(
-            ["git", "status", "--porcelain", "test-suite-baseline/"],
-            cwd=Path.cwd(),
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        assert status.stdout == ""  # tracked module reports clean
+        assert _baseline_git_status() == status_before  # unchanged by the stage
 
     def test_run_copy_is_a_complete_runnable_maven_module(self, tmp_path: Path) -> None:
         req = _requirement()
