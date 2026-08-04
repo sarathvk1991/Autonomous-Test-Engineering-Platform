@@ -68,10 +68,12 @@ again when `content_hash` changed; nondeterminism across regenerations of
 the SAME unchanged requirement is a live-model property this stage never
 exercises, because it never regenerates an unchanged one.
 
-A FAILED feature (CP2 FAIL after D5 exhaustion, or a pre-assembly generation
-contract violation) is never dropped: it is recorded as an escalated
-`FeatureRecord` in the package, and its final content (whatever it is) is
-still written to the workspace when content exists at all, so a human
+A FAILED feature (CP2 FAIL after D5 exhaustion, a pre-assembly generation
+contract violation, or -- as of 2026-08-04, the Layer 1-3 integration run's
+F1 fix -- a transport failure at the content-generator/remediator boundary
+itself, `TransportFailureError`) is never dropped: it is recorded as an
+escalated `FeatureRecord` in the package, and its final content (whatever it
+is) is still written to the workspace when content exists at all, so a human
 reviewer has something to open. The stage's own run-state verdict is
 SUCCEEDED even when escalations exist -- see this module's report for the
 rationale, mirrored from how every other Layer 1 tail phase (grounding,
@@ -81,6 +83,33 @@ stage itself FAILED. Only a genuine, unexpected exception (an I/O error, a
 corrupt input, a bug) marks the stage FAILED -- the same distinction
 `execution_package_write` already draws as the one hard-fail phase in the
 existing CLI.
+
+**Transport failures are per-requirement recoverable, not stage-fatal
+(2026-08-04, the Layer 1-3 end-to-end integration run's F1 fix).** Before
+this fix, `content_generator.generate()`/`remediator.remediate()` were
+called unguarded here: a live provider's `LiveGenerationError`/
+`LiveRemediationError` (a 429/quota rejection, a timeout, an empty
+response) is a class this module's own `except FeatureGenerationError`
+handler never caught -- a sibling exception, not a subclass -- so it
+propagated out of this function entirely, and `execute_feature_engineering
+_stage`'s outer `except Exception` caught it there instead, failing the
+WHOLE STAGE over one requirement's transport failure. Reproduced live: a
+single 429 on the first of 20 requirements failed stage 14 outright with
+zero requirements processed. Fixed by giving the LLM boundary a shared,
+seam-level exception, `feature_engineering.generation.errors
+.TransportFailureError` (both `LiveGenerationError` and
+`LiveRemediationError` now subclass it), and catching it here exactly like
+`FeatureGenerationError` -- per-requirement, escalated, the loop continues.
+The two failure kinds are still distinguished: a `TransportFailureError`
+records `escalation_reason="transport failure (no retry attempted): ..."`,
+never the `"pre-assembly generation contract violation: ..."` wording a
+content failure gets -- a human reviewing an escalation needs to know
+whether to look at the generated content or at provider/network
+conditions. No retry is attempted (the platform has none anywhere in this
+call path today, unchanged by this fix) -- the requirement is escalated
+immediately, the minimal fix for "one 429 doesn't kill the batch." Bounded
+transport retry-with-backoff remains a possible, deliberate follow-up, not
+smuggled into this fix.
 """
 
 from __future__ import annotations
@@ -94,6 +123,7 @@ from feature_engineering.generation import (
     FeatureContentGenerator,
     FeatureGenerationError,
     GeneratedFeature,
+    TransportFailureError,
     derive_feature_file_path,
     generate_feature_file,
     write_generated_feature,
@@ -202,6 +232,7 @@ def run_feature_engineering_stage(
     fresh_features: dict[str, GeneratedFeature] = {}
     dirty_by_id: dict[str, tuple[str, str]] = {}  # requirement_id -> (content, req_tag)
     unrecoverable: dict[str, str] = {}  # requirement_id -> reason; no content at all
+    transport_failed: dict[str, str] = {}  # requirement_id -> reason; boundary call itself failed
 
     for requirement in to_generate:
         try:
@@ -216,6 +247,15 @@ def run_feature_engineering_stage(
                     exc.content,
                     f"@{requirement.requirement_id}",
                 )
+            continue
+        except TransportFailureError as exc:
+            # A provider/quota/timeout failure at the LLM boundary itself --
+            # no content was ever returned to validate. Per-requirement
+            # recoverable, exactly like FeatureGenerationError above, but a
+            # DIFFERENT escalation reason (see the transport_failed loop
+            # below): this requirement never reached content validation at
+            # all, so there is nothing content-shaped to report on it.
+            transport_failed[requirement.requirement_id] = str(exc)
             continue
         fresh_features[requirement.requirement_id] = feature
 
@@ -259,7 +299,17 @@ def run_feature_engineering_stage(
 
     for requirement_id, (dirty_content, req_tag) in dirty_by_id.items():
         requirement = requirement_by_id[requirement_id]
-        result = run_cp2_remediation(requirement, dirty_content, req_tag, remediator)
+        try:
+            result = run_cp2_remediation(requirement, dirty_content, req_tag, remediator)
+        except TransportFailureError as exc:
+            # Symmetric to the generation-phase case above: the remediator's
+            # own LLM boundary failed (provider/quota/timeout), not the
+            # content it would have returned. Per-requirement recoverable,
+            # same as any other transport failure -- recorded via
+            # transport_failed below, the loop continues to the rest of
+            # dirty_by_id rather than aborting the stage.
+            transport_failed[requirement_id] = str(exc)
+            continue
         file_path = derive_feature_file_path(requirement, features_root=features_root)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(result.final_content, encoding="utf-8")
@@ -297,6 +347,28 @@ def run_feature_engineering_stage(
                 remediated=False,
                 escalated=True,
                 escalation_reason=f"pre-assembly generation contract violation: {reason}",
+            )
+        )
+
+    for requirement_id, reason in transport_failed.items():
+        # A different escalation REASON from unrecoverable above, by design
+        # (ADR-0043 D5's escalation model applies to both, but a human
+        # reviewing this record needs to know which: no retry was attempted
+        # -- the platform has none anywhere in this call path today -- so a
+        # transport failure is not evidence of anything about the generated
+        # content, unlike a pre-assembly contract violation.
+        records.append(
+            FeatureRecord(
+                requirement_id=requirement_id,
+                content_hash=requirement_by_id[requirement_id].content_hash,
+                req_tag=f"@{requirement_id}",
+                feature_path=None,
+                scn_ids=(),
+                ac_ids_covered=(),
+                cp2_verdict=ValidationVerdict.FAIL.value,
+                remediated=False,
+                escalated=True,
+                escalation_reason=f"transport failure (no retry attempted): {reason}",
             )
         )
 

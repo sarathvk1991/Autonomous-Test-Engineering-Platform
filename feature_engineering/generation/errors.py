@@ -44,3 +44,30 @@ class FeatureGenerationError(Exception):
         super().__init__(message)
         self.lint_result = lint_result
         self.content = content
+
+
+class TransportFailureError(Exception):
+    """Raised when a `FeatureContentGenerator`/`FeatureRemediator` call fails
+    for a reason unrelated to the content it returned -- a provider
+    exception, a quota/rate-limit rejection, a timeout, or a malformed/empty
+    response at the LLM boundary itself, before there is any generated text
+    to validate at all.
+
+    Distinct from `FeatureGenerationError` on purpose: that exception means
+    the generator/remediator DID return content, and the content failed
+    validation. This one means no usable content was returned, for a reason
+    that has nothing to do with what any content would have said. Both are
+    per-requirement recoverable -- neither is stage-fatal -- but
+    `feature_engineering.stage.runner` escalates them under different
+    reasons, so a human reviewing an escalated requirement knows whether to
+    look at the generated content (a content failure) or at provider/network
+    conditions (a transport failure).
+
+    This is the seam's own transport-failure contract, not one
+    implementation's private type: a concrete live implementation's own
+    exception (e.g. `LiveGenerationError`, `LiveRemediationError`) subclasses
+    this rather than replacing it, so callers outside this package's live
+    modules can catch transport failures without importing a specific
+    provider-backed implementation.
+    """
+

@@ -34,7 +34,11 @@ from contracts.testable_requirement import (
     TestableRequirementSetProvenance,
     build_testable_requirement,
 )
-from feature_engineering.generation import FeatureGenerationError, StubFeatureContentGenerator
+from feature_engineering.generation import (
+    FeatureGenerationError,
+    StubFeatureContentGenerator,
+    TransportFailureError,
+)
 from feature_engineering.remediation import StubFeatureRemediator
 from feature_engineering.stage import (
     execute_feature_engineering_stage,
@@ -602,6 +606,178 @@ class TestEscalationHandling:
         # (mirrors every other Layer 1 tail phase's own non-fatal posture).
         assert _find_stage(run_state_mgr, "feature_engineering").status == StageStatus.SUCCEEDED
         assert result.has_escalations is True
+
+
+class _TransportFailureContentGenerator:
+    """Simulates a live provider's boundary failure (429/quota/timeout) for
+    one requirement_id, delegating to `StubFeatureContentGenerator` for
+    everything else -- the fake this test suite uses in place of a real
+    `LiveFeatureContentGenerator` hitting a real 429, per ADR-0043 D5's own
+    stub/live seam discipline (no live call anywhere in this test file)."""
+
+    def __init__(self, canned: dict[str, str], *, fails_for: str) -> None:
+        self._stub = StubFeatureContentGenerator(canned)
+        self._fails_for = fails_for
+
+    def generate(self, requirement: TestableRequirement) -> str:
+        if requirement.requirement_id == self._fails_for:
+            raise TransportFailureError(
+                f"requirement_id={requirement.requirement_id!r}: LLM provider call failed: "
+                "429 RESOURCE_EXHAUSTED"
+            )
+        return self._stub.generate(requirement)
+
+
+class _TransportFailureRemediator:
+    """Simulates a live remediator's boundary failure -- symmetric to
+    `_TransportFailureContentGenerator`, for the D5 remediation call site."""
+
+    def remediate(self, content: str, violations: object) -> str:
+        raise TransportFailureError("LLM provider call failed: 429 RESOURCE_EXHAUSTED")
+
+
+@pytest.mark.unit
+class TestTransportFailureEscalation:
+    """F1 (2026-08-04, the Layer 1-3 integration run): a transport failure
+    (provider/quota/timeout -- `TransportFailureError`, the shared base
+    `LiveGenerationError`/`LiveRemediationError` now subclass) at the
+    content-generator/remediator boundary is per-requirement recoverable,
+    exactly like a content (`FeatureGenerationError`) failure -- it must
+    never abort the whole stage. Before this fix, a live 429 on the first
+    of 20 requirements failed stage 14 outright with zero requirements
+    processed; these tests reproduce that shape deterministically, with a
+    fake that raises the same exception a live 429 does, never a real call.
+    """
+
+    def test_transport_failure_on_one_requirement_escalates_it_and_stage_continues(
+        self, tmp_path: Path
+    ) -> None:
+        req_ok = _requirement(title="User can reset password")
+        req_fails = _requirement(title="User can view order history")
+        rs = _requirement_set([req_ok, req_fails])
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        trs_path = run_dir / "testable_requirement_set.json"
+        trs_path.write_text(json.dumps(rs.model_dump(mode="json", by_alias=True)), encoding="utf-8")
+
+        content_generator = _TransportFailureContentGenerator(
+            {req_ok.requirement_id: _clean_content(req_ok)},
+            fails_for=req_fails.requirement_id,
+        )
+        run_state_mgr = _new_run_state_manager(run_dir)
+        result = execute_feature_engineering_stage(
+            run_state_mgr,
+            run_dir,
+            rs,
+            content_generator=content_generator,
+            remediator=StubFeatureRemediator([]),
+            input_artifacts=[trs_path],
+        )
+
+        # The stage did NOT abort: it produced a result, and it SUCCEEDED,
+        # not FAILED -- the whole point of this fix.
+        assert result is not None
+        assert _find_stage(run_state_mgr, "feature_engineering").status == StageStatus.SUCCEEDED
+
+        ok_record = result.package.record_for(req_ok.requirement_id)
+        assert ok_record is not None
+        assert ok_record.escalated is False
+        assert ok_record.cp2_verdict == "pass"
+
+        failed_record = result.package.record_for(req_fails.requirement_id)
+        assert failed_record is not None
+        assert failed_record.escalated is True
+        assert failed_record.remediated is False
+        assert failed_record.feature_path is None
+        assert failed_record.escalation_reason is not None
+        assert failed_record.escalation_reason.startswith("transport failure (no retry attempted):")
+        assert "429 RESOURCE_EXHAUSTED" in failed_record.escalation_reason
+
+        assert result.has_escalations is True
+
+    def test_transport_failure_and_content_failure_escalate_with_different_reasons(
+        self, tmp_path: Path
+    ) -> None:
+        req_transport = _requirement(title="User can view order history")
+        req_content = _requirement(title="User can filter search results")
+        rs = _requirement_set([req_transport, req_content])
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        trs_path = run_dir / "testable_requirement_set.json"
+        trs_path.write_text(json.dumps(rs.model_dump(mode="json", by_alias=True)), encoding="utf-8")
+
+        # req_content's raw content carries a forbidden @REQ-* tag -- a
+        # pre-assembly tag-contract violation, FeatureGenerationError with
+        # content=None (assembler.py), the "unrecoverable" content-failure
+        # path, unrelated to any transport condition.
+        bad_content = "@REQ-should-never-appear\n" + _clean_content(req_content)
+        canned = {req_content.requirement_id: bad_content}
+        content_generator = _TransportFailureContentGenerator(
+            canned, fails_for=req_transport.requirement_id
+        )
+        run_state_mgr = _new_run_state_manager(run_dir)
+        result = execute_feature_engineering_stage(
+            run_state_mgr,
+            run_dir,
+            rs,
+            content_generator=content_generator,
+            remediator=StubFeatureRemediator([]),
+            input_artifacts=[trs_path],
+        )
+
+        assert result is not None
+        assert _find_stage(run_state_mgr, "feature_engineering").status == StageStatus.SUCCEEDED
+
+        transport_record = result.package.record_for(req_transport.requirement_id)
+        content_record = result.package.record_for(req_content.requirement_id)
+        assert transport_record is not None and content_record is not None
+        assert transport_record.escalated is True
+        assert content_record.escalated is True
+
+        assert transport_record.escalation_reason is not None
+        assert content_record.escalation_reason is not None
+        # Different escalation REASONS, taxonomy preserved -- a human
+        # reviewing an escalation must be able to tell provider/network
+        # conditions apart from a generated-content contract violation.
+        assert transport_record.escalation_reason.startswith("transport failure")
+        assert content_record.escalation_reason.startswith(
+            "pre-assembly generation contract violation"
+        )
+        assert transport_record.escalation_reason != content_record.escalation_reason
+
+    def test_transport_failure_during_remediation_escalates_and_stage_continues(
+        self, tmp_path: Path
+    ) -> None:
+        req = _requirement()
+        rs = _requirement_set([req])
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        trs_path = run_dir / "testable_requirement_set.json"
+        trs_path.write_text(json.dumps(rs.model_dump(mode="json", by_alias=True)), encoding="utf-8")
+
+        # Content that reaches D5 (CP2-fails-after-assembly, not a
+        # pre-assembly contract violation): duplicate scenario names.
+        raw = _dupe_name_raw_content(req)
+        run_state_mgr = _new_run_state_manager(run_dir)
+        result = execute_feature_engineering_stage(
+            run_state_mgr,
+            run_dir,
+            rs,
+            content_generator=StubFeatureContentGenerator({req.requirement_id: raw}),
+            remediator=_TransportFailureRemediator(),
+            input_artifacts=[trs_path],
+        )
+
+        assert result is not None
+        assert _find_stage(run_state_mgr, "feature_engineering").status == StageStatus.SUCCEEDED
+
+        record = result.package.record_for(req.requirement_id)
+        assert record is not None
+        assert record.escalated is True
+        assert record.remediated is False
+        assert record.feature_path is None
+        assert record.escalation_reason is not None
+        assert record.escalation_reason.startswith("transport failure (no retry attempted):")
 
 
 @pytest.mark.unit

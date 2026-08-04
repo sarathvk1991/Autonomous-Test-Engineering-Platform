@@ -42,6 +42,7 @@ import json
 from uuid import uuid4
 
 from contracts.testable_requirement import TestableRequirement
+from feature_engineering.generation.errors import TransportFailureError
 from feature_engineering.prompts.composition import build_prompt_registry
 from requirement_intelligence.llm.llm_models import LLMRequest
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
@@ -56,7 +57,7 @@ _PROMPT_VERSION = "1.1.0"
 _DEFAULT_TEMPERATURE = 0.0
 
 
-class LiveGenerationError(Exception):
+class LiveGenerationError(TransportFailureError):
     """Raised when the LLM boundary fails to produce usable content.
 
     Covers exactly three failure modes at this boundary -- a provider
@@ -66,6 +67,16 @@ class LiveGenerationError(Exception):
     model *did* return, however malformed as Gherkin, is not this
     exception's concern -- that is the generator core's own, already-proven
     structural and lint validation (``FeatureGenerationError``).
+
+    A subclass of :class:`~feature_engineering.generation.errors.TransportFailureError`
+    (2026-08-04, the Layer 1-3 integration run's F1 fix): this class used to
+    subclass bare ``Exception``, which meant ``feature_engineering.stage
+    .runner``'s per-requirement handler -- which only ever caught
+    ``FeatureGenerationError``, a sibling, not a supertype -- never caught
+    this either, so a single rate-limit/quota failure propagated all the way
+    out and aborted the entire stage rather than escalating the one
+    requirement it happened to. The failure modes and message text this
+    class raises are unchanged; only its place in the hierarchy moved.
     """
 
 

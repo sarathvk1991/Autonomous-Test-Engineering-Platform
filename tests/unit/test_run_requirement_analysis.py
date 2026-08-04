@@ -2596,3 +2596,70 @@ def test_stage14_resume_skips_layer1_and_skips_unchanged_stage14(
     state = json.loads((run_dir / "run_state.json").read_text())
     fe_record = next(s for s in state["stages"] if s["stageId"] == "feature_engineering")
     assert fe_record["status"] == "succeeded"  # untouched by the whole-run skip's early return
+
+
+class _AlwaysFailsFeatureContentGenerator:
+    """Raises a genuine, unexpected exception -- neither FeatureGenerationError
+    nor TransportFailureError -- so execute_feature_engineering_stage's own
+    outer `except Exception` fails the WHOLE STAGE, deterministically
+    reproducing the "feature_engineering: failed" run-state shape F2's fix
+    must make --resume recognize as not-complete."""
+
+    def __init__(self, provider: Any) -> None:
+        self.provider = provider
+
+    def generate(self, requirement: Any) -> str:
+        raise RuntimeError("simulated stage-fatal failure (F2's own resume-detection test)")
+
+
+@pytest.mark.unit
+def test_resume_detects_a_failed_feature_engineering_stage_and_resumes_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """F2 (2026-08-04, the Layer 1-3 integration run): before this fix,
+    --resume's "already complete" check only ever inspected Layer 1's own
+    execution_package_write stage. A run whose feature_engineering stage
+    genuinely FAILED was reported "already complete and unchanged -- nothing
+    to do" anyway, silently ignoring the failure. Reproduced deterministically
+    here (a fake content generator that fails stage 14 outright on run 1);
+    proves --resume now detects it and re-attempts stage 14, rather than
+    reporting the run complete.
+    """
+    monkeypatch.setattr(cli, "LiveFeatureContentGenerator", _AlwaysFailsFeatureContentGenerator)
+    monkeypatch.setattr(cli, "LiveFeatureRemediator", _NeverCalledFeatureRemediator)
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result_for_stage14()
+    )
+    _patched_context_for_stage14(monkeypatch)
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    output_dir = tmp_path / "ex"
+    first_args = ["analyze", "--validate", "--save-execution", "--output-dir", str(output_dir)]
+    assert cli.main(first_args) == 0  # Layer 1 succeeds; feature_engineering fails internally
+    capsys.readouterr()
+    run_dir = next(p for p in output_dir.iterdir() if p.is_dir())
+    run_id = run_dir.name
+
+    state = json.loads((run_dir / "run_state.json").read_text())
+    fe_record = next(s for s in state["stages"] if s["stageId"] == "feature_engineering")
+    assert fe_record["status"] == "failed"  # the precondition this fix targets
+
+    # Swap in a generator that actually works (as if the underlying failure
+    # condition had cleared) and resume -- --resume must detect the run as
+    # NOT complete and re-attempt stage 14, never report "already complete."
+    monkeypatch.setattr(cli, "LiveFeatureContentGenerator", _FakeLiveFeatureContentGenerator)
+    resume_args = ["analyze", "--validate", "--resume", run_id, "--output-dir", str(output_dir)]
+    assert cli.main(resume_args) == 0
+    out = capsys.readouterr().out
+    assert "already complete and unchanged" not in out
+    assert "Layer 1 complete, but stage 'feature_engineering' is failed -- resuming." in out
+
+    state_after = json.loads((run_dir / "run_state.json").read_text())
+    fe_record_after = next(
+        s for s in state_after["stages"] if s["stageId"] == "feature_engineering"
+    )
+    # stage 14 actually re-ran, and this time succeeded
+    assert fe_record_after["status"] == "succeeded"
+
+    package = json.loads((run_dir / "feature_engineering_package.json").read_text())
+    assert len(package["records"]) >= 1

@@ -937,20 +937,75 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # intermediate result lives in memory until ExecutionWriter().write() runs
     # once, at the very end, so no earlier stage has an on-disk artifact to
     # check before that point).
+    #
+    # "Complete" now also requires feature_engineering to have reached a
+    # terminal success (SUCCEEDED or SKIPPED), not just execution_package_write
+    # (2026-08-04, the Layer 1-3 integration run's F2 fix). Before this fix, a
+    # run whose feature_engineering stage sat at status FAILED (or PENDING,
+    # never reached) was still reported "already complete and unchanged --
+    # nothing to do" by --resume, because this check only ever inspected
+    # Layer 1's own execution_package_write stage.
+    #
+    # Deliberately NOT every LIVE_STAGE_IDS stage (tried, reverted): several
+    # Layer 1 tail phases -- requirement_enhancement, recommendation,
+    # continuous_improvement, knowledge_graph, organizational_memory, learning
+    # -- are individually best-effort by this platform's own existing design
+    # (each phase's own docstring: "a failure here is surfaced but never
+    # fatal to the analysis run") -- `execution_package_write` reaching
+    # SUCCEEDED already reflects that every phase was at least attempted,
+    # regardless of whether an individual best-effort one failed. Requiring
+    # ALL of them to be SUCCEEDED/SKIPPED would make --resume needlessly
+    # re-run a run that already legitimately finished, the opposite failure
+    # mode from the one this fix targets. feature_engineering is different:
+    # unlike those phases, its own FAILED status genuinely means stage 14
+    # never produced a Validated Feature Package -- exactly the gap this run
+    # surfaced. This is a CLI wiring fix only: the run-state model already
+    # recorded every stage's real status; nothing in
+    # requirement_intelligence/run_state/ changed.
     if args.resume:
         prior = next(
             (s for s in run_state_mgr.state.stages if s.stage_id == "execution_package_write"),
             None,
         )
         prior_outputs = [target_dir / name for name in (prior.output_artifacts if prior else ())]
-        if prior_outputs and run_state_mgr.should_skip(
-            "execution_package_write",
-            input_artifacts=file_mode_inputs,
-            output_artifacts=prior_outputs,
-        ):
+        layer1_unchanged = bool(
+            prior_outputs
+            and run_state_mgr.should_skip(
+                "execution_package_write",
+                input_artifacts=file_mode_inputs,
+                output_artifacts=prior_outputs,
+            )
+        )
+        feature_engineering_stage = next(
+            (s for s in run_state_mgr.state.stages if s.stage_id == "feature_engineering"),
+            None,
+        )
+        # A prior run whose TestableRequirementSet was never emitted (e.g.
+        # --dry-run) never attempts feature_engineering at all -- it stays
+        # PENDING forever, legitimately, and must not block "complete" for
+        # a run that was never going to reach stage 14 in the first place.
+        testable_requirement_set_emitted = any(
+            s.stage_id == "testable_requirement_emission" and s.status == StageStatus.SUCCEEDED
+            for s in run_state_mgr.state.stages
+        )
+        feature_engineering_complete = not testable_requirement_set_emitted or (
+            feature_engineering_stage is not None
+            and feature_engineering_stage.status in (StageStatus.SUCCEEDED, StageStatus.SKIPPED)
+        )
+        if layer1_unchanged and feature_engineering_complete:
             console.note(f"Run '{run_id}' is already complete and unchanged -- nothing to do.")
             run_lock.release()
             return 0
+        if layer1_unchanged and not feature_engineering_complete:
+            # feature_engineering_stage is never None here: every stage_id in
+            # STAGE_DEFINITIONS is created PENDING at run start (RunStateManager
+            # ._initial_stages), so the stage record always exists even when
+            # the stage itself was never reached.
+            assert feature_engineering_stage is not None
+            console.note(
+                f"Run '{run_id}': Layer 1 complete, but stage 'feature_engineering' is "
+                f"{feature_engineering_stage.status} -- resuming."
+            )
 
     # Resolve the governed Validation Profile up-front (fail fast on an unknown
     # name), only when validation is requested. PlatformContext owns selection;

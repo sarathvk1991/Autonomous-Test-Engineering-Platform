@@ -45,6 +45,7 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
+from feature_engineering.generation.errors import TransportFailureError
 from feature_engineering.gherkin_lint.models import Violation
 from feature_engineering.prompts.composition import build_prompt_registry
 from requirement_intelligence.llm.llm_models import LLMRequest
@@ -68,7 +69,7 @@ _FEATURE_MARKER = "---FEATURE---"
 _CHANGES_MARKER = "---CHANGES---"
 
 
-class LiveRemediationError(Exception):
+class LiveRemediationError(TransportFailureError):
     """Raised when the LLM boundary fails to produce a usable remediation.
 
     Covers four failure modes at this boundary -- a provider exception
@@ -82,6 +83,16 @@ class LiveRemediationError(Exception):
     Anything the model *did* return inside the ``---FEATURE---`` section,
     however malformed as Gherkin, is not this exception's concern -- that is
     the D5 loop's own re-lint/re-gate job, unchanged.
+
+    A subclass of :class:`~feature_engineering.generation.errors.TransportFailureError`
+    (2026-08-04, the Layer 1-3 integration run's F1 fix, applied symmetrically
+    here): previously subclassed bare ``Exception``, so a transport failure
+    during remediation -- the identical shape of bug the run reproduced at
+    generation -- was equally uncaught by `feature_engineering.stage.runner`'s
+    remediation call site and would have aborted the whole stage. Never
+    observed live (live remediation itself is rare), fixed defensively
+    alongside the generation-phase case rather than left as a known parallel
+    gap.
     """
 
 

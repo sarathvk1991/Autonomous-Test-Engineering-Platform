@@ -19,7 +19,7 @@ from feature_engineering.generation.content_generator import (
     FeatureContentGenerator,
     StubFeatureContentGenerator,
 )
-from feature_engineering.generation.errors import FeatureGenerationError
+from feature_engineering.generation.errors import FeatureGenerationError, TransportFailureError
 from feature_engineering.generation.live_content_generator import (
     LiveFeatureContentGenerator,
     LiveGenerationError,
@@ -35,6 +35,7 @@ __all__ = [
     "LiveGenerationError",
     "ScenarioAssignment",
     "StubFeatureContentGenerator",
+    "TransportFailureError",
     "derive_feature_file_path",
     "derive_feature_name",
     "generate_feature_file",
