@@ -3,27 +3,30 @@
 **What this is.** `customqa-profile.xml` in this directory is the versioned,
 importable SonarQube quality-profile artifact ADR-0037 Recommendation 3 calls
 for ("the `customqa:*` SonarQube profile is versioned alongside the tracked
-baseline it governs"), narrowed to the Sonar-expressible half of `customqa:*`
-per ADR-0044 D5's own revision note (2026-08-04): it verifies
-`customqa:long-method` only. `customqa:direct-webdriver-action` is NOT in
-this profile — it is an architectural, caller-class-role constraint
-SonarQube cannot natively express, and is verified by a separate, static
-Layer 3 check instead (a second, not-yet-built task; CP3's own gate is the
-composite of both).
+baseline it governs"). **As of 2026-08-05 (ADR-0044 D5's third revision,
+"Gap CLOSED" section below), it carries ZERO `customqa:*`-specific rules
+that are actually enforced as such** — both `customqa:*` rules
+(`long-method`, `direct-webdriver-action`) are verified by static Layer 3
+checks instead (`automation_engineering/cp3/architecture.py`), never by
+Sonar. This profile's role is now exclusively the platform's GENERIC Java
+quality baseline: CP3's Sonar criterion gates on it for that, not for
+either `customqa:*` rule.
 
 **What's in the profile.** Every rule the built-in `Sonar way` Java profile
 activates (a full backup of it, taken directly from a live server via
 `GET /api/qualityprofiles/backup?qualityProfile=Sonar%20way&language=java`
-— not hand-typed), plus one addition: `java:S138` ("Methods should not have
+— not hand-typed), plus one addition, kept for historical/proof-of-mechanism
+value only (see "Gap CLOSED" below): `java:S138` ("Methods should not have
 too many lines"), activated with `max=40` — the real, existing, built-in
-Sonar rule `customqa:long-method` maps to (confirmed live against the
-server's own rule catalog, `GET /api/rules/show?key=java:S138`: a native,
-non-external, non-template rule, default `max=75`, `MAINTAINABILITY`/
-`MEDIUM` impact). Extending `Sonar way` wholesale, rather than starting from
-an empty profile, was a deliberate choice: `customqa` is meant to be the
-profile CP3 actually scans generated code against, so it should carry the
-platform's full baseline quality bar, not just the one rule this profile
-happens to add.
+Sonar rule `customqa:long-method` was originally meant to map to (confirmed
+live against the server's own rule catalog, `GET /api/rules/show?key=
+java:S138`: a native, non-external, non-template rule, default `max=75`,
+`MAINTAINABILITY`/`MEDIUM` impact), now known to be permanently inert
+against this platform's real generated code. Extending `Sonar way`
+wholesale, rather than starting from an empty profile, was a deliberate
+choice: `customqa` is meant to be the profile CP3 actually scans generated
+code against, so it should carry the platform's full baseline quality bar,
+not just the one, now-superseded rule this profile happens to add.
 
 ## Why this file exists but the profile isn't live yet
 
@@ -145,7 +148,7 @@ The throwaway file (and the `src/main` tree created only to hold it) was
 deleted afterward — this project has no tracked `src/main`, and none was
 reintroduced.
 
-## Open gap this proof surfaced (not closed by this build)
+## Gap CLOSED (2026-08-05): `long-method` is now a static Layer 3 check
 
 The proof above establishes the profile/rule *mechanism* works. It does
 **not** establish that `customqa:long-method` protects this platform's real
@@ -159,8 +162,33 @@ permanently `scope:"MAIN"` (a SonarQube rule-catalog property, not
 something a quality profile's activation can override), it will **never**
 evaluate any of that real generated code, on this server, on this project,
 regardless of the `customqa` profile being correctly assigned. The
-long-method gate is live and correct as a mechanism; it is currently inert
-against the actual pipeline output it was built to check. Closing this gap
-(e.g. reclassifying the scanner's source/test split, or moving long-method
-enforcement to the same static Layer 3 check `customqa:direct-webdriver-
-action` already uses) is a separate, not-yet-scoped follow-up.
+long-method gate is live and correct as a mechanism; it was permanently
+inert against the actual pipeline output it was built to check.
+
+**Resolution (the Sonar-config discovery task, 2026-08-05).** A dedicated
+follow-up investigated the two options this gap note originally posed —
+reclassifying the scanner's source/test split, or moving `long-method`
+enforcement to a static Layer 3 check — and found no clean Sonar-side fix:
+repointing `sonar.sources`/`sonar.tests` so `src/test/java` is scanned as
+`MAIN`-scope source would activate **every** `MAIN`-scope rule already in
+this profile (the full `Sonar way` baseline it extends) against that tree
+at once, not just `S138` — roughly 408 rules never reviewed for
+applicability to generated test-support code, a correctness hazard, not a
+targeted fix. `customqa:long-method` is therefore verified instead by
+`automation_engineering.cp3.architecture.evaluate_long_method`, a static,
+`javalang`-based check mirroring `customqa:direct-webdriver-action`'s own
+mechanism exactly (same module, same "no SUT/no Sonar/no network" posture)
+— wired into CP3 as a seventh criterion (`CRITERION_LONG_METHOD`). Full
+rationale: ADR-0044 D5's third revision note (2026-08-05) and ADR-0037
+Recommendation 3's second companion note (this same date).
+
+**This profile's `S138`-at-`max=40` activation is left in place, superseded
+but harmless.** It changes nothing about CP3's behavior — this project has
+no tracked `src/main` tree for `S138` to ever evaluate — and remains
+accurate, valuable evidence that the profile/rule *mechanism* itself works
+(the live proof above), even though it is no longer part of any active
+gate. **This profile's role, going forward, is exclusively generic Java
+quality** (the `Sonar way` baseline it extends) — CP3's Sonar criterion
+gates on that; neither `customqa:*` rule is Sonar-gated any longer. Both
+are static Layer 3 checks: `direct-webdriver-action` and, as of this
+resolution, `long-method` too.

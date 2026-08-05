@@ -1,17 +1,21 @@
-"""CP3's combined verdict (ADR-0044 D5, revised 2026-08-04): the
-deterministic coverage gate, the hard SonarQube quality gate, AND the
-static direct-webdriver-action check, ALL required to PASS -- "CP3 does not
-pass unless a running SonarQube server scans the generated Java and its
-quality gate ... passes" is additive to the four coverage criteria, never a
-replacement for them; the static check is additive again, for the
-customqa:* half Sonar cannot express (the F4 discovery's Path A).
+"""CP3's combined verdict (ADR-0044 D5, revised 2026-08-05): the
+deterministic coverage gate, the SonarQube quality gate (generic Java
+quality only, as of this revision), AND two static customqa:* checks
+(direct-webdriver-action, long-method), ALL required to PASS. Neither
+customqa:* rule is Sonar-gated any longer: `long-method`'s own backing
+rule, `java:S138`, is permanently `scope:MAIN` and structurally cannot
+reach this platform's `src/test/java`-resident generated code (ADR-0037
+Path A) -- the Sonar-config discovery this revision responds to. The Sonar
+criterion stays a hard CP3 requirement (D5's own text is unchanged), it now
+verifies only what the built-in profile's own generic-quality rules can
+reach.
 
 :func:`evaluate_cp3` is a pure function once its adapter's own calls
 return: no code in this module decides pass/fail from anything other than
 :func:`~.coverage.evaluate_coverage`'s four criteria, the Sonar adapter's
-own quality-gate verdict, and :func:`~.architecture.evaluate_direct_webdriver_action`'s
-own static verdict (ADR-0040 Decision 2 -- deterministic evidence only, no
-LLM judgment anywhere in this gate).
+own quality-gate verdict, and :mod:`~.architecture`'s two static verdicts
+(ADR-0040 Decision 2 -- deterministic evidence only, no LLM judgment
+anywhere in this gate).
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from pathlib import Path
 from automation_engineering.cp3.architecture import (
     Cp3GeneratedClassInput,
     evaluate_direct_webdriver_action,
+    evaluate_long_method,
 )
 from automation_engineering.cp3.coverage import evaluate_coverage
 from automation_engineering.cp3.models import (
@@ -54,9 +59,10 @@ def evaluate_cp3(
     sonar_adapter: SonarQualityGateAdapter,
     generated_classes: Sequence[Cp3GeneratedClassInput] = (),
 ) -> Cp3Result:
-    """Evaluate CP3's six criteria -- four deterministic coverage checks,
-    the hard Sonar gate, and the static direct-webdriver-action check --
-    and combine them into one verdict.
+    """Evaluate CP3's seven criteria -- four deterministic coverage checks,
+    the Sonar gate (generic Java quality), and the two static customqa:*
+    checks (direct-webdriver-action, long-method) -- and combine them into
+    one verdict.
 
     Parameters
     ----------
@@ -72,25 +78,31 @@ def evaluate_cp3(
         never constructs one itself, mirroring every other seam in this
         platform (constructor-injected, never selected here).
     generated_classes:
-        Every generated class this run produced -- step definitions AND
-        page objects alike, never pre-filtered by the caller
-        (:mod:`.architecture` determines each one's own role from its own
-        parsed ``package`` declaration). Defaults to empty, which passes
-        vacuously -- the same convention
+        Every generated class this run produced -- step definitions, page
+        objects, AND utilities alike, never pre-filtered by the caller
+        (:mod:`.architecture` determines each one's own role, or applies no
+        role filter at all, per criterion). Defaults to empty, which passes
+        both static criteria vacuously -- the same convention
         :func:`automation_engineering.cp4.gate.evaluate_cp4` already
         establishes for an empty ``page_objects`` tuple.
 
     Returns
     -------
     Cp3Result
-        ``overall_verdict`` is ``PASS`` iff all six named criteria are
-        ``PASS`` -- coverage, Sonar, AND the static architectural check,
-        all required (D5, revised 2026-08-04).
+        ``overall_verdict`` is ``PASS`` iff all seven named criteria are
+        ``PASS`` -- coverage, Sonar, AND both static architectural checks,
+        all required (D5, revised 2026-08-05).
     """
     coverage_criteria, reuse_report = evaluate_coverage(coverage_input)
     sonar_criterion = _evaluate_sonar_gate(sonar_input, sonar_adapter)
-    architecture_criterion = evaluate_direct_webdriver_action(generated_classes)
-    criteria = (*coverage_criteria, sonar_criterion, architecture_criterion)
+    webdriver_criterion = evaluate_direct_webdriver_action(generated_classes)
+    long_method_criterion = evaluate_long_method(generated_classes)
+    criteria = (
+        *coverage_criteria,
+        sonar_criterion,
+        webdriver_criterion,
+        long_method_criterion,
+    )
     overall = (
         ValidationVerdict.PASS
         if all(c.verdict == ValidationVerdict.PASS for c in criteria)

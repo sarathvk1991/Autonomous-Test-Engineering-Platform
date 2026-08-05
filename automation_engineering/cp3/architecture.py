@@ -1,7 +1,6 @@
-"""CP3's `direct_webdriver_action` criterion (ADR-0044 D5 revision,
-2026-08-04 -- the F4 discovery's Path A, build task 2 of 2): a static,
-`javalang`-based, class-role-aware check for the half of `customqa:*`
-SonarQube cannot natively express.
+"""CP3's `direct_webdriver_action` and `long_method` criteria: two static,
+`javalang`-based checks for BOTH halves of `customqa:*` -- neither is
+Sonar-gated (ADR-0044 D5's revisions, 2026-08-04 and 2026-08-05).
 
 `customqa:direct-webdriver-action`'s own rule text (the generation prompts,
 `automation_engineering/generation/orchestrator.py`'s own
@@ -21,13 +20,58 @@ PARSED package declaration of each class it is handed -- the actual
 semantic signal Java itself uses for a class's identity -- which is more
 precise than a path glob and requires no server-side configuration at all.
 
+`customqa:long-method`'s own rule text (the generation prompts): "keep every
+generated method under 40 lines." This was originally meant to be verified
+by SonarQube's own built-in `java:S138` ("Methods should not have too many
+lines") -- cheap and real as a MECHANISM (`test-suite-baseline/sonar/
+README.md`'s own live proof: a 47-line method flagged, a short one not) --
+but a Sonar-config discovery (2026-08-05) found it structurally cannot
+reach this platform's real generated code: `java:S138` is permanently
+`scope:"MAIN"` (a rule-catalog property, not something a profile's
+activation can override), while every class Layer 3 generates or promotes
+lives under `src/test/java` (`automation_engineering/catalog/scanner.py`'s
+own `JAVA_SOURCE_SUBPATH`, ADR-0037 Path A) -- `MAIN`-scope rules never
+evaluate `testSourceDirectory` content, on any project, on any server. The
+only Sonar-side workaround found (repointing `sonar.sources` to include the
+test tree) would apply EVERY `MAIN`-scope rule in the active profile to
+test code, not just S138 -- roughly 400 additional rules never intended for
+this tree, a correctness hazard disguised as a config tweak, not a targeted
+fix. `long-method` is therefore verified the same way
+`direct-webdriver-action` already is: a static check against the real
+parsed source, unconditioned on Sonar's own source/test classification.
+
+**Line-span measurement.** A method's line count is `end_line - start_line
++ 1`, both 1-indexed, via
+`automation_engineering.catalog.java_source.declaration_line_span` -- the
+SAME start/end anchors `extract_declaration_span` already uses for the
+catalog's own content-hash (annotations/modifiers through the closing brace
+or terminating semicolon), as line numbers rather than a substring. This is
+a PHYSICAL line count (every line in the span, including blank lines and
+comments) -- matching the INTENT of `java:S138` ("too many lines") and
+calibrated directly against its own live proof (`README.md`: a method
+declared at line 12, flagged at "47 lines," consistent with an inclusive
+declaration-line-through-closing-brace count). It may differ from
+SonarJava's own exact internal counting by a line or two in edge cases
+(e.g. whether a preceding `@Given(...)` annotation line is itself counted)
+-- the same "heuristic, not byte-exact" honesty
+`_webdriver_typed_names`/its own call-detection loop already states for its
+own limitation, above.
+
+**Scope: every generated class, not step-definition-only.** Unlike
+`direct-webdriver-action` (a caller-CLASS-ROLE rule, scoped to step
+definitions by its own text), `long-method` is a per-method size rule with
+no class-role restriction -- a 41-line method is a violation in a step
+definition, a page object, or a utility class alike. This function applies
+no package filter at all, unlike `_evaluate_one_class` above.
+
 Static, no SUT, no browser, no Sonar, no network call: a pure function of
 already-in-memory Java source text, mirroring ADR-0044 D6/CP4's own
-"static, no live dependency" posture for locator health. Feeds CP3's
-composite gate as a sixth criterion (`CP3_CRITERIA`), alongside the four
-coverage criteria and the Sonar quality gate -- `evaluate_cp3` composes it
-exactly like the other five, `overall_verdict` unchanged as "PASS iff every
-named criterion is PASS."
+"static, no live dependency" posture for locator health. Both checks feed
+CP3's composite gate (`CP3_CRITERIA`, now seven criteria), alongside the
+four coverage criteria and the Sonar quality gate (generic Java quality
+only, as of this same revision) -- `evaluate_cp3` composes them exactly
+like the others, `overall_verdict` unchanged as "PASS iff every named
+criterion is PASS."
 """
 
 from __future__ import annotations
@@ -37,11 +81,18 @@ from dataclasses import dataclass
 
 import javalang
 
-from automation_engineering.catalog.java_source import parse_java_file
+from automation_engineering.catalog.java_source import declaration_line_span, parse_java_file
 from automation_engineering.cp3.models import Cp3CriterionResult
 from shared.enums.base import ValidationVerdict
 
 CRITERION_DIRECT_WEBDRIVER_ACTION = "direct_webdriver_action"
+CRITERION_LONG_METHOD = "long_method"
+
+#: `customqa:long-method`'s own threshold ("keep every generated method
+#: under 40 lines") -- the same value the (Sonar-inert) `customqa-profile
+#: .xml` activates `java:S138` at, so the two artifacts state one number,
+#: not two that could drift apart.
+MAX_METHOD_LINES = 40
 
 #: The generated suite's own step-definition package (the same default
 #: `automation_engineering.generation.orchestrator.orchestrate_step_definition`
@@ -163,9 +214,60 @@ def evaluate_direct_webdriver_action(
     )
 
 
+def _long_method_messages(candidate: Cp3GeneratedClassInput) -> tuple[str, ...]:
+    try:
+        parsed = parse_java_file(candidate.class_name, candidate.java_source)
+    except (javalang.parser.JavaSyntaxError, javalang.tokenizer.LexerError):
+        # Unparsable content is a different criterion's concern, mirroring
+        # _evaluate_one_class above.
+        return ()
+
+    messages: list[str] = []
+    for _, method in parsed.tree.filter(javalang.tree.MethodDeclaration):
+        start_line, end_line = declaration_line_span(parsed, method)
+        line_count = end_line - start_line + 1
+        if line_count > MAX_METHOD_LINES:
+            messages.append(
+                f"{candidate.class_name}.{method.name}: this method has {line_count} lines, "
+                f"which is greater than the {MAX_METHOD_LINES} lines authorized. Split it "
+                "into smaller methods."
+            )
+    return tuple(messages)
+
+
+def evaluate_long_method(classes: Sequence[Cp3GeneratedClassInput]) -> Cp3CriterionResult:
+    """Evaluate `customqa:long-method` over every generated class in
+    `classes` -- ALL of them, no class-role/package filter (unlike
+    :func:`evaluate_direct_webdriver_action`, above): a method whose own
+    declaration-line-through-closing-brace span exceeds
+    :data:`MAX_METHOD_LINES` lines is a violation regardless of whether it
+    lives in a step definition, a page object, or a utility class.
+
+    Scoped to `MethodDeclaration` nodes only -- constructors are excluded,
+    matching the rule's own text ("every generated method"), not
+    `java:S138`'s exact scope (which SonarJava's own implementation applies
+    to constructors too); this platform's generated constructors are
+    presently small (a dependency-injecting one-liner in every generated
+    step-definition class today), so this is a documented, deliberate
+    narrowing, not an oversight.
+
+    Pure and deterministic: no network call, no subprocess, no live
+    infrastructure of any kind. The same input always yields the same
+    result.
+    """
+    messages = tuple(
+        message for candidate in classes for message in _long_method_messages(candidate)
+    )
+    verdict = ValidationVerdict.FAIL if messages else ValidationVerdict.PASS
+    return Cp3CriterionResult(criterion=CRITERION_LONG_METHOD, verdict=verdict, messages=messages)
+
+
 __all__ = [
     "CRITERION_DIRECT_WEBDRIVER_ACTION",
+    "CRITERION_LONG_METHOD",
+    "MAX_METHOD_LINES",
     "STEP_DEFINITION_PACKAGE",
     "Cp3GeneratedClassInput",
     "evaluate_direct_webdriver_action",
+    "evaluate_long_method",
 ]

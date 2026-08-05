@@ -118,10 +118,12 @@ def _declared_start(
     return _backward_modifier_start(parsed.tokens, index)
 
 
-def _body_end_offset(parsed: ParsedFile, search_from: javalang.tokenizer.Position) -> int:
-    """The offset one past the closing brace (or, for a body-less
-    declaration, the terminating semicolon) of the declaration whose
-    signature starts at ``search_from``.
+def _body_end_position(
+    parsed: ParsedFile, search_from: javalang.tokenizer.Position
+) -> javalang.tokenizer.Position:
+    """The position of the closing brace (or, for a body-less declaration,
+    the terminating semicolon) of the declaration whose signature starts at
+    ``search_from``.
 
     Scanning starts from the declaration's own AST position (past any
     annotations) specifically so an annotation's own array-literal braces
@@ -139,10 +141,15 @@ def _body_end_offset(parsed: ParsedFile, search_from: javalang.tokenizer.Positio
         elif token.value == "}":
             depth -= 1
             if opened and depth == 0:
-                return _char_offset(parsed.line_offsets, token.position) + 1
+                return token.position
         elif token.value == ";" and not opened:
-            return _char_offset(parsed.line_offsets, token.position) + 1
+            return token.position
     raise ValueError(f"no terminator found for declaration at {search_from!r}")
+
+
+def _body_end_offset(parsed: ParsedFile, search_from: javalang.tokenizer.Position) -> int:
+    """The offset one past :func:`_body_end_position`'s own terminator."""
+    return _char_offset(parsed.line_offsets, _body_end_position(parsed, search_from)) + 1
 
 
 def extract_declaration_span(parsed: ParsedFile, node: javalang.tree.Declaration) -> str:
@@ -153,6 +160,19 @@ def extract_declaration_span(parsed: ParsedFile, node: javalang.tree.Declaration
     start_offset = _char_offset(parsed.line_offsets, start)
     end_offset = _body_end_offset(parsed, node.position)
     return parsed.source[start_offset:end_offset]
+
+
+def declaration_line_span(parsed: ParsedFile, node: javalang.tree.Declaration) -> tuple[int, int]:
+    """The 1-indexed ``(start_line, end_line)`` of ``node``'s full
+    declaration span -- the same start/end anchors
+    :func:`extract_declaration_span` uses (annotations/modifiers through the
+    closing brace or terminating semicolon), as line numbers instead of a
+    source substring. Used by CP3's ``long-method`` static check (ADR-0044
+    D5 revision) to measure a method's physical line count.
+    """
+    start = _declared_start(parsed, node)
+    end = _body_end_position(parsed, node.position)
+    return start.line, end.line
 
 
 def extract_preceding_javadoc(parsed: ParsedFile, node: javalang.tree.Declaration) -> str | None:
@@ -267,6 +287,7 @@ __all__ = [
     "CUCUMBER_STEP_ANNOTATIONS",
     "ParsedFile",
     "annotation_string_value",
+    "declaration_line_span",
     "dedupe_tags",
     "extract_declaration_span",
     "extract_preceding_javadoc",

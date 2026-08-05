@@ -156,7 +156,7 @@ def test_coverage_pass_and_sonar_pass_and_direct_webdriver_action_fail_yields_cp
 
 def test_direct_webdriver_action_pass_does_not_rescue_a_sonar_failure() -> None:
     """The converse: a clean static architectural check does not rescue
-    CP3 from an independent Sonar failure -- each of the six criteria
+    CP3 from an independent Sonar failure -- each of the seven criteria
     fails CP3 independently (D5)."""
     from automation_engineering.cp3.architecture import CRITERION_DIRECT_WEBDRIVER_ACTION
 
@@ -166,6 +166,113 @@ def test_direct_webdriver_action_pass_does_not_rescue_a_sonar_failure() -> None:
     assert result.overall_verdict == ValidationVerdict.FAIL
     assert result.criterion(CRITERION_DIRECT_WEBDRIVER_ACTION).verdict == ValidationVerdict.PASS
     assert result.criterion(CRITERION_SONAR_QUALITY_GATE).verdict == ValidationVerdict.FAIL
+
+
+def _over_limit_method_source(package: str, class_name: str, method_name: str) -> str:
+    body = "\n".join(f'        System.out.println("line {i}");' for i in range(39))
+    return (
+        f"package {package};\n\n"
+        f"public class {class_name} {{\n\n"
+        f"    public void {method_name}() {{\n"
+        f"{body}\n"
+        f"    }}\n"
+        f"}}\n"
+    )
+
+
+def test_coverage_sonar_webdriver_pass_but_long_method_fails_yields_cp3_fail() -> None:
+    """ADR-0044 D5's third revision (2026-08-05): long_method is a HARD
+    seventh criterion -- a clean coverage gate, a passing Sonar scan (now
+    generic-quality-only), and a clean direct-webdriver-action check do not
+    rescue CP3 from a >40-line generated method."""
+    from automation_engineering.cp3.architecture import (
+        CRITERION_DIRECT_WEBDRIVER_ACTION,
+        CRITERION_LONG_METHOD,
+        Cp3GeneratedClassInput,
+    )
+
+    long_page_object = Cp3GeneratedClassInput(
+        class_name="OverLimitPage",
+        java_source=_over_limit_method_source(
+            "com.automation.pages", "OverLimitPage", "overLimit"
+        ),
+    )
+    adapter = StubSonarQualityGateAdapter(result=SonarQualityGateResult(passed=True))
+    result = evaluate_cp3(
+        _covering_input(), _SONAR_INPUT, adapter, generated_classes=[long_page_object]
+    )
+
+    assert result.overall_verdict == ValidationVerdict.FAIL
+    assert result.criterion(CRITERION_STEP_COVERAGE).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_SONAR_QUALITY_GATE).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_DIRECT_WEBDRIVER_ACTION).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_LONG_METHOD).verdict == ValidationVerdict.FAIL
+
+
+def test_long_method_pass_does_not_rescue_an_independent_direct_webdriver_action_failure() -> (
+    None
+):
+    """The converse: a clean long_method check does not rescue CP3 from an
+    independent direct_webdriver_action failure -- each static criterion
+    fails CP3 independently."""
+    from automation_engineering.cp3.architecture import (
+        CRITERION_DIRECT_WEBDRIVER_ACTION,
+        CRITERION_LONG_METHOD,
+        Cp3GeneratedClassInput,
+    )
+
+    violating_step_def = Cp3GeneratedClassInput(
+        class_name="LoginSteps",
+        java_source=(
+            "package com.automation.steps;\n"
+            "import org.openqa.selenium.WebDriver;\n"
+            "public class LoginSteps {\n"
+            "    private WebDriver driver;\n"
+            "    public void doLogin() { driver.click(); }\n"
+            "}\n"
+        ),
+    )
+    adapter = StubSonarQualityGateAdapter(result=SonarQualityGateResult(passed=True))
+    result = evaluate_cp3(
+        _covering_input(), _SONAR_INPUT, adapter, generated_classes=[violating_step_def]
+    )
+
+    assert result.overall_verdict == ValidationVerdict.FAIL
+    assert result.criterion(CRITERION_LONG_METHOD).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_DIRECT_WEBDRIVER_ACTION).verdict == ValidationVerdict.FAIL
+
+
+def test_all_seven_criteria_clean_yields_cp3_pass() -> None:
+    """The converse of the composite-fail proofs above: coverage, Sonar,
+    direct-webdriver-action, AND long-method all clean together yields an
+    overall CP3 PASS."""
+    from automation_engineering.cp3.architecture import (
+        CRITERION_DIRECT_WEBDRIVER_ACTION,
+        CRITERION_LONG_METHOD,
+        Cp3GeneratedClassInput,
+    )
+
+    clean_step_def = Cp3GeneratedClassInput(
+        class_name="LoginSteps",
+        java_source=(
+            "package com.automation.steps;\n\n"
+            "public class LoginSteps {\n\n"
+            "    public void iLogInAs() {\n"
+            '        System.out.println("clean");\n'
+            "    }\n"
+            "}\n"
+        ),
+    )
+    adapter = StubSonarQualityGateAdapter(result=SonarQualityGateResult(passed=True))
+    result = evaluate_cp3(
+        _covering_input(), _SONAR_INPUT, adapter, generated_classes=[clean_step_def]
+    )
+
+    assert result.overall_verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_STEP_COVERAGE).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_SONAR_QUALITY_GATE).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_DIRECT_WEBDRIVER_ACTION).verdict == ValidationVerdict.PASS
+    assert result.criterion(CRITERION_LONG_METHOD).verdict == ValidationVerdict.PASS
 
 
 def test_a_scan_error_fails_the_sonar_criterion_cleanly_not_a_crash() -> None:
