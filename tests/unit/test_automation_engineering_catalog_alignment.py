@@ -35,15 +35,26 @@ _REAL_BASELINE_ROOT = Path("test-suite-baseline")
 
 
 class TestRealBaselineAlignment:
-    """The real tracked baseline's own step definitions -- both have zero
-    captures and zero parameters, so both must be aligned."""
+    """`SmokeSteps`'s own two step definitions in the real tracked baseline
+    -- both have zero captures and zero parameters, so both must be
+    aligned.
+
+    ADR-0044 D3's persistent catalog means the tracked baseline is EXPECTED
+    to grow across runs as reuse-first promotion lands new assets
+    (ADR-0045) -- confirmed live: a generate->promote->reuse run legitimately
+    grew `test-suite-baseline/`'s step definitions from 2 to 35 (committed
+    at `c05aa9f`), many of which DO have captures/parameters and would fail
+    a blanket "every step is captureless" assertion. This test therefore
+    checks `SmokeSteps`'s own two known methods specifically, by name,
+    never every step definition the (now-larger) catalog happens to
+    contain."""
 
     def test_smoke_steps_are_aligned(self) -> None:
         catalog = reconcile(_REAL_BASELINE_ROOT)
 
-        assert len(catalog.step_definitions) == 2
-        for step in catalog.step_definitions:
-            alignment = step.signature_alignment
+        by_method = {s.method_name: s for s in catalog.step_definitions}
+        for method_name in ("iOpenTheApplicationUnderTest", "thePageTitleIsNotEmpty"):
+            alignment = by_method[method_name].signature_alignment
             assert alignment.captures == ()
             assert alignment.correlations == ()
             assert alignment.non_capture_parameters == ()

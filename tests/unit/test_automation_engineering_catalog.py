@@ -90,12 +90,26 @@ _FIXTURE_PAGE_OBJECT = """\
 
 class TestRealTrackedBaseline:
     """Scans the ACTUAL walking-skeleton tracked baseline -- the real first
-    catalog entries (no fixtures)."""
+    catalog entries (no fixtures).
+
+    ADR-0044 D3's own persistent-catalog design means the tracked baseline
+    is EXPECTED to grow across runs as reuse-first promotion lands new
+    assets (ADR-0045) -- confirmed live, not hypothetical: a live
+    generate->promote->reuse run legitimately grew
+    `test-suite-baseline/`'s step definitions from 2 to 35 (committed at
+    `c05aa9f`). `test_smoke_steps_are_catalogued` therefore asserts that
+    `SmokeSteps`'s own two known methods are present and correctly
+    catalogued AMONG whatever else the live baseline now contains, never an
+    exact total count -- the same "known asset, not exact population"
+    invariant `test_framework_and_runner_packages_are_excluded` (below) and
+    `TestJsonRoundTrip.test_signature_alignment_round_trips_through_json`
+    (`test_automation_engineering_catalog_alignment.py`) already use for
+    the identical reason."""
 
     def test_smoke_steps_are_catalogued(self) -> None:
         catalog = reconcile(_REAL_BASELINE_ROOT)
 
-        assert len(catalog.step_definitions) == 2
+        assert len(catalog.step_definitions) >= 2  # SmokeSteps' own two, plus whatever else
         by_method = {s.method_name: s for s in catalog.step_definitions}
         given = by_method["iOpenTheApplicationUnderTest"]
         assert given.class_name == "com.automation.steps.SmokeSteps"
