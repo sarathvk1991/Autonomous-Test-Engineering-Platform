@@ -62,6 +62,25 @@ def test_submit_scan_parses_ce_task_id_from_report_task_file(tmp_path: Path) -> 
     assert not any("secret-token" in str(arg) for arg in run.call_args.args[0])
 
 
+def test_submit_scan_uses_the_fully_qualified_sonar_goal(tmp_path: Path) -> None:
+    """F3 (2026-08-05): the short `sonar:sonar` prefix only resolves against
+    a `~/.m2/settings.xml` that registers the plugin group -- reproduced
+    live as a real, environment-dependent failure
+    (`architecture-baseline-v2.md` §4 item 17). The fully qualified goal
+    needs no such registration on any machine."""
+    report_dir = tmp_path / "target" / "sonar"
+    report_dir.mkdir(parents=True)
+    (report_dir / "report-task.txt").write_text("ceTaskId=ABC123\n", encoding="utf-8")
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    with patch(_SUBPROCESS_RUN, return_value=completed) as run:
+        _adapter().submit_scan(tmp_path, "demo")
+
+    argv = run.call_args.args[0]
+    assert "org.sonarsource.scanner.maven:sonar-maven-plugin:sonar" in argv
+    assert "sonar:sonar" not in argv
+
+
 def test_submit_scan_raises_on_nonzero_exit(tmp_path: Path) -> None:
     completed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="build failed")
     with (

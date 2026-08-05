@@ -41,6 +41,16 @@ DEFAULT_OUTPUT_DIR = _REPO_ROOT / "output" / "executions"
 # Make the platform importable when run as a standalone script.
 sys.path.insert(0, str(_REPO_ROOT))
 
+from automation_engineering.cp3.sonar.live_adapter import LiveSonarQualityGateAdapter  # noqa: E402
+from automation_engineering.generation.live_step_definition_generator import (  # noqa: E402
+    LiveStepDefinitionGenerator,
+)
+from automation_engineering.generation.live_test_data_generator import (  # noqa: E402
+    LiveTestDataGenerator,
+)
+from automation_engineering.reuse.embeddings import GeminiEmbeddingProvider  # noqa: E402
+from automation_engineering.reuse.live_matcher import LiveSemanticMatcher  # noqa: E402
+from automation_engineering.stage import execute_automation_engineering_stage  # noqa: E402
 from contracts.testable_requirement import CONTRACT_VERSION  # noqa: E402
 from feature_engineering.generation.live_content_generator import (  # noqa: E402
     LiveFeatureContentGenerator,
@@ -89,6 +99,14 @@ from requirement_intelligence.run_state import (  # noqa: E402
 DEFAULT_PROVIDER = "gemini"
 SUPPORTED_PROVIDERS = meta.supported_provider_ids()
 REASONING_CONTRACT_VERSION = meta.REASONING_CONTRACT_VERSION
+# Stage 15's own live SonarQube target (ADR-0044 D5) -- read at call time
+# (--with-automation-engineering), never at import time, so importing this
+# module never requires either variable to be set. Reuses SONAR_BASE_URL/
+# SONAR_TOKEN, the SAME .env.example entries the SonarQube connector (Layer
+# 1, requirement evidence) already reads -- one server address, one env var,
+# even though this is the first CLI wiring to construct a
+# LiveSonarQualityGateAdapter (CP3's own submit-a-scan seam) against it.
+_DEFAULT_SONAR_BASE_URL = "http://localhost:9000"
 # Synthetic request id used for --dry-run, where no execution_id is generated.
 _DRY_RUN_REQUEST_ID = "dry-run"
 # Schema/organization version stamped on the single-execution HistoricalDatasetReference
@@ -1487,6 +1505,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # .runner's own docstring for why: it is a ready-to-call, self-contained
     # integration point, built and tested standalone before this task wired it in.
     feature_engineering_result: Any = None
+    automation_engineering_result: Any = None
     if testable_requirement_set is not None:
         console.action("\nGenerating Features (Layer 2)")
         feature_engineering_result = execute_feature_engineering_stage(
@@ -1515,6 +1534,56 @@ def handle_analyze(args: argparse.Namespace) -> int:
             error_message = fe_stage.error.message if fe_stage.error else "unknown error"
             console.error(f"Feature Engineering failed: {error_message}")
 
+        # Automation Engineering (Layer 3, stage 15 -- ADR-0036, ADR-0044): the
+        # entry point item 20 of architecture-baseline-v2.md §4 found missing --
+        # "Layer 3 has no live entry point." Gated behind --with-automation-
+        # engineering (off by default, module docstring: a real, live-Sonar-
+        # dependent stage, not something an ordinary `analyze` invocation should
+        # silently start doing) AND on Feature Engineering having actually
+        # produced a Validated Feature Package this run or a prior one (SUCCEEDED
+        # or SKIPPED-because-unchanged) -- the same "has stage 14 got something to
+        # consume" gating stage 14 itself applies to `testable_requirement_set`.
+        # Mirrors stage 14's own wiring exactly: `execute_automation_engineering
+        # _stage` owns its own start_stage/should_skip/fail_stage/succeed_stage
+        # transitions internally.
+        if args.with_automation_engineering and (
+            feature_engineering_result is not None or fe_stage.status == StageStatus.SKIPPED
+        ):
+            console.action("\nGenerating Automation (Layer 3)")
+            automation_engineering_result = execute_automation_engineering_stage(
+                run_state_mgr,
+                target_dir,
+                matcher=LiveSemanticMatcher(GeminiEmbeddingProvider()),
+                step_definition_generator=LiveStepDefinitionGenerator(provider),
+                test_data_generator=LiveTestDataGenerator(provider),
+                sonar_adapter=LiveSonarQualityGateAdapter(
+                    base_url=os.environ.get("SONAR_BASE_URL", _DEFAULT_SONAR_BASE_URL),
+                    token=os.environ.get("SONAR_TOKEN", ""),
+                ),
+            )
+            ae_stage = next(
+                s for s in run_state_mgr.state.stages if s.stage_id == "automation_engineering"
+            )
+            if automation_engineering_result is not None:
+                records = automation_engineering_result.package.records
+                escalations = automation_engineering_result.package.escalated_records
+                console.ok(f"{len(records)} automation asset(s) processed")
+                console.note(
+                    f"  cp3={'pass' if automation_engineering_result.cp3_passed else 'fail'} "
+                    f"cp4={'pass' if automation_engineering_result.cp4_passed else 'fail'} "
+                    f"promoted={len(automation_engineering_result.promoted_baseline_paths)}"
+                )
+                if escalations:
+                    console.note(
+                        f"  ⚠ {len(escalations)} asset(s) escalated for human "
+                        f"review (see {automation_engineering_result.package_path.name})"
+                    )
+            elif ae_stage.status == StageStatus.SKIPPED:
+                console.note("  unchanged, skipped")
+            else:
+                error_message = ae_stage.error.message if ae_stage.error else "unknown error"
+                console.error(f"Automation Engineering failed: {error_message}")
+
     history.finalize(target_dir, save_execution=effective_save)
 
     console.note("\nExecution Finished")
@@ -1530,6 +1599,13 @@ def handle_analyze(args: argparse.Namespace) -> int:
             console.note(
                 f"  escalations : {len(final_escalations)} "
                 f"(see {feature_engineering_result.package_path.name})"
+            )
+    if automation_engineering_result is not None:
+        final_ae_escalations = automation_engineering_result.package.escalated_records
+        if final_ae_escalations:
+            console.note(
+                f"  automation escalations : {len(final_ae_escalations)} "
+                f"(see {automation_engineering_result.package_path.name})"
             )
     run_lock.release()
     return 0
@@ -1759,6 +1835,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     analyze.add_argument("--verbose", action="store_true", help="Display detailed progress output.")
+    analyze.add_argument(
+        "--with-automation-engineering",
+        action="store_true",
+        help=(
+            "After Feature Engineering (Layer 2) succeeds or is unchanged, also run "
+            "Automation Engineering (Layer 3, stage 15, ADR-0044): reuse-decide/generate "
+            "step definitions and test-data classes, run CP3/CP4, and promote clean, "
+            "non-duplicate assets into the tracked test-suite-baseline. Off by default -- "
+            "this is a real, live-infrastructure-dependent stage (a reachable SonarQube "
+            "server, per ADR-0044 D5) and this flag is the explicit opt-in, not a change "
+            "to this command's own default behavior."
+        ),
+    )
     analyze.set_defaults(func=handle_analyze)
 
     health = subparsers.add_parser(

@@ -37,9 +37,10 @@ class TestStageDefinitions:
 
     def test_live_and_placeholder_counts(self) -> None:
         # 13 ADR-0036 L1 stages + TRS emission + stage 14 (Feature Engineering,
-        # wired into the live CLI sequence -- see scripts/run_requirement_analysis.py).
-        assert len(LIVE_STAGE_IDS) == 15
-        assert len(PLACEHOLDER_STAGE_IDS) == 5  # Layers 3-7
+        # wired into the live CLI sequence) + stage 15 (Automation Engineering,
+        # a real CLI-invocable entry point -- automation_engineering/stage/runner.py).
+        assert len(LIVE_STAGE_IDS) == 16
+        assert len(PLACEHOLDER_STAGE_IDS) == 4  # Layers 4-7
 
     def test_stage_ids_are_unique(self) -> None:
         ids = [d.stage_id for d in STAGE_DEFINITIONS]
@@ -60,18 +61,23 @@ class TestStageDefinitions:
         live_ids = [d.stage_id for d in STAGE_DEFINITIONS if d.layer == "L1"]
         assert live_ids[-1] == "execution_package_write"
 
-    def test_placeholder_layers_cover_l3_through_l7(self) -> None:
-        """L2 (Feature Engineering, stage 14) moved into LIVE_STAGE_IDS once
-        this task wired it into the CLI's automatic sequence -- only Layers
-        3-7 remain reserved, not-yet-implemented placeholders."""
+    def test_placeholder_layers_cover_l4_through_l7(self) -> None:
+        """L2 (Feature Engineering, stage 14) and L3 (Automation Engineering,
+        stage 15) both moved into LIVE_STAGE_IDS once each was wired into a
+        real, CLI-invocable entry point -- only Layers 4-7 remain reserved,
+        not-yet-implemented placeholders."""
         placeholder_layers = {
             d.layer for d in STAGE_DEFINITIONS if d.stage_id in PLACEHOLDER_STAGE_IDS
         }
-        assert placeholder_layers == {"L3", "L4", "L5", "L6", "L7"}
+        assert placeholder_layers == {"L4", "L5", "L6", "L7"}
 
     def test_feature_engineering_is_live_not_placeholder(self) -> None:
         assert "feature_engineering" in LIVE_STAGE_IDS
         assert "feature_engineering" not in PLACEHOLDER_STAGE_IDS
+
+    def test_automation_engineering_is_live_not_placeholder(self) -> None:
+        assert "automation_engineering" in LIVE_STAGE_IDS
+        assert "automation_engineering" not in PLACEHOLDER_STAGE_IDS
 
     def test_unknown_stage_id_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown stage_id"):

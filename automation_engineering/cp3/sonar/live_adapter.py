@@ -3,11 +3,15 @@
 SonarQube has no REST endpoint that accepts raw source text for scanning --
 analysis is always performed by the scanner engine against an on-disk,
 buildable project (the ``sonar-scanner`` CLI or a build-tool plugin).
-Given ADR-0041's own Maven/JDK21 stack, this adapter submits via
-``mvn sonar:sonar`` against `project_root` (an already-on-disk Maven
-project -- writing generated Java to that location is promotion's own job,
-out of this build's scope, ADR-0045). On success, the Sonar Maven plugin
-writes ``target/sonar/report-task.txt`` (``key=value`` lines including
+Given ADR-0041's own Maven/JDK21 stack, this adapter submits via the
+Sonar-Maven-plugin's own fully qualified goal (:data:`_SONAR_GOAL`, F3 below)
+against `project_root` -- an already-on-disk Maven project; stage 15's own
+orchestration (`automation_engineering/stage/runner.py`) writes generated
+Java into that project's per-run workspace copy before CP3 is ever called,
+promotion (ADR-0045) separately copies a clean, promoted subset into the
+TRACKED baseline afterward -- two different write targets, neither this
+adapter's own job. On success, the Sonar Maven plugin writes
+``target/sonar/report-task.txt`` (``key=value`` lines including
 ``ceTaskId``) -- the real, documented hand-off between "scan submitted" and
 "poll the Compute Engine task API for it."
 
@@ -69,6 +73,22 @@ from automation_engineering.cp3.sonar.models import (
 _TERMINAL_TASK_STATUSES = frozenset({"SUCCESS", "FAILED", "CANCELED"})
 _REPORT_TASK_RELATIVE_PATH = Path("target/sonar/report-task.txt")
 
+#: The FULLY QUALIFIED Sonar-Maven-plugin goal (F3, 2026-08-05, this stage-15
+#: wiring build). The short form (`sonar:sonar`) only resolves if the
+#: invoking machine's own `~/.m2/settings.xml` registers
+#: `org.sonarsource.scanner.maven` under `pluginGroups` -- Maven's default
+#: plugin-group search (`org.apache.maven.plugins`/`org.codehaus.mojo`) does
+#: not include it. Reproduced live (`architecture-baseline-v2.md` §4 item
+#: 17): on a machine with no such registration, the short form fails with
+#: `exit 1`, `"No plugin found for prefix 'sonar'"` -- an environment-
+#: portability gap, not a code-quality signal about the scanned Java, and
+#: exactly the kind of failure this stage's own CP3 call would otherwise
+#: misattribute. The fully qualified form needs no `pluginGroups`
+#: registration on any machine -- it names the plugin's own Maven
+#: coordinates directly, the same way any other non-core plugin goal would
+#: be invoked without relying on a local, undeclared environment convention.
+_SONAR_GOAL = "org.sonarsource.scanner.maven:sonar-maven-plugin:sonar"
+
 #: The quality profile name CP3's Sonar gate expects to be assigned to
 #: whatever project it scans (ADR-0044 D5 revision, ADR-0037 Recommendation
 #: 3) -- documentation only, since SonarQube has no scanner-time parameter
@@ -111,7 +131,7 @@ class LiveSonarQualityGateAdapter:
                 "-q",
                 "-f",
                 str(project_root / "pom.xml"),
-                "sonar:sonar",
+                _SONAR_GOAL,
                 f"-Dsonar.host.url={self._base_url}",
                 f"-Dsonar.projectKey={project_key}",
             ],

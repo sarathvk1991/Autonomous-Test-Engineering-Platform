@@ -48,7 +48,10 @@ class StageDefinition:
 #: The 13 ADR-0036-numbered live stages, plus testable_requirement_emission
 #: (ADR-0034/ADR-0042, not in ADR-0036's table), plus Layer 2 (Feature
 #: Engineering, stage 14 -- wired into the live CLI sequence, ADR-0043),
-#: plus the 5 ADR-0036 Layer 3-7 reserved placeholders (declared, not
+#: plus Layer 3 (Automation Engineering, stage 15 -- a real, CLI-invocable
+#: entry point as of the stage-15 wiring task, ADR-0044; gated behind an
+#: explicit opt-in flag rather than folded into the unconditional sequence),
+#: plus the 4 ADR-0036 Layer 4-7 reserved placeholders (declared, not
 #: implemented).
 STAGE_DEFINITIONS: tuple[StageDefinition, ...] = (
     StageDefinition(
@@ -82,7 +85,7 @@ STAGE_DEFINITIONS: tuple[StageDefinition, ...] = (
         "execution_package_write", 9, "L1", "Execution Package (write)", "CAP-020/022"
     ),
     StageDefinition("feature_engineering", 14, "L2", "Feature Engineering", "ADR-0043"),
-    StageDefinition("automation_engineering", 15, "L3", "Automation Engineering", "none yet"),
+    StageDefinition("automation_engineering", 15, "L3", "Automation Engineering", "ADR-0044"),
     StageDefinition("suite_quality_governance", 16, "L4", "Suite Quality Governance", "none yet"),
     StageDefinition("test_execution", 17, "L5", "Test Execution", "none yet"),
     StageDefinition(
@@ -104,15 +107,20 @@ STAGE_DEFINITIONS: tuple[StageDefinition, ...] = (
 #: Stage ids that exist and run today (stages 1-13 of ADR-0036 plus
 #: testable_requirement_emission, plus stage 14 -- Feature Engineering --
 #: since the task that wired it into `scripts/run_requirement_analysis.py`'s
-#: `handle_analyze` sequence). Layers 3-7 remain reserved PENDING placeholders.
+#: `handle_analyze` sequence, plus stage 15 -- Automation Engineering --
+#: since the stage-15 wiring task (`automation_engineering/stage/runner.py`,
+#: ADR-0044) gave it its own CLI-invocable entry point, gated behind an
+#: explicit opt-in flag rather than the unconditional sequence -- see that
+#: module's own report for why). Layers 4-7 remain reserved PENDING
+#: placeholders.
 LIVE_STAGE_IDS: tuple[str, ...] = tuple(
     d.stage_id
     for d in STAGE_DEFINITIONS
-    if d.layer in ("L1", "L2")
+    if d.layer in ("L1", "L2", "L3")
 )
 
 PLACEHOLDER_STAGE_IDS: tuple[str, ...] = tuple(
-    d.stage_id for d in STAGE_DEFINITIONS if d.layer not in ("L1", "L2")
+    d.stage_id for d in STAGE_DEFINITIONS if d.layer not in ("L1", "L2", "L3")
 )
 
 _BY_ID = {d.stage_id: d for d in STAGE_DEFINITIONS}
