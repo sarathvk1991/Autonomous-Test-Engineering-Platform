@@ -57,10 +57,10 @@ def test_provider_conforms_to_seam() -> None:
     assert hasattr(provider, "embed")
 
 
-def test_default_model_is_text_embedding_004(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_model_is_gemini_embedding_001(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
     provider = GeminiEmbeddingProvider(api_key="fake-key")
-    assert provider._model_name == "text-embedding-004"
+    assert provider._model_name == "gemini-embedding-001"
 
 
 def test_reads_api_key_and_model_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -154,3 +154,120 @@ def test_unextractable_embeddings_raises_call_error() -> None:
     with patch(_CLIENT_PATH, return_value=client):
         with pytest.raises(EmbeddingCallError, match="Could not extract"):
             provider.embed(["text"])
+
+
+class _FakeRateLimitError(Exception):
+    """Stand-in for `google.genai.errors.ClientError` on a 429 --
+    `code`/`status`/`details` are the exact attributes
+    `automation_engineering.reuse.embeddings._is_retryable`/
+    `_parse_retry_delay_seconds` read; no real SDK class is imported."""
+
+    def __init__(self, retry_delay: str | None = None) -> None:
+        super().__init__("429 RESOURCE_EXHAUSTED. quota exceeded")
+        self.code = 429
+        self.status = "RESOURCE_EXHAUSTED"
+        self.details = (
+            {"error": {"details": [{"retryDelay": retry_delay}]}}
+            if retry_delay is not None
+            else {"error": {}}
+        )
+
+
+def test_retry_after_one_429_then_succeeds() -> None:
+    """FIX 3 verification: a stub provider that 429s once then succeeds --
+    the call backs off (via the injected fake `sleep`) and retries, bounded,
+    succeeding on the second attempt."""
+    client = MagicMock()
+    client.models.embed_content.side_effect = [
+        _FakeRateLimitError(),
+        _fake_embedding_response([[0.1, 0.2]]),
+    ]
+    sleeps: list[float] = []
+    provider = GeminiEmbeddingProvider(
+        api_key="fake-key", sleep=sleeps.append, clock=lambda: 0.0
+    )
+
+    with patch(_CLIENT_PATH, return_value=client):
+        result = provider.embed(["text"])
+
+    assert result == ((0.1, 0.2),)
+    assert client.models.embed_content.call_count == 2
+    assert len(sleeps) == 1
+    assert sleeps[0] > 0
+
+
+def test_retry_honors_retry_delay_from_the_sdk_error() -> None:
+    """The SDK error's own `retryDelay` (e.g. `"34s"`) is honored over the
+    fixed exponential fallback, when parseable."""
+    client = MagicMock()
+    client.models.embed_content.side_effect = [
+        _FakeRateLimitError(retry_delay="34s"),
+        _fake_embedding_response([[0.1, 0.2]]),
+    ]
+    sleeps: list[float] = []
+    provider = GeminiEmbeddingProvider(
+        api_key="fake-key", sleep=sleeps.append, clock=lambda: 0.0
+    )
+
+    with patch(_CLIENT_PATH, return_value=client):
+        provider.embed(["text"])
+
+    assert sleeps == [34.0]
+
+
+def test_persistent_429_exhausts_retry_and_raises_call_error() -> None:
+    """FIX 3 verification: a persistent 429 exhausts the bounded retry and
+    raises `EmbeddingCallError` -- the backstop for FIX 2's per-need
+    escalation, never an infinite retry loop."""
+    client = MagicMock()
+    client.models.embed_content.side_effect = _FakeRateLimitError()
+    sleeps: list[float] = []
+    provider = GeminiEmbeddingProvider(
+        api_key="fake-key", max_retries=3, sleep=sleeps.append, clock=lambda: 0.0
+    )
+
+    with patch(_CLIENT_PATH, return_value=client):
+        with pytest.raises(EmbeddingCallError, match="quota exceeded"):
+            provider.embed(["text"])
+
+    assert client.models.embed_content.call_count == 4  # first attempt + 3 retries
+    assert len(sleeps) == 3
+
+
+def test_non_retryable_failure_never_retries() -> None:
+    """A plain SDK exception (no `code`/`status`) is not judged retryable --
+    the existing `test_call_failure_wrapped_no_sdk_exception_crosses_boundary`
+    already proves the wrap; this proves it also never sleeps/retries."""
+    client = _fake_client(side_effect=_FakeSDKError("bad request"))
+    sleeps: list[float] = []
+    provider = GeminiEmbeddingProvider(api_key="fake-key", sleep=sleeps.append)
+
+    with patch(_CLIENT_PATH, return_value=client):
+        with pytest.raises(EmbeddingCallError):
+            provider.embed(["text"])
+
+    assert client.models.embed_content.call_count == 1
+    assert sleeps == []
+
+
+def test_pacing_sleeps_when_the_per_minute_limit_would_be_exceeded() -> None:
+    """FIX 3 verification (pacing half): once `max_calls_per_minute` calls
+    have been made within the trailing 60-second window, the next call
+    blocks (via the injected fake `sleep`) until the window admits it."""
+    client = _fake_client(_fake_embedding_response([[0.1]]))
+    sleeps: list[float] = []
+    clock_values = iter([0.0, 0.0, 10.0, 10.0])
+    provider = GeminiEmbeddingProvider(
+        api_key="fake-key",
+        max_calls_per_minute=1,
+        sleep=sleeps.append,
+        clock=lambda: next(clock_values, 70.0),
+    )
+
+    with patch(_CLIENT_PATH, return_value=client):
+        provider.embed(["first"])
+        provider.embed(["second"])
+
+    assert client.models.embed_content.call_count == 2
+    assert len(sleeps) == 1
+    assert sleeps[0] == pytest.approx(50.0)  # 60s window - 10s already elapsed

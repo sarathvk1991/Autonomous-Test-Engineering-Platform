@@ -3,11 +3,27 @@
 from __future__ import annotations
 
 import importlib
+from dataclasses import dataclass
 from typing import Any
 
+from requirement_intelligence.connectors.connector_exceptions import ConnectorError
 from requirement_intelligence.models.source_artifact import SourceArtifact
 from requirement_intelligence.registry.registry_exceptions import RegistryValidationError
 from requirement_intelligence.registry.registry_loader import RegistryLoader
+
+
+@dataclass(frozen=True, slots=True)
+class SourceExecutionFailure:
+    """One source's own `execute_source()` failure, recorded by `execute_all()`
+    (2026-08-05, the free-tier survivability build) instead of aborting the
+    whole run -- a down/unreachable connector (`ConnectorError`, its
+    configuration/connection/fetch subtypes) is an INFRA condition local to
+    that one source, not a pipeline failure; the run continues with whatever
+    sources ARE up."""
+
+    source_id: str
+    source_name: str
+    error: str
 
 
 class ConnectorRegistry:
@@ -24,6 +40,15 @@ class ConnectorRegistry:
         """
         self.loader = loader or RegistryLoader()
         self._validate_enabled_sources()
+        self._failed_sources: list[SourceExecutionFailure] = []
+
+    @property
+    def failed_sources(self) -> tuple[SourceExecutionFailure, ...]:
+        """Every source `execute_all()`'s last call isolated as failed, in
+        the order it was encountered. Empty before `execute_all()` is ever
+        called, and reset at the START of each `execute_all()` call --
+        reflects only the MOST RECENT call, never accumulated across calls."""
+        return tuple(self._failed_sources)
 
     def _dynamic_load(self, class_path: str) -> type:
         """Dynamically imports and returns a class from a dot-separated path.
@@ -133,11 +158,35 @@ class ConnectorRegistry:
     def execute_all(self) -> list[SourceArtifact]:
         """Loads and executes all enabled sources, returning a combined list of artifacts.
 
+        Per-source isolated (2026-08-05, the free-tier survivability
+        build): a `ConnectorError` (configuration/connection/fetch --
+        e.g. a down or unreachable connector) from ONE source's own
+        `execute_source()` is recorded in `failed_sources` and that source
+        is skipped; every other enabled source still executes, and the run
+        continues degraded rather than aborting. A `RegistryValidationError`
+        (a mapper-instantiation/metadata bug, not an infra condition) is
+        NOT isolated -- it still propagates, unchanged: that class of
+        failure indicates a genuine setup defect, not a source being
+        temporarily down, and isolating it would silently hide a bug this
+        registry's own `__init__`-time validation exists to catch loudly.
+
         Returns:
-            list[SourceArtifact]: Canonical SourceArtifacts from all executed sources.
+            list[SourceArtifact]: Canonical SourceArtifacts from every source
+            that executed successfully.
         """
         all_artifacts: list[SourceArtifact] = []
+        self._failed_sources = []
         for source_config in self.loader.get_enabled_sources():
-            artifacts = self.execute_source(source_config)
+            source_id = str(source_config.get("sourceId", "?"))
+            source_name = str(source_config.get("sourceName", source_id))
+            try:
+                artifacts = self.execute_source(source_config)
+            except ConnectorError as exc:
+                self._failed_sources.append(
+                    SourceExecutionFailure(
+                        source_id=source_id, source_name=source_name, error=str(exc)
+                    )
+                )
+                continue
             all_artifacts.extend(artifacts)
         return all_artifacts

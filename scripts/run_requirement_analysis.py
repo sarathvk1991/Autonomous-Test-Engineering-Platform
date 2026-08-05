@@ -352,10 +352,25 @@ def run_engineering_pipeline(
         source_artifacts = registry.execute_all()
     finally:
         os.chdir(previous_cwd)
+    # One down/unreachable source no longer aborts the run (2026-08-05, the
+    # free-tier survivability build) -- `execute_all()` isolates a
+    # `ConnectorError` per source and continues with the rest; report each
+    # source's REAL outcome here rather than a blanket `console.ok`, which
+    # would otherwise misreport a source that `execute_all()` just skipped.
+    failed_by_name = {f.source_name: f for f in registry.failed_sources}
     for name in source_names:
-        console.ok(name)
+        failure = failed_by_name.get(name)
+        if failure is not None:
+            console.error(f"{name}: unavailable, continuing without it -- {failure.error}")
+        else:
+            console.ok(name)
     source_count = len(source_artifacts)
     console.detail(f"SourceArtifacts: {source_count}")
+    if failed_by_name:
+        console.note(
+            f"{len(failed_by_name)} of {len(source_names)} source(s) unavailable -- "
+            "proceeding degraded with the rest. Run 'health' to check every configured source."
+        )
 
     console.action("Running Consolidation")
     consolidated = context.create_consolidation_engine().consolidate(source_artifacts)
@@ -1010,7 +1025,26 @@ def handle_analyze(args: argparse.Namespace) -> int:
             feature_engineering_stage is not None
             and feature_engineering_stage.status in (StageStatus.SUCCEEDED, StageStatus.SKIPPED)
         )
-        if layer1_unchanged and feature_engineering_complete:
+        # automation_engineering (stage 15) is only ever attempted when
+        # --with-automation-engineering is set on THIS invocation (it is
+        # off by default -- a real, live-Sonar-dependent stage, ADR-0044
+        # D5) -- so its own "never attempted, legitimately" case is gated
+        # on the CURRENT run's own flag, not a prior run's. When the flag
+        # is off, this run was never going to attempt stage 15 either, so
+        # it must not block "complete" (2026-08-05, the free-tier
+        # survivability build's F4 fix -- the same class of gap F2 closed
+        # for feature_engineering, for the stage wired in after F2 landed).
+        automation_engineering_stage = next(
+            (s for s in run_state_mgr.state.stages if s.stage_id == "automation_engineering"),
+            None,
+        )
+        automation_engineering_complete = not getattr(
+            args, "with_automation_engineering", False
+        ) or (
+            automation_engineering_stage is not None
+            and automation_engineering_stage.status in (StageStatus.SUCCEEDED, StageStatus.SKIPPED)
+        )
+        if layer1_unchanged and feature_engineering_complete and automation_engineering_complete:
             console.note(f"Run '{run_id}' is already complete and unchanged -- nothing to do.")
             run_lock.release()
             return 0
@@ -1023,6 +1057,16 @@ def handle_analyze(args: argparse.Namespace) -> int:
             console.note(
                 f"Run '{run_id}': Layer 1 complete, but stage 'feature_engineering' is "
                 f"{feature_engineering_stage.status} -- resuming."
+            )
+        elif (
+            layer1_unchanged
+            and feature_engineering_complete
+            and not automation_engineering_complete
+        ):
+            assert automation_engineering_stage is not None
+            console.note(
+                f"Run '{run_id}': Layer 1/2 complete, but stage 'automation_engineering' is "
+                f"{automation_engineering_stage.status} -- resuming."
             )
 
     # Resolve the governed Validation Profile up-front (fail fast on an unknown

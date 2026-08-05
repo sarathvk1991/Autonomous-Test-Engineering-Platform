@@ -23,7 +23,7 @@ provably deterministic regardless of which implementation is wired in.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Protocol
 
 from automation_engineering.catalog.models import AssetCatalog
@@ -36,6 +36,21 @@ class SemanticMatcher(Protocol):
     first). An empty tuple means "nothing even remotely similar" -- the
     engine's own NO_MATCH/generate boundary (ADR-0044 D3), never an error
     and never itself an escalation."""
+
+    def prime(self, needs: Sequence[GherkinStepNeed], catalog: AssetCatalog) -> None:
+        """Whole-run warm-up, called once before the per-need `match()` loop
+        begins: an implementation that embeds/computes vectors MAY use this
+        to compute everything `match()` will need in one (or few) calls,
+        rather than one call per subsequent `match()` invocation -- the call-
+        count-reduction half of ADR-0044 D3's own batching rationale, applied
+        across the WHOLE run's needs, not only within one `match()` call.
+
+        A no-op is a valid implementation (:class:`StubSemanticMatcher`,
+        which needs no vectors at all) -- callers must not assume calling
+        this changes correctness, only call-count efficiency for whichever
+        implementation actually makes calls.
+        """
+        ...
 
     def match(self, need: GherkinStepNeed, catalog: AssetCatalog) -> tuple[MatchCandidate, ...]:
         """Return candidates for `need` against `catalog`, best-first.
@@ -71,6 +86,11 @@ class StubSemanticMatcher:
     ) -> None:
         self._canned = dict(candidates_by_step_text)
         self._calls = 0
+
+    def prime(self, needs: Sequence[GherkinStepNeed], catalog: AssetCatalog) -> None:
+        """No-op -- the stub returns pre-authored candidates keyed by step
+        text; it never computes anything a warm-up could usefully precompute."""
+        return None
 
     def match(self, need: GherkinStepNeed, catalog: AssetCatalog) -> tuple[MatchCandidate, ...]:
         self._calls += 1

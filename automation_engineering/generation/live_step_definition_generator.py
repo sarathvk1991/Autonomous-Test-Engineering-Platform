@@ -42,6 +42,7 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
+from automation_engineering.errors import TransportFailureError
 from automation_engineering.generation.step_definition_generator import (
     StepDefinitionGenerationContext,
 )
@@ -65,7 +66,7 @@ _DEFAULT_TEMPERATURE = 0.0
 _SECTION_SEPARATOR = "\n\n"
 
 
-class LiveGenerationError(Exception):
+class LiveGenerationError(TransportFailureError):
     """Raised when the LLM boundary fails to produce usable content.
 
     Covers exactly three failure modes at this boundary -- a provider
@@ -75,6 +76,13 @@ class LiveGenerationError(Exception):
     model *did* return, however malformed as Java, is not this exception's
     concern -- that is CP3's job (a later, out-of-scope task), not this
     boundary's.
+
+    Subclasses :class:`~automation_engineering.errors.TransportFailureError`
+    (2026-08-05, the free-tier survivability build) -- a re-parenting, not a
+    behavior change to any of the three failure modes above, so
+    `automation_engineering.stage.runner` can catch transport failures once,
+    across all four live generators plus the embedding boundary, without
+    importing this class specifically.
     """
 
 

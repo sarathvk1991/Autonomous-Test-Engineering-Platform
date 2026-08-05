@@ -13,14 +13,30 @@ injection discipline exactly: an
 :class:`~automation_engineering.reuse.embeddings.EmbeddingProvider` is
 constructor-injected here, never constructed by the engine.
 
-**One batched call per `match()`.** Every step-definition asset in the
-catalog plus the need's own text are embedded together, in one
-`EmbeddingProvider.embed(...)` call -- ADR-0044 D3's own batching rationale,
-realized. There is no per-run caching of computed vectors in this class
-(a future optimization, not required for correctness): the catalog itself
-already only changes at run-start reconciliation (ADR-0044 D3), so
-re-embedding the same unchanged catalog every `match()` call within a run is
-a performance concern, not a correctness one.
+**One batched call per `match()` -- and, since the free-tier survivability
+build (2026-08-05), at most one batched call for the WHOLE RUN.** Every
+step-definition asset in the catalog plus the need's own text are embedded
+together, in one `EmbeddingProvider.embed(...)` call -- ADR-0044 D3's own
+batching rationale, realized within one `match()` call. That alone was not
+the full rationale: a run with N needs still made N calls, one per `match()`,
+each RE-embedding the same unchanged catalog every time (the module's own
+prior text called this "a performance concern, not a correctness one" --
+true in isolation, but a live free-tier run measured N calls against a
+100/minute quota as the actual failure mode, not a mere inefficiency).
+
+`prime(needs, catalog)` closes that gap: called once, before any `match()`
+call, it embeds every need's text plus every catalog asset's text together,
+in as few `EmbeddingProvider.embed(...)` calls as the provider needs (batched
+internally there), and caches the result by exact text. Every subsequent
+`match()` call within the same run then finds its own texts already cached
+and makes ZERO further `embed(...)` calls. `prime()` is optional -- a caller
+that never calls it (every existing test that constructs `match()` calls
+directly) gets EXACTLY the pre-existing behavior: `match()` embeds on a cache
+miss, one call per invocation, correctness unchanged either way. The cache is
+keyed by exact text, not by need/asset identity, so priming with a superset
+of what `match()` later asks for (or asking for a mix of primed and
+never-primed texts) is always safe -- a hit is a hit regardless of how the
+vector got there.
 
 **Cosine similarity is the confidence score.** Embedding vectors from this
 model family are typically near-unit-norm with non-negative pairwise
@@ -41,6 +57,7 @@ itself the same way) -- this matcher only ever considers
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 from automation_engineering.catalog.models import AssetCatalog, StepDefinitionAsset
 from automation_engineering.reuse.embeddings import EmbeddingProvider
@@ -79,6 +96,17 @@ class LiveSemanticMatcher:
 
     def __init__(self, embedding_provider: EmbeddingProvider) -> None:
         self._embedding_provider = embedding_provider
+        self._vector_cache: dict[str, tuple[float, ...]] = {}
+
+    def prime(self, needs: Sequence[GherkinStepNeed], catalog: AssetCatalog) -> None:
+        """Warm the whole run's vector cache in as few `embed(...)` calls as
+        the provider needs, instead of one call per later `match()`. Safe to
+        call with an empty `needs`/`catalog.step_definitions` (embeds
+        nothing); safe to call more than once (only ever embeds texts not
+        already cached)."""
+        texts = [need.text for need in needs]
+        texts.extend(_embedding_text(asset) for asset in catalog.step_definitions)
+        self._embed_and_cache(texts)
 
     def match(self, need: GherkinStepNeed, catalog: AssetCatalog) -> tuple[MatchCandidate, ...]:
         assets = catalog.step_definitions
@@ -86,8 +114,8 @@ class LiveSemanticMatcher:
             return ()
 
         texts = [need.text, *(_embedding_text(asset) for asset in assets)]
-        vectors = self._embedding_provider.embed(texts)
-        need_vector, *asset_vectors = vectors
+        self._embed_and_cache(texts)
+        need_vector, *asset_vectors = (self._vector_cache[text] for text in texts)
 
         scored = [
             MatchCandidate(
@@ -99,6 +127,19 @@ class LiveSemanticMatcher:
         ]
         scored.sort(key=lambda candidate: candidate.confidence, reverse=True)
         return tuple(scored)
+
+    def _embed_and_cache(self, texts: list[str]) -> None:
+        """Embed every text in `texts` not already in the cache, in ONE
+        `EmbeddingProvider.embed(...)` call (deduplicated -- a text repeated
+        within `texts`, e.g. the same catalog asset reappearing across
+        several needs, is only ever sent once), and cache the result. A
+        no-op when every text is already cached (the steady-state case once
+        `prime()` has run)."""
+        missing = list(dict.fromkeys(text for text in texts if text not in self._vector_cache))
+        if not missing:
+            return
+        vectors = self._embedding_provider.embed(missing)
+        self._vector_cache.update(zip(missing, vectors, strict=True))
 
 
 __all__ = ["LiveSemanticMatcher"]

@@ -35,15 +35,21 @@ from pathlib import Path
 
 import pytest
 
+from automation_engineering.catalog.models import AssetCatalog
 from automation_engineering.catalog.scanner import reconcile
 from automation_engineering.cp3.sonar.models import SonarQualityGateResult
 from automation_engineering.cp3.sonar.stub_adapter import StubSonarQualityGateAdapter
+from automation_engineering.errors import TransportFailureError
 from automation_engineering.generation.step_definition_generator import (
+    StepDefinitionGenerationContext,
     StubStepDefinitionGenerator,
 )
-from automation_engineering.generation.test_data_generator import StubTestDataGenerator
+from automation_engineering.generation.test_data_generator import (
+    StubTestDataGenerator,
+    TestDataGenerationContext,
+)
 from automation_engineering.reuse.matcher import StubSemanticMatcher
-from automation_engineering.reuse.models import MatchCandidate
+from automation_engineering.reuse.models import GherkinStepNeed, MatchCandidate
 from automation_engineering.stage.gherkin_needs import (
     derive_feature_step_needs,
     derive_unique_step_needs,
@@ -54,6 +60,7 @@ from automation_engineering.stage.runner import (
     execute_automation_engineering_stage,
     run_automation_engineering_stage,
 )
+from contracts.test_data_specification import TestDataSpecification
 from feature_engineering.stage.models import FeatureEngineeringPackage, FeatureRecord
 from feature_engineering.stage.test_data_spec import (
     TEST_DATA_SPECIFICATIONS_FILENAME,
@@ -855,3 +862,337 @@ class TestRunStateIntegration:
         assert second is None
         stage = _find_stage(run_state_mgr, STAGE_ID)
         assert stage.status.value == "skipped"
+
+
+# ---------------------------------------------------------------------------
+# FIX 2 (2026-08-05, the free-tier survivability build): a transport failure
+# on one need/specification escalates THAT one and the stage continues --
+# mirroring stage 14's own F1 proof (`test_feature_engineering_stage.py::
+# TestTransportFailureEscalation`) at stage 15's own two need kinds.
+# ---------------------------------------------------------------------------
+
+
+class _RaisingSemanticMatcher:
+    """`StubSemanticMatcher`-shaped, except `match()` raises
+    `TransportFailureError` for one scripted need text -- a stand-in for a
+    `LiveSemanticMatcher` whose embedding call was rate-limited."""
+
+    def __init__(
+        self,
+        candidates_by_step_text: dict[str, tuple[MatchCandidate, ...]],
+        *,
+        fails_for: str,
+    ) -> None:
+        self._delegate = StubSemanticMatcher(candidates_by_step_text)
+        self._fails_for = fails_for
+
+    def prime(self, needs: object, catalog: object) -> None:
+        return None
+
+    def match(
+        self, need: GherkinStepNeed, catalog: AssetCatalog
+    ) -> tuple[MatchCandidate, ...]:
+        if need.text == self._fails_for:
+            raise TransportFailureError(f"simulated embedding rate-limit for {need.text!r}")
+        return self._delegate.match(need, catalog)
+
+
+class _RaisingStepDefinitionGenerator:
+    """`StubStepDefinitionGenerator`-shaped, except `generate()` raises
+    `TransportFailureError` for one scripted need text -- a stand-in for a
+    `LiveStepDefinitionGenerator` whose LLM call was rate-limited."""
+
+    def __init__(self, java_by_text: dict[str, str], *, fails_for: str) -> None:
+        self._delegate = StubStepDefinitionGenerator(java_by_text)
+        self._fails_for = fails_for
+
+    def generate(self, context: StepDefinitionGenerationContext) -> str:
+        if context.need.text == self._fails_for:
+            raise TransportFailureError(f"simulated LLM rate-limit for {context.need.text!r}")
+        return self._delegate.generate(context)
+
+
+class _RaisingTestDataGenerator:
+    """`StubTestDataGenerator`-shaped, except `generate()` raises
+    `TransportFailureError` for one scripted `requirement_id`."""
+
+    def __init__(self, java_by_id: dict[str, str], *, fails_for: str) -> None:
+        self._delegate = StubTestDataGenerator(java_by_id)
+        self._fails_for = fails_for
+
+    def generate(self, context: TestDataGenerationContext) -> str:
+        if context.specification.requirement_id == self._fails_for:
+            raise TransportFailureError(
+                f"simulated LLM rate-limit for {context.specification.requirement_id!r}"
+            )
+        return self._delegate.generate(context)
+
+
+@pytest.mark.unit
+class TestTransportFailureIsolation:
+    def test_generation_transport_failure_escalates_one_need_others_still_generate(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _LOGIN_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        matcher = StubSemanticMatcher(
+            {
+                "I am on the login page": (),
+                'I log in as "bob"': (),
+                "I see the dashboard": (),
+            }
+        )
+        step_gen = _RaisingStepDefinitionGenerator(
+            {
+                "I am on the login page": _clean_java("LoginPageSteps", "a"),
+                "I see the dashboard": _clean_java("DashboardSteps", "c"),
+            },
+            fails_for='I log in as "bob"',
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        by_text = {r.need_text: r for r in result.package.records}
+        assert len(result.package.records) == 3
+        failed = by_text['I log in as "bob"']
+        assert failed.outcome == "escalated"
+        assert failed.escalated is True
+        assert failed.escalation_check == "transport"
+        assert failed.escalation_reason is not None
+        assert "transport failure" in failed.escalation_reason
+        # The other two needs were NOT aborted by the one transport failure.
+        assert by_text["I am on the login page"].outcome == "generated"
+        assert by_text["I see the dashboard"].outcome == "generated"
+
+    def test_embedding_transport_failure_escalates_one_need_others_still_process(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _LOGIN_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        matcher = _RaisingSemanticMatcher(
+            {
+                "I am on the login page": (),
+                "I see the dashboard": (),
+            },
+            fails_for='I log in as "bob"',
+        )
+        step_gen = StubStepDefinitionGenerator(
+            {
+                "I am on the login page": _clean_java("LoginPageSteps", "a"),
+                "I see the dashboard": _clean_java("DashboardSteps", "c"),
+            }
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        by_text = {r.need_text: r for r in result.package.records}
+        failed = by_text['I log in as "bob"']
+        assert failed.outcome == "escalated"
+        assert failed.escalation_check == "transport"
+        assert by_text["I am on the login page"].outcome == "generated"
+        assert by_text["I see the dashboard"].outcome == "generated"
+
+    def test_transport_escalation_is_distinguishable_from_a_deterministic_escalation(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """A genuine reuse-engine escalation (e.g. low confidence, ADR-0044
+        D4) and a transport failure produce DIFFERENT `escalation_check`
+        values -- a human reviewer can tell "the model call itself failed"
+        apart from "a deterministic reuse check failed"."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _LOGIN_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        matcher = _RaisingSemanticMatcher(
+            {
+                "I am on the login page": (
+                    MatchCandidate(asset_id="STEP-x", confidence=0.10, content_hash="h"),
+                ),
+                "I see the dashboard": (),
+            },
+            fails_for='I log in as "bob"',
+        )
+        step_gen = StubStepDefinitionGenerator(
+            {"I see the dashboard": _clean_java("DashboardSteps", "c")}
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        by_text = {r.need_text: r for r in result.package.records}
+        assert by_text['I log in as "bob"'].escalation_check == "transport"
+        assert by_text["I am on the login page"].escalation_check == "confidence"
+        assert by_text["I am on the login page"].escalation_check != "transport"
+
+    def test_test_data_transport_failure_escalates_one_spec_others_still_generate(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        package = _package(())
+        specs = (
+            TestDataSpecification(requirement_id="REQ-1", fields=()),
+            TestDataSpecification(requirement_id="REQ-2", fields=()),
+        )
+        generator = _RaisingTestDataGenerator(
+            {"REQ-2": _clean_java("Req2TestData", "get")}, fails_for="REQ-1"
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            specs,
+            workspace_dir=workspace_dir,
+            matcher=StubSemanticMatcher({}),
+            step_definition_generator=StubStepDefinitionGenerator({}),
+            test_data_generator=generator,
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        by_text = {r.need_text: r for r in result.package.records}
+        assert by_text["REQ-1"].outcome == "escalated"
+        assert by_text["REQ-1"].escalation_check == "transport"
+        assert by_text["REQ-2"].outcome == "generated"
+
+    def test_a_transport_failure_during_priming_is_swallowed_not_stage_fatal(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """The shared `prime()` warm-up call embeds several needs at once
+        (FIX 1) -- if THAT call itself fails, it must not take the whole
+        stage down (defeating FIX 2's own per-need isolation for every need
+        at once). Swallowed; `match()` falls back to on-demand embedding,
+        where the per-need loop escalates each individually."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _LOGIN_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        class _PrimeFailsThenMatchWorksMatcher:
+            def __init__(self) -> None:
+                self._delegate = StubSemanticMatcher(
+                    {
+                        "I am on the login page": (),
+                        'I log in as "bob"': (),
+                        "I see the dashboard": (),
+                    }
+                )
+
+            def prime(self, needs: object, catalog: object) -> None:
+                raise TransportFailureError("simulated priming-call rate-limit")
+
+            def match(
+                self, need: GherkinStepNeed, catalog: AssetCatalog
+            ) -> tuple[MatchCandidate, ...]:
+                return self._delegate.match(need, catalog)
+
+        step_gen = StubStepDefinitionGenerator(
+            {
+                "I am on the login page": _clean_java("A", "a"),
+                'I log in as "bob"': _clean_java("B", "b"),
+                "I see the dashboard": _clean_java("C", "c"),
+            }
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=_PrimeFailsThenMatchWorksMatcher(),
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        # The stage completed -- proof by itself, since a swallowed prime()
+        # failure means run_automation_engineering_stage returned normally
+        # rather than propagating -- and every need still generated, via
+        # match()'s own on-demand fallback.
+        assert {r.outcome for r in result.package.records} == {"generated"}
+
+    def test_stage_stays_succeeded_when_only_transport_failures_occurred(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """The run-state proof: a transport failure never fails the whole
+        stage (mirrors `test_feature_engineering_stage.py`'s own F1 proof).
+        `execute_automation_engineering_stage` records `succeeded`, with the
+        transport escalation visible in the package's own records."""
+        run_dir = repo_root / "run"
+        run_dir.mkdir()
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+        _write_upstream_artifacts(run_dir, package)
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _LOGIN_FEATURE)
+
+        run_state_mgr = _new_run_state_manager(run_dir)
+        matcher = StubSemanticMatcher(
+            {
+                "I am on the login page": (),
+                'I log in as "bob"': (),
+                "I see the dashboard": (),
+            }
+        )
+        step_gen = _RaisingStepDefinitionGenerator(
+            {
+                "I am on the login page": _clean_java("A", "a"),
+                "I see the dashboard": _clean_java("C", "c"),
+            },
+            fails_for='I log in as "bob"',
+        )
+
+        result = execute_automation_engineering_stage(
+            run_state_mgr,
+            run_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        assert result is not None
+        assert result.has_escalations is True
+        stage = _find_stage(run_state_mgr, STAGE_ID)
+        assert stage.status.value == "succeeded"  # never "failed"
+        on_disk = json.loads((run_dir / "run_state.json").read_text())
+        record = next(s for s in on_disk["stages"] if s["stageId"] == STAGE_ID)
+        assert record["status"] == "succeeded"

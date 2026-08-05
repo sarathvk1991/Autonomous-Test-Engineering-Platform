@@ -120,6 +120,90 @@ def test_empty_catalog_short_circuits_before_any_embedding_call() -> None:
     assert provider.calls == []
 
 
+def test_prime_then_match_for_several_needs_makes_exactly_one_call() -> None:
+    """FIX 1 verification: the whole-run batching lever. Without `prime()`,
+    N needs make N `embed()` calls (one per `match()`, each re-embedding the
+    unchanged catalog). With `prime()` called once up front, every
+    subsequent `match()` call is a pure cache hit -- zero further calls."""
+    login = _step("STEP-login", "I log in as {string}", "h1")
+    logout = _step("STEP-logout", "I log out", "h2")
+    catalog = AssetCatalog(baseline_root="test-suite-baseline", step_definitions=(login, logout))
+    needs = [
+        GherkinStepNeed(text="I log in", step_type="When"),
+        GherkinStepNeed(text="I check out", step_type="When"),
+        GherkinStepNeed(text="I browse", step_type="When"),
+    ]
+    provider = _FakeEmbeddingProvider(
+        {
+            "I log in": (1.0, 0.0),
+            "I check out": (0.5, 0.5),
+            "I browse": (0.0, 1.0),
+            "I log in as {string}": (1.0, 0.0),
+            "I log out": (0.0, 1.0),
+        }
+    )
+    matcher = LiveSemanticMatcher(provider)
+
+    matcher.prime(needs, catalog)
+    for need in needs:
+        matcher.match(need, catalog)
+
+    assert len(provider.calls) == 1
+    assert set(provider.calls[0]) == {
+        "I log in",
+        "I check out",
+        "I browse",
+        "I log in as {string}",
+        "I log out",
+    }
+
+
+def test_prime_deduplicates_repeated_texts_within_one_call() -> None:
+    login = _step("STEP-login", "I log in as {string}", "h1")
+    catalog = AssetCatalog(baseline_root="test-suite-baseline", step_definitions=(login,))
+    needs = [
+        GherkinStepNeed(text="I log in", step_type="When"),
+        GherkinStepNeed(text="I log in", step_type="When"),  # duplicate on purpose
+    ]
+    provider = _FakeEmbeddingProvider(
+        {"I log in": (1.0, 0.0), "I log in as {string}": (1.0, 0.0)}
+    )
+    matcher = LiveSemanticMatcher(provider)
+
+    matcher.prime(needs, catalog)
+
+    assert len(provider.calls) == 1
+    assert provider.calls[0] == ["I log in", "I log in as {string}"]
+
+
+def test_prime_with_nothing_new_to_embed_makes_no_call() -> None:
+    catalog = AssetCatalog(baseline_root="test-suite-baseline")
+    provider = _FakeEmbeddingProvider({})
+    matcher = LiveSemanticMatcher(provider)
+
+    matcher.prime([], catalog)
+
+    assert provider.calls == []
+
+
+def test_match_without_priming_still_embeds_on_demand_unchanged() -> None:
+    """Backward compatibility: a caller that never calls `prime()` (every
+    pre-existing test above) gets exactly the old behavior -- `match()`
+    embeds on its own cache miss."""
+    login = _step("STEP-login", "I log in as {string}", "h1")
+    catalog = AssetCatalog(baseline_root="test-suite-baseline", step_definitions=(login,))
+    need = GherkinStepNeed(text="I log in", step_type="When")
+    provider = _FakeEmbeddingProvider(
+        {"I log in": (1.0, 0.0), "I log in as {string}": (1.0, 0.0)}
+    )
+    matcher = LiveSemanticMatcher(provider)
+
+    result = matcher.match(need, catalog)
+
+    assert [c.asset_id for c in result] == ["STEP-login"]
+    assert len(provider.calls) == 1
+
+
 def test_only_step_definitions_are_considered_not_page_objects() -> None:
     login = _step("STEP-login", "I log in as {string}", "h1")
     page = PageObjectAsset(

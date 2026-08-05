@@ -341,6 +341,88 @@ def test_connector_registry_execute_all(tmp_path: Path) -> None:
             assert system_name not in systems
 
 
+# ---------------------------------------------------------------------------
+# FIX 5 (2026-08-05, the free-tier survivability build): a down/unreachable
+# connector is isolated to its own source, never the whole run.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_execute_all_isolates_one_unreachable_source_and_continues_with_the_rest(
+    tmp_path: Path,
+) -> None:
+    """One source (ZAP, here) pointed at a file that does not exist -- the
+    connector layer's own `ConnectorConnectionError` -- is recorded as
+    failed for THAT source only; every other enabled source still executes,
+    and the combined artifact list reflects them. Mirrors the live run's own
+    "ZAP unreachable aborted the whole run before Layer 1 produced anything"
+    finding, now proven fixed."""
+    data = _get_absolute_sources_data()
+    for source in data["sources"]:
+        if source["sourceId"] == "owasp_zap":
+            source["inputPath"] = str(tmp_path / "does-not-exist.json")
+
+    path = _write_temp_registry(tmp_path, data)
+    loader = RegistryLoader(path)
+    registry = ConnectorRegistry(loader)
+    enabled_ids = [s["sourceId"] for s in loader.get_enabled_sources()]
+    if "owasp_zap" not in enabled_ids:
+        pytest.skip("owasp_zap is disabled in source-registry.json")
+
+    artifacts = registry.execute_all()  # must NOT raise -- the whole point of isolation
+
+    assert all(a.source_system != "owasp_zap" for a in artifacts)
+    other_enabled = [sid for sid in enabled_ids if sid != "owasp_zap"]
+    systems = {a.source_system for a in artifacts}
+    for source_id in other_enabled:
+        system_name = "owasp_zap" if source_id == "owasp_zap" else source_id
+        assert system_name in systems  # the OTHER sources still produced artifacts
+
+    failures = registry.failed_sources
+    assert len(failures) == 1
+    assert failures[0].source_id == "owasp_zap"
+    assert "does-not-exist.json" in failures[0].error
+
+
+@pytest.mark.unit
+def test_execute_all_with_no_failures_reports_an_empty_failed_sources(tmp_path: Path) -> None:
+    data = _get_absolute_sources_data()
+    path = _write_temp_registry(tmp_path, data)
+    registry = ConnectorRegistry(RegistryLoader(path))
+
+    registry.execute_all()
+
+    assert registry.failed_sources == ()
+
+
+@pytest.mark.unit
+def test_failed_sources_reflects_only_the_most_recent_execute_all_call(tmp_path: Path) -> None:
+    """`failed_sources` is reset at the START of every `execute_all()` call
+    -- a source that failed on a prior call and now succeeds is no longer
+    reported as failed."""
+    data = _get_absolute_sources_data()
+    broken_path = tmp_path / "does-not-exist.json"
+    for source in data["sources"]:
+        if source["sourceId"] == "owasp_zap":
+            source["inputPath"] = str(broken_path)
+
+    path = _write_temp_registry(tmp_path, data)
+    loader = RegistryLoader(path)
+    registry = ConnectorRegistry(loader)
+    enabled_ids = [s["sourceId"] for s in loader.get_enabled_sources()]
+    if "owasp_zap" not in enabled_ids:
+        pytest.skip("owasp_zap is disabled in source-registry.json")
+
+    registry.execute_all()
+    assert len(registry.failed_sources) == 1
+
+    # "The source comes back up" -- point it at a real sample and re-run.
+    broken_path.write_text(ZAP_SAMPLE_ALERTS.read_text(encoding="utf-8"), encoding="utf-8")
+    registry.execute_all()
+
+    assert len(registry.failed_sources) == 0
+
+
 @pytest.mark.unit
 def test_actual_registry_file_loads_and_validates_successfully() -> None:
     loader = RegistryLoader()

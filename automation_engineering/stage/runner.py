@@ -22,16 +22,24 @@ The chain, in order
    ordered step needs from its real ``.feature`` text
    (:mod:`.gherkin_needs`), then dedupe to one need per unique step text
    across the whole run.
-4. Reuse-decide/generate every unique step need in one batch
-   (:func:`automation_engineering.generation.orchestrator.generate_step_definitions`)
-   -- ``page_object_request``/``utility_request`` are never supplied (see
-   this module's own report: no subsystem derives "which specific
-   page-object/utility method does this step need" from raw text), so
-   every generated step definition's own ``page_object_outcome``/
-   ``utility_outcome`` stays ``None``, and no page-object/utility asset is
-   ever produced by this initial wiring.
+4. Reuse-decide/generate every unique step need, one
+   (:func:`automation_engineering.generation.orchestrator.orchestrate_step_definition`)
+   call per need -- not the batch ``generate_step_definitions`` helper,
+   since 2026-08-05 (the free-tier survivability build): a per-need loop is
+   what lets a transport failure on ONE need be escalated and the loop
+   continue, rather than aborting the whole run (this module's own report,
+   FIX 2). ``matcher.prime(...)`` is called once, first, so the embeddings
+   MATCH itself still makes at most one batched call for the whole run's
+   needs (FIX 1), not one call per need despite the per-need loop.
+   ``page_object_request``/``utility_request`` are never supplied (see this
+   module's own report: no subsystem derives "which specific page-object/
+   utility method does this step need" from raw text), so every generated
+   step definition's own ``page_object_outcome``/``utility_outcome`` stays
+   ``None``, and no page-object/utility asset is ever produced by this
+   initial wiring.
 5. Generate every test-data specification stage 14 emitted (spec-driven,
-   unconditional, no reuse decision -- ADR-0044 D7).
+   unconditional, no reuse decision -- ADR-0044 D7), also per-specification
+   rather than batched, for the same transport-isolation reason as step 4.
 6. Write every freshly generated class's Java source into the workspace
    (never the tracked baseline directly -- ADR-0037 D2), at the exact path
    :func:`automation_engineering.promotion.identity.resolve_candidate_identity`
@@ -70,16 +78,18 @@ from automation_engineering.cp3.models import Cp3CoverageInput, Cp3FeatureInput,
 from automation_engineering.cp3.sonar.adapter import SonarQualityGateAdapter
 from automation_engineering.cp4.gate import evaluate_cp4
 from automation_engineering.cp4.models import Cp4Result
+from automation_engineering.errors import TransportFailureError
 from automation_engineering.generation.models import (
     BoundStepDefinition,
     EscalatedStepNeed,
     GeneratedStepDefinition,
+    GeneratedTestDataClass,
     StepDefinitionOutcome,
 )
-from automation_engineering.generation.orchestrator import generate_step_definitions
+from automation_engineering.generation.orchestrator import orchestrate_step_definition
 from automation_engineering.generation.step_definition_generator import StepDefinitionGenerator
 from automation_engineering.generation.test_data_generator import TestDataGenerator
-from automation_engineering.generation.test_data_orchestrator import generate_test_data_classes
+from automation_engineering.generation.test_data_orchestrator import generate_test_data_class
 from automation_engineering.promotion.identity import resolve_candidate_identity
 from automation_engineering.promotion.mechanism import apply_promotion, stage_promoted_assets
 from automation_engineering.promotion.models import (
@@ -222,15 +232,59 @@ def run_automation_engineering_stage(
     unique_needs = derive_unique_step_needs(tuple(per_feature))
 
     tracked_catalog = reconcile(baseline_root)
-    step_outcomes = generate_step_definitions(
-        list(unique_needs), tracked_catalog, matcher, step_definition_generator
-    )
-    outcome_by_text: dict[str, StepDefinitionOutcome] = {o.need.text: o for o in step_outcomes}
+    # Whole-run embedding warm-up (FIX 1, 2026-08-05): a no-op for a matcher
+    # that needs no vectors (StubSemanticMatcher); for LiveSemanticMatcher,
+    # embeds every need's/catalog asset's text in as few `embed(...)` calls
+    # as the provider needs, ONCE, so every `match()` call in the loop below
+    # is a cache hit -- collapsing what was previously one embedding call
+    # PER NEED into (up to) one call for the whole run. A transport failure
+    # DURING this shared warm-up call is caught and swallowed, deliberately
+    # -- priming is a call-count OPTIMIZATION (FIX 1), not a correctness
+    # requirement; letting it propagate would mean one failed batched call
+    # aborts the WHOLE stage, defeating FIX 2's own per-need isolation for
+    # every need at once. Swallowed, `match()` simply falls back to
+    # embedding on its own cache miss, per need, in the loop below -- where
+    # a persistent failure is caught and escalated ONE NEED AT A TIME
+    # instead.
+    try:
+        matcher.prime(list(unique_needs), tracked_catalog)
+    except TransportFailureError:
+        pass
 
+    # Per-need loop, not the batch `generate_step_definitions` call (FIX 2,
+    # 2026-08-05): a transport failure (embedding or generation) on ANY one
+    # need previously propagated out of the batch call entirely, failing the
+    # WHOLE stage before any need was recorded -- reproduced live, mirroring
+    # exactly the class of bug Layer 2's own F1 fix closed for stage 14
+    # (architecture-baseline-v2.md §4 item 16(a)). `TransportFailureError`
+    # (embedding-call or generation-call) is caught HERE, per need, and
+    # recorded as an escalated `AssetRecord` distinct from a genuine
+    # NO_MATCH/reuse-engine escalation (`escalation_check="transport"`,
+    # never one of the reuse engine's own three deterministic checks) --
+    # the loop CONTINUES with the remaining needs either way.
+    step_outcomes: list[StepDefinitionOutcome] = []
     generated_java: list[_GeneratedJava] = []
     asset_records: list[AssetRecord] = []
 
-    for outcome in step_outcomes:
+    for need in unique_needs:
+        try:
+            outcome = orchestrate_step_definition(
+                need, tracked_catalog, matcher, step_definition_generator
+            )
+        except TransportFailureError as exc:
+            asset_records.append(
+                AssetRecord(
+                    need_text=need.text,
+                    need_kind="step_definition",
+                    outcome="escalated",
+                    escalated=True,
+                    escalation_check="transport",
+                    escalation_reason=f"transport failure: {exc}",
+                )
+            )
+            continue
+        step_outcomes.append(outcome)
+
         if isinstance(outcome, GeneratedStepDefinition):
             class_name, written_path = _write_generated_java(outcome.java_source, workspace_dir)
             generated_java.append(
@@ -273,9 +327,29 @@ def run_automation_engineering_stage(
         else:  # pragma: no cover - exhaustive per StepDefinitionOutcome's own union
             raise AssertionError(f"unreachable: unknown StepDefinitionOutcome {outcome!r}")
 
-    generated_test_data = generate_test_data_classes(
-        list(test_data_specifications), test_data_generator
-    )
+    outcome_by_text: dict[str, StepDefinitionOutcome] = {o.need.text: o for o in step_outcomes}
+
+    # Per-specification loop, same discipline as the step-definition loop
+    # above (FIX 2): a transport failure generating one test-data class no
+    # longer aborts every other specification's generation.
+    generated_test_data: list[GeneratedTestDataClass] = []
+    for specification in test_data_specifications:
+        try:
+            td_outcome = generate_test_data_class(specification, test_data_generator)
+        except TransportFailureError as exc:
+            asset_records.append(
+                AssetRecord(
+                    need_text=specification.requirement_id,
+                    need_kind="test_data",
+                    outcome="escalated",
+                    escalated=True,
+                    escalation_check="transport",
+                    escalation_reason=f"transport failure: {exc}",
+                )
+            )
+            continue
+        generated_test_data.append(td_outcome)
+
     for td_outcome in generated_test_data:
         class_name, written_path = _write_generated_java(td_outcome.java_source, workspace_dir)
         generated_java.append(

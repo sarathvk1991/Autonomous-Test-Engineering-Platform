@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from automation_engineering.errors import TransportFailureError
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.analysis.requirement_analysis_service import (
     RequirementAnalysisService,
@@ -54,6 +55,7 @@ from requirement_intelligence.platform import PlatformCapabilities, PlatformCont
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     RequirementPromptBuilder,
 )
+from requirement_intelligence.registry.connector_registry import SourceExecutionFailure
 from shared.enums.base import ValidationVerdict as CP1Verdict
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -189,6 +191,7 @@ class FakeContext:
     def create_connector_registry(self) -> MagicMock:
         registry = MagicMock()
         registry.execute_all.return_value = [object()]
+        registry.failed_sources = ()  # matches the real ConnectorRegistry's own default
         return registry
 
     def create_consolidation_engine(self) -> MagicMock:
@@ -353,6 +356,83 @@ def test_platform_context_owns_a_single_sealed_prompt_registry() -> None:
     from requirement_intelligence.validation.response import ResponseValidator
 
     assert isinstance(ctx.create_response_validator(), ResponseValidator)
+
+
+# ===========================================================================
+# FIX 5 (2026-08-05, the free-tier survivability build): run_engineering_pipeline
+# reports each source's real outcome instead of a blanket "OK" -- a failed
+# source (ConnectorRegistry.execute_all's own isolation, tested at the
+# registry level in requirement_intelligence/tests/unit/test_registry.py) is
+# now visible in the CLI's own console output, never misreported.
+# ===========================================================================
+
+
+@pytest.mark.unit
+def test_run_engineering_pipeline_reports_a_failed_source_and_continues(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _FakeLoader:
+        def get_enabled_sources(self) -> list[dict[str, str]]:
+            return [
+                {"sourceId": "jira", "sourceName": "JIRA"},
+                {"sourceId": "owasp_zap", "sourceName": "OWASP ZAP"},
+            ]
+
+    class _FakeRegistry:
+        loader = _FakeLoader()
+        failed_sources = (
+            SourceExecutionFailure(
+                source_id="owasp_zap",
+                source_name="OWASP ZAP",
+                error="Input file does not exist: zap-alerts.json",
+            ),
+        )
+
+        def execute_all(self) -> list[Any]:
+            return [object()]
+
+    context = MagicMock()
+    context.create_consolidation_engine.return_value.consolidate.return_value = ["consolidated"]
+    console = cli.Console()
+
+    source_count, consolidated = cli.run_engineering_pipeline(context, console, _FakeRegistry())
+
+    assert source_count == 1
+    assert consolidated == ["consolidated"]
+    captured = capsys.readouterr()
+    assert "  ✓ JIRA" in captured.out  # the working source still reports OK
+    assert "1 of 2 source(s) unavailable -- proceeding degraded with the rest." in captured.out
+    # console.error prints to stderr -- the per-source failure line lands there.
+    assert (
+        "OWASP ZAP: unavailable, continuing without it -- Input file does not exist"
+        in captured.err
+    )
+
+
+@pytest.mark.unit
+def test_run_engineering_pipeline_with_no_failures_reports_every_source_ok(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _FakeLoader:
+        def get_enabled_sources(self) -> list[dict[str, str]]:
+            return [{"sourceId": "jira", "sourceName": "JIRA"}]
+
+    class _FakeRegistry:
+        loader = _FakeLoader()
+        failed_sources: tuple[SourceExecutionFailure, ...] = ()
+
+        def execute_all(self) -> list[Any]:
+            return [object()]
+
+    context = MagicMock()
+    context.create_consolidation_engine.return_value.consolidate.return_value = []
+    console = cli.Console()
+
+    cli.run_engineering_pipeline(context, console, _FakeRegistry())
+
+    out = capsys.readouterr().out
+    assert "  ✓ JIRA" in out
+    assert "unavailable" not in out
 
 
 # ===========================================================================
@@ -2663,3 +2743,181 @@ def test_resume_detects_a_failed_feature_engineering_stage_and_resumes_it(
 
     package = json.loads((run_dir / "feature_engineering_package.json").read_text())
     assert len(package["records"]) >= 1
+
+
+class _AlwaysFailsAutomationMatcher:
+    """Raises a genuine, unexpected exception at `prime()` -- fails stage 15
+    outright, deterministically, no live call anywhere (mirrors
+    `_AlwaysFailsFeatureContentGenerator`'s own trick for stage 14/F2)."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def prime(self, needs: Any, catalog: Any) -> None:
+        raise RuntimeError("simulated stage-15-fatal failure (F4 resume-detection test)")
+
+    def match(self, need: Any, catalog: Any) -> tuple[Any, ...]:
+        raise AssertionError("unreachable -- prime() always raises first")
+
+
+class _AllTransportEscalatingAutomationMatcher:
+    """Safe fake for the resumed attempt: `prime()` is a no-op, `match()`
+    raises `TransportFailureError` for every need -- FIX 2 escalates each
+    one and the stage reaches SUCCEEDED, never generating or promoting
+    anything, so this test never touches the real tracked baseline."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def prime(self, needs: Any, catalog: Any) -> None:
+        return None
+
+    def match(self, need: Any, catalog: Any) -> tuple[Any, ...]:
+        raise TransportFailureError(f"simulated embedding rate-limit for {need.text!r}")
+
+
+class _NeverCalledAutomationStepDefinitionGenerator:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def generate(self, context: Any) -> str:
+        raise AssertionError("should never be called -- the matcher always transport-fails first")
+
+
+class _NeverCalledAutomationTestDataGenerator:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def generate(self, context: Any) -> str:
+        raise AssertionError("should never be called -- run 1's matcher fails before generation")
+
+
+class _AllTransportEscalatingAutomationTestDataGenerator:
+    """Test-data generation is unconditional (ADR-0044 D7, no reuse
+    decision) -- every specification stage 14 emits gets a `generate()`
+    call regardless of the step-definition matcher's own outcome. This fake
+    transport-fails every one, same discipline as
+    `_AllTransportEscalatingAutomationMatcher`, so nothing is ever
+    generated/promoted here either."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def generate(self, context: Any) -> str:
+        raise TransportFailureError(
+            f"simulated LLM rate-limit for {context.specification.requirement_id!r}"
+        )
+
+
+class _PassingSonarAdapter:
+    """Safe stand-in for `LiveSonarQualityGateAdapter` -- no subprocess, no
+    network call. CP3's Sonar criterion runs unconditionally regardless of
+    whether anything was generated, so this must exist even though this
+    test never expects Sonar's verdict to matter."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def submit_scan(self, project_root: Any, project_key: str) -> str:
+        return "task-1"
+
+    def poll_for_completion(self, task_id: str) -> None:
+        return None
+
+    def fetch_quality_gate_result(self, project_key: str) -> Any:
+        from automation_engineering.cp3.sonar.models import SonarQualityGateResult
+
+        return SonarQualityGateResult(passed=True)
+
+
+def _patch_automation_engineering_live_classes(
+    monkeypatch: pytest.MonkeyPatch, *, matcher_cls: type, test_data_generator_cls: type
+) -> None:
+    monkeypatch.setattr(cli, "LiveSemanticMatcher", matcher_cls)
+    monkeypatch.setattr(
+        cli, "LiveStepDefinitionGenerator", _NeverCalledAutomationStepDefinitionGenerator
+    )
+    monkeypatch.setattr(cli, "LiveTestDataGenerator", test_data_generator_cls)
+    monkeypatch.setattr(cli, "LiveSonarQualityGateAdapter", _PassingSonarAdapter)
+
+
+@pytest.mark.unit
+def test_resume_detects_a_failed_automation_engineering_stage_and_resumes_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """F4 (2026-08-05, the free-tier survivability build): the F2 gap,
+    extended to stage 15 -- before this fix, --resume's "already complete"
+    check inspected only `execution_package_write` and `feature_engineering`,
+    never `automation_engineering`. A run whose stage 15 genuinely FAILED
+    was reported "already complete and unchanged" anyway whenever
+    --with-automation-engineering was passed again. Reproduced
+    deterministically (a fake matcher that fails stage 15 outright on run
+    1, no live call anywhere); proves --resume now detects it and
+    re-attempts stage 15, rather than reporting the run complete.
+    """
+    monkeypatch.setattr(cli, "LiveFeatureContentGenerator", _FakeLiveFeatureContentGenerator)
+    monkeypatch.setattr(cli, "LiveFeatureRemediator", _NeverCalledFeatureRemediator)
+    _patch_automation_engineering_live_classes(
+        monkeypatch,
+        matcher_cls=_AlwaysFailsAutomationMatcher,
+        test_data_generator_cls=_NeverCalledAutomationTestDataGenerator,
+    )
+    _use_context(
+        monkeypatch, [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result_for_stage14()
+    )
+    _patched_context_for_stage14(monkeypatch)
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    output_dir = tmp_path / "ex"
+    first_args = [
+        "analyze",
+        "--validate",
+        "--save-execution",
+        "--with-automation-engineering",
+        "--output-dir",
+        str(output_dir),
+    ]
+    assert cli.main(first_args) == 0  # Layer 1/2 succeed; automation_engineering fails internally
+    capsys.readouterr()
+    run_dir = next(p for p in output_dir.iterdir() if p.is_dir())
+    run_id = run_dir.name
+
+    state = json.loads((run_dir / "run_state.json").read_text())
+    ae_record = next(s for s in state["stages"] if s["stageId"] == "automation_engineering")
+    assert ae_record["status"] == "failed"  # the precondition this fix targets
+
+    # Swap in a matcher that actually completes (via FIX 2's own transport
+    # isolation -- every need escalates, nothing is generated or promoted)
+    # and resume -- --resume must detect the run as NOT complete and
+    # re-attempt stage 15, never report "already complete."
+    _patch_automation_engineering_live_classes(
+        monkeypatch,
+        matcher_cls=_AllTransportEscalatingAutomationMatcher,
+        test_data_generator_cls=_AllTransportEscalatingAutomationTestDataGenerator,
+    )
+    resume_args = [
+        "analyze",
+        "--validate",
+        "--resume",
+        run_id,
+        "--with-automation-engineering",
+        "--output-dir",
+        str(output_dir),
+    ]
+    assert cli.main(resume_args) == 0
+    out = capsys.readouterr().out
+    assert "already complete and unchanged" not in out
+    assert "Layer 1/2 complete, but stage 'automation_engineering' is failed -- resuming." in out
+
+    state_after = json.loads((run_dir / "run_state.json").read_text())
+    ae_record_after = next(
+        s for s in state_after["stages"] if s["stageId"] == "automation_engineering"
+    )
+    # stage 15 actually re-ran, and this time succeeded (with escalations,
+    # never generating/promoting anything -- FIX 2's own SUCCEEDED-with-
+    # escalations outcome).
+    assert ae_record_after["status"] == "succeeded"
+
+    package = json.loads((run_dir / "automation_engineering_package.json").read_text())
+    assert len(package["records"]) >= 1
+    assert all(r["escalated"] is True for r in package["records"])

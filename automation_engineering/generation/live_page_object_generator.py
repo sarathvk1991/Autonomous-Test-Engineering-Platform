@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
+from automation_engineering.errors import TransportFailureError
 from automation_engineering.generation.page_object_generator import (
     PageObjectGenerationContext,
 )
@@ -56,7 +57,7 @@ _DEFAULT_TEMPERATURE = 0.0
 _SECTION_SEPARATOR = "\n\n"
 
 
-class LiveGenerationError(Exception):
+class LiveGenerationError(TransportFailureError):
     """Raised when the LLM boundary fails to produce usable content.
 
     Covers exactly three failure modes at this boundary -- a provider
@@ -66,6 +67,11 @@ class LiveGenerationError(Exception):
     model *did* return, however malformed as Java, is not this exception's
     concern -- that is CP3/CP4's job (later, out-of-scope tasks), not this
     boundary's.
+
+    Subclasses :class:`~automation_engineering.errors.TransportFailureError`
+    (2026-08-05, the free-tier survivability build) -- see
+    :mod:`.live_step_definition_generator`'s own note for the rationale,
+    identical here.
     """
 
 
