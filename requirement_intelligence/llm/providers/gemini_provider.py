@@ -2,8 +2,9 @@
 
 This is the first live provider in the platform.  It is a **thin adapter** and
 nothing more: it validates provider configuration, converts a provider-agnostic
-:class:`LLMRequest` into a Gemini request, performs exactly one Gemini call, and
-converts the Gemini response back into a provider-agnostic :class:`LLMResponse`.
+:class:`LLMRequest` into a Gemini request, performs exactly one Gemini call
+(bounded retry aside — see below), and converts the Gemini response back into a
+provider-agnostic :class:`LLMResponse`.
 
 All Google SDK objects are confined to this module — no ``google.genai`` type
 ever crosses the provider boundary, and no SDK exception escapes it.
@@ -24,12 +25,72 @@ GOOGLE_API_KEY (env var, required)
     API key issued by Google AI Studio.
 GEMINI_MODEL (env var, optional)
     Model to use (default: ``gemini-2.5-pro``).
+
+Pacing and bounded retry-with-backoff (2026-08-05, Finding 2's own fix).
+-------------------------------------------------------------------------
+This provider is the ONE concrete `generate_content` call site shared by
+every generation caller in the platform -- Layer 1/2's own requirement/
+feature generation (`feature_engineering.generation.live_content_generator`,
+`feature_engineering.remediation.live_remediator`) and Layer 3's four live
+generators (`automation_engineering.generation.live_*_generator`) alike, all
+via constructor-injected `LLMProvider` -- so fixing it here fixes the
+boundary everywhere it is used, with no change to any of those six call
+sites (each already catches this provider's own exception broadly and wraps
+it in its own boundary's transport-failure type).
+
+A live end-to-end run (`output/executions/run-20260805T105026014856Z-987575c0/`)
+showed generation-call `429 RESOURCE_EXHAUSTED`s (the `generate_content`
+free-tier quota, 15 requests/minute, distinct from the embedding boundary's
+own separately-measured ~100/minute) transport-escalating correctly but
+never being retried -- this provider "performs no retries," documented
+plainly until now. Two mechanisms now live at this boundary, MIRRORING (not
+sharing code with) `automation_engineering.reuse.embeddings.
+GeminiEmbeddingProvider`'s own pacing/retry -- see that module's docstring
+for the twin. Deliberately mirrored, not shared, because the two boundaries
+differ in every dimension a shared helper would need to abstract over: a
+different SDK call (`generate_content` vs. `embed_content`), a different
+exception taxonomy to preserve (`ProviderGenerationError`, this provider's
+own pre-existing contract, vs. `EmbeddingCallError`), a different real quota
+(15/minute vs. ~100/minute), and different subsystems
+(`requirement_intelligence.llm.providers` vs. `automation_engineering.reuse`)
+with no existing precedent of either importing from the other for a concern
+this narrow (exactly two call sites) -- introducing a new shared module
+here would be the premature abstraction, not the fix.
+
+1. **Proactive pacing** (`_pace`) -- before every call, blocks just long
+   enough to keep this provider's own trailing-60-second call count under
+   `max_calls_per_minute` (default 12 -- a defensive margin under the
+   free tier's observed 15/minute `generate_content` quota, proportionally
+   more conservative than the embedding boundary's 90-under-100 margin,
+   since 15/minute leaves far less room for a shared quota with other
+   callers).
+2. **Reactive retry-with-backoff** (`_execute`) -- a retryable failure (a
+   429/`RESOURCE_EXHAUSTED`, or a 5xx/`UNAVAILABLE`) is retried up to
+   `max_retries` times, honoring the SDK error's own `retryDelay` when
+   present, falling back to a fixed exponential schedule
+   (`backoff_base_seconds * 2**attempt`, capped at `backoff_max_seconds`)
+   when it is absent or unparseable -- the live run's own observed
+   `retryDelay`s (0.9-1.5s) mean this recovers most transient 429s cheaply.
+   A non-retryable failure is wrapped and raised immediately, unchanged.
+   Retry exhaustion still raises `ProviderGenerationError` -- this
+   provider's own pre-existing exception, unchanged in type -- which every
+   existing caller already catches broadly and re-wraps as ITS OWN
+   transport-failure type (Layer 3's `TransportFailureError` subclasses;
+   Layer 2's own equivalent), so Fix 2's per-need/per-specification
+   escalation is the unchanged backstop when this bounded retry is not
+   enough.
+
+`sleep`/`clock` are constructor-injectable (default `time.sleep`/
+`time.monotonic`) for the same reason `GeminiEmbeddingProvider`'s are: tests
+prove the retry/backoff SEQUENCE deterministically, with no real delay.
 """
 
 from __future__ import annotations
 
 import os
 import time
+from collections import deque
+from collections.abc import Callable
 from typing import Any
 
 from requirement_intelligence.llm.llm_exceptions import (
@@ -45,6 +106,59 @@ _DEFAULT_MODEL = "gemini-2.5-pro"
 _ENV_API_KEY = "GOOGLE_API_KEY"
 _ENV_MODEL = "GEMINI_MODEL"
 
+#: Defensive margin under the free tier's observed 15-request/minute
+#: `generate_content` quota (the live run's own measured limit) -- not the
+#: quota itself, a margin below it.
+DEFAULT_MAX_CALLS_PER_MINUTE = 12
+
+#: Retries attempted (in addition to the first try) before a retryable
+#: failure is abandoned and raised as `ProviderGenerationError`.
+DEFAULT_MAX_RETRIES = 4
+DEFAULT_BACKOFF_BASE_SECONDS = 2.0
+DEFAULT_BACKOFF_MAX_SECONDS = 60.0
+
+_RATE_WINDOW_SECONDS = 60.0
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """A 429/`RESOURCE_EXHAUSTED` or 5xx/`UNAVAILABLE` -- the shapes
+    `google.genai.errors.APIError`'s own `code`/`status` attributes carry
+    for a rate-limit or transient-server condition. Mirrors
+    `automation_engineering.reuse.embeddings._is_retryable` exactly (same
+    SDK, same error shape); not imported from there -- see this module's own
+    docstring for why the two boundaries mirror rather than share."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, int) and (code == 429 or 500 <= code < 600):
+        return True
+    status = getattr(exc, "status", None)
+    return status in ("RESOURCE_EXHAUSTED", "UNAVAILABLE")
+
+
+def _parse_retry_delay_seconds(details: Any) -> float | None:
+    """Recursively search an SDK error's own `.details` payload for a
+    `RetryInfo`-shaped `retryDelay` (e.g. `{"retryDelay": "1.2s"}`), returned
+    as seconds. Returns `None` when nothing parseable is found. Mirrors
+    `automation_engineering.reuse.embeddings._parse_retry_delay_seconds`
+    exactly; see this module's own docstring for why it is a mirror, not a
+    shared import."""
+    if isinstance(details, dict):
+        raw = details.get("retryDelay")
+        if isinstance(raw, str) and raw.endswith("s"):
+            try:
+                return float(raw[:-1])
+            except ValueError:
+                pass
+        for value in details.values():
+            found = _parse_retry_delay_seconds(value)
+            if found is not None:
+                return found
+    elif isinstance(details, list):
+        for item in details:
+            found = _parse_retry_delay_seconds(item)
+            if found is not None:
+                return found
+    return None
+
 
 class GeminiProvider(LLMProvider):
     """Google Gemini implementation of :class:`LLMProvider`.
@@ -57,6 +171,13 @@ class GeminiProvider(LLMProvider):
         self,
         api_key: str | None = None,
         model_name: str | None = None,
+        *,
+        max_calls_per_minute: int = DEFAULT_MAX_CALLS_PER_MINUTE,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        backoff_base_seconds: float = DEFAULT_BACKOFF_BASE_SECONDS,
+        backoff_max_seconds: float = DEFAULT_BACKOFF_MAX_SECONDS,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """Initialise the Gemini provider.
 
@@ -69,12 +190,29 @@ class GeminiProvider(LLMProvider):
             Model identifier.  If *None*, the value is read from the
             ``GEMINI_MODEL`` environment variable, falling back to
             ``gemini-2.5-pro``.
+        max_calls_per_minute, max_retries, backoff_base_seconds,
+        backoff_max_seconds:
+            Pacing/retry configuration -- see module docstring. Defaulted;
+            no existing caller (`llm_factory.create_provider`, direct
+            construction) passes these, so existing behavior is unchanged
+            except for the retry/pacing itself.
+        sleep, clock:
+            Injectable for deterministic, delay-free tests of the pacing/
+            retry schedule. Default to the real ``time.sleep``/
+            ``time.monotonic``.
         """
         self._api_key: str = api_key or os.environ.get(_ENV_API_KEY, "")
         self._model_name: str = (
             model_name or os.environ.get(_ENV_MODEL, _DEFAULT_MODEL)
         )
         self._client: Any = None  # lazily initialised in _get_client()
+        self._max_calls_per_minute = max_calls_per_minute
+        self._max_retries = max_retries
+        self._backoff_base_seconds = backoff_base_seconds
+        self._backoff_max_seconds = backoff_max_seconds
+        self._sleep = sleep
+        self._clock = clock
+        self._call_timestamps: deque[float] = deque()
 
     # ------------------------------------------------------------------
     # LLMProvider interface
@@ -186,27 +324,63 @@ class GeminiProvider(LLMProvider):
         config: dict[str, Any] = {"temperature": request.temperature}
         return contents, config
 
+    def _pace(self) -> None:
+        """Block until another call keeps this provider's own trailing
+        60-second call count under `max_calls_per_minute`. See module
+        docstring, "Proactive pacing"."""
+        now = self._clock()
+        window_start = now - _RATE_WINDOW_SECONDS
+        while self._call_timestamps and self._call_timestamps[0] < window_start:
+            self._call_timestamps.popleft()
+        if len(self._call_timestamps) >= self._max_calls_per_minute:
+            wait = self._call_timestamps[0] + _RATE_WINDOW_SECONDS - now
+            if wait > 0:
+                self._sleep(wait)
+            now = self._clock()
+            window_start = now - _RATE_WINDOW_SECONDS
+            while self._call_timestamps and self._call_timestamps[0] < window_start:
+                self._call_timestamps.popleft()
+        self._call_timestamps.append(self._clock())
+
     def _execute(
         self,
         client: Any,
         contents: str,
         config: dict[str, Any],
     ) -> Any:
-        """Invoke Gemini exactly once.
+        """Invoke Gemini, with bounded retry-with-backoff on a retryable
+        failure (module docstring, "Pacing and bounded retry-with-backoff").
 
-        Wraps any SDK failure in :class:`ProviderGenerationError` so no SDK
-        exception type crosses the provider boundary.  Performs no retries.
+        Wraps any non-retryable, or retry-exhausted, SDK failure in
+        :class:`ProviderGenerationError` so no SDK exception type crosses
+        the provider boundary -- unchanged in TYPE from before this fix,
+        so every existing caller's own catch-all-and-rewrap boundary
+        (`LiveFeatureContentGenerator`/`LiveFeatureRemediator`/Layer 3's
+        four live generators) needs no change.
         """
-        try:
-            return client.models.generate_content(
-                model=self._model_name,
-                contents=contents,
-                config=config,
-            )
-        except Exception as exc:
-            raise ProviderGenerationError(
-                f"Gemini generation failed: {exc}"
-            ) from exc
+        attempt = 0
+        while True:
+            self._pace()
+            try:
+                return client.models.generate_content(
+                    model=self._model_name,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as exc:
+                if attempt >= self._max_retries or not _is_retryable(exc):
+                    raise ProviderGenerationError(
+                        f"Gemini generation failed: {exc}"
+                    ) from exc
+                delay = _parse_retry_delay_seconds(getattr(exc, "details", None))
+                if delay is None:
+                    delay = min(
+                        self._backoff_base_seconds * (2**attempt), self._backoff_max_seconds
+                    )
+                else:
+                    delay = min(delay, self._backoff_max_seconds)
+                self._sleep(delay)
+                attempt += 1
 
     def _map_response(
         self,

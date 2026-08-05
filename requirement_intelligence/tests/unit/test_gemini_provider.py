@@ -318,3 +318,138 @@ def test_unextractable_text_raises_generation_error() -> None:
     with patch(_CLIENT_PATH, return_value=client):
         with pytest.raises(ProviderGenerationError, match="Could not extract text"):
             provider.generate(_make_request())
+
+
+# ---------------------------------------------------------------------------
+# 8. Pacing and bounded retry-with-backoff (Finding 2's own fix, 2026-08-05)
+#
+# Mirrors `tests/unit/test_automation_engineering_reuse_embeddings.py`'s own
+# FIX 3 proofs exactly (same shape, same fake-error stand-in pattern) --
+# proving the SAME behavior at this, structurally distinct, boundary.
+# ---------------------------------------------------------------------------
+
+
+class _FakeRateLimitError(Exception):
+    """Stand-in for `google.genai.errors.ClientError` on a 429 --
+    `code`/`status`/`details` are the exact attributes this module's own
+    `_is_retryable`/`_parse_retry_delay_seconds` read; no real SDK class is
+    imported."""
+
+    def __init__(self, retry_delay: str | None = None) -> None:
+        super().__init__("429 RESOURCE_EXHAUSTED. quota exceeded")
+        self.code = 429
+        self.status = "RESOURCE_EXHAUSTED"
+        self.details = (
+            {"error": {"details": [{"retryDelay": retry_delay}]}}
+            if retry_delay is not None
+            else {"error": {}}
+        )
+
+
+@pytest.mark.unit
+def test_retry_after_one_429_then_succeeds() -> None:
+    """A transient 429 recovers: the call backs off (via the injected fake
+    `sleep`) and retries, bounded, succeeding on the second attempt -- where
+    pre-fix it would have transport-escalated immediately."""
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        _FakeRateLimitError(),
+        _fake_response("Generated output"),
+    ]
+    sleeps: list[float] = []
+    provider = GeminiProvider(api_key="fake-key", sleep=sleeps.append, clock=lambda: 0.0)
+
+    with patch(_CLIENT_PATH, return_value=client):
+        result = provider.generate(_make_request())
+
+    assert result.generated_text == "Generated output"
+    assert client.models.generate_content.call_count == 2
+    assert len(sleeps) == 1
+    assert sleeps[0] > 0
+
+
+@pytest.mark.unit
+def test_retry_honors_retry_delay_from_the_sdk_error() -> None:
+    """The SDK error's own `retryDelay` (e.g. `"1.2s"`, matching the live
+    run's own observed 0.9-1.5s delays) is honored over the fixed
+    exponential fallback, when parseable."""
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        _FakeRateLimitError(retry_delay="1.2s"),
+        _fake_response("Generated output"),
+    ]
+    sleeps: list[float] = []
+    provider = GeminiProvider(api_key="fake-key", sleep=sleeps.append, clock=lambda: 0.0)
+
+    with patch(_CLIENT_PATH, return_value=client):
+        provider.generate(_make_request())
+
+    assert sleeps == [1.2]
+
+
+@pytest.mark.unit
+def test_persistent_429_exhausts_retry_and_raises_generation_error() -> None:
+    """A persistent 429 exhausts the bounded retry and raises
+    `ProviderGenerationError` -- unchanged in type, so every existing
+    caller's own catch-all-and-rewrap (Layer 3's `TransportFailureError`
+    subclasses, Layer 2's own equivalent) still catches it and Fix 2's
+    per-need/per-specification escalation is still the backstop. Never an
+    infinite retry loop."""
+    client = MagicMock()
+    client.models.generate_content.side_effect = _FakeRateLimitError()
+    sleeps: list[float] = []
+    provider = GeminiProvider(
+        api_key="fake-key", max_retries=3, sleep=sleeps.append, clock=lambda: 0.0
+    )
+
+    with patch(_CLIENT_PATH, return_value=client):
+        with pytest.raises(ProviderGenerationError, match="quota exceeded"):
+            provider.generate(_make_request())
+
+    assert client.models.generate_content.call_count == 4  # first attempt + 3 retries
+    assert len(sleeps) == 3
+
+
+@pytest.mark.unit
+def test_non_retryable_failure_never_retries() -> None:
+    """A plain SDK exception (no `code`/`status`, e.g. `_FakeSDKError` above)
+    is not judged retryable -- content/generation failures still take their
+    own immediate-raise path, not retried as transport. Proves it never
+    sleeps/retries, complementing the existing
+    `test_generation_failure_wrapped_as_generation_error`'s own wrap proof."""
+    client = _fake_client(generate_side_effect=_FakeSDKError("bad request"))
+    sleeps: list[float] = []
+    provider = GeminiProvider(api_key="fake-key", sleep=sleeps.append)
+
+    with patch(_CLIENT_PATH, return_value=client):
+        with pytest.raises(ProviderGenerationError):
+            provider.generate(_make_request())
+
+    assert client.models.generate_content.call_count == 1
+    assert sleeps == []
+
+
+@pytest.mark.unit
+def test_pacing_sleeps_when_the_per_minute_limit_would_be_exceeded() -> None:
+    """Pacing half: once `max_calls_per_minute` calls have been made within
+    the trailing 60-second window, the next call blocks (via the injected
+    fake `sleep`) until the window admits it -- the generation-side rate
+    handling, mirroring the embedding boundary's own, at the lower
+    15/minute-derived default."""
+    client = _fake_client()
+    sleeps: list[float] = []
+    clock_values = iter([0.0, 0.0, 10.0, 10.0])
+    provider = GeminiProvider(
+        api_key="fake-key",
+        max_calls_per_minute=1,
+        sleep=sleeps.append,
+        clock=lambda: next(clock_values, 70.0),
+    )
+
+    with patch(_CLIENT_PATH, return_value=client):
+        provider.generate(_make_request())
+        provider.generate(_make_request())
+
+    assert client.models.generate_content.call_count == 2
+    assert len(sleeps) == 1
+    assert sleeps[0] == pytest.approx(50.0)  # 60s window - 10s already elapsed
