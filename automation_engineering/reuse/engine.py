@@ -40,6 +40,27 @@ in order and the function returns at the first failure, so a candidate
 failing more than one check is still reported against the earliest one --
 deterministic, not incidental.
 
+The generate floor -- NO_MATCH made reachable post-bootstrap
+--------------------------------------------------------------
+`decide_reuse` is not only a two-outcome (trust/escalate) decision below the
+top of the catalog -- a third, lower tier (`DEFAULT_GENERATE_FLOOR`) now
+sits beneath the three checks above: a best-candidate similarity too low to
+be even PLAUSIBLE (not merely untrustworthy) is `NoMatch`, exactly like an
+empty catalog, never an `Escalation`. This closes a real gap (additive note,
+2026-08-05): `LiveSemanticMatcher.match` returns one candidate per catalog
+asset unconditionally (`.matcher`'s/`.live_matcher`'s own module docstrings),
+so once a catalog has ever been populated, `NoMatch` was previously
+reachable only via an empty catalog -- every need, including a genuinely
+novel one with nothing relevant in the catalog, escalated instead of
+generating. The floor is calibrated from a live run's real score data (see
+`DEFAULT_GENERATE_FLOOR`'s own docstring, above), not guessed. This tier
+sits strictly BELOW check (a) -- it narrows what counts as "below
+threshold" into "not even plausible" (NO_MATCH) vs. "plausible but
+unproven" (ESCALATE); it does not touch checks (a)/(b)/(c)'s own logic once
+a candidate clears the floor, and it can never mask a should-have-been-
+trusted or should-have-escalated case, since generating is only reachable
+when NO candidate is even plausibly close.
+
 Check (c), generalized: signature-fit and method-fit
 -------------------------------------------------------
 ADR-0044 D4's own text exemplifies check (c) on step definitions
@@ -102,6 +123,38 @@ from automation_engineering.reuse.models import (
 #: (ADR-0044 D3's own embeddings lean -- Consequences, D3's TBD).
 DEFAULT_CONFIDENCE_THRESHOLD = 0.75
 
+#: ADR-0044 D3's NO_MATCH/generate boundary, made reachable post-bootstrap
+#: (additive note, 2026-08-05, the three-tier reuse-decision fix). Below
+#: this similarity, the best candidate is not even PLAUSIBLE -- "nothing
+#: relevant," not "something relevant but untrustworthy" -- and the need
+#: routes to NO_MATCH/generate, exactly as an empty catalog already does,
+#: never to escalation.
+#:
+#: **Calibrated from a live run's real score data, not guessed.** A live
+#: run (`output/executions/run-20260805T105026014856Z-987575c0/
+#: automation_engineering_report.md`) matched 49 real Gherkin step-needs
+#: (SauceDemo login/cart/checkout/logout steps) against the tracked
+#: baseline's real 2-asset catalog (`SmokeSteps`'s own two steps -- neither
+#: remotely related to any of the 49). Every one of the 49 scored in
+#: [0.5707, 0.6688] -- genuinely unrelated short technical text has a HIGH
+#: embedding-similarity floor with this model family, never near 0. A fresh
+#: live probe (same catalog, same embedding model) against two more
+#: deliberately-novel, unrelated needs ("a satellite uplink telemetry
+#: buffer is flushed...", "a two-factor authentication backup code...")
+#: scored [0.5196, 0.5696] -- consistent with the live run's own band, not
+#: an outlier. The SAME catalog's own exact-text match scored 0.9843, and a
+#: full paraphrase of it scored 0.8980 -- both far above
+#: `DEFAULT_CONFIDENCE_THRESHOLD`. The real "nothing relevant" ceiling
+#: (0.6688) and the real "genuinely relevant" floor (0.8980) leave a wide,
+#: cleanly-separated gap; this floor sits at its midpoint with
+#: `DEFAULT_CONFIDENCE_THRESHOLD`, comfortably above every observed
+#: unrelated score (>=0.03 margin) and comfortably below every observed
+#: relevant one -- a simple global floor, not a guess, and not a smarter
+#: (relative-gap/normalized) criterion, because the data did not call for
+#: one: the two observed bands do not overlap. See ADR-0044 D3/D4's
+#: additive note (docs/adr/0044-...) for the full investigation.
+DEFAULT_GENERATE_FLOOR = 0.70
+
 
 def decide_reuse(
     need: GherkinStepNeed,
@@ -109,6 +162,7 @@ def decide_reuse(
     matcher: SemanticMatcher,
     *,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    generate_floor: float = DEFAULT_GENERATE_FLOOR,
 ) -> ReuseDecision:
     """Decide reuse-or-generate-or-escalate for one Gherkin step-need.
 
@@ -121,12 +175,31 @@ def decide_reuse(
     matcher whose own `match` is itself deterministic (true of
     :class:`~automation_engineering.reuse.matcher.StubSemanticMatcher` by
     construction).
+
+    **Three tiers, in order (additive, 2026-08-05).** `matcher.match`
+    returning `()` (an empty catalog, `.matcher`'s own only unconditional
+    case) is still NO_MATCH, unchanged. Given at least one candidate:
+    (1) `best.confidence < generate_floor` -- NOT EVEN PLAUSIBLE -- NO_MATCH,
+    the same outcome as an empty catalog, for the same reason (nothing
+    worth a human's time reviewing); this is the tier this fix adds, and
+    the ONLY thing it changes -- it was previously unreachable once a
+    catalog had ever been populated (Finding 1), since `LiveSemanticMatcher`
+    always returns one candidate per catalog asset. (2) `generate_floor <=
+    best.confidence < confidence_threshold` -- PLAUSIBLE BUT NOT
+    TRUSTWORTHY -- ESCALATE(CONFIDENCE), exactly ADR-0044 D4(a)'s
+    pre-existing behavior, merely bounded below now. (3)
+    `best.confidence >= confidence_threshold` -- ADR-0044 D4's own
+    three-check safety (content-hash, structural fit) -- entirely
+    UNCHANGED by this fix, still the only path to `TrustedReuse`.
     """
     candidates = matcher.match(need, catalog)
     if not candidates:
         return NoMatch(need=need)
 
     best = candidates[0]
+
+    if best.confidence < generate_floor:
+        return NoMatch(need=need)
 
     if best.confidence < confidence_threshold:
         return Escalation(
@@ -384,4 +457,9 @@ def _method_signatures(methods: tuple[JavaMethod, ...]) -> tuple[str, ...]:
     )
 
 
-__all__ = ["DEFAULT_CONFIDENCE_THRESHOLD", "decide_reuse", "method_shape_fits"]
+__all__ = [
+    "DEFAULT_CONFIDENCE_THRESHOLD",
+    "DEFAULT_GENERATE_FLOOR",
+    "decide_reuse",
+    "method_shape_fits",
+]

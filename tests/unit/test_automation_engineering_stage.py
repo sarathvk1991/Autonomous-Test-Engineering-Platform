@@ -553,9 +553,13 @@ class TestEscalationSurfacing:
         package = _package((_feature_record("REQ-1", "login.feature"),))
         matcher = StubSemanticMatcher(
             {
+                # 0.72 -- inside the escalate band (generate_floor <= x <
+                # confidence_threshold), not below the floor: this proves
+                # confidence-escalation surfacing specifically, not the
+                # (separately tested) NO_MATCH/generate floor.
                 "I am on the login page": (
                     MatchCandidate(
-                        asset_id="some-asset", confidence=0.1, content_hash="whatever"
+                        asset_id="some-asset", confidence=0.72, content_hash="whatever"
                     ),
                 ),
                 'I log in as "bob"': (),
@@ -1032,8 +1036,11 @@ class TestTransportFailureIsolation:
 
         matcher = _RaisingSemanticMatcher(
             {
+                # 0.72 -- inside the escalate band, not below the
+                # NO_MATCH/generate floor (see test_automation_engineering_
+                # reuse_engine.py for the floor's own dedicated tests).
                 "I am on the login page": (
-                    MatchCandidate(asset_id="STEP-x", confidence=0.10, content_hash="h"),
+                    MatchCandidate(asset_id="STEP-x", confidence=0.72, content_hash="h"),
                 ),
                 "I see the dashboard": (),
             },

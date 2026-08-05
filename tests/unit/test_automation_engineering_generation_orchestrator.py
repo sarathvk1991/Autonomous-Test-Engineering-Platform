@@ -200,8 +200,11 @@ class TestEscalationSurfacesForReview:
             step_type="When",
             captures=asset.signature_alignment.captures,
         )
+        # 0.72 -- inside the escalate band (generate_floor <= x <
+        # confidence_threshold), not below the NO_MATCH/generate floor this
+        # confidence value predates (ADR-0044 D3/D4's additive note).
         candidate = MatchCandidate(
-            asset_id=_LOGIN_ASSET_ID, confidence=0.10, content_hash=_CURRENT_HASH
+            asset_id=_LOGIN_ASSET_ID, confidence=0.72, content_hash=_CURRENT_HASH
         )
         matcher = StubSemanticMatcher({need.text: (candidate,)})
         generator = StubStepDefinitionGenerator({})
@@ -601,8 +604,10 @@ class TestBatchOrchestration:
         bind_candidate = MatchCandidate(
             asset_id=_LOGIN_ASSET_ID, confidence=0.95, content_hash=_CURRENT_HASH
         )
+        # 0.72 -- inside the escalate band, not below the NO_MATCH/generate
+        # floor.
         escalate_candidate = MatchCandidate(
-            asset_id=_LOGIN_ASSET_ID, confidence=0.10, content_hash=_CURRENT_HASH
+            asset_id=_LOGIN_ASSET_ID, confidence=0.72, content_hash=_CURRENT_HASH
         )
         matcher = StubSemanticMatcher(
             {

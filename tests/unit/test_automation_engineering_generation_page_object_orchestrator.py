@@ -222,8 +222,10 @@ class TestReuseEngineEscalationSurfacesForReview:
         )
         catalog = _catalog(asset)
         method_need = _method_need()
+        # 0.72 -- inside the escalate band, not below the NO_MATCH/generate
+        # floor (ADR-0044 D3/D4's additive note).
         candidate = MatchCandidate(
-            asset_id=_LOGIN_ASSET_ID, confidence=0.10, content_hash=_CURRENT_HASH
+            asset_id=_LOGIN_ASSET_ID, confidence=0.72, content_hash=_CURRENT_HASH
         )
         matcher = StubSemanticMatcher({method_need.need.text: (candidate,)})
         generator = StubPageObjectGenerator({})
@@ -558,8 +560,10 @@ class TestBatchOrchestration:
         bind_candidate = MatchCandidate(
             asset_id=_LOGIN_ASSET_ID, confidence=0.95, content_hash=_CURRENT_HASH
         )
+        # 0.72 -- inside the escalate band, not below the NO_MATCH/generate
+        # floor.
         escalate_candidate = MatchCandidate(
-            asset_id=_LOGIN_ASSET_ID, confidence=0.10, content_hash=_CURRENT_HASH
+            asset_id=_LOGIN_ASSET_ID, confidence=0.72, content_hash=_CURRENT_HASH
         )
         matcher = StubSemanticMatcher(
             {

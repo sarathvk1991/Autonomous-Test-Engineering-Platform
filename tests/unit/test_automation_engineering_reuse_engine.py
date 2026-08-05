@@ -29,7 +29,11 @@ from automation_engineering.catalog.models import (
     StepDefinitionAsset,
 )
 from automation_engineering.reuse.embeddings import EmbeddingProvider
-from automation_engineering.reuse.engine import DEFAULT_CONFIDENCE_THRESHOLD, decide_reuse
+from automation_engineering.reuse.engine import (
+    DEFAULT_CONFIDENCE_THRESHOLD,
+    DEFAULT_GENERATE_FLOOR,
+    decide_reuse,
+)
 from automation_engineering.reuse.live_matcher import LiveSemanticMatcher
 from automation_engineering.reuse.matcher import StubSemanticMatcher
 from automation_engineering.reuse.models import (
@@ -360,6 +364,84 @@ def test_empty_catalog_bootstrap_is_generate_all_not_error_and_makes_no_live_cal
 
 
 # ---------------------------------------------------------------------------
+# Three-tier fix (additive, 2026-08-05): NO_MATCH is no longer bootstrap-only
+# ---------------------------------------------------------------------------
+
+
+def test_below_floor_similarity_is_no_match_not_escalation_with_a_non_empty_catalog() -> None:
+    """Finding 1's fix, proven directly: a catalog that is NOT empty (a
+    populated, post-bootstrap catalog, the exact case that made `NoMatch`
+    unreachable before this fix) still produces `NoMatch` for a need whose
+    best candidate is not even PLAUSIBLE (below `DEFAULT_GENERATE_FLOOR`) --
+    a genuinely novel step now reaches generate, where it would have
+    escalated pre-fix."""
+    asset = _login_step_definition()
+    catalog = _catalog(asset)
+    need = GherkinStepNeed(text="a step nothing plausibly resembles", step_type="Given")
+    candidate = MatchCandidate(
+        asset_id=_LOGIN_ASSET_ID, confidence=0.10, content_hash=_CURRENT_HASH
+    )
+    matcher = StubSemanticMatcher({need.text: (candidate,)})
+
+    decision = decide_reuse(need, catalog, matcher)
+
+    assert isinstance(decision, NoMatch)
+    assert decision.need is need
+
+
+def test_generate_floor_boundary_is_inclusive_of_escalation_just_above_it() -> None:
+    """The floor and the confidence threshold carve three CONTIGUOUS bands,
+    proven at both edges with one shared candidate/catalog: just below
+    `DEFAULT_GENERATE_FLOOR` -> `NoMatch`; just at/above it (but still below
+    `DEFAULT_CONFIDENCE_THRESHOLD`) -> `Escalation(CONFIDENCE)`, ADR-0044
+    D4(a)'s own pre-existing behavior, merely bounded below now."""
+    asset = _login_step_definition()
+    catalog = _catalog(asset)
+    need = _fitting_need()
+
+    below_floor = MatchCandidate(
+        asset_id=_LOGIN_ASSET_ID,
+        confidence=DEFAULT_GENERATE_FLOOR - 0.01,
+        content_hash=_CURRENT_HASH,
+    )
+    at_floor = MatchCandidate(
+        asset_id=_LOGIN_ASSET_ID, confidence=DEFAULT_GENERATE_FLOOR, content_hash=_CURRENT_HASH
+    )
+
+    no_match_decision = decide_reuse(
+        need, catalog, StubSemanticMatcher({need.text: (below_floor,)})
+    )
+    escalated_decision = decide_reuse(need, catalog, StubSemanticMatcher({need.text: (at_floor,)}))
+
+    assert isinstance(no_match_decision, NoMatch)
+    assert isinstance(escalated_decision, Escalation)
+    assert escalated_decision.check is EscalationCheck.CONFIDENCE
+
+
+def test_generate_floor_is_configurable_independently_of_the_confidence_threshold() -> None:
+    """`generate_floor` is a tunable parameter, mirroring
+    `confidence_threshold`'s own configurability (`test_confidence_threshold_
+    is_configurable`) -- not a hardcoded constant. A candidate the default
+    floor would route to `NoMatch` still escalates once the floor is lowered
+    below it; `confidence_threshold` (still the default) is untouched by
+    this."""
+    asset = _login_step_definition()
+    catalog = _catalog(asset)
+    need = _fitting_need()
+    candidate = MatchCandidate(
+        asset_id=_LOGIN_ASSET_ID, confidence=0.10, content_hash=_CURRENT_HASH
+    )
+    matcher = StubSemanticMatcher({need.text: (candidate,)})
+
+    no_match = decide_reuse(need, catalog, matcher)
+    assert isinstance(no_match, NoMatch)
+
+    escalated = decide_reuse(need, catalog, matcher, generate_floor=0.05)
+    assert isinstance(escalated, Escalation)
+    assert escalated.check is EscalationCheck.CONFIDENCE
+
+
+# ---------------------------------------------------------------------------
 # Determinism
 # ---------------------------------------------------------------------------
 
@@ -382,11 +464,20 @@ def test_same_inputs_and_stub_always_produce_the_same_decision() -> None:
 def test_confidence_threshold_is_configurable() -> None:
     """The threshold is a tunable parameter, not a hardcoded constant baked
     into the decision logic -- a lower threshold trusts a match the default
-    would have escalated."""
+    would have escalated.
+
+    ``low_confidence`` is chosen inside the default escalate band
+    (``DEFAULT_GENERATE_FLOOR`` <= x < ``DEFAULT_CONFIDENCE_THRESHOLD``), not
+    below the floor -- this test is about threshold configurability, not the
+    floor, and a value below the floor would make the default-threshold call
+    `NoMatch` rather than `Escalation` (see
+    `test_no_single_check_is_ever_bypassed_by_the_other_two_passing`'s own
+    `only-confidence-fails` case, and the three-tier tests below, for the
+    floor itself)."""
     asset = _login_step_definition()
     catalog = _catalog(asset)
     need = _fitting_need()
-    low_confidence = 0.5
+    low_confidence = 0.72
     candidate = MatchCandidate(
         asset_id=_LOGIN_ASSET_ID, confidence=low_confidence, content_hash=_CURRENT_HASH
     )
