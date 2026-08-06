@@ -15,13 +15,32 @@ CLI-invocable via `analyze --with-automation-engineering
 live-infrastructure posture: a JDK/Maven toolchain, an embedding
 provider). Stage 16 moved from a PENDING placeholder into a real,
 resumable run-state stage; see `docs/architecture/architecture-baseline-v2
-.md` item 28 for the full wiring record. CP7/CP8 (suite Sonar governance,
-static execution readiness, ADR-0046 D8 — named and scoped only, not yet
-designed in detail) are the only Layer 4 work this ADR still leaves open.
-No `router`/HTTP API surface exists yet -- CP5 is reachable via the CLI
-stage above and via its own pure Python function surface
+.md` item 28 for the full wiring record.
+
+**CP7 (whole-suite Sonar quality governance, ADR-0047) is BUILT, REPORT-ONLY, NOT wired.**
+`cp7/measures.py::fetch_whole_suite_quality_report` reads the tracked
+baseline's own already-accumulated Sonar project measures
+(`violations`/`bugs`/`code_smells`/`sqale_rating`/`reliability_rating`
+generic-quality; `vulnerabilities`/`security_hotspots`/`security_rating`
+security; `coverage`/`duplicated_lines_density` — genuinely unmeasured on
+the real server today, no JaCoCo report ever submitted) via a new
+`fetch_measures` method on the SAME `SonarQualityGateAdapter` Protocol CP3
+already uses (`automation_engineering/cp3/sonar/`, ADR-0047 D6 — no
+second adapter). `Cp7WholeSuiteQualityReport` has no `overall_verdict`: it
+is a report, not a gate (ADR-0047 D3/D4/D5 — rating-gating deferred until
+the suite compiles and real scores exist; security/coverage report-only
+pending their own separate prerequisites). Not yet called from any CLI
+stage or run-state wiring — that is a future task, the same
+"components first, wiring later" sequencing CP5's own four components
+went through before stage 16 wired them.
+
+**CP8 (static execution readiness, ADR-0047) is designed and frozen, not yet built.**
+
+No `router`/HTTP API surface exists yet -- CP5/CP7 are reachable via CP5's
+own CLI stage and via pure Python function surfaces
 (`suite_quality_governance.cp5.detect_orphaned_glue`/
-`.sweep_near_duplicates`/`.evaluate_cohesion`/`.evaluate_promotion_wrap`).
+`.sweep_near_duplicates`/`.evaluate_cohesion`/`.evaluate_promotion_wrap`;
+`suite_quality_governance.cp7.fetch_whole_suite_quality_report`).
 
 **Real, live finding (2026-08-06, manually verified, not part of the
 automated suite — see `cp5/compile_check.py`'s own docstring for why):**

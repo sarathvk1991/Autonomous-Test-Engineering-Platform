@@ -4,14 +4,24 @@ test/dev scaffolding only, mirroring
 own discipline exactly: a canned result, never a real network call or
 subprocess, so CP3's gate LOGIC (:mod:`automation_engineering.cp3.gate`) is
 unit-tested without a live SonarQube server (ADR-0044 D5's own test story).
+
+Also stands in for CP7's own :meth:`~.adapter.SonarQualityGateAdapter.
+fetch_measures` (ADR-0047 D6) -- a `measures` result must be scripted
+explicitly, the same "no scripted outcome is a test-authoring error, not a
+silent default" discipline every other method here already applies. This
+is distinct from a `SonarMeasure` whose own `value` is `None` (a
+LEGITIMATE, scripted "the server has no value for this metric" case,
+ADR-0047 D5) -- the stub itself never fabricates that distinction; the
+test author scripts it explicitly via `SonarMeasuresResult`.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from automation_engineering.cp3.sonar.adapter import SonarScanError
-from automation_engineering.cp3.sonar.models import SonarQualityGateResult
+from automation_engineering.cp3.sonar.models import SonarMeasuresResult, SonarQualityGateResult
 
 
 class StubSonarQualityGateAdapter:
@@ -29,13 +39,16 @@ class StubSonarQualityGateAdapter:
         result: SonarQualityGateResult | None = None,
         scan_id: str = "stub-scan-1",
         poll_error: SonarScanError | None = None,
+        measures: SonarMeasuresResult | None = None,
     ) -> None:
         self._result = result
         self._scan_id = scan_id
         self._poll_error = poll_error
+        self._measures = measures
         self.submit_calls: list[tuple[Path, str]] = []
         self.poll_calls: list[str] = []
         self.fetch_calls: list[str] = []
+        self.measures_calls: list[tuple[str, tuple[str, ...]]] = []
 
     def submit_scan(self, project_root: Path, project_key: str) -> str:
         self.submit_calls.append((project_root, project_key))
@@ -54,6 +67,17 @@ class StubSonarQualityGateAdapter:
                 "construct it with `result=...`."
             )
         return self._result
+
+    def fetch_measures(
+        self, project_key: str, metric_keys: Sequence[str]
+    ) -> SonarMeasuresResult:
+        self.measures_calls.append((project_key, tuple(metric_keys)))
+        if self._measures is None:
+            raise SonarScanError(
+                "StubSonarQualityGateAdapter has no scripted measures; "
+                "construct it with `measures=...`."
+            )
+        return self._measures
 
 
 __all__ = ["StubSonarQualityGateAdapter"]

@@ -8,6 +8,14 @@ the SonarQube Web API's own HTTP responses for `poll_for_completion`/
 building and response-parsing logic is correct, WITHOUT proving a live
 server's actual behavior (that remains unexercised in this environment,
 per this build's own report -- no SonarQube server was reachable here).
+
+Also covers `fetch_measures` (ADR-0047 D1/D6) -- CP7's own added
+mechanic, mirroring the identical fake-testing discipline: ``respx``
+mocks ``/api/measures/component``, proving the request shape (metric
+keys joined, the least-privilege token as HTTP Basic auth) and the
+response-parsing logic (a metric the server's own response array omits
+becomes `value=None`, ADR-0047 D5/D10 -- never a faked default), without
+depending on any live server being reachable in this environment.
 """
 
 from __future__ import annotations
@@ -199,3 +207,71 @@ def test_fetch_quality_gate_result_parses_a_failing_gate_with_conditions() -> No
     assert failing.status == "ERROR"
     assert failing.actual_value == "3"
     assert failing.error_threshold == "0"
+
+
+# ---------------------------------------------------------------------------
+# fetch_measures (ADR-0047 D1/D6)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_fetch_measures_requests_the_joined_metric_keys_for_the_project() -> None:
+    route = respx.get(f"{_BASE_URL}/api/measures/component").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "component": {
+                    "key": "demo",
+                    "measures": [
+                        {"metric": "violations", "value": "0", "bestValue": True},
+                        {"metric": "bugs", "value": "0", "bestValue": True},
+                    ],
+                }
+            },
+        )
+    )
+
+    result = _adapter().fetch_measures("demo", ("violations", "bugs"))
+
+    assert route.calls.last.request.url.params["component"] == "demo"
+    assert route.calls.last.request.url.params["metricKeys"] == "violations,bugs"
+    assert result.project_key == "demo"
+    assert [m.metric_key for m in result.measures] == ["violations", "bugs"]
+    assert [m.value for m in result.measures] == ["0", "0"]
+
+
+@respx.mock
+def test_fetch_measures_reports_a_key_the_server_omits_as_unmeasured() -> None:
+    """ADR-0047 D5/D10's own real, observed server behavior: a metric with
+    no computed value (`coverage` with no JaCoCo report ever submitted) is
+    OMITTED from the response array entirely -- confirmed here to become
+    `value=None`, never a faked `"0"` or dropped from the result."""
+    respx.get(f"{_BASE_URL}/api/measures/component").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "component": {
+                    "key": "demo",
+                    "measures": [{"metric": "violations", "value": "0", "bestValue": True}],
+                }
+            },
+        )
+    )
+
+    result = _adapter().fetch_measures("demo", ("violations", "coverage"))
+
+    by_key = {m.metric_key: m.value for m in result.measures}
+    assert by_key["violations"] == "0"
+    assert by_key["coverage"] is None  # omitted by the server -- unmeasured, not faked
+
+
+@respx.mock
+def test_fetch_measures_uses_the_same_least_privilege_token_as_the_quality_gate() -> None:
+    route = respx.get(f"{_BASE_URL}/api/measures/component").mock(
+        return_value=httpx.Response(200, json={"component": {"key": "demo", "measures": []}})
+    )
+
+    _adapter().fetch_measures("demo", ("violations",))
+
+    auth_header = route.calls.last.request.headers["authorization"]
+    assert auth_header.startswith("Basic ")  # same HTTP Basic auth scheme every other call uses

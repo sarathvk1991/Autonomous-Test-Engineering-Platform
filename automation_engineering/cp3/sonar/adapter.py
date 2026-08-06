@@ -5,6 +5,19 @@ the same ``Protocol`` + stub/live seam this platform already uses for LLM
 providers (:class:`feature_engineering.remediation.remediator.
 FeatureRemediator` / ``StubFeatureRemediator``).
 
+**A fourth mechanic, added for CP7 (ADR-0047 D6): ``fetch_measures``.**
+CP7 (Layer 4's own whole-suite Sonar governance) reads the tracked
+baseline's own ALREADY-ACCUMULATED, server-side project measures --
+``/api/measures/component``, a different endpoint from
+``fetch_quality_gate_result``'s own ``/api/qualitygates/project_status`` --
+never re-submitting a scan of its own (every promoted asset was already
+scanned once by CP3's own per-run submission at promotion time; Sonar's
+project-level measures are a running rollup of every analysis submitted
+against that project key, not a single-scan snapshot). ADR-0047 D6 locks
+this as an EXTENSION of this same Protocol, never a second, parallel one
+-- one adapter seam per live-infrastructure boundary (this one Sonar
+server), not one per control point that happens to consume it.
+
 Two implementations exist:
 
 * :class:`~.stub_adapter.StubSonarQualityGateAdapter` -- deterministic,
@@ -24,10 +37,11 @@ carry a live-infrastructure dependency merely by importing this module.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 
-from automation_engineering.cp3.sonar.models import SonarQualityGateResult
+from automation_engineering.cp3.sonar.models import SonarMeasuresResult, SonarQualityGateResult
 
 
 class SonarScanError(Exception):
@@ -68,6 +82,20 @@ class SonarQualityGateAdapter(Protocol):
     def fetch_quality_gate_result(self, project_key: str) -> SonarQualityGateResult:
         """Fetch and parse the server's own quality-gate verdict for
         `project_key`'s most recent analysis."""
+        ...
+
+    def fetch_measures(
+        self, project_key: str, metric_keys: Sequence[str]
+    ) -> SonarMeasuresResult:
+        """Fetch `project_key`'s own current, ABSOLUTE (non-`new_`)
+        measures for `metric_keys` -- CP7's own whole-suite mechanism
+        (ADR-0047 D1), never CP3's own per-run quality-gate verdict
+        (:meth:`fetch_quality_gate_result`, above). Submits no scan of its
+        own -- reads whatever has already accumulated server-side. One
+        `SonarMeasure` per requested key, in the order requested, whether
+        or not the server actually had a value for it -- a key the server
+        has no value for is represented by `value=None`, never omitted
+        from the result and never defaulted (ADR-0047 D5)."""
         ...
 
 

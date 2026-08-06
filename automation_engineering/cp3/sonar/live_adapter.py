@@ -60,12 +60,15 @@ from __future__ import annotations
 import os
 import subprocess
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
 
 from automation_engineering.cp3.sonar.adapter import SonarScanError
 from automation_engineering.cp3.sonar.models import (
+    SonarMeasure,
+    SonarMeasuresResult,
     SonarQualityGateCondition,
     SonarQualityGateResult,
 )
@@ -201,6 +204,34 @@ class LiveSonarQualityGateAdapter:
         return SonarQualityGateResult(
             passed=project_status["status"] == "OK", conditions=conditions
         )
+
+    def fetch_measures(
+        self, project_key: str, metric_keys: Sequence[str]
+    ) -> SonarMeasuresResult:
+        """CP7's own mechanism (ADR-0047 D1/D6) -- ``GET /api/measures/
+        component``, never a scan submission. Confirmed live, this
+        platform's real server (ADR-0047 D10): the pipeline's own
+        least-privilege token already reads every metric CP7 needs; a
+        metric with no computed value (``coverage``/``duplicated_lines_
+        density`` with no JaCoCo report ever submitted) is OMITTED from
+        the server's own response array entirely, never returned as a
+        null or zero -- ``.get(key)`` below reproduces that same "absent
+        means unmeasured" shape as ``value=None``, never a faked default.
+        """
+        with httpx.Client(
+            base_url=self._base_url, auth=self._basic_auth(), timeout=self._timeout_seconds
+        ) as client:
+            response = client.get(
+                "/api/measures/component",
+                params={"component": project_key, "metricKeys": ",".join(metric_keys)},
+            )
+            response.raise_for_status()
+            raw_measures = response.json()["component"].get("measures", [])
+        values_by_key = {m["metric"]: m.get("value") for m in raw_measures}
+        measures = tuple(
+            SonarMeasure(metric_key=key, value=values_by_key.get(key)) for key in metric_keys
+        )
+        return SonarMeasuresResult(project_key=project_key, measures=measures)
 
     def _basic_auth(self) -> httpx.BasicAuth:
         return httpx.BasicAuth(self._token, "")
