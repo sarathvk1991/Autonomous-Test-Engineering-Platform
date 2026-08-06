@@ -29,6 +29,8 @@ Promotion is pulled forward specifically because Layer 3's reuse catalog (ADR-00
 
 **This is designed to be wrapped, not replaced.** Layer 4, once built, may wrap this promotion decision in richer suite-level governance — for example, folding a promotion event into its own aggregate release gate, or extending its cross-suite near-duplicate sweep to also re-verify recently-promoted assets. Nothing in this ADR forecloses that. What this ADR locks is the minimum promotion decision Layer 3 needs to function as a reuse-accumulating system; it is not a claim that promotion can never be governed more richly later.
 
+**Amendment note (additive, 2026-08-06, ADR-0046).** This anticipated wrapping is now designed and locked: ADR-0046 (Layer 4 Quality Governance Architecture Freeze) specifies CP5's own promotion-wrapping component as a suite-level gate that runs AFTER this ADR's own per-asset promotion stages a candidate (`git add`, never `git commit` — D5, unchanged) and BEFORE that staged change becomes a commit, reusing `reconcile()`'s working-tree read to see the assembled post-staging state with no new plumbing. A CP5 suite-level rejection of an individually-clean, D2/D3-passing asset routes into this ADR's own D3 shared human review queue — not a second, CP5-specific one — extending, not amending, D3's "one review queue, not two" discipline. This ADR's own D1–D5 are unchanged by ADR-0046; it wraps them, per D1's own anticipation, and does not re-litigate what's promotable or the review model (Recommendation 4, unchanged).
+
 ### D2 — Promotable gate
 
 A workspace asset auto-promotes into the tracked baseline when **both** of the following hold:
