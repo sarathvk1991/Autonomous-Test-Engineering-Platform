@@ -1,16 +1,32 @@
 # Suite Quality Governance Layer (Layer 4)
 
 **Status:** Build started (ADR-0046). CP5 (suite-integration governance,
-ADR-0040 Decision 3) — components 1 and 2 of 4 — are built: orphaned-glue
-detection (`cp5/orphaned_glue.py`, gating, ADR-0046 D2) and the cross-suite
-near-duplicate sweep (`cp5/near_duplicate_sweep.py`, advisory, ADR-0046 D3).
-The remaining two CP5 components (promotion-wrapping, aggregate-release
-cohesion, ADR-0046 D4–D5) and CP7/CP8 (suite Sonar governance, static
-execution readiness, ADR-0046 D8) are not yet built. No `router`/API
-surface exists yet — CP5 today has a pure Python function surface
-(`suite_quality_governance.cp5.detect_orphaned_glue`/
-`.sweep_near_duplicates`), no CLI or HTTP entry point, no run-state stage
-wiring.
+ADR-0040 Decision 3) — components 1, 2, and 4 of 4 — are built:
+orphaned-glue detection (`cp5/orphaned_glue.py`, gating, ADR-0046 D2), the
+cross-suite near-duplicate sweep (`cp5/near_duplicate_sweep.py`, advisory,
+ADR-0046 D3), and aggregate-release cohesion (`cp5/cohesion.py` +
+`cp5/compile_check.py`, gating, ADR-0046 D5). The remaining CP5 component
+(promotion-wrapping, ADR-0046 D4 — the capstone that composes all four
+detectors atop ADR-0045's per-asset promotion) and CP7/CP8 (suite Sonar
+governance, static execution readiness, ADR-0046 D8) are not yet built. No
+`router`/API surface exists yet — CP5 today has a pure Python function
+surface (`suite_quality_governance.cp5.detect_orphaned_glue`/
+`.sweep_near_duplicates`/`.evaluate_cohesion`), no CLI or HTTP entry
+point, no run-state stage wiring.
+
+**Real, live finding (2026-08-06, manually verified, not part of the
+automated suite — see `cp5/compile_check.py`'s own docstring for why):**
+running `mvn test-compile` directly against the real tracked
+`test-suite-baseline/pom.xml` in this development environment returns
+exit code 1 — the tracked baseline does **not** currently compile as a
+whole. All 34 step-definition classes reference page-object classes
+(`LoginPage`, `InventoryPage`, …) that do not yet exist under
+`com.automation.pages` in the tracked baseline. This is exactly the kind
+of defect CP5's `compiles` criterion (ADR-0046 D5) exists to catch, and is
+independent evidence the check is meaningful, not merely well-typed.
+Confirmed the invocation writes only to the already-`.gitignore`d
+`target/` directory — `git status --porcelain` was clean immediately
+after, with `target/` reported `!!` (ignored) by `git status --ignored`.
 
 Validates the accumulated automation suite as a whole (Layer 4, per
 ADR-0031: "Suite Quality Governance") — consumes Layer 3's Validated

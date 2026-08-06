@@ -61,6 +61,14 @@ CRITERION_ORPHANED_GLUE = "orphaned_glue"
 #: `CP4_CRITERIA`, both PASS/FAIL contributors).
 FINDING_SOURCE_NEAR_DUPLICATE_SWEEP = "near_duplicate_sweep"
 
+#: Aggregate-release cohesion's own two criteria (ADR-0046 D5) -- both
+#: DETERMINISTIC, both gate CP5's own PASS/FAIL (ADR-0046 D6's own
+#: composition table), mirroring `CP3_CRITERIA`/`CP4_CRITERIA`'s own
+#: gating vocabulary, unlike `FINDING_SOURCE_NEAR_DUPLICATE_SWEEP` above.
+CRITERION_COMPILES = "compiles"
+CRITERION_NO_AMBIGUOUS_GLUE = "no_ambiguous_glue"
+CP5_COHESION_CRITERIA: tuple[str, ...] = (CRITERION_COMPILES, CRITERION_NO_AMBIGUOUS_GLUE)
+
 
 @dataclass(frozen=True, slots=True)
 class SemanticOrphanHint:
@@ -173,9 +181,75 @@ class Cp5NearDuplicateSweepResult:
     clusters: tuple[NearDuplicateClusterFinding, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class CompileResult:
+    """One compile attempt's own outcome (ADR-0046 D5's compile half) --
+    `passed=True` with no `errors`, or `passed=False` with one message per
+    `[ERROR]`-prefixed line Maven's own `-q` output reported. This is a
+    NORMAL result, not an exceptional one -- `suite_quality_governance.
+    cp5.compile_check.CompileError` is reserved for when the compile
+    process itself could not be run or determined at all (see that
+    module's own docstring); real Java compile errors always produce a
+    `CompileResult`, never that exception.
+    """
+
+    passed: bool
+    errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Cp5CohesionCriterionResult:
+    """One aggregate-cohesion criterion's own deterministic verdict --
+    mirrors `automation_engineering.cp3.models.Cp3CriterionResult`/
+    `automation_engineering.cp4.models.Cp4CriterionResult`'s own shape
+    exactly. `messages` is empty on a clean `PASS`, one entry per distinct
+    problem on a `FAIL`."""
+
+    criterion: str
+    verdict: ValidationVerdict
+    messages: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Cp5CohesionResult:
+    """The single output of one aggregate-cohesion evaluation
+    (`suite_quality_governance.cp5.cohesion.evaluate_cohesion`).
+    `overall_verdict` is `PASS` iff both named criteria
+    (`CRITERION_COMPILES`, `CRITERION_NO_AMBIGUOUS_GLUE`) are `PASS` --
+    both are DETERMINISTIC (ADR-0046 D5/D6), so, unlike the near-dup
+    sweep, this component genuinely gates CP5's own PASS/FAIL.
+    """
+
+    overall_verdict: ValidationVerdict
+    criteria: tuple[Cp5CohesionCriterionResult, ...]
+
+    def criterion(self, name: str) -> Cp5CohesionCriterionResult:
+        """Return the named criterion's result.
+
+        Raises
+        ------
+        KeyError
+            If no criterion with this name was evaluated.
+        """
+        for c in self.criteria:
+            if c.criterion == name:
+                return c
+        raise KeyError(f"No cohesion criterion named {name!r} in this result.")
+
+    @property
+    def passed(self) -> bool:
+        return self.overall_verdict == ValidationVerdict.PASS
+
+
 __all__ = [
+    "CP5_COHESION_CRITERIA",
+    "CRITERION_COMPILES",
+    "CRITERION_NO_AMBIGUOUS_GLUE",
     "CRITERION_ORPHANED_GLUE",
     "FINDING_SOURCE_NEAR_DUPLICATE_SWEEP",
+    "CompileResult",
+    "Cp5CohesionCriterionResult",
+    "Cp5CohesionResult",
     "Cp5NearDuplicateSweepResult",
     "Cp5OrphanedGlueResult",
     "NearDuplicateAssetRef",
