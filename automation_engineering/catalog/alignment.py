@@ -68,7 +68,15 @@ CUCUMBER_EXPRESSION_TYPES: dict[str, frozenset[str]] = {
 #: failing routes to human review, never a silent fallback").
 NON_CAPTURE_TRAILING_TYPES = frozenset({"DataTable"})
 
-_CUCUMBER_EXPRESSION_CAPTURE_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+#: A step-definition annotation's Cucumber Expression placeholder, e.g.
+#: ``{string}``/``{int}``. **Public** (promoted from a private module
+#: constant, ADR-0046 D7's "promote, don't duplicate" discipline): this is
+#: the one place a pattern's own placeholder syntax is recognized --
+#: :mod:`automation_engineering.cp5.pattern_matching`'s deterministic
+#: literal-text matcher (ADR-0046 D2) reuses it exactly, rather than
+#: hand-maintaining a second copy that could silently drift from what this
+#: module's own capture parsing recognizes.
+CUCUMBER_EXPRESSION_CAPTURE_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 
 def parse_captures(pattern: str) -> tuple[StepCapture, ...]:
@@ -76,19 +84,26 @@ def parse_captures(pattern: str) -> tuple[StepCapture, ...]:
     Cucumber Expression placeholders if any are present, else regex
     capturing groups if the pattern looks like a regex, else none (a plain
     phrase with no placeholders binds zero captures either way)."""
-    if _CUCUMBER_EXPRESSION_CAPTURE_RE.search(pattern):
+    if CUCUMBER_EXPRESSION_CAPTURE_RE.search(pattern):
         return _parse_cucumber_expression_captures(pattern)
-    if _looks_like_regex(pattern):
+    if looks_like_regex(pattern):
         return _parse_regex_captures(pattern)
     return ()
 
 
-def _looks_like_regex(pattern: str) -> bool:
+def looks_like_regex(pattern: str) -> bool:
+    """Whether `pattern` reads as a regex-style step-definition annotation
+    (an unescaped ``(`` group) rather than a Cucumber Expression or a plain
+    literal phrase. **Public** for the same reason as
+    :data:`CUCUMBER_EXPRESSION_CAPTURE_RE` above -- CP5's deterministic
+    matcher must classify a pattern identically to how this module already
+    classifies it for capture parsing, never by a second, independently
+    maintained heuristic that could disagree."""
     return bool(re.search(r"(?<!\\)\(", pattern))
 
 
 def _parse_cucumber_expression_captures(pattern: str) -> tuple[StepCapture, ...]:
-    matches = list(_CUCUMBER_EXPRESSION_CAPTURE_RE.finditer(pattern))
+    matches = list(CUCUMBER_EXPRESSION_CAPTURE_RE.finditer(pattern))
     return tuple(
         StepCapture(index=i, style="cucumber_expression", expression_type=m.group(1).lower())
         for i, m in enumerate(matches)
@@ -194,8 +209,10 @@ def correlate(pattern: str, parameters: tuple[JavaParameter, ...]) -> SignatureA
 
 
 __all__ = [
+    "CUCUMBER_EXPRESSION_CAPTURE_RE",
     "CUCUMBER_EXPRESSION_TYPES",
     "NON_CAPTURE_TRAILING_TYPES",
     "correlate",
+    "looks_like_regex",
     "parse_captures",
 ]

@@ -56,29 +56,26 @@ itself the same way) -- this matcher only ever considers
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 
 from automation_engineering.catalog.models import AssetCatalog, StepDefinitionAsset
-from automation_engineering.reuse.embeddings import EmbeddingProvider
+from automation_engineering.reuse.embeddings import EmbeddingProvider, cosine_similarity
 from automation_engineering.reuse.models import GherkinStepNeed, MatchCandidate
 
 
-def _cosine_similarity(a: tuple[float, ...], b: tuple[float, ...]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
-
-
-def _embedding_text(asset: StepDefinitionAsset) -> str:
+def step_definition_embedding_text(asset: StepDefinitionAsset) -> str:
     """The text embedded for one step-definition asset -- its own pattern
     (the literal Gherkin-annotation text) plus its recorded semantic tags
     (`automation_engineering.catalog.java_source.semantic_tags_from_pattern`/
     `semantic_tags_from_identifier`, LLD §7's `supportedActions` analogue).
-    Both are already-recorded catalog data; nothing is re-derived here."""
+    Both are already-recorded catalog data; nothing is re-derived here.
+
+    **Public** (promoted from a private helper, ADR-0046 D7's "promote,
+    don't duplicate" discipline): CP5's orphaned-glue semantic hint
+    (:mod:`automation_engineering.cp5.orphaned_glue`) embeds an orphaned
+    asset's own text using this SAME recipe, so a catalogued asset is
+    represented identically whether the reuse engine or CP5 is the one
+    embedding it."""
     return " ".join((asset.pattern, *asset.semantic_tags))
 
 
@@ -105,7 +102,7 @@ class LiveSemanticMatcher:
         nothing); safe to call more than once (only ever embeds texts not
         already cached)."""
         texts = [need.text for need in needs]
-        texts.extend(_embedding_text(asset) for asset in catalog.step_definitions)
+        texts.extend(step_definition_embedding_text(asset) for asset in catalog.step_definitions)
         self._embed_and_cache(texts)
 
     def match(self, need: GherkinStepNeed, catalog: AssetCatalog) -> tuple[MatchCandidate, ...]:
@@ -113,14 +110,14 @@ class LiveSemanticMatcher:
         if not assets:
             return ()
 
-        texts = [need.text, *(_embedding_text(asset) for asset in assets)]
+        texts = [need.text, *(step_definition_embedding_text(asset) for asset in assets)]
         self._embed_and_cache(texts)
         need_vector, *asset_vectors = (self._vector_cache[text] for text in texts)
 
         scored = [
             MatchCandidate(
                 asset_id=asset.asset_id,
-                confidence=_cosine_similarity(need_vector, asset_vector),
+                confidence=cosine_similarity(need_vector, asset_vector),
                 content_hash=asset.content_hash,
             )
             for asset, asset_vector in zip(assets, asset_vectors, strict=True)
@@ -142,4 +139,4 @@ class LiveSemanticMatcher:
         self._vector_cache.update(zip(missing, vectors, strict=True))
 
 
-__all__ = ["LiveSemanticMatcher"]
+__all__ = ["LiveSemanticMatcher", "step_definition_embedding_text"]

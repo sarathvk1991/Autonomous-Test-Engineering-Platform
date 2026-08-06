@@ -72,6 +72,7 @@ clock is standard practice for testing any backoff schedule.
 
 from __future__ import annotations
 
+import math
 import os
 import time
 from collections import deque
@@ -137,6 +138,24 @@ class EmbeddingProvider(Protocol):
             The call failed, or the response could not be mapped to vectors.
         """
         ...
+
+
+def cosine_similarity(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    """Cosine similarity between two embedding vectors -- **public and
+    shared** (promoted from :mod:`automation_engineering.reuse.live_matcher`'s
+    own private helper, ADR-0046 D3/D7's "promote, don't duplicate"
+    discipline). Every consumer that scores one embedded text against
+    another (:class:`~automation_engineering.reuse.live_matcher.
+    LiveSemanticMatcher`'s need-vs-catalog matching; CP5's orphaned-glue
+    semantic hint, :mod:`automation_engineering.cp5.orphaned_glue`; a future
+    CP5 cross-suite near-duplicate sweep, ADR-0046 D3) uses this one
+    formula, never a second hand-maintained copy."""
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -312,4 +331,5 @@ __all__ = [
     "EmbeddingConfigurationError",
     "EmbeddingProvider",
     "GeminiEmbeddingProvider",
+    "cosine_similarity",
 ]
