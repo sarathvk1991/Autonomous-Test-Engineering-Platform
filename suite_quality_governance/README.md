@@ -1,21 +1,27 @@
 # Suite Quality Governance Layer (Layer 4)
 
-**Status:** Build started (ADR-0046). **CP5 (suite-integration governance,
-ADR-0040 Decision 3) is COMPLETE — all 4 components built:** orphaned-glue
-detection (`cp5/orphaned_glue.py`, gating, ADR-0046 D2), the cross-suite
+**Status:** CP5 (suite-integration governance, ADR-0040 Decision 3) is
+COMPLETE and WIRED. **All 4 components built:** orphaned-glue detection
+(`cp5/orphaned_glue.py`, gating, ADR-0046 D2), the cross-suite
 near-duplicate sweep (`cp5/near_duplicate_sweep.py`, advisory, ADR-0046
 D3), promotion-wrapping (`cp5/promotion_wrap.py`, the ADR-0045-anticipated
 capstone composing the other three, ADR-0046 D4), and aggregate-release
 cohesion (`cp5/cohesion.py` + `cp5/compile_check.py`, gating, ADR-0046
-D5). CP7/CP8 (suite Sonar governance, static execution readiness,
-ADR-0046 D8 — named and scoped only, not yet designed in detail) are the
-only Layer 4 work this ADR still leaves open. No `router`/API surface
-exists yet — CP5 today has a pure Python function surface
+D5). **Wired (2026-08-06):** `suite_quality_governance/stage/runner.py`
+runs the capstone as ADR-0036 stage 16, immediately after stage 15's own
+per-asset promotion has staged its candidates (`git add`, ADR-0046 D4) --
+CLI-invocable via `analyze --with-automation-engineering
+--with-suite-quality-governance` (off by default, mirroring stage 15's own
+live-infrastructure posture: a JDK/Maven toolchain, an embedding
+provider). Stage 16 moved from a PENDING placeholder into a real,
+resumable run-state stage; see `docs/architecture/architecture-baseline-v2
+.md` item 28 for the full wiring record. CP7/CP8 (suite Sonar governance,
+static execution readiness, ADR-0046 D8 — named and scoped only, not yet
+designed in detail) are the only Layer 4 work this ADR still leaves open.
+No `router`/HTTP API surface exists yet -- CP5 is reachable via the CLI
+stage above and via its own pure Python function surface
 (`suite_quality_governance.cp5.detect_orphaned_glue`/
-`.sweep_near_duplicates`/`.evaluate_cohesion`/`.evaluate_promotion_wrap`),
-no CLI or HTTP entry point, no run-state stage wiring, and is not yet
-called from `automation_engineering.promotion`'s own per-asset flow (that
-wiring is a future task).
+`.sweep_near_duplicates`/`.evaluate_cohesion`/`.evaluate_promotion_wrap`).
 
 **Real, live finding (2026-08-06, manually verified, not part of the
 automated suite — see `cp5/compile_check.py`'s own docstring for why):**

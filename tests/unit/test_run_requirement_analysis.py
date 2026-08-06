@@ -736,6 +736,26 @@ def test_parser_analyze_defaults() -> None:
 
 
 @pytest.mark.unit
+def test_parser_with_suite_quality_governance_off_by_default() -> None:
+    """CP5's stage-16 wiring is a real, live-infrastructure-dependent stage
+    (a JDK/Maven toolchain plus an embedding provider, ADR-0046 D5/D3) --
+    mirroring --with-automation-engineering's own off-by-default posture,
+    never the unconditional default pipeline."""
+    args = cli.build_parser().parse_args(["analyze"])
+    assert args.with_automation_engineering is False
+    assert args.with_suite_quality_governance is False
+
+
+@pytest.mark.unit
+def test_parser_with_suite_quality_governance_explicit_opt_in() -> None:
+    args = cli.build_parser().parse_args(
+        ["analyze", "--with-automation-engineering", "--with-suite-quality-governance"]
+    )
+    assert args.with_automation_engineering is True
+    assert args.with_suite_quality_governance is True
+
+
+@pytest.mark.unit
 def test_parser_analyze_all_options() -> None:
     args = cli.build_parser().parse_args(
         [

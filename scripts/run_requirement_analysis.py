@@ -95,6 +95,8 @@ from requirement_intelligence.run_state import (  # noqa: E402
     StageStatus,
     generate_run_id,
 )
+from suite_quality_governance.cp5.compile_check import LiveCompileChecker  # noqa: E402
+from suite_quality_governance.stage import execute_suite_quality_governance_stage  # noqa: E402
 
 DEFAULT_PROVIDER = "gemini"
 SUPPORTED_PROVIDERS = meta.supported_provider_ids()
@@ -903,6 +905,13 @@ def handle_analyze(args: argparse.Namespace) -> int:
         )
         return 2
 
+    if args.with_suite_quality_governance and not args.with_automation_engineering:
+        console.note(
+            "--with-suite-quality-governance has no effect without "
+            "--with-automation-engineering: CP5 wraps this run's own promotion "
+            "(ADR-0046 D4), and there is nothing to wrap if stage 15 never runs."
+        )
+
     mode = _resolve_mode(console)
     if mode is None:
         return 2
@@ -1044,7 +1053,33 @@ def handle_analyze(args: argparse.Namespace) -> int:
             automation_engineering_stage is not None
             and automation_engineering_stage.status in (StageStatus.SUCCEEDED, StageStatus.SKIPPED)
         )
-        if layer1_unchanged and feature_engineering_complete and automation_engineering_complete:
+        # suite_quality_governance (stage 16) mirrors automation_engineering's
+        # own gating exactly, one layer up: only ever attempted when
+        # --with-suite-quality-governance is set on THIS invocation (off by
+        # default, ADR-0046 D5/D3's own live-toolchain dependency), so its own
+        # "never attempted, legitimately" case is gated on the CURRENT run's
+        # own flag, not a prior run's.
+        suite_quality_governance_stage = next(
+            (
+                s
+                for s in run_state_mgr.state.stages
+                if s.stage_id == "suite_quality_governance"
+            ),
+            None,
+        )
+        suite_quality_governance_complete = not getattr(
+            args, "with_suite_quality_governance", False
+        ) or (
+            suite_quality_governance_stage is not None
+            and suite_quality_governance_stage.status
+            in (StageStatus.SUCCEEDED, StageStatus.SKIPPED)
+        )
+        if (
+            layer1_unchanged
+            and feature_engineering_complete
+            and automation_engineering_complete
+            and suite_quality_governance_complete
+        ):
             console.note(f"Run '{run_id}' is already complete and unchanged -- nothing to do.")
             run_lock.release()
             return 0
@@ -1067,6 +1102,17 @@ def handle_analyze(args: argparse.Namespace) -> int:
             console.note(
                 f"Run '{run_id}': Layer 1/2 complete, but stage 'automation_engineering' is "
                 f"{automation_engineering_stage.status} -- resuming."
+            )
+        elif (
+            layer1_unchanged
+            and feature_engineering_complete
+            and automation_engineering_complete
+            and not suite_quality_governance_complete
+        ):
+            assert suite_quality_governance_stage is not None
+            console.note(
+                f"Run '{run_id}': Layer 1/2/3 complete, but stage 'suite_quality_governance' is "
+                f"{suite_quality_governance_stage.status} -- resuming."
             )
 
     # Resolve the governed Validation Profile up-front (fail fast on an unknown
@@ -1550,6 +1596,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # integration point, built and tested standalone before this task wired it in.
     feature_engineering_result: Any = None
     automation_engineering_result: Any = None
+    suite_quality_governance_result: Any = None
     if testable_requirement_set is not None:
         console.action("\nGenerating Features (Layer 2)")
         feature_engineering_result = execute_feature_engineering_stage(
@@ -1628,6 +1675,61 @@ def handle_analyze(args: argparse.Namespace) -> int:
                 error_message = ae_stage.error.message if ae_stage.error else "unknown error"
                 console.error(f"Automation Engineering failed: {error_message}")
 
+            # Suite Quality Governance (Layer 4, stage 16 -- ADR-0036, ADR-0046):
+            # CP5 wrapping the promotion Automation Engineering just staged (`git
+            # add`, never `git commit` -- ADR-0045 D5, unchanged). Gated behind
+            # --with-suite-quality-governance (off by default, same live-
+            # infrastructure-dependent posture as --with-automation-engineering
+            # itself: a JDK/Maven toolchain plus an embedding provider, ADR-0046
+            # D5/D3) AND on Automation Engineering having actually produced a
+            # Validated Automation Package this run or a prior one (SUCCEEDED or
+            # SKIPPED-because-unchanged) -- the same "has the upstream stage got
+            # something to wrap" gating stage 15 itself applies to stage 14.
+            # Mirrors stage 15's own wiring exactly:
+            # `execute_suite_quality_governance_stage` owns its own
+            # start_stage/should_skip/fail_stage/succeed_stage transitions
+            # internally, and reads stage 15's own persisted artifacts from disk
+            # rather than the in-memory `automation_engineering_result` object
+            # (ADR-0036 D2), so it resumes standalone against a prior SKIPPED
+            # stage 15 exactly as well as against one that just ran live.
+            if args.with_suite_quality_governance and (
+                automation_engineering_result is not None
+                or ae_stage.status == StageStatus.SKIPPED
+            ):
+                console.action("\nEvaluating Suite Quality Governance (Layer 4, CP5)")
+                suite_quality_governance_result = execute_suite_quality_governance_stage(
+                    run_state_mgr,
+                    target_dir,
+                    compile_checker=LiveCompileChecker(),
+                    embedding_provider=GeminiEmbeddingProvider(),
+                )
+                sqg_stage = next(
+                    s
+                    for s in run_state_mgr.state.stages
+                    if s.stage_id == "suite_quality_governance"
+                )
+                if suite_quality_governance_result is not None:
+                    cp5 = suite_quality_governance_result.result
+                    console.ok(f"CP5 verdict: {cp5.overall_verdict.value}")
+                    console.note(
+                        f"  cohesion={cp5.cohesion.overall_verdict.value} "
+                        f"orphaned_glue={cp5.orphaned_glue.overall_verdict.value} "
+                        f"near_dup_clusters={len(cp5.near_duplicates.clusters)}"
+                    )
+                    if cp5.has_review_worthy_findings:
+                        console.note(
+                            "  ⚠ CP5 findings need human review "
+                            f"(see {suite_quality_governance_result.report_path.name}); "
+                            "the staged promotion diff is left untouched"
+                        )
+                elif sqg_stage.status == StageStatus.SKIPPED:
+                    console.note("  unchanged, skipped")
+                else:
+                    error_message = (
+                        sqg_stage.error.message if sqg_stage.error else "unknown error"
+                    )
+                    console.error(f"Suite Quality Governance failed: {error_message}")
+
     history.finalize(target_dir, save_execution=effective_save)
 
     console.note("\nExecution Finished")
@@ -1650,6 +1752,13 @@ def handle_analyze(args: argparse.Namespace) -> int:
             console.note(
                 f"  automation escalations : {len(final_ae_escalations)} "
                 f"(see {automation_engineering_result.package_path.name})"
+            )
+    if suite_quality_governance_result is not None:
+        final_cp5 = suite_quality_governance_result.result
+        if final_cp5.has_review_worthy_findings:
+            console.note(
+                f"  CP5 findings : verdict={final_cp5.overall_verdict.value} "
+                f"(see {suite_quality_governance_result.report_path.name})"
             )
     run_lock.release()
     return 0
@@ -1890,6 +1999,22 @@ def build_parser() -> argparse.ArgumentParser:
             "this is a real, live-infrastructure-dependent stage (a reachable SonarQube "
             "server, per ADR-0044 D5) and this flag is the explicit opt-in, not a change "
             "to this command's own default behavior."
+        ),
+    )
+    analyze.add_argument(
+        "--with-suite-quality-governance",
+        action="store_true",
+        help=(
+            "After Automation Engineering (Layer 3, stage 15) succeeds or is unchanged, also "
+            "run Suite Quality Governance (Layer 4, stage 16, ADR-0046): CP5 -- orphaned-glue "
+            "detection, the cross-suite near-duplicate sweep, and aggregate-release cohesion "
+            "(does the assembled suite compile, no exact ambiguous-glue collisions) -- wrapping "
+            "the promotion this run's Automation Engineering just staged. Off by default -- "
+            "this is a real, live-infrastructure-dependent stage (a JDK/Maven toolchain plus an "
+            "embedding provider, per ADR-0046 D5/D3) and this flag is the explicit opt-in, not "
+            "a change to this command's own default behavior. Has no effect unless "
+            "--with-automation-engineering is also set: CP5 wraps THIS run's own promotion, "
+            "and there is nothing to wrap if stage 15 never ran."
         ),
     )
     analyze.set_defaults(func=handle_analyze)
