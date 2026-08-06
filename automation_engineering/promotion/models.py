@@ -12,6 +12,8 @@ from enum import StrEnum
 from pathlib import Path
 
 from automation_engineering.catalog.models import CatalogAsset
+from automation_engineering.cp3.models import Cp3Result
+from automation_engineering.promotion.cp3_decomposition import decompose_for_asset
 from automation_engineering.reuse.models import Escalation
 from shared.enums.base import ValidationVerdict
 
@@ -31,38 +33,53 @@ class PromotionBlockReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class AssetGateOutcomes:
-    """D2(a)'s three preconditions for one generated asset.
+    """D2(a)'s three preconditions for one generated asset -- PER-ASSET,
+    not whole-run (ADR-0045 D2 additive note, 2026-08-06).
 
     ``cp2_verdict`` is the asset's OWNING FEATURE's own CP2 verdict
     (ADR-0043) -- genuinely per-feature, the same granularity
     ``feature_engineering.stage.models.FeatureRecord.cp2_verdict`` already
-    records. ``cp3_verdict``/``cp4_verdict`` are supplied at the granularity
-    CP3/CP4 are actually computed at TODAY: one verdict for the whole batch
-    a run's Sonar scan (:class:`automation_engineering.cp3.models.Cp3Result`)
-    and locator-health sweep
-    (:class:`automation_engineering.cp4.models.Cp4Result`) cover -- neither
-    gate is computed per individual asset in this platform yet (CP3's own
-    Sonar criterion is inherently a whole-Maven-project scan; CP4 evaluates
-    a run's full page-object set in one call). Passing a run's own
-    ``Cp3Result.passed``/``Cp4Result.passed`` straight through here is
-    therefore reusing the EXISTING validation report exactly as ADR-0045 D2
-    requires ("no new validation surface is introduced"), not inventing a
-    finer-grained check this platform does not otherwise have. A future
-    Layer-3 stage runner may persist a genuinely per-asset CP3/CP4 record;
-    building that manifest is out of this ADR's own scope (D1) and this
-    package's.
+    records, unchanged by this note.
+
+    ``cp3_result`` is the WHOLE-RUN ``Cp3Result``
+    (:func:`automation_engineering.cp3.gate.evaluate_cp3` is still called
+    once per run, not once per candidate -- no new validation surface is
+    introduced, ADR-0045 D2's own text) -- but :meth:`first_failure` no
+    longer reads its ``overall_verdict`` directly. It decomposes ``cp3_result``
+    PER CANDIDATE via :func:`automation_engineering.promotion.
+    cp3_decomposition.decompose_for_asset`: three of CP3's seven criteria
+    (``direct_webdriver_action``, ``long_method``, ``duplicate_steps``)
+    already carry per-class/per-asset attribution in their own message text
+    and are filtered to just THIS candidate; the coverage family
+    (``step_coverage``/``scenario_coverage``/``unmapped_steps``) can only
+    fail because of a DIFFERENT, unresolved need and is excluded from a
+    resolved candidate's own gate; ``sonar_quality_gate`` stays whole-batch
+    (the server reports one verdict per project, no file/class
+    attribution -- :mod:`.cp3_decomposition`'s own module docstring).
+
+    ``cp4_verdict`` stays whole-batch, unchanged -- CP4 evaluates a run's
+    full page-object set in one call
+    (:class:`automation_engineering.cp4.models.Cp4Result`), the same
+    whole-scan nature as the Sonar criterion above; decomposing it is out of
+    this note's own scope (no live per-asset case exists to build or prove
+    against in the current wiring, where CP4 is always vacuously PASS --
+    :mod:`automation_engineering.stage.runner`'s own module docstring, step
+    7).
     """
 
     cp2_verdict: ValidationVerdict
-    cp3_verdict: ValidationVerdict
+    cp3_result: Cp3Result
     cp4_verdict: ValidationVerdict
 
-    def first_failure(self) -> PromotionBlockReason | None:
-        """The first of CP2/CP3/CP4 (in that order) that did not pass, or
-        ``None`` if all three passed."""
+    def first_failure(self, *, class_name: str, asset_id: str) -> PromotionBlockReason | None:
+        """The first of CP2/CP3/CP4 (in that order) that does not pass FOR
+        THIS CANDIDATE, or ``None`` if all three passed. CP3 is decomposed
+        per-candidate (class docstring); CP2/CP4 stay the batch verdicts
+        they already were."""
         if self.cp2_verdict != ValidationVerdict.PASS:
             return PromotionBlockReason.CP2_FAILED
-        if self.cp3_verdict != ValidationVerdict.PASS:
+        asset_cp3 = decompose_for_asset(self.cp3_result, class_name=class_name, asset_id=asset_id)
+        if asset_cp3.verdict != ValidationVerdict.PASS:
             return PromotionBlockReason.CP3_FAILED
         if self.cp4_verdict != ValidationVerdict.PASS:
             return PromotionBlockReason.CP4_FAILED

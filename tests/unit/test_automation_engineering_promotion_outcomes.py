@@ -16,6 +16,12 @@ import textwrap
 import pytest
 
 from automation_engineering.catalog.models import AssetCatalog, StepDefinitionAsset, UtilityAsset
+from automation_engineering.cp3.models import (
+    CP3_CRITERIA,
+    Cp3CriterionResult,
+    Cp3Result,
+    Cp3ReuseReport,
+)
 from automation_engineering.generation.models import (
     BoundPageObjectMethod,
     BoundStepDefinition,
@@ -91,10 +97,21 @@ _UTILITY_SOURCE = textwrap.dedent(
 )
 
 
+def _all_pass_cp3_result() -> Cp3Result:
+    criteria = tuple(
+        Cp3CriterionResult(criterion=name, verdict=ValidationVerdict.PASS) for name in CP3_CRITERIA
+    )
+    return Cp3Result(
+        overall_verdict=ValidationVerdict.PASS,
+        criteria=criteria,
+        reuse=Cp3ReuseReport(reused=0, generated=1, escalated=0, reuse_percentage=0.0),
+    )
+
+
 def _all_pass() -> AssetGateOutcomes:
     return AssetGateOutcomes(
         cp2_verdict=ValidationVerdict.PASS,
-        cp3_verdict=ValidationVerdict.PASS,
+        cp3_result=_all_pass_cp3_result(),
         cp4_verdict=ValidationVerdict.PASS,
     )
 
@@ -221,9 +238,23 @@ class TestGeneratedOutcomesResolveAndGate:
         assert isinstance(decision.candidate.asset, UtilityAsset)
 
     def test_generated_outcome_blocked_by_failing_gate(self) -> None:
+        failing_cp3 = Cp3Result(
+            overall_verdict=ValidationVerdict.FAIL,
+            criteria=tuple(
+                Cp3CriterionResult(
+                    criterion=name,
+                    verdict=ValidationVerdict.FAIL
+                    if name == "sonar_quality_gate"
+                    else ValidationVerdict.PASS,
+                    messages=("server reported ERROR",) if name == "sonar_quality_gate" else (),
+                )
+                for name in CP3_CRITERIA
+            ),
+            reuse=Cp3ReuseReport(reused=0, generated=1, escalated=0, reuse_percentage=0.0),
+        )
         gates = AssetGateOutcomes(
             cp2_verdict=ValidationVerdict.PASS,
-            cp3_verdict=ValidationVerdict.FAIL,
+            cp3_result=failing_cp3,
             cp4_verdict=ValidationVerdict.PASS,
         )
         outcome = GeneratedStepDefinition(

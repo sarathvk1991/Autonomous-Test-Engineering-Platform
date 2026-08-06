@@ -469,7 +469,19 @@ class TestWorkspaceMaterialization:
 
 
 # ---------------------------------------------------------------------------
-# CP3/CP4-verdict-to-promotion association (batch granularity)
+# CP3/CP4-verdict-to-promotion association
+#
+# Per-asset since the ADR-0045 D2 additive note (2026-08-06): the whole-
+# project Sonar criterion still gates every candidate uniformly (no file/
+# class attribution exists to decompose it by -- TestBatchVerdictGatesPromotion,
+# below, still proves that case, renamed from its own pre-fix "batch
+# granularity" framing only in this comment, not its assertions). Everything
+# else -- coverage-family FAILs caused by an UNRELATED escalated need, in
+# particular -- no longer blocks a clean candidate. TestPerAssetPromotion
+# AcrossEscalations proves the confirming live run's own gap directly: a
+# mixed batch (clean generates + an escalation) that used to promote 0
+# clean assets because ONE unrelated need escalated now promotes every
+# clean one.
 # ---------------------------------------------------------------------------
 
 
@@ -513,10 +525,12 @@ class TestBatchVerdictGatesPromotion:
     def test_a_run_wide_cp3_failure_blocks_promotion_for_every_candidate(
         self, tmp_path: Path, fake_baseline: Path, repo_root: Path
     ) -> None:
-        """The whole-run CP3 verdict gates EVERY generated candidate's own
-        promotion (`AssetGateOutcomes`'s own documented batch granularity)
-        -- even though each class generated cleanly on its own, none
-        promotes when the run's shared CP3 verdict is FAIL."""
+        """A whole-project Sonar FAIL gates EVERY generated candidate's own
+        promotion -- the one CP3 criterion that stays genuinely batch-wide
+        under the per-asset design (ADR-0045 D2 additive note: Sonar's own
+        `SonarQualityGateResult` carries no file/class attribution to
+        decompose it by) -- even though each class generated cleanly on its
+        own, none promotes when the run's shared Sonar verdict is FAIL."""
         result = self._run_with_sonar(tmp_path, fake_baseline, repo_root, sonar_passed=False)
 
         assert result.cp3_passed is False
@@ -535,6 +549,139 @@ class TestBatchVerdictGatesPromotion:
         assert result.cp3_passed is True
         assert len(result.promoted_baseline_paths) == 3
         assert all(r.promotion_status == "promoted" for r in result.package.records)
+
+
+@pytest.mark.unit
+class TestPerAssetPromotionAcrossEscalations:
+    """THE CONFIRMING-RUN PROOF (Finding A, ADR-0045 D2 additive note,
+    2026-08-06): the live run's own gap was 30 clean binds/generates
+    promoting 0, because 30 OTHER needs in the SAME batch escalated, which
+    failed CP3's whole-run coverage criteria, which -- under the OLD
+    whole-run gate -- blocked EVERY candidate, clean ones included. This
+    reproduces the mechanism directly: one need escalates (fails coverage
+    for the WHOLE run's `Cp3Result`), two other needs generate cleanly in
+    the SAME run. Under the per-asset gate, the two clean ones promote; the
+    escalated one does not (correctly -- nothing was generated for it), and
+    -- critically -- its escalation does NOT block the two clean ones."""
+
+    def test_clean_generates_promote_despite_an_unrelated_escalation_in_the_same_batch(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _LOGIN_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+        matcher = StubSemanticMatcher(
+            {
+                # Below the confidence threshold -- escalates. This is the
+                # need that used to poison the WHOLE run's CP3 coverage
+                # verdict and, with it, every other candidate's promotion.
+                "I am on the login page": (
+                    MatchCandidate(
+                        asset_id="some-asset", confidence=0.72, content_hash="whatever"
+                    ),
+                ),
+                'I log in as "bob"': (),
+                "I see the dashboard": (),
+            }
+        )
+        step_gen = StubStepDefinitionGenerator(
+            {
+                # No entry for "I am on the login page" -- it escalates
+                # before generation is ever attempted for it.
+                'I log in as "bob"': _clean_java("LoginActionSteps", "b"),
+                "I see the dashboard": _clean_java("DashboardSteps", "c"),
+            }
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        # The whole-run CP3 verdict genuinely still FAILs -- coverage is
+        # correctly reporting that one step is unmapped. This is the report,
+        # not the promotion gate; the two clean generates are unaffected.
+        assert result.cp3_passed is False
+
+        by_need = {r.need_text: r for r in result.package.records}
+        assert by_need["I am on the login page"].outcome == "escalated"
+        assert by_need["I am on the login page"].promotion_status is None
+
+        clean = [by_need['I log in as "bob"'], by_need["I see the dashboard"]]
+        assert all(r.outcome == "generated" for r in clean)
+        # THE KEY PROOF: both clean generates promoted, even though a THIRD,
+        # unrelated need in the same batch escalated and failed the whole
+        # run's own CP3 coverage criteria.
+        assert all(r.promotion_status == "promoted" for r in clean)
+        assert len(result.promoted_baseline_paths) == 2
+
+    def test_a_per_class_static_check_failure_is_isolated_to_that_class(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """A class whose OWN static customqa check fails (a direct
+        `WebDriver` reference in a step-definition class) is not promoted;
+        a DIFFERENT, clean class generated in the SAME run still is."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _LOGIN_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+        matcher = StubSemanticMatcher(
+            {
+                "I am on the login page": (),
+                'I log in as "bob"': (),
+                "I see the dashboard": (),
+            }
+        )
+        _violating_java = (
+            "package com.automation.steps;\n\n"
+            "import org.openqa.selenium.WebDriver;\n\n"
+            "public class LoginPageSteps {\n\n"
+            "    private WebDriver driver;\n\n"
+            "    public void iAmOnTheLoginPage() {\n"
+            "        driver.get(\"https://example.com\");\n"
+            "    }\n"
+            "}\n"
+        )
+        step_gen = StubStepDefinitionGenerator(
+            {
+                "I am on the login page": _violating_java,
+                'I log in as "bob"': _clean_java("LoginActionSteps", "b"),
+                "I see the dashboard": _clean_java("DashboardSteps", "c"),
+            }
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        assert result.cp3_passed is False  # direct_webdriver_action genuinely fails, batch-wide
+
+        by_need = {r.need_text: r for r in result.package.records}
+        violating = by_need["I am on the login page"]
+        assert violating.promotion_status == "not_promotable"
+        assert violating.promotion_detail is not None
+        assert "cp3_failed" in violating.promotion_detail
+        assert "LoginPageSteps" in violating.promotion_detail
+
+        clean = [by_need['I log in as "bob"'], by_need["I see the dashboard"]]
+        assert all(r.promotion_status == "promoted" for r in clean)
+        assert len(result.promoted_baseline_paths) == 2
 
 
 # ---------------------------------------------------------------------------

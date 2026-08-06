@@ -49,6 +49,12 @@ from pathlib import Path
 import pytest
 
 from automation_engineering.catalog.scanner import reconcile
+from automation_engineering.cp3.models import (
+    CP3_CRITERIA,
+    Cp3CriterionResult,
+    Cp3Result,
+    Cp3ReuseReport,
+)
 from automation_engineering.generation.models import BoundStepDefinition, GeneratedStepDefinition
 from automation_engineering.generation.orchestrator import orchestrate_step_definition
 from automation_engineering.generation.step_definition_generator import (
@@ -120,10 +126,21 @@ def _init_git_repo(root: Path) -> None:
     _run_git("commit", "--quiet", "-m", "initial baseline", cwd=root)
 
 
+def _clean_cp3_result() -> Cp3Result:
+    criteria = tuple(
+        Cp3CriterionResult(criterion=name, verdict=ValidationVerdict.PASS) for name in CP3_CRITERIA
+    )
+    return Cp3Result(
+        overall_verdict=ValidationVerdict.PASS,
+        criteria=criteria,
+        reuse=Cp3ReuseReport(reused=0, generated=1, escalated=0, reuse_percentage=0.0),
+    )
+
+
 def _clean_gates() -> AssetGateOutcomes:
     return AssetGateOutcomes(
         cp2_verdict=ValidationVerdict.PASS,
-        cp3_verdict=ValidationVerdict.PASS,
+        cp3_result=_clean_cp3_result(),
         cp4_verdict=ValidationVerdict.PASS,
     )
 

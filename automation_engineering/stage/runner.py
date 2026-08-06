@@ -54,11 +54,14 @@ The chain, in order
    own established "empty input" convention already allows.
 8. Promote every generated, non-test-data outcome
    (:func:`automation_engineering.promotion.outcomes.promote_outcome`),
-   gated on the SAME whole-run CP3/CP4 verdicts step 7 already computed
-   (:class:`~automation_engineering.promotion.models.AssetGateOutcomes`'s
-   own documented batch granularity, not invented here) plus that outcome's
-   owning feature's own CP2 verdict; write and stage (never commit) every
-   ``Promoted`` result.
+   gated PER-CANDIDATE (ADR-0045 D2 additive note, 2026-08-06) against the
+   SAME whole-run CP3 result and CP4 verdict step 7 already computed
+   (:class:`~automation_engineering.promotion.models.AssetGateOutcomes`
+   decomposes CP3 down to this candidate's own class; CP4 stays whole-batch,
+   the same nature as CP3's own Sonar criterion) plus that outcome's owning
+   feature's own CP2 verdict; write and stage (never commit) every
+   ``Promoted`` result. A clean candidate promotes even when OTHER needs in
+   the same run escalated or failed their own CP3 criteria.
 9. Persist the Validated Automation Package plus the CP3/CP4/promotion
    reports.
 """
@@ -416,7 +419,7 @@ def run_automation_engineering_stage(
     # promote_outcome's own type signature, ADR-0044 D7). ------------------
     gates = AssetGateOutcomes(
         cp2_verdict=ValidationVerdict.PASS,  # every eligible record is CP2-clean by construction
-        cp3_verdict=cp3_result.overall_verdict,
+        cp3_result=cp3_result,  # decomposed per-candidate inside AssetGateOutcomes.first_failure
         cp4_verdict=cp4_result.overall_verdict,
     )
     promoted_paths: list[Path] = []

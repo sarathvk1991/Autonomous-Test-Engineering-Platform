@@ -10,6 +10,18 @@ that method's own docstring: "the identity lookup ADR-0045 D2(b) reuses").
 No new duplicate-detection mechanism is built here (D2's own text,
 Recommendation 3).
 
+**Per-asset, not whole-run (ADR-0045 D2 additive note, 2026-08-06).** D2(a)
+is evaluated FOR THIS CANDIDATE alone --
+:meth:`~automation_engineering.promotion.models.AssetGateOutcomes.
+first_failure` decomposes the run's own whole-batch CP3 result down to what
+is actually true or false about THIS candidate's own class
+(:mod:`automation_engineering.promotion.cp3_decomposition`'s own module
+docstring for the full per-criterion breakdown). Another candidate in the
+same run failing its own CP3 criteria, or another need in the same run
+escalating, no longer blocks THIS one -- the confirming live run's own gap
+(30 clean binds promoted 0 because 30 unrelated needs escalated, failing
+one shared whole-run gate) is exactly what this note closes.
+
 D3's review model: an asset the reuse engine escalated (ADR-0044 D4) never
 reaches :func:`evaluate_promotion` as a candidate at all -- there is nothing
 generated to gate. :func:`evaluate_escalated_promotion` only re-homes the
@@ -21,6 +33,7 @@ review queue, never a second).
 from __future__ import annotations
 
 from automation_engineering.catalog.models import AssetCatalog
+from automation_engineering.promotion.cp3_decomposition import decompose_for_asset
 from automation_engineering.promotion.models import (
     AssetGateOutcomes,
     NotPromotable,
@@ -44,17 +57,28 @@ def evaluate_promotion(
     engine's own "checks run in order, first failure wins, never a silent
     fallback" discipline (:func:`automation_engineering.reuse.engine.
     decide_reuse`).
+
+    (a) is evaluated PER CANDIDATE (ADR-0045 D2 additive note, module
+    docstring) -- ``gates.first_failure`` is handed this candidate's own
+    ``class_name``/``asset_id`` so a CP3 failure is decomposed down to what
+    is actually true about THIS class, never the whole run's shared
+    verdict.
     """
-    gate_failure = gates.first_failure()
+    class_name = candidate.asset.class_name
+    asset_id = candidate.asset.asset_id
+    gate_failure = gates.first_failure(class_name=class_name, asset_id=asset_id)
     if gate_failure is not None:
-        return NotPromotable(
-            candidate=candidate,
-            reason=gate_failure,
-            detail=(
-                f"{gate_failure.value} did not pass; promotion requires CP2, CP3, "
-                "and CP4 to all pass (ADR-0045 D2(a))"
-            ),
+        detail = (
+            f"{gate_failure.value} did not pass; promotion requires CP2, CP3, "
+            "and CP4 to all pass (ADR-0045 D2(a))"
         )
+        if gate_failure is PromotionBlockReason.CP3_FAILED:
+            asset_cp3 = decompose_for_asset(
+                gates.cp3_result, class_name=class_name, asset_id=asset_id
+            )
+            if asset_cp3.messages:
+                detail = f"{detail}: {'; '.join(asset_cp3.messages)}"
+        return NotPromotable(candidate=candidate, reason=gate_failure, detail=detail)
 
     duplicates = baseline_catalog.by_content_hash(candidate.asset.content_hash)
     if duplicates:
