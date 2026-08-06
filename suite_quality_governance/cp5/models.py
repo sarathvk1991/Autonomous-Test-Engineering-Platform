@@ -241,17 +241,73 @@ class Cp5CohesionResult:
         return self.overall_verdict == ValidationVerdict.PASS
 
 
+@dataclass(frozen=True, slots=True)
+class CompileAttribution:
+    """Enrichment attached to a FAILED `compiles` criterion inside a suite
+    review (ADR-0046 D4's capstone, `suite_quality_governance.cp5.
+    promotion_wrap`) -- whether the failing compile's own errors involve
+    any file THIS RUN'S promotion just staged, or are entirely pre-existing
+    baseline errors this promotion did not introduce.
+
+    ADR-0046 D5 locks an ABSOLUTE compile check ("does the assembled suite
+    compile") -- it does not authorize a delta/"did this promotion make it
+    worse" gate, and none is built here. This attribution NEVER changes
+    the gate's own PASS/FAIL; it only tells a human reviewer what they are
+    actually looking at, so a real, pre-existing baseline defect (see
+    `suite_quality_governance/README.md`'s own recorded finding) is never
+    mistaken for something a specific promotion caused.
+    """
+
+    involves_staged_files: bool
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
+class Cp5PromotionWrapResult:
+    """CP5's capstone -- component 3 of 4 (ADR-0046 D4) -- the suite-level
+    verdict wrapping ADR-0045's per-asset promotion.
+
+    `overall_verdict` composes per ADR-0046 D6's own composition table,
+    exactly: `PASS` iff BOTH `cohesion.overall_verdict` and
+    `orphaned_glue.overall_verdict` are `PASS` -- both deterministic, both
+    gate directly. `near_duplicates` NEVER participates in this
+    computation (D6: "a near-dup-only finding routes to review... without
+    by itself flipping CP5's verdict") -- it is still SURFACED
+    (`has_review_worthy_findings`), just never gating.
+    """
+
+    overall_verdict: ValidationVerdict
+    cohesion: Cp5CohesionResult
+    compile_attribution: CompileAttribution | None
+    orphaned_glue: Cp5OrphanedGlueResult
+    near_duplicates: Cp5NearDuplicateSweepResult
+
+    @property
+    def passed(self) -> bool:
+        return self.overall_verdict == ValidationVerdict.PASS
+
+    @property
+    def has_review_worthy_findings(self) -> bool:
+        """True whenever ANYTHING -- gating or advisory-only -- should
+        reach a human: a deterministic `FAIL` (blocks commit), or a
+        near-duplicate cluster (never blocks, but is always worth a
+        reviewer's attention even on an otherwise clean suite-pass)."""
+        return not self.passed or bool(self.near_duplicates.clusters)
+
+
 __all__ = [
     "CP5_COHESION_CRITERIA",
     "CRITERION_COMPILES",
     "CRITERION_NO_AMBIGUOUS_GLUE",
     "CRITERION_ORPHANED_GLUE",
     "FINDING_SOURCE_NEAR_DUPLICATE_SWEEP",
+    "CompileAttribution",
     "CompileResult",
     "Cp5CohesionCriterionResult",
     "Cp5CohesionResult",
     "Cp5NearDuplicateSweepResult",
     "Cp5OrphanedGlueResult",
+    "Cp5PromotionWrapResult",
     "NearDuplicateAssetRef",
     "NearDuplicateClusterFinding",
     "NearDuplicatePairScore",
