@@ -226,7 +226,7 @@ def _extract_utility(
     )
 
 
-def _package_from_relative_path(relative_path: str) -> str:
+def package_from_relative_path(relative_path: str) -> str:
     """The Java package implied by a file's directory position under the
     java source root -- standard one-package-per-directory Java convention.
     Computed from the path alone, with no parse required, specifically so
@@ -236,7 +236,19 @@ def _package_from_relative_path(relative_path: str) -> str:
     for efficiency: `DriverFactory.java` (`com.automation.base`, excluded)
     uses a Java 14+ switch expression javalang's grammar cannot parse at
     all -- confirmed directly, not assumed -- and this framework class was
-    never a catalog candidate regardless of whether it happens to parse."""
+    never a catalog candidate regardless of whether it happens to parse.
+
+    **Promoted to public (2026-08-06, CP8's own build, ADR-0047 D7)** --
+    mirroring `_cosine_similarity`/`_embedding_text`'s own promotion
+    precedent (originally private to `reuse/engine.py`/`reuse/
+    live_matcher.py`, promoted specifically so a second consumer could
+    reuse the identical rule rather than hand-maintain a second copy):
+    `suite_quality_governance.cp8.glue_resolution` needs the SAME
+    path-to-package derivation this scanner already uses internally, to
+    check whether a `cucumber.glue` package name actually corresponds to
+    a package real catalogued assets live under -- reusing this function
+    rather than re-deriving the identical rule a second time.
+    """
     directory = str(Path(relative_path).parent)
     if directory in {"", "."}:
         return ""
@@ -252,7 +264,7 @@ def _scan_file(
     unparsed_files: list[str],
 ) -> None:
     relative_path = file_path.relative_to(java_root).as_posix()
-    if _package_from_relative_path(relative_path) in EXCLUDED_PACKAGES:
+    if package_from_relative_path(relative_path) in EXCLUDED_PACKAGES:
         return
     source = file_path.read_text(encoding="utf-8")
     try:
@@ -303,4 +315,10 @@ def reconcile(baseline_root: Path) -> AssetCatalog:
     )
 
 
-__all__ = ["EXCLUDED_PACKAGES", "JAVA_SOURCE_SUBPATH", "PAGE_OBJECT_BASE_CLASS", "reconcile"]
+__all__ = [
+    "EXCLUDED_PACKAGES",
+    "JAVA_SOURCE_SUBPATH",
+    "PAGE_OBJECT_BASE_CLASS",
+    "package_from_relative_path",
+    "reconcile",
+]
