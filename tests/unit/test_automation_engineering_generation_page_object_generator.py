@@ -290,20 +290,151 @@ class TestLlmBoundaryErrorHandling:
         assert result == java
 
 
-class TestLiveGeneratorMultiMethodNotYetSupported:
-    """`generate_page_objects` v1.0.0's own prompt is single-action-shaped
-    (module docstring); a multi-method context must fail loudly, before any
-    provider call, never silently drop the additional methods."""
+_COMPLETE_LOGIN_PAGE_JAVA = (
+    "package com.automation.pages;\n\n"
+    "public class LoginPage extends BasePage {\n"
+    "    public void enterUsername(String username) {}\n"
+    "    public void enterPassword(String password) {}\n"
+    "    public void clickLogin() {}\n"
+    "}\n"
+)
 
-    def test_additional_method_needs_raises_before_any_provider_call(self) -> None:
+
+def _multi_method_context(
+    *, method_name: str | None = "enterUsername", **overrides: object
+) -> PageObjectGenerationContext:
+    additional = (
+        PageObjectMethodNeed(need=_need("enter the password"), method_name="enterPassword"),
+        PageObjectMethodNeed(need=_need("click the login button"), method_name="clickLogin"),
+    )
+    return _context(
+        _need("enter the username"),
+        class_name="LoginPage",
+        method_name=method_name,
+        additional_method_needs=additional,
+        **overrides,
+    )
+
+
+def _complete_provider() -> FakeProvider:
+    return FakeProvider(text=_COMPLETE_LOGIN_PAGE_JAVA)
+
+
+class TestLiveGeneratorMultiMethod:
+    """`generate_page_objects` v1.1.0 -- the multi-method extension this
+    build registers and wires. `LivePageObjectGenerator` no longer raises on
+    `context.additional_method_needs`; it builds a `methods`-list prompt
+    against v1.1.0 and calls the provider, exactly like the single-method
+    path always did against v1.0.0."""
+
+    def test_does_not_raise_and_calls_the_provider_exactly_once(self) -> None:
+        provider = _complete_provider()
+        generator = LivePageObjectGenerator(provider)
+
+        result = generator.generate(_multi_method_context())
+
+        assert result == _COMPLETE_LOGIN_PAGE_JAVA
+        assert provider.call_count == 1
+
+    def test_prompt_uses_the_v110_template_not_v100(self) -> None:
+        provider = _complete_provider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_multi_method_context())
+
+        sent_prompt = provider.requests[0].prompt
+        assert "VERBATIM" in sent_prompt  # v1.1.0's own OUTPUT CONTRACT language
+        assert provider.requests[0].metadata["prompt_version"] == "1.1.0"
+
+    def test_prompt_input_includes_all_three_method_specs_in_order(self) -> None:
+        provider = _complete_provider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_multi_method_context())
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        assert payload["class_name"] == "LoginPage"
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert [m["method_name"] for m in methods] == [
+            "enterUsername",
+            "enterPassword",
+            "clickLogin",
+        ]
+        assert [m["action_text"] for m in methods] == [
+            "enter the username",
+            "enter the password",
+            "click the login button",
+        ]
+
+    def test_single_method_call_still_uses_v100_unaffected(self) -> None:
+        """Regression: a context with no `additional_method_needs` is
+        completely unaffected by this build -- same template, same payload
+        shape, no `methods` key at all."""
         provider = FakeProvider()
         generator = LivePageObjectGenerator(provider)
-        extra = PageObjectMethodNeed(
-            need=_need("enter the password"), method_name="enterPassword"
-        )
-        context = _context(additional_method_needs=(extra,))
 
-        with pytest.raises(NotImplementedError, match="multi-method"):
+        generator.generate(_context())
+
+        assert provider.requests[0].metadata["prompt_version"] == "1.0.0"
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        assert "methods" not in payload
+        assert payload["action_text"] == _need().text
+
+    def test_response_with_all_requested_methods_is_returned_verbatim(self) -> None:
+        provider = _complete_provider()
+        generator = LivePageObjectGenerator(provider)
+
+        result = generator.generate(_multi_method_context())
+
+        for method_name in ("enterUsername", "enterPassword", "clickLogin"):
+            assert method_name in result
+
+    def test_response_missing_a_requested_method_raises_honestly(self) -> None:
+        """The model drops `clickLogin` from its response -- the generator
+        surfaces this honestly rather than returning an incomplete class."""
+        incomplete_java = (
+            "package com.automation.pages;\n\n"
+            "public class LoginPage extends BasePage {\n"
+            "    public void enterUsername(String username) {}\n"
+            "    public void enterPassword(String password) {}\n"
+            "}\n"
+        )
+        provider = FakeProvider(text=incomplete_java)
+        generator = LivePageObjectGenerator(provider)
+
+        with pytest.raises(LiveGenerationError, match="missing"):
+            generator.generate(_multi_method_context())
+
+    def test_response_missing_a_method_names_exactly_which_are_missing(self) -> None:
+        incomplete_java = "package com.automation.pages;\npublic class LoginPage {}\n"
+        provider = FakeProvider(text=incomplete_java)
+        generator = LivePageObjectGenerator(provider)
+
+        with pytest.raises(LiveGenerationError) as excinfo:
+            generator.generate(_multi_method_context())
+
+        message = str(excinfo.value)
+        assert "enterUsername" in message
+        assert "enterPassword" in message
+        assert "clickLogin" in message
+
+    def test_missing_primary_method_name_raises_before_any_provider_call(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+        context = _multi_method_context(method_name=None)
+
+        with pytest.raises(ValueError, match="method_name"):
             generator.generate(context)
 
         assert provider.call_count == 0
+
+    def test_determinism_same_context_yields_byte_identical_prompt(self) -> None:
+        context = _multi_method_context()
+        first_provider = _complete_provider()
+        second_provider = _complete_provider()
+
+        LivePageObjectGenerator(first_provider).generate(context)
+        LivePageObjectGenerator(second_provider).generate(context)
+
+        assert first_provider.requests[0].prompt == second_provider.requests[0].prompt

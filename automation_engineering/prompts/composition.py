@@ -85,6 +85,25 @@ _GENERATE_PAGE_OBJECTS_COMPATIBILITY = PromptCompatibility(
     }
 )
 
+#: v1.1.0's own compatibility -- deliberately NOT identical to v1.0.0's.
+#: `customqa_profile_version` is unchanged (the SAME customqa:* rules are
+#: referenced, verbatim, by both versions' own CONSTRAINTS sections); but
+#: `output_schema_version` is bumped to "1.1.0" because the INPUT contract
+#: this version's own shape depends on genuinely changed (a `methods` list
+#: of caller-named method specs, replacing the single top-level
+#: `action_text`/`captures` pair) -- a real, load-bearing difference a
+#: downstream consumer checking compatibility should be able to see, even
+#: though the class-level OUTPUT shape (one class extending BasePage, with
+#: locator fields and action methods) is the same FAMILY of contract v1.0.0
+#: already declared (this is what makes the change MINOR, per ADR-0014's
+#: own versioning table, not MAJOR).
+_GENERATE_PAGE_OBJECTS_V1_1_0_COMPATIBILITY = PromptCompatibility(
+    dimensions={
+        "output_schema_version": "1.1.0",
+        "customqa_profile_version": "1.0.0",
+    }
+)
+
 #: Same two Layer-3 dimensions as the other two prompts -- the third
 #: registrant, still the same genuine reuse, not re-invention.
 _GENERATE_UTILITIES_COMPATIBILITY = PromptCompatibility(
@@ -203,6 +222,60 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 release_introduced="1.0.0",
             ),
             content=loaded.content,
+        )
+    )
+
+    # --- generate_page_objects v1.1.0 --------------------------------------
+    # Additive: adds MULTI-METHOD support (a `methods` list of caller-named
+    # method specs) alongside v1.0.0's own single-action shape -- MINOR per
+    # ADR-0014's own versioning table ("Additive section -- output schema
+    # compatibility preserved"): the class-level OUTPUT shape (one class
+    # extending BasePage, locator fields, action methods) is the same
+    # FAMILY of contract v1.0.0 already declared, just now able to carry
+    # more than one method per class. v1.0.0's own file/metadata are
+    # UNCHANGED (ADR-0014 invariant H.1: governed prompt wording is
+    # byte-for-byte frozen unless a governed version bump is performed --
+    # this is that bump, added alongside, never edited in place). Registered
+    # DRAFT, mirroring the other three Layer 3 prompts' own current
+    # lifecycle (Layer 3 has not reached production maturity) -- unlike
+    # Layer 1's `requirement_analysis` v1.1.0 precedent (registered
+    # APPROVED, since that family is already PRODUCTION).
+    loaded_v1_1_0 = loader.load(
+        prompt_id="generate_page_objects",
+        version="1.1.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_page_objects",
+                name="Generate Page Objects",
+                version="1.1.0",
+                owner="Automation Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Generates one Java page-object class for MULTIPLE page-object "
+                    "actions at once -- the multi-method extension of v1.0.0. Takes an "
+                    "ordered, non-empty list of method specs (each with a caller-chosen "
+                    "method_name, an action_text, and its own captures) and produces ONE "
+                    "class exposing exactly one action method per spec, every method_name "
+                    "used verbatim. Used when the generation seam "
+                    "(automation_engineering.generation.page_object_orchestrator"
+                    ".orchestrate_page_object_class) batches two-or-more NO_MATCH "
+                    "method-needs for the SAME fresh class into one generation call, "
+                    "closing the gap where only the first of several methods on one "
+                    "brand-new class ever reached the seam. Born compliant with the "
+                    "customqa:* quality profile (ADR-0044 D5) exactly as v1.0.0 is, "
+                    "including customqa:long-method applied to EVERY generated method, "
+                    "not just one. Targets the same tracked test-suite-baseline's own "
+                    "package com.automation.pages convention, extending BasePage. v1.0.0 "
+                    "remains registered, unedited, for the ordinary single-method case."
+                ),
+                sha256=loaded_v1_1_0.sha256,
+                compatibility=_GENERATE_PAGE_OBJECTS_V1_1_0_COMPATIBILITY,
+                release_introduced="1.1.0",
+            ),
+            content=loaded_v1_1_0.content,
         )
     )
 

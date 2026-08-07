@@ -75,6 +75,18 @@ class PageObjectGenerationContext:
     ``need``/``method_name`` for a sibling method the same class must also
     expose. Empty for the ordinary, still-most-common one-method-per-class
     case -- every existing caller that never sets this field is unaffected.
+
+    ``method_name`` (additive, default ``None``) is the PRIMARY method's own
+    caller-chosen Java method name -- the ``additional_method_needs`` sibling
+    to :class:`~.models.PageObjectMethodNeed.method_name`, threaded through
+    so a multi-method generation request can name EVERY method it asks for,
+    not just the additional ones. ``None`` for the ordinary single-method
+    case (v1.0.0's own INPUT CONTRACT never carried a method name at all --
+    the model chooses it, exactly as before; this field is simply unused
+    then). Required (never ``None``) whenever ``additional_method_needs`` is
+    non-empty -- a multi-method generation request must name every method,
+    including the first, never leave exactly one of several entries for the
+    model to invent while the rest are caller-named.
     """
 
     need: GherkinStepNeed
@@ -82,6 +94,7 @@ class PageObjectGenerationContext:
     target_package: str
     customqa_constraints: tuple[str, ...]
     additional_method_needs: tuple[PageObjectMethodNeed, ...] = ()
+    method_name: str | None = None
 
 
 class PageObjectGenerator(Protocol):

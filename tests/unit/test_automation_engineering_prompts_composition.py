@@ -40,14 +40,18 @@ _ALL_PROMPT_IDS = [
 _EXPECTED_PROMPT_IDS = set(_ALL_PROMPT_IDS)
 
 
-def test_registry_seals_with_exactly_the_four_registered_prompts() -> None:
+def test_registry_seals_with_exactly_the_four_prompt_families() -> None:
+    """Four distinct `prompt_id`s, five total registered definitions --
+    `generate_page_objects` alone carries two versions (v1.0.0, still
+    single-method; v1.1.0, additive multi-method support, this build)."""
     registry = build_prompt_registry()
 
     assert registry.state is PromptRegistryState.SEALED
-    assert registry.count() == 4
+    assert registry.count() == 5
     assert set(registry.list_prompt_ids()) == _EXPECTED_PROMPT_IDS
     for prompt_id in _ALL_PROMPT_IDS:
         assert registry.is_registered(prompt_id, "1.0.0")
+    assert registry.is_registered("generate_page_objects", "1.1.0")
 
 
 def test_generate_test_data_was_not_actually_registered_before_this_build() -> None:
@@ -244,3 +248,93 @@ def test_registry_instance_is_independent_of_layer_one_and_layer_two() -> None:
         "output_schema_version": "1.0.0"
     }
     assert "customqa_profile_version" in layer3_definition.metadata.compatibility.dimensions
+
+
+# ===========================================================================
+# generate_page_objects v1.1.0 -- multi-method extension (this build)
+# ===========================================================================
+
+
+class TestGeneratePageObjectsV110:
+    """The multi-method-per-class prompt version -- additive alongside
+    v1.0.0, never editing it (ADR-0014 invariant H.1: governed prompt
+    wording is byte-for-byte frozen unless a governed version bump is
+    performed). Registered DRAFT, mirroring every other Layer 3 prompt's
+    own current lifecycle."""
+
+    def test_registered_alongside_v100_not_instead_of_it(self) -> None:
+        registry = build_prompt_registry()
+
+        assert registry.is_registered("generate_page_objects", "1.0.0")
+        assert registry.is_registered("generate_page_objects", "1.1.0")
+
+    def test_v100_content_is_byte_for_byte_unchanged(self) -> None:
+        """The governed-frozen invariant, proven directly: v1.0.0's own
+        file/sha256 are exactly what they were before this build."""
+        registry = build_prompt_registry()
+        v100 = registry.get("generate_page_objects", "1.0.0")
+
+        assert v100.metadata.sha256 == (
+            "7bf8cef207df8e0587239634753d55511a9e52192090b2992aa639895296a3ec"
+        )
+        assert "the single page action described below" in v100.content
+
+    def test_lifecycle_is_draft(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.1.0")
+        assert d.metadata.lifecycle == PromptLifecycle.DRAFT
+
+    def test_release_introduced(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.1.0")
+        assert d.metadata.release_introduced == "1.1.0"
+
+    def test_sha256_matches_file_and_manifest(self) -> None:
+        versions_dir = Path("automation_engineering/prompts/versions")
+        d = build_prompt_registry().get("generate_page_objects", "1.1.0")
+        file_bytes = (versions_dir / "generate_page_objects_v1.1.0.txt").read_bytes()
+
+        assert d.metadata.sha256 == PromptLoader.compute_sha256(file_bytes)
+        assert d.content == file_bytes.decode("utf-8")
+
+    def test_conforms_to_the_governed_system_user_contract(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.1.0")
+
+        template = parse_governed_template(d.content)
+
+        assert template.system_prompt.strip()
+        assert "{artifact_context}" not in template.system_prompt
+        assert template.user_template.count("{artifact_context}") == 1
+
+    def test_input_contract_describes_a_methods_list_not_a_single_action(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.1.0")
+
+        assert "methods" in d.content
+        assert "method_name" in d.content
+        assert "action_text" in d.content
+
+    def test_output_contract_requires_one_method_per_entry_verbatim_named(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.1.0")
+
+        assert "VERBATIM" in d.content
+        assert "no entry skipped" in d.content.lower()
+
+    def test_still_embeds_both_customqa_rules(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.1.0")
+
+        assert "customqa:direct-webdriver-action" in d.content
+        assert "customqa:long-method" in d.content
+
+    def test_compatibility_customqa_profile_preserved_output_schema_bumped(self) -> None:
+        """`customqa_profile_version` is unchanged (the same rules); the
+        MINOR bump's own real, additive difference (a `methods` list
+        replacing a single `action_text`/`captures` pair) is reflected in
+        `output_schema_version` instead -- compatibility is declared
+        per-dimension, not all-or-nothing."""
+        registry = build_prompt_registry()
+        v100 = registry.get("generate_page_objects", "1.0.0")
+        v110 = registry.get("generate_page_objects", "1.1.0")
+
+        assert v110.metadata.compatibility.dimensions["customqa_profile_version"] == (
+            v100.metadata.compatibility.dimensions["customqa_profile_version"]
+        )
+        assert v110.metadata.compatibility.dimensions["output_schema_version"] == "1.1.0"
+        assert v100.metadata.compatibility.dimensions["output_schema_version"] == "1.0.0"

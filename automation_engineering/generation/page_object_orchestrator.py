@@ -259,11 +259,14 @@ def orchestrate_page_object_class(
     method-need has been reuse-decided -- so a class needing two-or-more
     fresh methods gets ONE class with ALL of them
     (:class:`~.page_object_generator.PageObjectGenerationContext`'s own new
-    ``additional_method_needs`` field carries the siblings), never a second,
-    conflicting source under the same class name and never a silently
-    dropped method. The single resulting :class:`~.models.GeneratedPageObject`
-    carries every NO_MATCH method-need it satisfies (`method_need` for the
-    first, `additional_method_needs` for the rest).
+    ``additional_method_needs`` field carries the siblings, and its
+    ``method_name`` field carries the PRIMARY's own caller-chosen name --
+    every method in the batch is caller-named, none left for a generator to
+    invent), never a second, conflicting source under the same class name
+    and never a silently dropped method. The single resulting
+    :class:`~.models.GeneratedPageObject` carries every NO_MATCH method-need
+    it satisfies (`method_need` for the first, `additional_method_needs` for
+    the rest).
 
     Returns one outcome per DISTINCT resolution -- one
     :class:`~.models.BoundPageObjectMethod`/:class:`~.models.EscalatedPageObjectMethodNeed`
@@ -352,6 +355,7 @@ def orchestrate_page_object_class(
             target_package=target_package,
             customqa_constraints=customqa_constraints,
             additional_method_needs=tuple(rest),
+            method_name=primary.method_name,
         )
         java_source = generator.generate(context)
         resolved.append(
