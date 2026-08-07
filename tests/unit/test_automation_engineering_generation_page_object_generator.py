@@ -405,15 +405,15 @@ class TestLiveGeneratorMultiMethod:
         assert result == _COMPLETE_LOGIN_PAGE_JAVA
         assert provider.call_count == 1
 
-    def test_prompt_uses_the_v110_template_not_v100(self) -> None:
+    def test_prompt_uses_the_v120_template_not_v100(self) -> None:
         provider = _complete_provider()
         generator = LivePageObjectGenerator(provider)
 
         generator.generate(_multi_method_context())
 
         sent_prompt = provider.requests[0].prompt
-        assert "VERBATIM" in sent_prompt  # v1.1.0's own OUTPUT CONTRACT language
-        assert provider.requests[0].metadata["prompt_version"] == "1.1.0"
+        assert "VERBATIM" in sent_prompt  # v1.1.0/v1.2.0's own OUTPUT CONTRACT language
+        assert provider.requests[0].metadata["prompt_version"] == "1.2.0"
 
     def test_prompt_input_includes_all_three_method_specs_in_order(self) -> None:
         provider = _complete_provider()
@@ -499,17 +499,18 @@ class TestSingleMethodNowRoutesThroughV110:
     """THE defect-1 fix, proven directly: a single-method context (no
     `additional_method_needs`) used to hit v1.0.0's own payload shape
     (`action_text`/`captures` at the top level, no `method_name` anywhere)
-    -- now it hits the SAME v1.1.0 path a multi-method context does, as a
-    length-one `methods` list, with `method_name` conveyed. No more
+    -- now it hits the SAME `methods`-list-shaped path (v1.2.0, since the
+    defect-3 fix; v1.1.0 introduced the shape) a multi-method context does,
+    as a length-one `methods` list, with `method_name` conveyed. No more
     divergence between the two paths -- the root cause of defect 1."""
 
-    def test_uses_v110_not_v100(self) -> None:
+    def test_uses_v120_not_v100(self) -> None:
         provider = FakeProvider()
         generator = LivePageObjectGenerator(provider)
 
         generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
-        assert provider.requests[0].metadata["prompt_version"] == "1.1.0"
+        assert provider.requests[0].metadata["prompt_version"] == "1.2.0"
 
     def test_payload_is_a_length_one_methods_list_carrying_method_name(self) -> None:
         provider = FakeProvider()
@@ -553,3 +554,69 @@ class TestSingleMethodNowRoutesThroughV110:
 
         with pytest.raises(LiveGenerationError, match="missing"):
             generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+
+class TestLiveGeneratorSuppliesBasePagesRealInventory:
+    """Defect 3's own fix, proven directly: v1.1.0's CONSTRAINTS section told
+    the model every locator interaction "must go through the inherited
+    BasePage helpers" without ever listing what those helpers are -- with no
+    real inventory supplied, a live regeneration run measured 31 of 32
+    generated classes calling at least one fictional Selenium-POM helper
+    (`isElementDisplayed`, `sendKeys`, `click`, `findElement`, `getText`,
+    ...) that this platform's real BasePage
+    (`test-suite-baseline/src/test/java/com/automation/base/BasePage.java`)
+    does not have. v1.2.0 adds a BASEPAGE'S REAL INHERITED API section
+    hardcoding the real inventory (`open(String)`, `currentTitle()`, and the
+    inherited `driver`/`wait` fields) and constrains the model to it. This is
+    the INPUT-side proof only -- that the real inventory reaches the built
+    prompt and the prompt instructs against inventing helpers -- not proof
+    the model complies (that is the live regeneration re-run's job)."""
+
+    def test_prompt_uses_v120(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        assert provider.requests[0].metadata["prompt_version"] == "1.2.0"
+
+    def test_prompt_conveys_every_real_basepage_member(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        sent_prompt = provider.requests[0].prompt
+        assert "open(String url)" in sent_prompt
+        assert "currentTitle()" in sent_prompt
+        assert "driver" in sent_prompt
+        assert "wait" in sent_prompt
+
+    def test_prompt_names_the_specific_fictional_helpers_the_live_run_measured(self) -> None:
+        """The exact list the live run's own defect-3 finding cites --
+        proven present in the built prompt as things NOT to call, not
+        merely absent by omission."""
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        sent_prompt = provider.requests[0].prompt
+        for fictional_helper in (
+            "isElementDisplayed",
+            "sendKeys",
+            "click",
+            "findElement",
+            "getText",
+        ):
+            assert fictional_helper in sent_prompt
+
+    def test_prompt_instructs_against_inventing_basepage_helpers(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        sent_prompt = provider.requests[0].prompt.lower()
+        assert "do not call a basepage method that is not in this list" in sent_prompt
+        assert "never assume basepage exposes" in sent_prompt

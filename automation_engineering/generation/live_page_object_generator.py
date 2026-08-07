@@ -7,7 +7,7 @@ implementation.
 behind the same seam -- it satisfies
 :class:`~automation_engineering.generation.page_object_generator.PageObjectGenerator`
 unchanged and is the only thing this module adds. It renders the governed
-``generate_page_objects`` v1.1.0 prompt with one
+``generate_page_objects`` v1.2.0 prompt with one
 :class:`~automation_engineering.generation.page_object_generator.PageObjectGenerationContext`
 and returns the raw response text (generated Java source); the orchestrator
 (:mod:`automation_engineering.generation.page_object_orchestrator`) performs
@@ -15,11 +15,11 @@ no parsing, no compilation, and no lint of that text -- CP3/CP4 (later,
 out-of-scope tasks) are where generated Java is actually verified.
 
 ONE prompt version now, not two -- the divergence that caused a real,
-live-verified defect (additive fix, this build)
+live-verified defect (additive fix)
 --------------------------------------------------------------------------
-Until this fix, this class chose between TWO governed prompt versions:
-v1.0.0 (single-method, its payload carrying only ``action_text``/
-``captures`` -- never ``method_name``, even though
+This class used to choose between TWO governed prompt versions: v1.0.0
+(single-method, its payload carrying only ``action_text``/``captures`` --
+never ``method_name``, even though
 :class:`PageObjectGenerationContext.method_name` already existed) for a
 context with no ``additional_method_needs``, and v1.1.0 (multi-method, a
 ``methods`` list where each entry carries its OWN caller-chosen
@@ -36,24 +36,49 @@ compile on exactly that mismatch (among other, independent defects tracked
 separately). The multi-method path never had this problem, because it
 always conveyed ``method_name``.
 
-**The fix is not a third prompt version -- it is retiring the divergence.**
+**The fix was not a third prompt version -- it was retiring the divergence.**
 A single method is structurally just a ``methods`` list of length one; the
-v1.1.0 template already handles that correctly (proven below, both by the
-existing multi-method proofs and new single-method-through-v1.1.0 proofs).
-This class now ALWAYS renders v1.1.0's ``methods``-list payload and ALWAYS
+v1.1.0 template already handled that correctly (proven below, both by the
+existing multi-method proofs and single-method-through-the-same-template
+proofs). This class ALWAYS renders the ``methods``-list payload and ALWAYS
 requires ``context.method_name`` (previously required only when
 ``context.additional_method_needs`` was non-empty) -- one prompt, one
 payload shape, the derived method name conveyed on every call, no
 divergence left for a future defect like this one to hide in.
 
-``generate_page_objects`` v1.0.0 remains registered, byte-for-byte
-unedited (ADR-0014 invariant H.1), in
+``generate_page_objects`` v1.0.0 and v1.1.0 both remain registered,
+byte-for-byte unedited (ADR-0014 invariant H.1), in
 :mod:`automation_engineering.prompts.composition` -- this class simply no
-longer loads or calls it. It is kept for governance/audit history (the
-original single-method contract, still inspectable via the registry) and
-as a documented fallback should some future caller need it; whether to
-formally mark it ``DEPRECATED`` is a lifecycle decision this fix does not
-make (out of scope -- a governance call, not a wiring one).
+longer loads or calls them. They are kept for governance/audit history
+(the prior contracts, still inspectable via the registry) and as
+documented fallbacks should some future caller need them; whether to
+formally mark either ``DEPRECATED`` is a lifecycle decision this fix does
+not make (out of scope -- a governance call, not a wiring one).
+
+v1.1.0 -> v1.2.0 -- the real BasePage inventory (additive fix)
+--------------------------------------------------------------------------
+v1.1.0's own CONSTRAINTS section told the model every locator interaction
+"must go through the inherited BasePage helpers" without ever listing what
+those helpers ARE. With no real inventory supplied, the model fell back on
+Selenium-POM training conventions -- ``isElementDisplayed``, ``sendKeys``,
+``click``, ``findElement``, ``getText``, and similar -- that this
+platform's real ``BasePage`` (``test-suite-baseline/src/test/java/com/
+automation/base/BasePage.java``) does not have; it exposes only
+``open(String)``, ``currentTitle()``, and the inherited ``protected final``
+``driver``/``wait`` fields. **Measured live**: 31 of 32 generated page-object
+classes called at least one such fictional helper and failed to compile
+(``cannot find symbol``). v1.2.0 is purely additive over v1.1.0 -- same
+``methods``-list request shape, same one-class-extending-BasePage response
+shape -- it adds a BASEPAGE'S REAL INHERITED API section hardcoding the
+complete real inventory and instructs the model to use ONLY those real
+helpers (or this class's own ``driver``/``wait`` fields directly for
+anything BasePage doesn't cover), never an invented one. This class now
+ALWAYS renders v1.2.0, not v1.1.0 -- the same "one prompt version, not a
+divergence" discipline the method-name fix above already established.
+**This is the input-side fix only**: it proves the real inventory reaches
+the prompt. Whether the model actually stops inventing helpers is proven
+by the live regeneration re-run (a separate, later task), not by this
+change.
 
 Completeness, honestly bounded
 -------------------------------
@@ -89,7 +114,7 @@ constructor-injected, never constructed here -- provider selection
 caller's responsibility. This module never imports ``llm_factory``, and
 performs no retries.
 
-``generate_page_objects`` v1.1.0 conforms to the full governed system/user
+``generate_page_objects`` v1.2.0 conforms to the full governed system/user
 template contract (exactly one ``{artifact_context}`` placeholder) --
 rendered via ``render_user_prompt``, not an append-a-final-section
 workaround.
@@ -113,7 +138,7 @@ from shared.prompts.framework.prompt_registry import PromptRegistry
 from shared.prompts.framework.prompt_template_contract import parse_governed_template
 
 _PROMPT_ID = "generate_page_objects"
-_PROMPT_VERSION = "1.1.0"
+_PROMPT_VERSION = "1.2.0"
 
 #: Deterministic sampling by default, matching the platform-wide convention
 #: (``LLMRequest.temperature`` itself defaults to 0.0).
@@ -167,10 +192,11 @@ def _capture_payload(need_captures: object) -> list[dict[str, object]]:
 
 
 class LivePageObjectGenerator:
-    """``generate_page_objects`` v1.1.0-backed page-object generator --
+    """``generate_page_objects`` v1.2.0-backed page-object generator --
     ONE prompt version for every call, single-method or multi-method alike
     (module docstring: the divergence that caused a live-measured defect is
-    retired by this fix).
+    retired), now also supplying BasePage's real inherited method inventory
+    (module docstring's own "v1.1.0 -> v1.2.0" section).
 
     Parameters
     ----------
@@ -181,7 +207,7 @@ class LivePageObjectGenerator:
         constructs a provider itself.
     prompt_registry:
         The sealed Layer 3 :class:`PromptRegistry` to resolve
-        ``generate_page_objects`` v1.1.0 from. When *None*, the canonical
+        ``generate_page_objects`` v1.2.0 from. When *None*, the canonical
         registry is composed via
         :func:`~automation_engineering.prompts.composition.build_prompt_registry`.
     temperature:
@@ -251,7 +277,7 @@ class LivePageObjectGenerator:
     def _build_prompt(
         self, context: PageObjectGenerationContext, expected_method_names: tuple[str, ...]
     ) -> str:
-        """Render v1.1.0's own governed template -- a ``methods`` list, one
+        """Render v1.2.0's own governed template -- a ``methods`` list, one
         entry per requested method (primary first, then every entry in
         ``context.additional_method_needs``, in order), each carrying its
         own caller-chosen ``method_name``. A single-method call renders a

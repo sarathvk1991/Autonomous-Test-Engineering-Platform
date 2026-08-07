@@ -41,17 +41,19 @@ _EXPECTED_PROMPT_IDS = set(_ALL_PROMPT_IDS)
 
 
 def test_registry_seals_with_exactly_the_four_prompt_families() -> None:
-    """Four distinct `prompt_id`s, five total registered definitions --
-    `generate_page_objects` alone carries two versions (v1.0.0, still
-    single-method; v1.1.0, additive multi-method support, this build)."""
+    """Four distinct `prompt_id`s, six total registered definitions --
+    `generate_page_objects` alone carries three versions (v1.0.0, still
+    single-method; v1.1.0, additive multi-method support; v1.2.0, additive
+    real-BasePage-inventory support, this build)."""
     registry = build_prompt_registry()
 
     assert registry.state is PromptRegistryState.SEALED
-    assert registry.count() == 5
+    assert registry.count() == 6
     assert set(registry.list_prompt_ids()) == _EXPECTED_PROMPT_IDS
     for prompt_id in _ALL_PROMPT_IDS:
         assert registry.is_registered(prompt_id, "1.0.0")
     assert registry.is_registered("generate_page_objects", "1.1.0")
+    assert registry.is_registered("generate_page_objects", "1.2.0")
 
 
 def test_generate_test_data_was_not_actually_registered_before_this_build() -> None:
@@ -338,3 +340,155 @@ class TestGeneratePageObjectsV110:
         )
         assert v110.metadata.compatibility.dimensions["output_schema_version"] == "1.1.0"
         assert v100.metadata.compatibility.dimensions["output_schema_version"] == "1.0.0"
+
+
+# ===========================================================================
+# generate_page_objects v1.2.0 -- real BasePage inventory (defect-3 fix)
+# ===========================================================================
+
+
+class TestGeneratePageObjectsV120:
+    """Fixes a live-measured defect: v1.1.0's own CONSTRAINTS section told
+    the model to route WebDriver interactions "through the inherited
+    BasePage helpers" without ever listing what they are, so the model fell
+    back on Selenium-POM training conventions (`isElementDisplayed`,
+    `sendKeys`, `click`, `findElement`, `getText`, ...) that this platform's
+    real BasePage (`test-suite-baseline/src/test/java/com/automation/base/
+    BasePage.java`) does not have -- 31 of 32 generated classes in a live
+    regeneration run called at least one such fictional helper and failed to
+    compile. v1.2.0 is additive alongside v1.0.0 and v1.1.0, never editing
+    either (ADR-0014 invariant H.1: governed prompt wording is byte-for-byte
+    frozen unless a governed version bump is performed). Registered DRAFT,
+    mirroring every other Layer 3 prompt's own current lifecycle."""
+
+    #: The real BasePage's complete inherited surface, read directly from
+    #: the tracked baseline -- the source of truth this prompt version's own
+    #: BASEPAGE'S REAL INHERITED API section must match exactly.
+    _REAL_BASEPAGE_METHODS = ("open(String url)", "currentTitle()")
+    _FICTIONAL_HELPERS_THE_LIVE_RUN_MEASURED = (
+        "isElementDisplayed",
+        "sendKeys",
+        "click",
+        "findElement",
+        "getText",
+    )
+
+    def test_registered_alongside_v100_and_v110_not_instead_of_them(self) -> None:
+        registry = build_prompt_registry()
+
+        assert registry.is_registered("generate_page_objects", "1.0.0")
+        assert registry.is_registered("generate_page_objects", "1.1.0")
+        assert registry.is_registered("generate_page_objects", "1.2.0")
+
+    def test_v110_content_is_byte_for_byte_unchanged(self) -> None:
+        """The governed-frozen invariant, proven directly: v1.1.0's own
+        file/sha256 are exactly what they were before this build."""
+        registry = build_prompt_registry()
+        v110 = registry.get("generate_page_objects", "1.1.0")
+
+        assert v110.metadata.sha256 == (
+            "c41ffbcf143c37e52d91dc870b9cb1ffa1570b645841a7cbf4f40aa64c6e79d9"
+        )
+
+    def test_lifecycle_is_draft(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+        assert d.metadata.lifecycle == PromptLifecycle.DRAFT
+
+    def test_release_introduced(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+        assert d.metadata.release_introduced == "1.2.0"
+
+    def test_sha256_matches_file_and_manifest(self) -> None:
+        versions_dir = Path("automation_engineering/prompts/versions")
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+        file_bytes = (versions_dir / "generate_page_objects_v1.2.0.txt").read_bytes()
+
+        assert d.metadata.sha256 == PromptLoader.compute_sha256(file_bytes)
+        assert d.content == file_bytes.decode("utf-8")
+
+    def test_conforms_to_the_governed_system_user_contract(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+
+        template = parse_governed_template(d.content)
+
+        assert template.system_prompt.strip()
+        assert "{artifact_context}" not in template.system_prompt
+        assert template.user_template.count("{artifact_context}") == 1
+
+    def test_still_a_methods_list_input_contract_not_a_regression_to_v100(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+
+        assert "methods" in d.content
+        assert "method_name" in d.content
+        assert "action_text" in d.content
+
+    def test_still_embeds_both_customqa_rules(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+
+        assert "customqa:direct-webdriver-action" in d.content
+        assert "customqa:long-method" in d.content
+
+    def test_supplies_the_real_basepage_method_inventory(self) -> None:
+        """The core proof: the built prompt CONTAINS BasePage's real,
+        complete method inventory -- read directly from the tracked
+        baseline's own BasePage.java, not assumed."""
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+
+        for real_method in self._REAL_BASEPAGE_METHODS:
+            assert real_method in d.content
+
+    def test_names_the_specific_fictional_helpers_the_live_run_measured(self) -> None:
+        """Names the exact fictional helpers as things NOT to call -- proven
+        present (as a prohibition), not merely absent by omission."""
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+        content_lower = d.content.lower()
+
+        for fictional_helper in self._FICTIONAL_HELPERS_THE_LIVE_RUN_MEASURED:
+            assert fictional_helper.lower() in content_lower
+
+    def test_constrains_to_the_real_api_not_merely_lists_it(self) -> None:
+        """The prompt doesn't just list the real inventory -- it instructs
+        the model to use ONLY it, never an invented helper."""
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+        content_lower = d.content.lower()
+
+        assert "do not call a basepage method that is not in this list" in content_lower
+        assert "never assume basepage exposes" in content_lower
+
+    def test_real_inventory_matches_basepage_java_exactly(self) -> None:
+        """Proves the prompt's own inventory is the REAL one -- reads the
+        tracked baseline's BasePage.java directly and cross-checks every
+        real public/protected member the prompt claims is present, with no
+        additional invented BasePage method asserted as real."""
+        basepage_source = Path(
+            "test-suite-baseline/src/test/java/com/automation/base/BasePage.java"
+        ).read_text()
+        d = build_prompt_registry().get("generate_page_objects", "1.2.0")
+
+        # Every real method signature the prompt claims is genuinely
+        # declared in the real class.
+        assert "public void open(String url)" in basepage_source
+        assert "public String currentTitle()" in basepage_source
+        assert "protected final WebDriver driver" in basepage_source
+        assert "protected final WebDriverWait wait" in basepage_source
+        for real_method in self._REAL_BASEPAGE_METHODS:
+            assert real_method in d.content
+
+        # BasePage has exactly two real methods -- confirm no third method
+        # the prompt would need to (but doesn't) also list.
+        import re
+
+        method_declarations = re.findall(
+            r"\bpublic\s+\S+\s+(\w+)\(", basepage_source
+        )
+        assert set(method_declarations) == {"open", "currentTitle"}
+
+    def test_compatibility_identical_to_v110_purely_additive_content(self) -> None:
+        """Both dimensions match v1.1.0's exactly -- this version adds
+        prompt CONTENT (the real-inventory section), not a new request or
+        response shape."""
+        registry = build_prompt_registry()
+        v110 = registry.get("generate_page_objects", "1.1.0")
+        v120 = registry.get("generate_page_objects", "1.2.0")
+
+        assert v120.metadata.compatibility.dimensions == v110.metadata.compatibility.dimensions

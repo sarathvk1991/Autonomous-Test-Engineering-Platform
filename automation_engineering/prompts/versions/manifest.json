@@ -27,6 +27,14 @@
             "introduced_in_release": "1.1.0"
         },
         {
+            "prompt_id": "generate_page_objects",
+            "version": "1.2.0",
+            "file": "generate_page_objects_v1.2.0.txt",
+            "sha256": "101c6b4b131d4246aaa6da0d6fe730015962487f0879d8734f1b9924b21d4ab3",
+            "lifecycle": "Draft",
+            "introduced_in_release": "1.2.0"
+        },
+        {
             "prompt_id": "generate_utilities",
             "version": "1.0.0",
             "file": "generate_utilities_v1.0.0.txt",

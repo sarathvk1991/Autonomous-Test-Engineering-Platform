@@ -104,6 +104,29 @@ _GENERATE_PAGE_OBJECTS_V1_1_0_COMPATIBILITY = PromptCompatibility(
     }
 )
 
+#: v1.2.0's own compatibility -- deliberately IDENTICAL to v1.1.0's, on both
+#: dimensions. `output_schema_version` stays "1.1.0": the INPUT contract (a
+#: `methods` list of caller-named method specs) and the class-level OUTPUT
+#: shape (one class extending BasePage, locator fields, action methods) are
+#: both unchanged -- this version adds a BASEPAGE'S REAL INHERITED API
+#: section supplying BasePage's actual method inventory (`open(String)`,
+#: `currentTitle()`, and the inherited `driver`/`wait` fields) so the model
+#: stops inventing fictional Selenium-POM helpers (`isElementDisplayed`,
+#: `sendKeys`, `click`, `findElement`, `getText`, ...) that don't exist on
+#: this platform's real BasePage -- a live-measured defect (31 of 32
+#: generated classes called at least one such helper). Purely additive
+#: content within the same request/response shape: MINOR per ADR-0014's own
+#: versioning table ("Additive section -- output schema compatibility
+#: preserved"), not a new schema version. `customqa_profile_version` is
+#: unchanged for the same reason v1.1.0's was: the same customqa:* rules are
+#: referenced, verbatim, by this version's own CONSTRAINTS section too.
+_GENERATE_PAGE_OBJECTS_V1_2_0_COMPATIBILITY = PromptCompatibility(
+    dimensions={
+        "output_schema_version": "1.1.0",
+        "customqa_profile_version": "1.0.0",
+    }
+)
+
 #: Same two Layer-3 dimensions as the other two prompts -- the third
 #: registrant, still the same genuine reuse, not re-invention.
 _GENERATE_UTILITIES_COMPATIBILITY = PromptCompatibility(
@@ -276,6 +299,74 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 release_introduced="1.1.0",
             ),
             content=loaded_v1_1_0.content,
+        )
+    )
+
+    # --- generate_page_objects v1.2.0 --------------------------------------
+    # Additive: supplies BasePage's REAL inherited method inventory (a new
+    # BASEPAGE'S REAL INHERITED API section listing `open(String)`,
+    # `currentTitle()`, and the inherited `driver`/`wait` fields -- the
+    # COMPLETE real surface, read directly from the tracked baseline's own
+    # test-suite-baseline/src/test/java/com/automation/base/BasePage.java)
+    # and constrains generation to it -- MINOR per ADR-0014's own versioning
+    # table ("Additive section -- output schema compatibility preserved"):
+    # the `methods`-list request shape and the one-class-extending-BasePage
+    # response shape are both unchanged from v1.1.0. Fixes a live-measured
+    # defect: v1.1.0's own CONSTRAINTS section told the model to "route
+    # through the inherited BasePage helpers" WITHOUT ever listing what they
+    # are, so the model fell back on Selenium-POM training conventions
+    # (isElementDisplayed, sendKeys, click, findElement, getText, ...) that
+    # this platform's real BasePage does not have -- 31 of 32 generated
+    # classes in a live regeneration run called at least one such fictional
+    # helper and failed to compile. v1.1.0's own file/metadata are UNCHANGED
+    # (ADR-0014 invariant H.1: governed prompt wording is byte-for-byte
+    # frozen unless a governed version bump is performed -- this is that
+    # bump, added alongside, never edited in place). Registered DRAFT,
+    # mirroring every other Layer 3 prompt's own current lifecycle. The real
+    # inventory is HARDCODED directly in this version's own prompt text
+    # (not parsed from BasePage.java at render time) -- BasePage is a
+    # stable platform class, this prompt is itself a governed, versioned
+    # asset, and the platform already hardcodes another real class's
+    # surface the same way (generate_test_data_v1.0.0.txt's own
+    # ConfigReader.env(...)/ConfigReader.data(...) references); if BasePage
+    # ever changes, the prompt version bumps, exactly as governance
+    # intends. This is the INPUT-side fix only -- it proves the real
+    # inventory reaches the prompt; whether the model actually stops
+    # inventing helpers is proven by the (separate, later) live
+    # regeneration re-run, not by this registration.
+    loaded_v1_2_0 = loader.load(
+        prompt_id="generate_page_objects",
+        version="1.2.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_page_objects",
+                name="Generate Page Objects",
+                version="1.2.0",
+                owner="Automation Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Generates one Java page-object class for MULTIPLE page-object "
+                    "actions at once -- identical request/response shape to v1.1.0, now "
+                    "supplying BasePage's REAL inherited method inventory (open(String), "
+                    "currentTitle(), and the inherited driver/wait fields -- the COMPLETE "
+                    "real surface of test-suite-baseline's own BasePage.java) and "
+                    "constraining generation to it, so the model uses ONLY real inherited "
+                    "helpers (or this class's own driver/wait fields directly) instead of "
+                    "inventing fictional Selenium-POM helpers from training data "
+                    "(isElementDisplayed, sendKeys, click, findElement, getText, ...) that "
+                    "don't exist on this platform's real BasePage -- a live-measured "
+                    "defect (31 of 32 generated classes called at least one such "
+                    "nonexistent helper, failing to compile). v1.1.0 and v1.0.0 both "
+                    "remain registered, unedited."
+                ),
+                sha256=loaded_v1_2_0.sha256,
+                compatibility=_GENERATE_PAGE_OBJECTS_V1_2_0_COMPATIBILITY,
+                release_introduced="1.2.0",
+            ),
+            content=loaded_v1_2_0.content,
         )
     )
 
