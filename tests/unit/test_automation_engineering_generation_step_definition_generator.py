@@ -278,3 +278,58 @@ class TestLlmBoundaryErrorHandling:
         result = generator.generate(_context())
 
         assert result == java
+
+
+class TestLiveGeneratorConveysTheRealWebDriverLifecycle:
+    """Defect 2's own fix, proven directly: v1.0.0's prompt never conveyed
+    HOW a step definition obtains a `WebDriver` to hand to a page object's
+    constructor-injected constructor (ADR-0041 D5) -- so the platform's
+    pre-existing step-defs construct page objects with `new XPage()`
+    (no-arg), incompatible with the constructor-injected page objects
+    ADR-0041 D5 (and every generated page-object prompt) requires. v1.1.0
+    conveys the real, already-implemented mechanism
+    (`com.automation.base.DriverFactory`/`Hooks`, proven by the tracked
+    baseline's own `SmokeSteps.java`/`SmokePage.java`) and instructs lazy,
+    null-guarded construction instead. This is the INPUT-side proof only --
+    that the mechanism reaches the built prompt -- not proof the model
+    complies (that is the live regeneration re-run's job)."""
+
+    def test_prompt_uses_v110(self) -> None:
+        provider = FakeProvider()
+        generator = LiveStepDefinitionGenerator(provider)
+
+        generator.generate(_context())
+
+        assert provider.requests[0].metadata["prompt_version"] == "1.1.0"
+
+    def test_prompt_conveys_the_real_driverfactory_and_hooks_mechanism(self) -> None:
+        provider = FakeProvider()
+        generator = LiveStepDefinitionGenerator(provider)
+
+        generator.generate(_context())
+
+        sent_prompt = provider.requests[0].prompt
+        assert "com.automation.base.DriverFactory" in sent_prompt
+        assert "com.automation.base.Hooks" in sent_prompt
+        assert "DriverFactory.get()" in sent_prompt
+
+    def test_prompt_cites_the_real_smokesteps_precedent(self) -> None:
+        provider = FakeProvider()
+        generator = LiveStepDefinitionGenerator(provider)
+
+        generator.generate(_context())
+
+        sent_prompt = provider.requests[0].prompt
+        assert "SmokeSteps" in sent_prompt
+        assert "SmokePage" in sent_prompt
+
+    def test_prompt_instructs_lazy_construction_not_a_no_arg_constructor(self) -> None:
+        provider = FakeProvider()
+        generator = LiveStepDefinitionGenerator(provider)
+
+        generator.generate(_context())
+
+        sent_prompt = provider.requests[0].prompt
+        assert "new XPage()" in sent_prompt  # named as the thing that never compiles
+        assert "without an inline initializer" in sent_prompt
+        assert "null check" in sent_prompt.lower()

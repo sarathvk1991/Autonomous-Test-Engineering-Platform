@@ -74,6 +74,26 @@ _GENERATE_STEP_DEFINITIONS_COMPATIBILITY = PromptCompatibility(
     }
 )
 
+#: v1.1.0's own compatibility -- deliberately IDENTICAL to v1.0.0's, on both
+#: dimensions. Purely additive content within the same request/response
+#: shape (still "one step-definition class, one caller-named method"): a new
+#: PAGE-OBJECT CONSTRUCTION section conveys this platform's REAL WebDriver
+#: lifecycle (`com.automation.base.DriverFactory`/`Hooks`, ADR-0041 D5) and
+#: instructs the model to construct the page-object field lazily via
+#: `DriverFactory.get()` rather than a no-argument constructor -- fixing a
+#: live-measured defect where the pre-existing step-defs' own `new XPage()`
+#: is incompatible with the constructor-injected page objects ADR-0041 D5
+#: requires. MINOR per ADR-0014's own versioning table ("Additive section --
+#: output schema compatibility preserved"), not a new schema version;
+#: `customqa_profile_version` is unchanged -- the same customqa:* rules are
+#: referenced, verbatim, by this version's own CONSTRAINTS section too.
+_GENERATE_STEP_DEFINITIONS_V1_1_0_COMPATIBILITY = PromptCompatibility(
+    dimensions={
+        "output_schema_version": "1.0.0",
+        "customqa_profile_version": "1.0.0",
+    }
+)
+
 #: Same two Layer-3 dimensions as `generate_step_definitions` -- the same
 #: KIND of contract (a generated-Java shape, and the customqa:* profile
 #: version its own CONSTRAINTS section was authored against), genuinely
@@ -211,6 +231,68 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 release_introduced="1.0.0",
             ),
             content=loaded.content,
+        )
+    )
+
+    # --- generate_step_definitions v1.1.0 -----------------------------------
+    # Additive: conveys this platform's REAL WebDriver lifecycle
+    # (com.automation.base.DriverFactory + Hooks, ADR-0041 D5) via a new
+    # PAGE-OBJECT CONSTRUCTION section, and instructs the model to construct
+    # the page-object field lazily -- `if (xPage == null) { xPage = new
+    # XPage(DriverFactory.get()); }` inside the generated method's own body
+    # -- rather than a no-argument constructor. Fixes a live-measured
+    # defect: the platform's pre-existing step-defs (test-suite-baseline's
+    # own LoginSteps.java, CheckoutSteps.java, ...) construct page objects
+    # with `new XPage()` (no-arg), which is incompatible with the
+    # constructor-injected page objects ADR-0041 D5 (and every generated
+    # page-object prompt) requires -- `new XPage()` does not compile against
+    # a class whose only constructor takes a WebDriver. MINOR per
+    # ADR-0014's own versioning table ("Additive section -- output schema
+    # compatibility preserved"): still one step-definition class, one
+    # caller-matched method. v1.0.0's own file/metadata are UNCHANGED
+    # (ADR-0014 invariant H.1: governed prompt wording is byte-for-byte
+    # frozen unless a governed version bump is performed -- this is that
+    # bump, added alongside, never edited in place). Registered DRAFT,
+    # mirroring every other Layer 3 prompt's own current lifecycle. This is
+    # the INPUT-side fix only -- the tracked baseline's own DriverFactory/
+    # Hooks mechanism and its proven `SmokeSteps.java`/`SmokePage.java`
+    # pattern already exist and are cited directly, not invented here;
+    # whether the model actually follows the lazy-construction instruction
+    # is proven by the (separate, later) live regeneration re-run.
+    loaded_v1_1_0 = loader.load(
+        prompt_id="generate_step_definitions",
+        version="1.1.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_step_definitions",
+                name="Generate Step Definitions",
+                version="1.1.0",
+                owner="Automation Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Generates one Java step-definition method for a Gherkin step the "
+                    "reuse engine (automation_engineering.reuse.engine.decide_reuse) "
+                    "returned NO_MATCH for (ADR-0044 D3/D4) -- identical request/response "
+                    "shape to v1.0.0, now conveying this platform's REAL WebDriver "
+                    "lifecycle (com.automation.base.DriverFactory + Hooks, ADR-0041 D5) "
+                    "so the model constructs page-object fields lazily via "
+                    "DriverFactory.get() -- exactly the tracked baseline's own "
+                    "SmokeSteps.java/SmokePage.java pattern -- instead of a no-argument "
+                    "constructor. Fixes a live-measured defect: the platform's "
+                    "pre-existing step-defs construct page objects with new XPage() "
+                    "(no-arg), incompatible with the constructor-injected page objects "
+                    "ADR-0041 D5 requires. Targets the tracked test-suite-baseline's own "
+                    "package com.automation.steps convention. v1.0.0 remains registered, "
+                    "unedited."
+                ),
+                sha256=loaded_v1_1_0.sha256,
+                compatibility=_GENERATE_STEP_DEFINITIONS_V1_1_0_COMPATIBILITY,
+                release_introduced="1.1.0",
+            ),
+            content=loaded_v1_1_0.content,
         )
     )
 

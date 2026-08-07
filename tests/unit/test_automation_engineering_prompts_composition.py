@@ -41,19 +41,22 @@ _EXPECTED_PROMPT_IDS = set(_ALL_PROMPT_IDS)
 
 
 def test_registry_seals_with_exactly_the_four_prompt_families() -> None:
-    """Four distinct `prompt_id`s, six total registered definitions --
-    `generate_page_objects` alone carries three versions (v1.0.0, still
+    """Four distinct `prompt_id`s, seven total registered definitions --
+    `generate_page_objects` carries three versions (v1.0.0, still
     single-method; v1.1.0, additive multi-method support; v1.2.0, additive
-    real-BasePage-inventory support, this build)."""
+    real-BasePage-inventory support) and `generate_step_definitions` carries
+    two (v1.0.0; v1.1.0, additive real-WebDriver-lifecycle support, this
+    build)."""
     registry = build_prompt_registry()
 
     assert registry.state is PromptRegistryState.SEALED
-    assert registry.count() == 6
+    assert registry.count() == 7
     assert set(registry.list_prompt_ids()) == _EXPECTED_PROMPT_IDS
     for prompt_id in _ALL_PROMPT_IDS:
         assert registry.is_registered(prompt_id, "1.0.0")
     assert registry.is_registered("generate_page_objects", "1.1.0")
     assert registry.is_registered("generate_page_objects", "1.2.0")
+    assert registry.is_registered("generate_step_definitions", "1.1.0")
 
 
 def test_generate_test_data_was_not_actually_registered_before_this_build() -> None:
@@ -492,3 +495,133 @@ class TestGeneratePageObjectsV120:
         v120 = registry.get("generate_page_objects", "1.2.0")
 
         assert v120.metadata.compatibility.dimensions == v110.metadata.compatibility.dimensions
+
+
+# ===========================================================================
+# generate_step_definitions v1.1.0 -- real WebDriver lifecycle (defect-2 fix)
+# ===========================================================================
+
+
+class TestGenerateStepDefinitionsV110:
+    """Fixes a live-measured defect: v1.0.0's own prompt never conveyed HOW
+    a step definition obtains a `WebDriver` to hand to a page object's
+    constructor-injected constructor (ADR-0041 D5) -- so the platform's
+    pre-existing step-defs construct page objects with `new XPage()`
+    (no-arg), which does not compile against a page object whose only real
+    constructor takes a `WebDriver`. ADR-0041 D5 already specifies the
+    mechanism (a `ThreadLocal`-owning factory in the tracked baseline
+    module), and the tracked baseline already implements + proves it
+    (`DriverFactory`, `Hooks`, `SmokeSteps.java`/`SmokePage.java`). v1.1.0 is
+    additive alongside v1.0.0, never editing it (ADR-0014 invariant H.1).
+    Registered DRAFT, mirroring every other Layer 3 prompt's own current
+    lifecycle."""
+
+    def test_registered_alongside_v100_not_instead_of_it(self) -> None:
+        registry = build_prompt_registry()
+
+        assert registry.is_registered("generate_step_definitions", "1.0.0")
+        assert registry.is_registered("generate_step_definitions", "1.1.0")
+
+    def test_v100_content_is_byte_for_byte_unchanged(self) -> None:
+        """The governed-frozen invariant, proven directly: v1.0.0's own
+        file/sha256 are exactly what they were before this build."""
+        registry = build_prompt_registry()
+        v100 = registry.get("generate_step_definitions", "1.0.0")
+
+        assert v100.metadata.sha256 == (
+            "06c6207b7f9e87850e92a8708e277be9c26f8f111244fd2e251c70f4bb148d35"
+        )
+
+    def test_lifecycle_is_draft(self) -> None:
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+        assert d.metadata.lifecycle == PromptLifecycle.DRAFT
+
+    def test_release_introduced(self) -> None:
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+        assert d.metadata.release_introduced == "1.1.0"
+
+    def test_sha256_matches_file_and_manifest(self) -> None:
+        versions_dir = Path("automation_engineering/prompts/versions")
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+        file_bytes = (versions_dir / "generate_step_definitions_v1.1.0.txt").read_bytes()
+
+        assert d.metadata.sha256 == PromptLoader.compute_sha256(file_bytes)
+        assert d.content == file_bytes.decode("utf-8")
+
+    def test_conforms_to_the_governed_system_user_contract(self) -> None:
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+
+        template = parse_governed_template(d.content)
+
+        assert template.system_prompt.strip()
+        assert "{artifact_context}" not in template.system_prompt
+        assert template.user_template.count("{artifact_context}") == 1
+
+    def test_still_embeds_both_customqa_rules_referenced_by_v100(self) -> None:
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+
+        assert "customqa:direct-webdriver-action" in d.content
+        assert "customqa:long-method" in d.content
+
+    def test_conveys_the_real_driverfactory_and_hooks_mechanism(self) -> None:
+        """The core proof: the built prompt cites the REAL, already-
+        implemented classes -- not an invented mechanism."""
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+
+        assert "com.automation.base.DriverFactory" in d.content
+        assert "com.automation.base.Hooks" in d.content
+        assert "DriverFactory.get()" in d.content
+
+    def test_cites_the_real_smokesteps_precedent(self) -> None:
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+
+        assert "SmokeSteps" in d.content
+        assert "SmokePage" in d.content
+
+    def test_instructs_lazy_construction_not_a_no_arg_constructor(self) -> None:
+        """The prompt doesn't just cite the mechanism -- it instructs AWAY
+        from the exact defect measured (`new XPage()`, an inline field
+        initializer) and TOWARD the lazy, null-guarded construction the
+        real WebDriver lifecycle requires."""
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+
+        assert "new XPage()" in d.content  # named as the thing that never compiles
+        assert "without an inline initializer" in d.content
+        assert "null check" in d.content.lower()
+
+    def test_prevents_calling_driverfactory_create_directly(self) -> None:
+        """Only `Hooks` may call `DriverFactory.create()` -- a generated
+        step-def must only ever call `DriverFactory.get()`."""
+        d = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+
+        assert "never `DriverFactory.create()`" in d.content or (
+            "never" in d.content.lower() and "DriverFactory.create()" in d.content
+        )
+
+    def test_real_mechanism_matches_the_tracked_baselines_own_classes(self) -> None:
+        """Proves the prompt's own citation is the REAL mechanism -- reads
+        DriverFactory.java, Hooks.java, and SmokeSteps.java directly and
+        cross-checks the exact call shape the prompt instructs against what
+        the tracked baseline actually implements."""
+        base_dir = Path("test-suite-baseline/src/test/java/com/automation/base")
+        driver_factory_source = (base_dir / "DriverFactory.java").read_text()
+        hooks_source = (base_dir / "Hooks.java").read_text()
+        smoke_steps_source = Path(
+            "test-suite-baseline/src/test/java/com/automation/steps/SmokeSteps.java"
+        ).read_text()
+
+        assert "public static WebDriver get()" in driver_factory_source
+        assert "public static WebDriver create()" in driver_factory_source
+        assert "DriverFactory.create()" in hooks_source
+        assert "DriverFactory.quit()" in hooks_source
+        assert "new SmokePage(DriverFactory.get())" in smoke_steps_source
+
+    def test_compatibility_identical_to_v100_purely_additive_content(self) -> None:
+        """Both dimensions match v1.0.0's exactly -- this version adds
+        prompt CONTENT (the PAGE-OBJECT CONSTRUCTION section), not a new
+        request or response shape."""
+        registry = build_prompt_registry()
+        v100 = registry.get("generate_step_definitions", "1.0.0")
+        v110 = registry.get("generate_step_definitions", "1.1.0")
+
+        assert v110.metadata.compatibility.dimensions == v100.metadata.compatibility.dimensions
