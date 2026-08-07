@@ -33,6 +33,16 @@ class, not once per method, and the class it returns carries every method
 a step-def actually calls. Closes the gap
 `page_object_reference_derivation.py`'s own derivation build flagged and
 deliberately left open (``unverified_method_names``).
+
+**``method_name`` now required, unconditionally (additive fix).** A live
+regeneration run measured a real consequence of leaving it optional for
+the single-method case: the live generator's own v1.0.0 payload never
+carried a method name at all, so the model paraphrased its own from
+``need.text`` -- 67% of requested method calls came back under the wrong
+name on real data. ``LivePageObjectGenerator`` now requires
+``context.method_name`` on every call (see its own module docstring for
+the full account); this seam's field keeps its ``None`` default for shape
+stability, but every real production caller already supplies it.
 """
 
 from __future__ import annotations
@@ -76,17 +86,31 @@ class PageObjectGenerationContext:
     expose. Empty for the ordinary, still-most-common one-method-per-class
     case -- every existing caller that never sets this field is unaffected.
 
-    ``method_name`` (additive, default ``None``) is the PRIMARY method's own
-    caller-chosen Java method name -- the ``additional_method_needs`` sibling
-    to :class:`~.models.PageObjectMethodNeed.method_name`, threaded through
-    so a multi-method generation request can name EVERY method it asks for,
-    not just the additional ones. ``None`` for the ordinary single-method
-    case (v1.0.0's own INPUT CONTRACT never carried a method name at all --
-    the model chooses it, exactly as before; this field is simply unused
-    then). Required (never ``None``) whenever ``additional_method_needs`` is
-    non-empty -- a multi-method generation request must name every method,
-    including the first, never leave exactly one of several entries for the
-    model to invent while the rest are caller-named.
+    ``method_name`` (additive, default ``None`` for shape stability -- see
+    below) is the PRIMARY method's own caller-chosen Java method name -- the
+    ``additional_method_needs`` sibling to
+    :class:`~.models.PageObjectMethodNeed.method_name`, threaded through so a
+    generation request can name EVERY method it asks for, not just the
+    additional ones.
+
+    **Required by the live generator, unconditionally (additive fix,
+    2026-08-07).** Originally left ``None`` for a single-method request
+    (``generate_page_objects`` v1.0.0's own INPUT CONTRACT never carried a
+    method name at all -- the model chose it from ``need.text``). A live
+    regeneration run against the real tracked baseline measured the cost of
+    that omission directly: 22 of 33 requested method calls (67%) came back
+    under a name the model invented, not the name a real step-definition
+    call site needed, because nothing ever told the model what name to use.
+    :class:`~.live_page_object_generator.LivePageObjectGenerator` now
+    requires ``method_name`` on EVERY call, single-method or multi-method
+    alike (raises :class:`ValueError` if ``None``) -- every real production
+    caller (:func:`~.page_object_orchestrator.orchestrate_page_object_method`,
+    :func:`~.page_object_orchestrator.orchestrate_page_object_class`)
+    already supplies it from its own ``PageObjectMethodNeed.method_name``.
+    The field itself keeps its ``None`` default (additive, so
+    :class:`~.page_object_generator.StubPageObjectGenerator` and any
+    non-live caller that genuinely has no name to supply are unaffected) --
+    only the LIVE generator enforces the requirement.
     """
 
     need: GherkinStepNeed

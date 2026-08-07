@@ -52,6 +52,27 @@ def _context(
     return PageObjectGenerationContext(**defaults)  # type: ignore[arg-type]
 
 
+#: `LivePageObjectGenerator.generate` now REQUIRES `context.method_name`
+#: unconditionally (the defect-1 fix) -- every live-generator test below
+#: that doesn't test the ValueError itself supplies one, via `_context(...,
+#: method_name=...)`. This default pairs with `_DEFAULT_METHOD_JAVA` below
+#: so a bare `FakeProvider()` response satisfies the completeness check for
+#: a bare `_context()` call.
+_DEFAULT_METHOD_NAME = "clickForgotPasswordLink"
+
+
+def _single_method_java(method_name: str = _DEFAULT_METHOD_NAME) -> str:
+    """A canned, complete single-method page-object response -- contains
+    `method_name` so the completeness check (module docstring's own
+    "completeness, honestly bounded") passes."""
+    return (
+        "package com.automation.pages;\n\n"
+        "public class ForgotPasswordLinkPage extends BasePage {\n"
+        f"    public void {method_name}() {{}}\n"
+        "}\n"
+    )
+
+
 # ---------------------------------------------------------------------------
 # PageObjectGenerationContext.additional_method_needs -- additive, this build
 # ---------------------------------------------------------------------------
@@ -139,7 +160,7 @@ class FakeProvider(LLMProvider):
     def __init__(
         self,
         *,
-        text: str = "package com.automation.pages;\n",
+        text: str = _single_method_java(),
         execution_status: ExecutionStatus = ExecutionStatus.COMPLETED,
         raises: Exception | None = None,
     ) -> None:
@@ -187,7 +208,7 @@ class TestInputAssemblyDeterminism:
         provider = FakeProvider()
         generator = LivePageObjectGenerator(provider)
 
-        generator.generate(_context())
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
         sent_prompt = provider.requests[0].prompt
         assert sent_prompt.startswith(
@@ -196,34 +217,62 @@ class TestInputAssemblyDeterminism:
         assert "customqa:direct-webdriver-action" in sent_prompt
         assert "customqa:long-method" in sent_prompt
 
-    def test_input_block_carries_every_field_the_seam_context_names(self) -> None:
+    def test_input_block_conveys_the_derived_method_name_verbatim(self) -> None:
+        """THE defect-1 proof: a live regeneration run measured 22 of 33
+        requested method calls (67%) coming back under a name the model
+        invented, because the single-method path never conveyed the
+        DERIVED method_name to the model at all. This is the exact
+        scenario -- a real requested name (`verifyNamingPatternForElements`,
+        the live run's own example) -- proven present in the built prompt
+        input, not paraphrasable away."""
         need = GherkinStepNeed(
-            text="log in with a username and password",
+            text="the report should indicate that all {string} follow the required naming pattern",
             step_type="PageAction",
             captures=(StepCapture(index=0, style="cucumber_expression", expression_type="string"),),
         )
         context = _context(
             need,
-            class_name="LoginPage",
+            class_name="ReportPage",
             target_package="com.automation.pages",
             customqa_constraints=("rule-a", "rule-b"),
+            method_name="verifyNamingPatternForElements",
         )
-        provider = FakeProvider()
+        provider = FakeProvider(
+            text=_single_method_java("verifyNamingPatternForElements")
+        )
         generator = LivePageObjectGenerator(provider)
 
         generator.generate(context)
 
         payload = _sent_input_payload(provider.requests[0].prompt)
-        assert payload["action_text"] == need.text
-        assert payload["class_name"] == "LoginPage"
+        assert payload["class_name"] == "ReportPage"
         assert payload["target_package"] == "com.automation.pages"
         assert payload["customqa_constraints"] == ["rule-a", "rule-b"]
-        assert payload["captures"] == [
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert len(methods) == 1
+        # The derived name is CONVEYED -- the exact thing v1.0.0 never did.
+        assert methods[0]["method_name"] == "verifyNamingPatternForElements"
+        assert methods[0]["action_text"] == need.text
+        assert methods[0]["captures"] == [
             {"index": 0, "style": "cucumber_expression", "expression_type": "string"}
         ]
 
+    def test_verbatim_naming_instruction_is_present_in_the_prompt(self) -> None:
+        """The prompt doesn't just carry the name -- it instructs the model
+        to use it VERBATIM (v1.1.0's own OUTPUT CONTRACT language), now
+        covering the single-method case too."""
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        sent_prompt = provider.requests[0].prompt
+        assert "VERBATIM" in sent_prompt
+        assert "method_name" in sent_prompt
+
     def test_same_context_yields_byte_identical_prompt_across_independent_calls(self) -> None:
-        context = _context()
+        context = _context(method_name=_DEFAULT_METHOD_NAME)
         first_provider = FakeProvider()
         second_provider = FakeProvider()
 
@@ -236,8 +285,12 @@ class TestInputAssemblyDeterminism:
         provider = FakeProvider()
         generator = LivePageObjectGenerator(provider)
 
-        generator.generate(_context(_need("click the forgot password link")))
-        generator.generate(_context(_need("open the checkout page")))
+        generator.generate(
+            _context(_need("click the forgot password link"), method_name=_DEFAULT_METHOD_NAME)
+        )
+        generator.generate(
+            _context(_need("open the checkout page"), method_name=_DEFAULT_METHOD_NAME)
+        )
 
         assert provider.requests[0].prompt != provider.requests[1].prompt
 
@@ -245,7 +298,7 @@ class TestInputAssemblyDeterminism:
         provider = FakeProvider()
         generator = LivePageObjectGenerator(provider)
 
-        generator.generate(_context())
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
         assert provider.call_count == 1
 
@@ -256,7 +309,7 @@ class TestLlmBoundaryErrorHandling:
         generator = LivePageObjectGenerator(provider)
 
         with pytest.raises(LiveGenerationError, match="LLM provider call failed") as excinfo:
-            generator.generate(_context())
+            generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
         assert isinstance(excinfo.value.__cause__, RuntimeError)
 
     def test_non_completed_execution_status_raises(self) -> None:
@@ -264,28 +317,44 @@ class TestLlmBoundaryErrorHandling:
         generator = LivePageObjectGenerator(provider)
 
         with pytest.raises(LiveGenerationError, match="did not complete"):
-            generator.generate(_context())
+            generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
     def test_empty_response_raises(self) -> None:
         provider = FakeProvider(text="")
         generator = LivePageObjectGenerator(provider)
 
         with pytest.raises(LiveGenerationError, match="empty response"):
-            generator.generate(_context())
+            generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
     def test_whitespace_only_response_raises(self) -> None:
         provider = FakeProvider(text="   \n  \n")
         generator = LivePageObjectGenerator(provider)
 
         with pytest.raises(LiveGenerationError, match="empty response"):
-            generator.generate(_context())
+            generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+    def test_missing_method_name_raises_before_any_provider_call(self) -> None:
+        """The defect-1 fix's own safety net: `method_name` is now required
+        UNCONDITIONALLY (previously only for a multi-method request)."""
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        with pytest.raises(ValueError, match="method_name"):
+            generator.generate(_context())  # method_name defaults to None
+
+        assert provider.call_count == 0
 
     def test_completed_non_empty_response_is_returned_verbatim(self) -> None:
-        java = "package com.automation.pages;\n\npublic class LoginPage extends BasePage {}\n"
+        java = (
+            "package com.automation.pages;\n\n"
+            "public class LoginPage extends BasePage {\n"
+            f"    public void {_DEFAULT_METHOD_NAME}() {{}}\n"
+            "}\n"
+        )
         provider = FakeProvider(text=java)
         generator = LivePageObjectGenerator(provider)
 
-        result = generator.generate(_context())
+        result = generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
         assert result == java
 
@@ -321,11 +390,11 @@ def _complete_provider() -> FakeProvider:
 
 
 class TestLiveGeneratorMultiMethod:
-    """`generate_page_objects` v1.1.0 -- the multi-method extension this
-    build registers and wires. `LivePageObjectGenerator` no longer raises on
-    `context.additional_method_needs`; it builds a `methods`-list prompt
-    against v1.1.0 and calls the provider, exactly like the single-method
-    path always did against v1.0.0."""
+    """`generate_page_objects` v1.1.0 -- the multi-method extension. Since
+    the defect-1 fix, v1.1.0 is ALSO the single-method path (the divergence
+    that caused defect 1 -- v1.0.0 never conveying `method_name` -- is
+    retired; see `TestSingleMethodNowRoutesThroughV110` below for that
+    proof specifically)."""
 
     def test_does_not_raise_and_calls_the_provider_exactly_once(self) -> None:
         provider = _complete_provider()
@@ -366,20 +435,6 @@ class TestLiveGeneratorMultiMethod:
             "enter the password",
             "click the login button",
         ]
-
-    def test_single_method_call_still_uses_v100_unaffected(self) -> None:
-        """Regression: a context with no `additional_method_needs` is
-        completely unaffected by this build -- same template, same payload
-        shape, no `methods` key at all."""
-        provider = FakeProvider()
-        generator = LivePageObjectGenerator(provider)
-
-        generator.generate(_context())
-
-        assert provider.requests[0].metadata["prompt_version"] == "1.0.0"
-        payload = _sent_input_payload(provider.requests[0].prompt)
-        assert "methods" not in payload
-        assert payload["action_text"] == _need().text
 
     def test_response_with_all_requested_methods_is_returned_verbatim(self) -> None:
         provider = _complete_provider()
@@ -438,3 +493,63 @@ class TestLiveGeneratorMultiMethod:
         LivePageObjectGenerator(second_provider).generate(context)
 
         assert first_provider.requests[0].prompt == second_provider.requests[0].prompt
+
+
+class TestSingleMethodNowRoutesThroughV110:
+    """THE defect-1 fix, proven directly: a single-method context (no
+    `additional_method_needs`) used to hit v1.0.0's own payload shape
+    (`action_text`/`captures` at the top level, no `method_name` anywhere)
+    -- now it hits the SAME v1.1.0 path a multi-method context does, as a
+    length-one `methods` list, with `method_name` conveyed. No more
+    divergence between the two paths -- the root cause of defect 1."""
+
+    def test_uses_v110_not_v100(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        assert provider.requests[0].metadata["prompt_version"] == "1.1.0"
+
+    def test_payload_is_a_length_one_methods_list_carrying_method_name(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        assert "action_text" not in payload  # the OLD v1.0.0 top-level shape is gone
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert len(methods) == 1
+        assert methods[0]["method_name"] == _DEFAULT_METHOD_NAME
+        assert methods[0]["action_text"] == _need().text
+
+    def test_produces_one_class_one_method_the_right_name_no_regression(self) -> None:
+        java = _single_method_java(_DEFAULT_METHOD_NAME)
+        provider = FakeProvider(text=java)
+        generator = LivePageObjectGenerator(provider)
+
+        result = generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        assert result == java
+        assert result.count("public void") == 1  # one class, one method
+        assert _DEFAULT_METHOD_NAME in result
+
+    def test_response_under_the_wrong_name_is_caught_not_silently_accepted(self) -> None:
+        """Contrast with the OLD (defect-1) behavior: previously, a
+        single-method response was returned VERBATIM no matter what name
+        the model actually used -- there was no completeness check on this
+        path at all. Now, a response using a DIFFERENT name than requested
+        (exactly what the live run measured 67% of the time) is caught."""
+        paraphrased_java = (
+            "package com.automation.pages;\n\n"
+            "public class ForgotPasswordLinkPage extends BasePage {\n"
+            "    public void resetPasswordLink() {}\n"  # NOT the requested name
+            "}\n"
+        )
+        provider = FakeProvider(text=paraphrased_java)
+        generator = LivePageObjectGenerator(provider)
+
+        with pytest.raises(LiveGenerationError, match="missing"):
+            generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))

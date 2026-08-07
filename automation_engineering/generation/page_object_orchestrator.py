@@ -182,6 +182,17 @@ def orchestrate_page_object_method(
     :mod:`.page_object_reference_derivation` uses to keep a freshly
     generated page object's class name consistent with whatever an
     already-generated step-definition's own body already references.
+
+    The generation context's own ``method_name`` is set from
+    ``method_need.method_name`` (additive, this fix) -- the derived,
+    caller-supplied name the seam must convey to the generator so the
+    generated method is declared under the SAME name a step-def's own call
+    site actually uses, never a name the generator invents independently
+    from ``need.text`` (the live defect this closes:
+    :class:`~automation_engineering.generation.live_page_object_generator.LivePageObjectGenerator`
+    requires ``context.method_name``, exactly because a name the model
+    invents from prose almost never matches the name a real call site
+    needs).
     """
     decision = decide_reuse(
         method_need.need, catalog, matcher, confidence_threshold=confidence_threshold
@@ -222,6 +233,7 @@ def orchestrate_page_object_method(
             class_name=class_name,
             target_package=target_package,
             customqa_constraints=customqa_constraints,
+            method_name=method_need.method_name,
         )
         java_source = generator.generate(context)
         return GeneratedPageObject(
