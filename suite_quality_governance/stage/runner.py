@@ -1,16 +1,50 @@
-"""Stage 16 -- Suite Quality Governance (ADR-0036, ADR-0046): CP5 wired as a
-resumable, persisted run/stage-state stage, mirroring stage 15's own
-integration shape (:mod:`automation_engineering.stage.runner`) exactly.
+"""Stage 16 -- Suite Quality Governance (ADR-0036, ADR-0046, ADR-0047): CP5,
+CP7, and CP8 wired as ONE resumable, persisted run/stage-state stage,
+mirroring stage 15's own integration shape
+(:mod:`automation_engineering.stage.runner`) exactly.
 
-**This module composes CP5's already-built capstone
-(:func:`suite_quality_governance.cp5.promotion_wrap.evaluate_promotion_wrap`)
--- it builds no new CP5 logic.** Every orphan/near-dup/cohesion decision is
-made by the CP5 package itself; this module only resolves CP5's own inputs
-from stage 15's already-persisted artifacts, derives the one input CP5
-needs that no prior module derives (the WHOLE tracked feature corpus's own
-step needs, ADR-0046 D2/D7), and persists the result -- the identical "GLUE,
-not a fifth CP5 component" posture stage 15's own module docstring already
-establishes for ITS six subsystems.
+**This module composes CP5/CP7/CP8's already-built capstones -- it builds no
+new CP5/CP7/CP8 logic.** CP5's own capstone
+(:func:`suite_quality_governance.cp5.promotion_wrap.evaluate_promotion_wrap`),
+CP8's own static-readiness gate
+(:func:`suite_quality_governance.cp8.readiness.evaluate_static_readiness`),
+and CP7's own report-only measures fetch
+(:func:`suite_quality_governance.cp7.measures.fetch_whole_suite_quality_report`)
+are each called exactly as built; every orphan/near-dup/cohesion/readiness/
+measures decision is made by the CP5/CP7/CP8 packages themselves. This
+module only resolves CP5's own inputs from stage 15's already-persisted
+artifacts, derives the one input CP5 needs that no prior module derives (the
+WHOLE tracked feature corpus's own step needs, ADR-0046 D2/D7), composes the
+three outcomes into ONE stage verdict (D9, below), and persists the result --
+the identical "GLUE, not a fifth CP5 component" posture stage 15's own module
+docstring already establishes for ITS six subsystems, extended here across
+control points.
+
+**Composition (ADR-0047 D8/D9): CP8 gates alongside CP5; CP7 never gates.**
+The stage's own ``overall_verdict`` is ``PASS`` iff CP5's own
+``result.overall_verdict`` AND CP8's own ``cp8_result.overall_verdict`` are
+both ``PASS`` -- CP8's static-readiness gate composes into the stage exactly
+like CP5's cohesion/orphaned-glue gates already do (D9: "CP8 gates
+immediately... unconditional on compile state"). CP7's own measures
+(D3: report-only, permanently until an explicit future decision) are
+surfaced in the stage's own report/JSON artifacts but never enter this
+composition -- carried in ``Cp7ReportOutcome`` (`.models`), alongside the
+verdict, never inside it. CP5's own near-duplicate sweep remains advisory
+exactly as CP5 already established (ADR-0046 D6) -- unaffected by this
+stage's own new composition.
+
+**CP7's own live Sonar dependence degrades honestly, never fatally
+(ADR-0047 D3).** ``sonar_adapter`` is optional -- when ``None`` (no adapter
+configured for this stage run) or when the adapter's own fetch genuinely
+fails (an unreachable server, a scan error), CP7's own report is recorded as
+UNAVAILABLE (`.models.Cp7ReportOutcome`), never as a stage failure and never
+as a faked-clean report -- CP7 never gated the stage to begin with, so its
+own absence cannot un-gate it either. This mirrors
+`suite_quality_governance.cp5.cohesion._evaluate_compiles`'s own "a
+live-tool failure is caught and turned into an honest outcome, never left to
+crash the caller" discipline, one component over -- extended here to a
+report-only component whose own honest failure state is "unavailable," not
+"FAIL" (CP7 structurally has no FAIL, D3).
 
 **Wrap order (ADR-0046 D4), satisfied by WHEN this stage is invoked, not by
 anything in this module's own code.** D4 requires CP5 to run "after
@@ -56,7 +90,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx
+
 from automation_engineering.catalog.scanner import JAVA_SOURCE_SUBPATH
+from automation_engineering.cp3.sonar.adapter import SonarQualityGateAdapter, SonarScanError
 from automation_engineering.reuse.embeddings import EmbeddingProvider
 from automation_engineering.reuse.models import GherkinStepNeed
 from automation_engineering.stage.gherkin_needs import (
@@ -67,6 +104,7 @@ from automation_engineering.stage.models import (
     AUTOMATION_ENGINEERING_PACKAGE_FILENAME,
     PROMOTION_REPORT_FILENAME,
 )
+from automation_engineering.stage.runner import DEFAULT_SONAR_PROJECT_KEY
 from feature_engineering.stage.workspace import DEFAULT_BASELINE_ROOT, FEATURES_SUBPATH
 from requirement_intelligence.run_state.atomic_write import atomic_write_json, read_json_if_valid
 from requirement_intelligence.run_state.run_state_manager import RunStateManager
@@ -76,9 +114,16 @@ from suite_quality_governance.cp5.models import Cp5PromotionWrapResult
 from suite_quality_governance.cp5.near_duplicate_sweep import DEFAULT_NEAR_DUPLICATE_THRESHOLD
 from suite_quality_governance.cp5.orphaned_glue import DEFAULT_SEMANTIC_HINT_FLOOR
 from suite_quality_governance.cp5.promotion_wrap import evaluate_promotion_wrap
+from suite_quality_governance.cp7.measures import fetch_whole_suite_quality_report
+from suite_quality_governance.cp7.models import Cp7MeasureFinding, Cp7WholeSuiteQualityReport
+from suite_quality_governance.cp8.models import Cp8Result
+from suite_quality_governance.cp8.readiness import evaluate_static_readiness
 from suite_quality_governance.stage.models import (
     CP5_REPORT_FILENAME,
+    CP7_REPORT_FILENAME,
+    CP8_REPORT_FILENAME,
     SUITE_QUALITY_GOVERNANCE_REPORT_FILENAME,
+    Cp7ReportOutcome,
     SuiteQualityGovernanceStageResult,
 )
 
@@ -209,43 +254,125 @@ def _cp5_result_to_json(result: Cp5PromotionWrapResult) -> dict[str, object]:
     }
 
 
-def _build_report(result: Cp5PromotionWrapResult, staged_paths: tuple[Path, ...]) -> str:
+def _cp8_result_to_json(result: Cp8Result) -> dict[str, object]:
+    return {
+        "overallVerdict": result.overall_verdict.value,
+        "criteria": [
+            {"criterion": c.criterion, "verdict": c.verdict.value, "messages": list(c.messages)}
+            for c in result.criteria
+        ],
+    }
+
+
+def _cp7_findings_to_json(findings: tuple[Cp7MeasureFinding, ...]) -> list[dict[str, object]]:
+    return [
+        {"metricKey": f.metric_key, "value": f.value, "measured": f.measured} for f in findings
+    ]
+
+
+def _cp7_outcome_to_json(outcome: Cp7ReportOutcome) -> dict[str, object]:
+    if outcome.report is None:
+        return {"available": False, "unavailableReason": outcome.unavailable_reason}
+    report = outcome.report
+    return {
+        "available": True,
+        "projectKey": report.project_key,
+        "genericQuality": _cp7_findings_to_json(report.generic_quality),
+        "security": _cp7_findings_to_json(report.security),
+        "coverageAndDuplication": _cp7_findings_to_json(report.coverage_and_duplication),
+    }
+
+
+def _fetch_cp7_report_outcome(
+    sonar_adapter: SonarQualityGateAdapter | None, project_key: str
+) -> Cp7ReportOutcome:
+    """CP7 is report-only (ADR-0047 D3) -- ANY inability to obtain its own
+    measures (no adapter configured for this stage run, or a genuine live
+    Sonar transport/scan failure) degrades to an honest UNAVAILABLE outcome,
+    never to a stage failure and never to a faked-clean report. Catches both
+    `SonarScanError` (the domain exception CP3's own gate already catches
+    for submit/poll failures, `automation_engineering.cp3.gate
+    ._evaluate_sonar_gate`) and `httpx.HTTPError` (the live adapter's own
+    `fetch_measures` -- unlike `submit_scan` -- lets a connection failure or
+    non-2xx response propagate unwrapped, module docstring)."""
+    if sonar_adapter is None:
+        return Cp7ReportOutcome(
+            report=None, unavailable_reason="no Sonar adapter configured for this stage run"
+        )
+    try:
+        report: Cp7WholeSuiteQualityReport = fetch_whole_suite_quality_report(
+            sonar_adapter, project_key
+        )
+    except (SonarScanError, httpx.HTTPError) as exc:
+        return Cp7ReportOutcome(report=None, unavailable_reason=str(exc))
+    return Cp7ReportOutcome(report=report, unavailable_reason=None)
+
+
+def _build_report(
+    cp5_result: Cp5PromotionWrapResult,
+    cp8_result: Cp8Result,
+    cp7_outcome: Cp7ReportOutcome,
+    overall_verdict: ValidationVerdict,
+    staged_paths: tuple[Path, ...],
+) -> str:
+    result = cp5_result
     lines = [
-        "# Suite Quality Governance Stage Report (Stage 16, CP5)",
+        "# Suite Quality Governance Stage Report (Stage 16, CP5+CP7+CP8)",
         "",
         f"- Assets staged by this run's promotion: {len(staged_paths)}",
         f"- Cohesion verdict: {result.cohesion.overall_verdict.value}",
         f"- Orphaned-glue verdict: {result.orphaned_glue.overall_verdict.value}",
         f"- Near-duplicate clusters found (advisory): {len(result.near_duplicates.clusters)}",
         f"- CP5 overall verdict: {result.overall_verdict.value}",
+        f"- CP8 static-readiness verdict: {cp8_result.overall_verdict.value}",
+        f"- Stage overall verdict (CP5 AND CP8; CP7 never gates, ADR-0047 D3/D9): "
+        f"{overall_verdict.value}",
     ]
     if result.compile_attribution is not None:
         lines.append(f"- Compile-failure attribution: {result.compile_attribution.detail}")
-    if not result.passed:
+    if overall_verdict != ValidationVerdict.PASS:
         lines.append("")
         lines.append(
             "## Suite-level reject -- routed to the shared human review queue "
-            "(ADR-0045 D3/ADR-0046 D4)"
+            "(ADR-0045 D3/ADR-0046 D4/ADR-0047 D9)"
         )
         lines.append(
             "The staged diff this run's promotion left is untouched -- never unstaged, "
-            "never committed, never auto-fixed (ADR-0046 D4/D5)."
+            "never committed, never auto-fixed (ADR-0046 D4/D5, ADR-0047 D9)."
         )
         for finding in result.orphaned_glue.findings:
             lines.append(
                 f"- orphaned glue: {finding.class_name}.{finding.method_name} "
                 f"(pattern: {finding.pattern!r})"
             )
-        for c in result.cohesion.criteria:
-            if c.verdict != ValidationVerdict.PASS:
-                for message in c.messages:
-                    lines.append(f"- {c.criterion}: {message}")
+        for cohesion_criterion in result.cohesion.criteria:
+            if cohesion_criterion.verdict != ValidationVerdict.PASS:
+                for message in cohesion_criterion.messages:
+                    lines.append(f"- {cohesion_criterion.criterion}: {message}")
+        for cp8_criterion in cp8_result.criteria:
+            if cp8_criterion.verdict != ValidationVerdict.PASS:
+                for message in cp8_criterion.messages:
+                    lines.append(f"- {cp8_criterion.criterion}: {message}")
     if result.near_duplicates.clusters:
         lines.append("")
         lines.append("## Near-duplicate clusters (advisory -- never blocks)")
         for cluster in result.near_duplicates.clusters:
             names = ", ".join(f"{m.class_name}.{m.method_name}" for m in cluster.members)
             lines.append(f"- {names}")
+    lines.append("")
+    lines.append("## CP7 whole-suite Sonar measures (report-only -- ADR-0047 D3, never gates)")
+    if cp7_outcome.report is not None:
+        report = cp7_outcome.report
+        for family_name, findings in (
+            ("generic quality", report.generic_quality),
+            ("security", report.security),
+            ("coverage/duplication", report.coverage_and_duplication),
+        ):
+            for measure_finding in findings:
+                value = measure_finding.value if measure_finding.measured else "not yet measured"
+                lines.append(f"- [{family_name}] {measure_finding.metric_key}: {value}")
+    else:
+        lines.append(f"- measures unavailable: {cp7_outcome.unavailable_reason}")
     return "\n".join(lines) + "\n"
 
 
@@ -258,15 +385,23 @@ def run_suite_quality_governance_stage(
     baseline_root: Path = DEFAULT_BASELINE_ROOT,
     near_dup_threshold: float = DEFAULT_NEAR_DUPLICATE_THRESHOLD,
     semantic_hint_floor: float = DEFAULT_SEMANTIC_HINT_FLOOR,
+    sonar_adapter: SonarQualityGateAdapter | None = None,
+    sonar_project_key: str = DEFAULT_SONAR_PROJECT_KEY,
 ) -> SuiteQualityGovernanceStageResult:
-    """Run CP5's capstone over `baseline_root`'s assembled, post-staging
-    state and persist the result. Call this only after stage 15's own
+    """Run CP5's capstone, CP8's static-readiness gate, and CP7's report-only
+    measures fetch over `baseline_root`'s assembled, post-staging state, and
+    persist all three. Call this only after stage 15's own
     `stage_promoted_assets` has already run for the current invocation
     (module docstring) -- this function performs no promotion itself and
     never calls `git`.
+
+    `sonar_adapter` is optional (module docstring: CP7's own live Sonar
+    dependence degrades honestly, never fatally) -- omitting it is a
+    legitimate way to run this stage with CP5/CP8 only, the same shape
+    every pre-CP7/CP8 caller of this function already uses.
     """
     current_needs = _derive_whole_corpus_step_needs(baseline_root)
-    result = evaluate_promotion_wrap(
+    cp5_result = evaluate_promotion_wrap(
         baseline_root,
         staged_paths,
         current_needs,
@@ -275,15 +410,40 @@ def run_suite_quality_governance_stage(
         near_dup_threshold=near_dup_threshold,
         semantic_hint_floor=semantic_hint_floor,
     )
+    cp8_result = evaluate_static_readiness(baseline_root)
+    cp7_outcome = _fetch_cp7_report_outcome(sonar_adapter, sonar_project_key)
+
+    overall_verdict = (
+        ValidationVerdict.PASS
+        if cp5_result.overall_verdict == ValidationVerdict.PASS
+        and cp8_result.overall_verdict == ValidationVerdict.PASS
+        else ValidationVerdict.FAIL
+    )
 
     cp5_report_path = run_dir / CP5_REPORT_FILENAME
-    atomic_write_json(cp5_report_path, _cp5_result_to_json(result))
+    atomic_write_json(cp5_report_path, _cp5_result_to_json(cp5_result))
+
+    cp8_report_path = run_dir / CP8_REPORT_FILENAME
+    atomic_write_json(cp8_report_path, _cp8_result_to_json(cp8_result))
+
+    cp7_report_path = run_dir / CP7_REPORT_FILENAME
+    atomic_write_json(cp7_report_path, _cp7_outcome_to_json(cp7_outcome))
 
     report_path = run_dir / SUITE_QUALITY_GOVERNANCE_REPORT_FILENAME
-    report_path.write_text(_build_report(result, staged_paths), encoding="utf-8")
+    report_path.write_text(
+        _build_report(cp5_result, cp8_result, cp7_outcome, overall_verdict, staged_paths),
+        encoding="utf-8",
+    )
 
     return SuiteQualityGovernanceStageResult(
-        result=result, cp5_report_path=cp5_report_path, report_path=report_path
+        result=cp5_result,
+        cp8_result=cp8_result,
+        cp7_outcome=cp7_outcome,
+        overall_verdict=overall_verdict,
+        cp5_report_path=cp5_report_path,
+        cp8_report_path=cp8_report_path,
+        cp7_report_path=cp7_report_path,
+        report_path=report_path,
     )
 
 
@@ -296,6 +456,8 @@ def execute_suite_quality_governance_stage(
     baseline_root: Path = DEFAULT_BASELINE_ROOT,
     near_dup_threshold: float = DEFAULT_NEAR_DUPLICATE_THRESHOLD,
     semantic_hint_floor: float = DEFAULT_SEMANTIC_HINT_FLOOR,
+    sonar_adapter: SonarQualityGateAdapter | None = None,
+    sonar_project_key: str = DEFAULT_SONAR_PROJECT_KEY,
 ) -> SuiteQualityGovernanceStageResult | None:
     """Wire stage 16 into `run_state_mgr` with the SAME
     `start_stage`/try-except/`fail_stage`/`succeed_stage` idiom stages 14
@@ -335,6 +497,8 @@ def execute_suite_quality_governance_stage(
             baseline_root=baseline_root,
             near_dup_threshold=near_dup_threshold,
             semantic_hint_floor=semantic_hint_floor,
+            sonar_adapter=sonar_adapter,
+            sonar_project_key=sonar_project_key,
         )
     except Exception as exc:  # surfaced via run_state.json, never fatal to the caller's process
         run_state_mgr.fail_stage(STAGE_ID, error=exc)

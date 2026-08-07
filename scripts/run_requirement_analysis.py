@@ -1675,33 +1675,43 @@ def handle_analyze(args: argparse.Namespace) -> int:
                 error_message = ae_stage.error.message if ae_stage.error else "unknown error"
                 console.error(f"Automation Engineering failed: {error_message}")
 
-            # Suite Quality Governance (Layer 4, stage 16 -- ADR-0036, ADR-0046):
-            # CP5 wrapping the promotion Automation Engineering just staged (`git
-            # add`, never `git commit` -- ADR-0045 D5, unchanged). Gated behind
+            # Suite Quality Governance (Layer 4, stage 16 -- ADR-0036, ADR-0046,
+            # ADR-0047): CP5 wrapping the promotion Automation Engineering just
+            # staged (`git add`, never `git commit` -- ADR-0045 D5, unchanged),
+            # CP8's static-readiness gate (composes into the stage verdict
+            # alongside CP5, ADR-0047 D9), and CP7's report-only whole-suite
+            # Sonar measures (surfaced, never gates, ADR-0047 D3) -- all THREE
+            # are Layer 4's one stage 16, not separate stages. Gated behind
             # --with-suite-quality-governance (off by default, same live-
             # infrastructure-dependent posture as --with-automation-engineering
-            # itself: a JDK/Maven toolchain plus an embedding provider, ADR-0046
-            # D5/D3) AND on Automation Engineering having actually produced a
-            # Validated Automation Package this run or a prior one (SUCCEEDED or
-            # SKIPPED-because-unchanged) -- the same "has the upstream stage got
-            # something to wrap" gating stage 15 itself applies to stage 14.
-            # Mirrors stage 15's own wiring exactly:
-            # `execute_suite_quality_governance_stage` owns its own
+            # itself: a JDK/Maven toolchain, an embedding provider, and now also
+            # a Sonar server for CP7, ADR-0046 D5/D3, ADR-0047) AND on Automation
+            # Engineering having actually produced a Validated Automation Package
+            # this run or a prior one (SUCCEEDED or SKIPPED-because-unchanged) --
+            # the same "has the upstream stage got something to wrap" gating
+            # stage 15 itself applies to stage 14. Mirrors stage 15's own wiring
+            # exactly: `execute_suite_quality_governance_stage` owns its own
             # start_stage/should_skip/fail_stage/succeed_stage transitions
             # internally, and reads stage 15's own persisted artifacts from disk
             # rather than the in-memory `automation_engineering_result` object
             # (ADR-0036 D2), so it resumes standalone against a prior SKIPPED
-            # stage 15 exactly as well as against one that just ran live.
+            # stage 15 exactly as well as against one that just ran live. CP7's
+            # own Sonar server unreachability degrades honestly to "measures
+            # unavailable" -- it never fails this stage (ADR-0047 D3).
             if args.with_suite_quality_governance and (
                 automation_engineering_result is not None
                 or ae_stage.status == StageStatus.SKIPPED
             ):
-                console.action("\nEvaluating Suite Quality Governance (Layer 4, CP5)")
+                console.action("\nEvaluating Suite Quality Governance (Layer 4, CP5+CP7+CP8)")
                 suite_quality_governance_result = execute_suite_quality_governance_stage(
                     run_state_mgr,
                     target_dir,
                     compile_checker=LiveCompileChecker(),
                     embedding_provider=GeminiEmbeddingProvider(),
+                    sonar_adapter=LiveSonarQualityGateAdapter(
+                        base_url=os.environ.get("SONAR_BASE_URL", _DEFAULT_SONAR_BASE_URL),
+                        token=os.environ.get("SONAR_TOKEN", ""),
+                    ),
                 )
                 sqg_stage = next(
                     s
@@ -1710,15 +1720,25 @@ def handle_analyze(args: argparse.Namespace) -> int:
                 )
                 if suite_quality_governance_result is not None:
                     cp5 = suite_quality_governance_result.result
-                    console.ok(f"CP5 verdict: {cp5.overall_verdict.value}")
+                    cp8 = suite_quality_governance_result.cp8_result
+                    cp7 = suite_quality_governance_result.cp7_outcome
+                    console.ok(
+                        f"Stage verdict: {suite_quality_governance_result.overall_verdict.value} "
+                        "(CP5 AND CP8; CP7 report-only, never gates)"
+                    )
                     console.note(
-                        f"  cohesion={cp5.cohesion.overall_verdict.value} "
+                        f"  CP5 cohesion={cp5.cohesion.overall_verdict.value} "
                         f"orphaned_glue={cp5.orphaned_glue.overall_verdict.value} "
                         f"near_dup_clusters={len(cp5.near_duplicates.clusters)}"
                     )
-                    if cp5.has_review_worthy_findings:
+                    console.note(f"  CP8 static-readiness={cp8.overall_verdict.value}")
+                    if cp7.available:
+                        console.note("  CP7 measures: obtained (see cp7_report.json)")
+                    else:
+                        console.note(f"  CP7 measures: unavailable ({cp7.unavailable_reason})")
+                    if cp5.has_review_worthy_findings or not cp8.passed:
                         console.note(
-                            "  ⚠ CP5 findings need human review "
+                            "  ⚠ Suite Quality Governance findings need human review "
                             f"(see {suite_quality_governance_result.report_path.name}); "
                             "the staged promotion diff is left untouched"
                         )
@@ -2006,13 +2026,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "After Automation Engineering (Layer 3, stage 15) succeeds or is unchanged, also "
-            "run Suite Quality Governance (Layer 4, stage 16, ADR-0046): CP5 -- orphaned-glue "
-            "detection, the cross-suite near-duplicate sweep, and aggregate-release cohesion "
-            "(does the assembled suite compile, no exact ambiguous-glue collisions) -- wrapping "
-            "the promotion this run's Automation Engineering just staged. Off by default -- "
-            "this is a real, live-infrastructure-dependent stage (a JDK/Maven toolchain plus an "
-            "embedding provider, per ADR-0046 D5/D3) and this flag is the explicit opt-in, not "
-            "a change to this command's own default behavior. Has no effect unless "
+            "run Suite Quality Governance (Layer 4, stage 16, ADR-0046, ADR-0047): CP5 -- "
+            "orphaned-glue detection, the cross-suite near-duplicate sweep, and aggregate-"
+            "release cohesion (does the assembled suite compile, no exact ambiguous-glue "
+            "collisions) -- wrapping the promotion this run's Automation Engineering just "
+            "staged; CP8 -- static execution-readiness (config/deps declared and well-formed, "
+            "cucumber.glue resolving to a real package), gates alongside CP5 (ADR-0047 D9); "
+            "CP7 -- whole-suite Sonar quality measures, surfaced but report-only, never gates "
+            "(ADR-0047 D3). Off by default -- this is a real, live-infrastructure-dependent "
+            "stage (a JDK/Maven toolchain, an embedding provider, and a SonarQube server for "
+            "CP7's own measures, per ADR-0046 D5/D3 and ADR-0047) and this flag is the "
+            "explicit opt-in, not a change to this command's own default behavior. A Sonar "
+            "server that is unreachable degrades CP7's own report to 'unavailable' -- it "
+            "never fails the stage (ADR-0047 D3). Has no effect unless "
             "--with-automation-engineering is also set: CP5 wraps THIS run's own promotion, "
             "and there is nothing to wrap if stage 15 never ran."
         ),

@@ -1,6 +1,6 @@
-"""Stage 16 -- Suite Quality Governance (ADR-0036, ADR-0046): CP5 wired as
-a resumable run-state stage, mirroring stage 15's own package shape
-(:mod:`automation_engineering.stage`).
+"""Stage 16 -- Suite Quality Governance (ADR-0036, ADR-0046, ADR-0047): CP5,
+CP7, and CP8 wired as ONE resumable run-state stage, mirroring stage 15's
+own package shape (:mod:`automation_engineering.stage`).
 """
 
 from __future__ import annotations
@@ -8,7 +8,10 @@ from __future__ import annotations
 from suite_quality_governance.stage.models import (
     CONTRACT_VERSION,
     CP5_REPORT_FILENAME,
+    CP7_REPORT_FILENAME,
+    CP8_REPORT_FILENAME,
     SUITE_QUALITY_GOVERNANCE_REPORT_FILENAME,
+    Cp7ReportOutcome,
     SuiteQualityGovernanceStageResult,
 )
 from suite_quality_governance.stage.runner import (
@@ -20,8 +23,11 @@ from suite_quality_governance.stage.runner import (
 __all__ = [
     "CONTRACT_VERSION",
     "CP5_REPORT_FILENAME",
+    "CP7_REPORT_FILENAME",
+    "CP8_REPORT_FILENAME",
     "STAGE_ID",
     "SUITE_QUALITY_GOVERNANCE_REPORT_FILENAME",
+    "Cp7ReportOutcome",
     "SuiteQualityGovernanceStageResult",
     "execute_suite_quality_governance_stage",
     "run_suite_quality_governance_stage",
