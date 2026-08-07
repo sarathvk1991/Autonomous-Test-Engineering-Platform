@@ -79,10 +79,26 @@ class PageObjectMethodNeed:
     get that choice VERIFIED against a reused page object's real inventory,
     the same way :class:`GherkinStepNeed.captures` is a caller-supplied,
     already-derived shape the reuse engine consumes without re-deriving it.
+
+    ``class_name_override`` is a SECOND, optional, additive piece of
+    caller-supplied knowledge (default ``None`` -- every pre-existing call
+    site's behavior is unchanged): when the caller already knows which
+    class this need's own generated code will reference -- because it
+    parsed that class name out of an ALREADY-GENERATED step-definition's
+    own field declaration, :mod:`.page_object_reference_derivation`'s own
+    job -- a fresh page object generated for this need must use THAT exact
+    name, never :func:`~.page_object_orchestrator.derive_page_object_class_name`'s
+    own independent guess from ``need.text``, which has no way to know what
+    a step-def already wrote and could easily disagree with it (a compile-
+    breaking class-name mismatch, the same class of defect ``method_name``
+    already exists to prevent for method names specifically). ``None``
+    (omitted) preserves the prior, sole behavior: the class name is derived
+    from ``need.text`` exactly as it always was.
     """
 
     need: GherkinStepNeed
     method_name: str
+    class_name_override: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

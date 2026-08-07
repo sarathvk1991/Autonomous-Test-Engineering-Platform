@@ -163,6 +163,14 @@ def orchestrate_page_object_method(
     given deterministic ``matcher``/``generator`` implementations; the only
     nondeterministic calls (a live semantic match, a live generation) live
     entirely behind those two seams, never in this function.
+
+    A fresh (NO_MATCH) generation uses ``method_need.class_name_override``
+    when supplied, in preference to :func:`derive_page_object_class_name`'s
+    own independent guess (:class:`~.models.PageObjectMethodNeed`'s own
+    docstring) -- the seam
+    :mod:`.page_object_reference_derivation` uses to keep a freshly
+    generated page object's class name consistent with whatever an
+    already-generated step-definition's own body already references.
     """
     decision = decide_reuse(
         method_need.need, catalog, matcher, confidence_threshold=confidence_threshold
@@ -195,7 +203,9 @@ def orchestrate_page_object_method(
         return EscalatedPageObjectMethodNeed(method_need=method_need, escalation=decision)
 
     if isinstance(decision, NoMatch):
-        class_name = derive_page_object_class_name(method_need.need.text)
+        class_name = method_need.class_name_override or derive_page_object_class_name(
+            method_need.need.text
+        )
         context = PageObjectGenerationContext(
             need=method_need.need,
             class_name=class_name,
