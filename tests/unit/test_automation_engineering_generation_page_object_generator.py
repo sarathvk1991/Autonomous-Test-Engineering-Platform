@@ -22,6 +22,7 @@ from automation_engineering.generation.live_page_object_generator import (
     LiveGenerationError,
     LivePageObjectGenerator,
 )
+from automation_engineering.generation.models import PageObjectMethodNeed
 from automation_engineering.generation.page_object_generator import (
     PageObjectGenerationContext,
     StubPageObjectGenerator,
@@ -49,6 +50,24 @@ def _context(
     }
     defaults.update(overrides)
     return PageObjectGenerationContext(**defaults)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# PageObjectGenerationContext.additional_method_needs -- additive, this build
+# ---------------------------------------------------------------------------
+
+
+class TestPageObjectGenerationContextAdditionalMethodNeeds:
+    def test_defaults_to_empty_preserving_every_pre_existing_call_site(self) -> None:
+        context = _context()
+        assert context.additional_method_needs == ()
+
+    def test_carries_extra_method_needs_when_supplied(self) -> None:
+        extra = PageObjectMethodNeed(
+            need=_need("enter the password"), method_name="enterPassword"
+        )
+        context = _context(additional_method_needs=(extra,))
+        assert context.additional_method_needs == (extra,)
 
 
 # ---------------------------------------------------------------------------
@@ -269,3 +288,22 @@ class TestLlmBoundaryErrorHandling:
         result = generator.generate(_context())
 
         assert result == java
+
+
+class TestLiveGeneratorMultiMethodNotYetSupported:
+    """`generate_page_objects` v1.0.0's own prompt is single-action-shaped
+    (module docstring); a multi-method context must fail loudly, before any
+    provider call, never silently drop the additional methods."""
+
+    def test_additional_method_needs_raises_before_any_provider_call(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+        extra = PageObjectMethodNeed(
+            need=_need("enter the password"), method_name="enterPassword"
+        )
+        context = _context(additional_method_needs=(extra,))
+
+        with pytest.raises(NotImplementedError, match="multi-method"):
+            generator.generate(context)
+
+        assert provider.call_count == 0

@@ -23,9 +23,11 @@ without any live call:
 * Escalation: any derived page-object reference that fails to resolve
   safely diverts the WHOLE step, mirroring `.orchestrator`'s own
   discipline.
-* The known, deliberately-unresolved gap: a second FRESH method needed on
-  a class already freshly generated earlier in the SAME call is recorded,
-  never silently mis-generated or dropped.
+* Multiple fresh methods on one class (the gap this derivation build
+  originally flagged, closed by this build's multi-method seam
+  extension): a step-def calling several methods on one brand-new
+  page-object class co-generates ONE class with ALL of them, in ONE seam
+  call -- `unverified_method_names` is now always empty.
 * Determinism, and no live LLM call anywhere.
 """
 
@@ -455,15 +457,32 @@ class TestWiringEscalatesTheWholeStepOnAnUnverifiedBinding:
         assert page_object_generator.call_count == 0
 
 
-class TestKnownGapMultipleFreshMethodsOnOneClass:
-    def test_a_second_fresh_method_on_an_already_generated_class_is_recorded_not_regenerated(
-        self,
-    ) -> None:
-        catalog = _catalog()  # empty -- both methods go NO_MATCH
+class TestMultipleFreshMethodsOnOneClassAreCoGenerated:
+    """The gap `TestKnownGapMultipleFreshMethodsOnOneClass` used to record
+    (a second-or-later fresh method landing in ``unverified_method_names``,
+    never generated) is now closed -- proves the multi-method seam
+    extension (`page_object_generator.PageObjectGenerationContext
+    .additional_method_needs`, `page_object_orchestrator
+    .orchestrate_page_object_class`) end to end through this module's own
+    wiring."""
+
+    def test_all_three_methods_co_generate_into_one_class_unverified_empty(self) -> None:
+        catalog = _catalog()  # empty -- all three methods go NO_MATCH
         step_matcher = StubSemanticMatcher({_NEED.text: ()})
         step_generator = StubStepDefinitionGenerator({_NEED.text: _LOGIN_STEP_JAVA})
         page_object_matcher = StubSemanticMatcher({_NEED.text: ()})
-        canned_page_object = "package com.automation.pages;\npublic class LoginPage {}\n"
+        # A canned class carrying ALL THREE requested methods -- proves the
+        # class the stub returns (and, by construction, whatever a live
+        # generator would be asked to return) is expected to satisfy every
+        # one of them, not just the first.
+        canned_page_object = (
+            "package com.automation.pages;\n\n"
+            "public class LoginPage extends BasePage {\n"
+            "    public void enterUsername(String username) { /* ... */ }\n"
+            "    public void enterPassword(String password) { /* ... */ }\n"
+            "    public void clickLogin() { /* ... */ }\n"
+            "}\n"
+        )
         page_object_generator = StubPageObjectGenerator({_NEED.text: canned_page_object})
 
         outcome = generate_step_definition_with_derived_page_objects(
@@ -477,15 +496,33 @@ class TestKnownGapMultipleFreshMethodsOnOneClass:
 
         assert isinstance(outcome, CoGeneratedStepDefinition)
         # THREE derived calls (enterUsername, enterPassword, clickLogin),
-        # all on the SAME "LoginPage" -- only the first reaches the
-        # generation seam; the other two are recorded, never regenerated
-        # under a second, conflicting "LoginPage" source.
+        # all on the SAME "LoginPage" -- ONE seam call, ONE outcome, ALL
+        # THREE methods carried through -- the gap the derivation build
+        # flagged, now closed.
         assert page_object_generator.call_count == 1
         assert len(outcome.page_object_outcomes) == 1
-        assert outcome.unverified_method_names == (
-            "LoginPage.enterPassword",
-            "LoginPage.clickLogin",
-        )
+        assert outcome.unverified_method_names == ()
+
+        generated = outcome.page_object_outcomes[0]
+        assert isinstance(generated, GeneratedPageObject)
+        assert generated.class_name == "LoginPage"
+        assert generated.method_need.method_name == "enterUsername"
+        assert [n.method_name for n in generated.additional_method_needs] == [
+            "enterPassword",
+            "clickLogin",
+        ]
+
+        # Compile-consistency: every method the step-def's own body calls
+        # is actually present in the generated class -- nothing dropped.
+        for method_name in ("enterUsername", "enterPassword", "clickLogin"):
+            assert method_name in generated.java_source
+
+        received = page_object_generator.received_contexts[0]
+        assert received.class_name == "LoginPage"
+        assert [n.method_name for n in received.additional_method_needs] == [
+            "enterPassword",
+            "clickLogin",
+        ]
 
 
 class TestNoLiveLLMCall:

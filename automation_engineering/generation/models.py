@@ -206,12 +206,27 @@ class GeneratedPageObject:
     re-parsed out of ``java_source`` after the fact, the same trust level
     the step-definition generator already places in its own naming
     convention without parsing generated code back.
+
+    ``additional_method_needs`` (additive, default ``()`` -- every
+    pre-existing call site/outcome is unchanged) names every OTHER
+    method-need this SAME ``java_source`` also satisfies, when
+    :func:`~.page_object_orchestrator.orchestrate_page_object_class` batched
+    two-or-more NO_MATCH method-needs for the SAME fresh class into this ONE
+    generation call -- closing the gap
+    :mod:`.page_object_reference_derivation` originally recorded as
+    ``unverified_method_names`` (a second-or-later fresh method on an
+    already-generated class silently unresolved). ``method_need`` remains
+    the PRIMARY need (the one whose ``need``/``class_name`` drove the
+    generation context); ``additional_method_needs`` is every sibling need
+    the SAME class was also generated to satisfy, in the order they were
+    supplied. Empty for the ordinary, still-common one-method case.
     """
 
     method_need: PageObjectMethodNeed
     java_source: str
     target_package: str
     class_name: str
+    additional_method_needs: tuple[PageObjectMethodNeed, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

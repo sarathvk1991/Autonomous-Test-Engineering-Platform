@@ -32,6 +32,17 @@ only on the :class:`~.page_object_generator.PageObjectGenerator` Protocol.
 It also never imports a live embedding provider -- it depends only on
 :class:`~automation_engineering.reuse.matcher.SemanticMatcher`.
 
+**Multi-method-per-class (additive, this build).** :func:`orchestrate_page_object_method`
+above stays exactly as it always was -- one method-need in, one seam call
+(at most) out. :func:`orchestrate_page_object_class`, added by this build,
+resolves every method-need destined for the SAME class together: each is
+still reuse-decided independently (so a class can end up with some methods
+bound and others generated), but every NO_MATCH method-need is batched into
+ONE generation call, closing the gap
+:mod:`.page_object_reference_derivation` flagged (a second-or-later fresh
+method on the same class silently going unresolved,
+``CoGeneratedStepDefinition.unverified_method_names``).
+
 Scope: page objects only, not utilities
 ------------------------------------------
 :mod:`.method_fit`'s own :func:`~.method_fit.verify_specific_method_fit` is
@@ -223,6 +234,139 @@ def orchestrate_page_object_method(
     raise AssertionError(f"unreachable: unknown ReuseDecision variant {decision!r}")
 
 
+def orchestrate_page_object_class(
+    method_needs: Sequence[PageObjectMethodNeed],
+    catalog: AssetCatalog,
+    matcher: SemanticMatcher,
+    generator: PageObjectGenerator,
+    *,
+    target_package: str = DEFAULT_PAGE_OBJECT_TARGET_PACKAGE,
+    customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_PAGE_OBJECT_CONSTRAINTS,
+    confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+) -> tuple[PageObjectMethodOutcome, ...]:
+    """Reuse-first orchestration for every method-need destined for ONE
+    page-object class -- the multi-method extension this build closes.
+
+    Each ``method_need`` is still reuse-decided INDEPENDENTLY, exactly as
+    :func:`orchestrate_page_object_method` already does (its own TRUSTED_REUSE
+    precise-fit discharge and ESCALATION handling are mirrored here
+    unchanged, not re-derived) -- a class can legitimately end up with SOME
+    methods bound to an existing reused asset and OTHERS freshly generated,
+    when different method-needs' own ``need.text`` resolve differently
+    against the catalog. What changes is the NO_MATCH side only: every
+    method-need this function finds NO_MATCH is collected, never generated
+    one-at-a-time, and generated in exactly ONE seam call once every
+    method-need has been reuse-decided -- so a class needing two-or-more
+    fresh methods gets ONE class with ALL of them
+    (:class:`~.page_object_generator.PageObjectGenerationContext`'s own new
+    ``additional_method_needs`` field carries the siblings), never a second,
+    conflicting source under the same class name and never a silently
+    dropped method. The single resulting :class:`~.models.GeneratedPageObject`
+    carries every NO_MATCH method-need it satisfies (`method_need` for the
+    first, `additional_method_needs` for the rest).
+
+    Returns one outcome per DISTINCT resolution -- one
+    :class:`~.models.BoundPageObjectMethod`/:class:`~.models.EscalatedPageObjectMethodNeed`
+    per bound/escalated method-need (in ``method_needs``' own order among
+    themselves), followed by at most one :class:`~.models.GeneratedPageObject`
+    for the whole NO_MATCH batch, if any -- so the returned tuple's length
+    can be SMALLER than ``len(method_needs)`` whenever two or more methods
+    batch into one generated class; this is the point of the fix, not a
+    dropped result, since every input method-need is still accounted for by
+    exactly one outcome (directly, or via that outcome's own
+    ``additional_method_needs``). ``method_needs=[]`` returns ``()``.
+
+    Every NO_MATCH method-need in one call must agree on
+    ``class_name_override`` (``None`` counts as agreeing with other
+    ``None``s) -- they are, by construction, destined for the SAME class;
+    raises :class:`ValueError` rather than silently picking one if they
+    disagree, the same "never a silent fallback" discipline ADR-0044 D4
+    states for the reuse-safety checks themselves.
+
+    :func:`orchestrate_page_object_method`/:func:`generate_page_object_methods`
+    are UNCHANGED by this addition -- neither is called by this function,
+    and neither gains new behavior; this is a new, additive entry point for
+    the one-class-many-methods shape, used by
+    :mod:`.page_object_reference_derivation`'s own wiring.
+    """
+    resolved: list[PageObjectMethodOutcome] = []
+    pending_generation: list[PageObjectMethodNeed] = []
+
+    for method_need in method_needs:
+        decision = decide_reuse(
+            method_need.need, catalog, matcher, confidence_threshold=confidence_threshold
+        )
+
+        if isinstance(decision, TrustedReuse):
+            if not isinstance(decision.asset, (PageObjectAsset, UtilityAsset)):
+                # Mirrors `orchestrate_page_object_method`'s own guard --
+                # cannot happen given this function's own matcher contract.
+                raise TypeError(
+                    f"orchestrate_page_object_class resolved a TrustedReuse against "
+                    f"a {type(decision.asset).__name__}, not a page object/utility -- "
+                    "the matcher passed in must only ever search catalog.page_objects."
+                )
+            method_fit_escalation = verify_specific_method_fit(
+                method_need.need, decision.asset, decision.candidate, method_need.method_name
+            )
+            if method_fit_escalation is not None:
+                resolved.append(
+                    EscalatedPageObjectMethodNeed(
+                        method_need=method_need, escalation=method_fit_escalation
+                    )
+                )
+            else:
+                resolved.append(
+                    BoundPageObjectMethod(method_need=method_need, asset=decision.asset)
+                )
+            continue
+
+        if isinstance(decision, Escalation):
+            resolved.append(
+                EscalatedPageObjectMethodNeed(method_need=method_need, escalation=decision)
+            )
+            continue
+
+        if isinstance(decision, NoMatch):
+            pending_generation.append(method_need)
+            continue
+
+        raise AssertionError(f"unreachable: unknown ReuseDecision variant {decision!r}")
+
+    if pending_generation:
+        overrides = {need.class_name_override for need in pending_generation}
+        if len(overrides) > 1:
+            raise ValueError(
+                "orchestrate_page_object_class: NO_MATCH method-needs disagree on "
+                f"class_name_override {sorted(o for o in overrides if o is not None)!r} -- "
+                "every method-need destined for the same class must share the same "
+                "override (or all omit it)."
+            )
+        primary, *rest = pending_generation
+        class_name = primary.class_name_override or derive_page_object_class_name(
+            primary.need.text
+        )
+        context = PageObjectGenerationContext(
+            need=primary.need,
+            class_name=class_name,
+            target_package=target_package,
+            customqa_constraints=customqa_constraints,
+            additional_method_needs=tuple(rest),
+        )
+        java_source = generator.generate(context)
+        resolved.append(
+            GeneratedPageObject(
+                method_need=primary,
+                java_source=java_source,
+                target_package=target_package,
+                class_name=class_name,
+                additional_method_needs=tuple(rest),
+            )
+        )
+
+    return tuple(resolved)
+
+
 def generate_page_object_methods(
     method_needs: Sequence[PageObjectMethodNeed],
     catalog: AssetCatalog,
@@ -255,5 +399,6 @@ __all__ = [
     "PageObjectBindingRequest",
     "derive_page_object_class_name",
     "generate_page_object_methods",
+    "orchestrate_page_object_class",
     "orchestrate_page_object_method",
 ]

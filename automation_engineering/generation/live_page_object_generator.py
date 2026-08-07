@@ -114,11 +114,30 @@ class LivePageObjectGenerator:
 
         Raises
         ------
+        NotImplementedError
+            If ``context.additional_method_needs`` is non-empty. The
+            registered ``generate_page_objects`` v1.0.0 prompt's own INPUT
+            CONTRACT is single-action-shaped (one ``action_text``, no
+            provision for a second, sibling method) -- extending it is the
+            live-regeneration follow-up task's own scope, not this
+            deterministic seam build's. Raised BEFORE any provider call, so
+            a caller that accidentally hands this generator a multi-method
+            context fails loudly and up front, never silently generating a
+            class missing the extra methods.
         LiveGenerationError
             If the provider call fails (including a timeout), the response's
             normalized ``execution_status`` is not ``COMPLETED``, or the
             returned text is empty/whitespace-only.
         """
+        if context.additional_method_needs:
+            raise NotImplementedError(
+                f"class_name={context.class_name!r}: LivePageObjectGenerator does not "
+                f"yet support multi-method generation contexts "
+                f"({len(context.additional_method_needs)} additional_method_needs) -- "
+                "generate_page_objects v1.0.0's own prompt is single-action-shaped. "
+                "Extending the live prompt for multi-method classes is the "
+                "live-regeneration follow-up task's own scope, not this build's."
+            )
         request = LLMRequest(
             request_id=str(uuid4()),
             prompt=self._build_prompt(context),

@@ -84,26 +84,41 @@ build's own, honestly carried-forward next scope, the identical
 page-objects-before-utilities sequencing every generator/orchestrator in
 this package has already followed.
 
-KNOWN, DELIBERATELY UNRESOLVED GAP -- multiple FRESH methods on one class
+MULTIPLE FRESH METHODS ON ONE CLASS -- RESOLVED (additive, this build)
 ==========================================================================
-When a step-def references TWO OR MORE methods on a page-object class that
-turns out to need FRESH generation (no catalogued match for either), only
-the FIRST such method actually reaches
+When this module was first built, a step-def referencing TWO OR MORE
+methods on a page-object class that turned out to need FRESH generation (no
+catalogued match for either) could only get the FIRST such method to
 :func:`~.page_object_orchestrator.orchestrate_page_object_method`'s own
 generation seam -- :class:`.page_object_generator.PageObjectGenerationContext`
-is, as built, shaped around ONE method-need per generation call, with no
+was shaped around exactly ONE method-need per generation call, with no
 field through which a second, sibling method name could be requested in
-the SAME class. Generating twice would silently produce two conflicting,
-incomplete "LoginPage" sources under one class name -- worse than doing
-nothing. This module never does that: a second-or-later method needed on
-an ALREADY-freshly-generated class in the SAME derivation is recorded in
+the SAME class. Generating twice would have silently produced two
+conflicting, incomplete "LoginPage" sources under one class name; this
+module never did that -- a second-or-later method needed on an
+already-generated class was instead recorded in
 :attr:`CoGeneratedStepDefinition.unverified_method_names`, never silently
-dropped and never silently mis-generated. Closing this gap needs a change
-to the page-object generation SEAM's own input contract (accepting more
-than one method-need per call) -- explicitly out of THIS build's own
-scope (derivation + wiring only, never the live generator/prompt shape,
-per this task's own instruction) and flagged here as a finding for the
-live-regeneration follow-up task.
+dropped and never silently mis-generated, and flagged as a finding for a
+follow-up task.
+
+**That follow-up is this build.** :class:`PageObjectGenerationContext`
+gained ``additional_method_needs`` and
+:func:`~.page_object_orchestrator.orchestrate_page_object_class` (both
+additive) now resolve every method-need destined for one class TOGETHER --
+every NO_MATCH method-need for the SAME class is batched into ONE
+generation call, so the resulting class carries ALL of them. This module
+now calls :func:`~.page_object_orchestrator.orchestrate_page_object_class`
+once per :class:`DerivedPageObjectRequest` (once per distinct page-object
+field/class, exactly as before), instead of resolving each method call
+one at a time. ``unverified_method_names`` remains on
+:class:`CoGeneratedStepDefinition` for shape stability (nothing downstream
+needs to change to keep reading it) but is now ALWAYS ``()`` -- no
+resolution path in this module drops a method any longer. The live
+generator's own prompt is still single-method-shaped
+(:mod:`.live_page_object_generator`'s own guard); the live-regeneration
+follow-up task remains responsible for making a LIVE multi-method class
+actually generate correctly, this build closes the DETERMINISTIC seam gap
+only.
 """
 
 from __future__ import annotations
@@ -118,7 +133,6 @@ from automation_engineering.catalog.models import AssetCatalog, JavaParameter
 from automation_engineering.generation.models import (
     EscalatedPageObjectMethodNeed,
     EscalatedStepNeed,
-    GeneratedPageObject,
     GeneratedStepDefinition,
     PageObjectMethodNeed,
     PageObjectMethodOutcome,
@@ -133,7 +147,7 @@ from automation_engineering.generation.page_object_generator import PageObjectGe
 from automation_engineering.generation.page_object_orchestrator import (
     DEFAULT_CUSTOMQA_PAGE_OBJECT_CONSTRAINTS,
     DEFAULT_PAGE_OBJECT_TARGET_PACKAGE,
-    orchestrate_page_object_method,
+    orchestrate_page_object_class,
 )
 from automation_engineering.generation.step_definition_generator import StepDefinitionGenerator
 from automation_engineering.reuse.engine import DEFAULT_CONFIDENCE_THRESHOLD
@@ -266,12 +280,12 @@ class CoGeneratedStepDefinition:
     every page-object outcome its own body was found, after the fact, to
     reference.
 
-    ``unverified_method_names`` names any ``"ClassName.methodName"`` this
-    derivation found but could NOT independently resolve/generate (module
-    docstring's own known gap: a second-or-later FRESH method needed on a
-    class already freshly generated earlier in this SAME call) -- empty in
-    the common case (one page-object class, or every class either fully
-    reused or needing exactly one fresh method).
+    ``unverified_method_names`` is kept for shape stability but is now
+    ALWAYS ``()`` (module docstring: the multi-method batching this build
+    added closes the one gap that used to populate it -- a second-or-later
+    FRESH method needed on the same class no longer goes unresolved, it
+    co-generates into the SAME class via
+    :func:`~.page_object_orchestrator.orchestrate_page_object_class`).
     """
 
     need: GherkinStepNeed
@@ -315,6 +329,13 @@ def generate_step_definition_with_derived_page_objects(
     :mod:`.orchestrator`'s own "any one failing routes to human review,
     never a silent fallback" discipline exactly, just triggered AFTER
     generation rather than before it.
+
+    Every method call derived for the SAME page-object class (one
+    :class:`DerivedPageObjectRequest`) is resolved TOGETHER via
+    :func:`~.page_object_orchestrator.orchestrate_page_object_class` (module
+    docstring: the multi-method extension this build adds) -- so two-or-more
+    methods on one brand-new class co-generate into ONE class, rather than
+    only the first reaching the seam.
     """
     outcome = orchestrate_step_definition(
         need,
@@ -333,46 +354,34 @@ def generate_step_definition_with_derived_page_objects(
         return outcome
 
     page_object_outcomes: list[PageObjectMethodOutcome] = []
-    unverified_method_names: list[str] = []
-    generated_classes: set[str] = set()
 
     for request in derived_requests:
-        for call in request.method_calls:
-            if request.class_name in generated_classes:
-                # A sibling method already triggered a FRESH generation for
-                # this exact class earlier in this same call -- the
-                # generation seam is one-method-need-shaped (module
-                # docstring's own known gap); never regenerate a second,
-                # conflicting source under the identical class name.
-                unverified_method_names.append(f"{request.class_name}.{call.method_name}")
-                continue
-
-            method_need = PageObjectMethodNeed(
+        method_needs = tuple(
+            PageObjectMethodNeed(
                 need=need,
                 method_name=call.method_name,
                 class_name_override=request.class_name,
             )
-            resolved = orchestrate_page_object_method(
-                method_need,
-                catalog,
-                page_object_matcher,
-                page_object_generator,
-                target_package=page_object_target_package,
-                customqa_constraints=page_object_customqa_constraints,
-                confidence_threshold=confidence_threshold,
-            )
+            for call in request.method_calls
+        )
+        for resolved in orchestrate_page_object_class(
+            method_needs,
+            catalog,
+            page_object_matcher,
+            page_object_generator,
+            target_package=page_object_target_package,
+            customqa_constraints=page_object_customqa_constraints,
+            confidence_threshold=confidence_threshold,
+        ):
             if isinstance(resolved, EscalatedPageObjectMethodNeed):
                 return EscalatedStepNeed(need=need, escalation=resolved.escalation)
             page_object_outcomes.append(resolved)
-            if isinstance(resolved, GeneratedPageObject):
-                generated_classes.add(request.class_name)
 
     return CoGeneratedStepDefinition(
         need=need,
         java_source=outcome.java_source,
         target_package=outcome.target_package,
         page_object_outcomes=tuple(page_object_outcomes),
-        unverified_method_names=tuple(unverified_method_names),
     )
 
 

@@ -61,6 +61,7 @@ from automation_engineering.generation.page_object_orchestrator import (
     DEFAULT_PAGE_OBJECT_TARGET_PACKAGE,
     derive_page_object_class_name,
     generate_page_object_methods,
+    orchestrate_page_object_class,
     orchestrate_page_object_method,
 )
 from automation_engineering.reuse.engine import decide_reuse
@@ -585,6 +586,165 @@ class TestBatchOrchestration:
         assert isinstance(outcomes[1], GeneratedPageObject)
         assert isinstance(outcomes[2], EscalatedPageObjectMethodNeed)
         assert generator.call_count == 1  # only the NO_MATCH need generated
+
+
+class TestOrchestratePageObjectClass:
+    """`orchestrate_page_object_class` -- the multi-method-per-class seam
+    extension this build adds. `orchestrate_page_object_method`/
+    `generate_page_object_methods` above are untouched by this class'
+    existence; these tests prove the NEW function specifically."""
+
+    def test_three_no_match_methods_co_generate_into_one_class(self) -> None:
+        catalog = _catalog()  # empty -- all three go NO_MATCH
+        needs = (
+            _method_need(action_text="enter the username", method_name="enterUsername"),
+            _method_need(action_text="enter the password", method_name="enterPassword"),
+            _method_need(action_text="click the login button", method_name="clickLogin"),
+        )
+        matcher = StubSemanticMatcher({n.need.text: () for n in needs})
+        canned = (
+            "package com.automation.pages;\n\n"
+            "public class LoginPage extends BasePage {\n"
+            "    public void enterUsername(String username) {}\n"
+            "    public void enterPassword(String password) {}\n"
+            "    public void clickLogin() {}\n"
+            "}\n"
+        )
+        generator = StubPageObjectGenerator({needs[0].need.text: canned})
+
+        outcomes = orchestrate_page_object_class(needs, catalog, matcher, generator)
+
+        assert generator.call_count == 1
+        assert len(outcomes) == 1
+        generated = outcomes[0]
+        assert isinstance(generated, GeneratedPageObject)
+        assert generated.method_need == needs[0]
+        assert generated.additional_method_needs == (needs[1], needs[2])
+        # Compile-consistency: every requested method is present in the
+        # ONE generated class -- none dropped.
+        for method_name in ("enterUsername", "enterPassword", "clickLogin"):
+            assert method_name in generated.java_source
+
+        received = generator.received_contexts[0]
+        assert received.need == needs[0].need
+        assert received.additional_method_needs == (needs[1], needs[2])
+
+    def test_mixed_bind_and_generate_within_one_class(self) -> None:
+        """One method on the class already exists in the catalog (binds);
+        the other two do not (co-generate together) -- the class ends up
+        with the bound method plus the freshly generated ones, all three
+        references satisfied, only one seam call for the two NO_MATCH
+        methods."""
+        existing = _page_object(
+            methods=(JavaMethod(name="open", parameters=(), return_type="void"),)
+        )
+        catalog = _catalog(existing)
+        bind_need = _method_need(action_text="open the login page", method_name="open")
+        generate_need_a = _method_need(
+            action_text="enter the username", method_name="enterUsername"
+        )
+        generate_need_b = _method_need(
+            action_text="enter the password", method_name="enterPassword"
+        )
+        bind_candidate = MatchCandidate(
+            asset_id=_LOGIN_ASSET_ID, confidence=0.95, content_hash=_CURRENT_HASH
+        )
+        matcher = StubSemanticMatcher(
+            {
+                bind_need.need.text: (bind_candidate,),
+                generate_need_a.need.text: (),
+                generate_need_b.need.text: (),
+            }
+        )
+        canned = (
+            "package com.automation.pages;\n\n"
+            "public class LoginPage extends BasePage {\n"
+            "    public void enterUsername(String username) {}\n"
+            "    public void enterPassword(String password) {}\n"
+            "}\n"
+        )
+        generator = StubPageObjectGenerator({generate_need_a.need.text: canned})
+
+        outcomes = orchestrate_page_object_class(
+            (bind_need, generate_need_a, generate_need_b), catalog, matcher, generator
+        )
+
+        assert generator.call_count == 1  # ONE call for the two NO_MATCH methods together
+        assert len(outcomes) == 2
+        assert isinstance(outcomes[0], BoundPageObjectMethod)
+        assert outcomes[0].method_need == bind_need
+        assert isinstance(outcomes[1], GeneratedPageObject)
+        assert outcomes[1].method_need == generate_need_a
+        assert outcomes[1].additional_method_needs == (generate_need_b,)
+        # Every one of the three original method-needs is satisfied by
+        # exactly one outcome, directly or via `additional_method_needs`.
+        assert "open" in [m.name for m in existing.methods]
+        for method_name in ("enterUsername", "enterPassword"):
+            assert method_name in outcomes[1].java_source
+
+    def test_single_method_need_behaves_like_orchestrate_page_object_method(self) -> None:
+        catalog = _catalog()
+        need = _method_need(action_text="open the checkout page", method_name="open")
+        matcher = StubSemanticMatcher({need.need.text: ()})
+        canned = "package com.automation.pages;\npublic class CheckoutPage {}\n"
+
+        single = orchestrate_page_object_method(
+            need, catalog, matcher, StubPageObjectGenerator({need.need.text: canned})
+        )
+        batched = orchestrate_page_object_class(
+            (need,), catalog, matcher, StubPageObjectGenerator({need.need.text: canned})
+        )
+
+        assert len(batched) == 1
+        assert batched[0] == single
+        assert isinstance(batched[0], GeneratedPageObject)
+        assert batched[0].additional_method_needs == ()
+
+    def test_empty_method_needs_returns_empty(self) -> None:
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({})
+        generator = StubPageObjectGenerator({})
+
+        assert orchestrate_page_object_class((), catalog, matcher, generator) == ()
+        assert generator.call_count == 0
+
+    def test_determinism(self) -> None:
+        catalog = _catalog()
+        needs = (
+            _method_need(action_text="enter the username", method_name="enterUsername"),
+            _method_need(action_text="enter the password", method_name="enterPassword"),
+        )
+        matcher = StubSemanticMatcher({n.need.text: () for n in needs})
+        canned = "package com.automation.pages;\npublic class LoginPage {}\n"
+
+        first = orchestrate_page_object_class(
+            needs, catalog, matcher, StubPageObjectGenerator({needs[0].need.text: canned})
+        )
+        second = orchestrate_page_object_class(
+            needs, catalog, matcher, StubPageObjectGenerator({needs[0].need.text: canned})
+        )
+
+        assert first == second
+
+    def test_disagreeing_class_name_overrides_raise_rather_than_silently_pick_one(self) -> None:
+        catalog = _catalog()
+        need_a = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="enter the username", step_type="PageAction", captures=()),
+            method_name="enterUsername",
+            class_name_override="LoginPage",
+        )
+        need_b = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="enter the password", step_type="PageAction", captures=()),
+            method_name="enterPassword",
+            class_name_override="AccountPage",
+        )
+        matcher = StubSemanticMatcher({need_a.need.text: (), need_b.need.text: ()})
+        generator = StubPageObjectGenerator({})
+
+        with pytest.raises(ValueError, match="disagree on class_name_override"):
+            orchestrate_page_object_class((need_a, need_b), catalog, matcher, generator)
+
+        assert generator.call_count == 0
 
 
 class TestDeterminism:

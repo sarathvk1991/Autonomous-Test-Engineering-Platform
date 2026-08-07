@@ -20,6 +20,19 @@ The orchestrator (:mod:`.page_object_orchestrator`) never imports an LLM
 provider or ``llm_factory`` -- it depends only on this Protocol, so the
 reuse-first decision of whether to generate at all stays provably
 deterministic regardless of which implementation is wired in.
+
+**Multi-method-per-class (additive, this build).**
+:class:`PageObjectGenerationContext` gained ``additional_method_needs``
+(default ``()``): when a page-object class needs MULTIPLE fresh methods at
+once
+(:func:`~.page_object_orchestrator.orchestrate_page_object_class` batches
+every NO_MATCH method-need destined for the same class into ONE seam
+call), the primary method rides ``need`` exactly as before and every
+sibling method rides this new field -- so the seam is called ONCE per
+class, not once per method, and the class it returns carries every method
+a step-def actually calls. Closes the gap
+`page_object_reference_derivation.py`'s own derivation build flagged and
+deliberately left open (``unverified_method_names``).
 """
 
 from __future__ import annotations
@@ -28,6 +41,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from automation_engineering.generation.models import PageObjectMethodNeed
 from automation_engineering.reuse.models import GherkinStepNeed
 
 
@@ -45,12 +59,29 @@ class PageObjectGenerationContext:
     the orchestrator has already computed for this brand-new page object --
     an informational instruction the generated code must honor, not
     something this seam derives itself.
+
+    ``additional_method_needs`` (additive, default ``()`` -- every
+    pre-existing context/call site is unchanged) carries every OTHER
+    method-need the SAME fresh ``class_name`` must ALSO satisfy, when the
+    orchestrator (:func:`~.page_object_orchestrator.orchestrate_page_object_class`)
+    has batched two-or-more NO_MATCH method-needs for one class into this
+    ONE generation call -- the multi-method seam extension this platform's
+    own page-object-request-derivation build (`page_object_reference_
+    derivation.py`) flagged as a precondition: a step-def calling several
+    methods on one brand-new page-object class must generate ONE class with
+    ALL of them, never silently drop the second-or-later method. ``need``
+    remains the PRIMARY method's own need (unchanged shape, unchanged
+    meaning); each entry in ``additional_method_needs`` carries its OWN
+    ``need``/``method_name`` for a sibling method the same class must also
+    expose. Empty for the ordinary, still-most-common one-method-per-class
+    case -- every existing caller that never sets this field is unaffected.
     """
 
     need: GherkinStepNeed
     class_name: str
     target_package: str
     customqa_constraints: tuple[str, ...]
+    additional_method_needs: tuple[PageObjectMethodNeed, ...] = ()
 
 
 class PageObjectGenerator(Protocol):
@@ -67,10 +98,18 @@ class PageObjectGenerator(Protocol):
         constructor-injected ``WebDriver`` per ADR-0041 D5, locator fields,
         and at least one action method) in ``context.target_package``, born
         compliant with every constraint in ``context.customqa_constraints``.
-        The orchestrator (:mod:`.page_object_orchestrator`) trusts nothing
-        about the result beyond that it is a string -- it performs no
-        parsing, no compilation, no lint of its own; CP3/CP4 (later,
-        out-of-scope tasks) are where generated Java is actually verified.
+        When ``context.additional_method_needs`` is non-empty, the returned
+        class must additionally expose one action method per entry there,
+        alongside ``context.need``'s own -- still exactly ONE class, now
+        with multiple methods. The orchestrator (:mod:`.page_object_orchestrator`)
+        trusts nothing about the result beyond that it is a string -- it
+        performs no parsing, no compilation, no lint of its own; CP3/CP4
+        (later, out-of-scope tasks) are where generated Java is actually
+        verified. An implementation that cannot yet honor
+        ``additional_method_needs`` (e.g. because its own backing prompt is
+        still single-action-shaped) must raise rather than silently drop
+        the extra methods -- see ``LivePageObjectGenerator`` for the
+        current honest example of exactly that.
         """
         ...
 

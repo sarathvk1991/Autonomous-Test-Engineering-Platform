@@ -56,6 +56,7 @@ EscalatedPageObjectMethodNeed       -- ESCALATION outcome (reuse-engine OR preci
 PageObjectMethodOutcome             -- the closed union of the three
 PageObjectBindingRequest            -- wires page-object resolution into the step-def orchestrator
 orchestrate_page_object_method      -- reuse-first orchestration, one method-need
+orchestrate_page_object_class       -- one class, every method-need, batches NO_MATCH into one call
 generate_page_object_methods        -- reuse-first orchestration, a full set of method-needs
 derive_page_object_class_name       -- deterministic UpperCamelCase + "Page" derivation
 DEFAULT_PAGE_OBJECT_TARGET_PACKAGE  -- com.automation.pages
@@ -162,6 +163,7 @@ from automation_engineering.generation.page_object_orchestrator import (
     PageObjectBindingRequest,
     derive_page_object_class_name,
     generate_page_object_methods,
+    orchestrate_page_object_class,
     orchestrate_page_object_method,
 )
 from automation_engineering.generation.step_definition_generator import (
@@ -251,6 +253,7 @@ __all__ = [
     "generate_test_data_class",
     "generate_test_data_classes",
     "generate_utility_methods",
+    "orchestrate_page_object_class",
     "orchestrate_page_object_method",
     "orchestrate_step_definition",
     "orchestrate_utility_method",
