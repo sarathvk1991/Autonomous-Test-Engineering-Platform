@@ -147,6 +147,31 @@ _GENERATE_PAGE_OBJECTS_V1_2_0_COMPATIBILITY = PromptCompatibility(
     }
 )
 
+#: v1.3.0's own compatibility -- deliberately IDENTICAL to v1.2.0's, on both
+#: dimensions. `output_schema_version` stays "1.1.0": the INPUT contract (a
+#: `methods` list of caller-named method specs) and the class-level OUTPUT
+#: shape (one class extending BasePage, locator fields, action methods) are
+#: both unchanged -- this version adds an OPTIONAL `return_type` field to
+#: each `methods` entry (defect-4 fix: a live regeneration run found the
+#: step-definition generator's own verification calls assume a boolean
+#: return while the page-object generator, never told what the call site
+#: expects, is free to declare the same method void -- neither prompt
+#: conveyed its own assumption to the other). A request that omits
+#: `return_type` (or supplies `null`) behaves exactly as v1.2.0 did --
+#: unconstrained, model's own choice -- so this is purely additive content
+#: within the same request/response shape: MINOR per ADR-0014's own
+#: versioning table ("Additive section -- output schema compatibility
+#: preserved"), not a new schema version. `customqa_profile_version` is
+#: unchanged for the same reason v1.1.0's/v1.2.0's were: the same
+#: customqa:* rules are referenced, verbatim, by this version's own
+#: CONSTRAINTS section too.
+_GENERATE_PAGE_OBJECTS_V1_3_0_COMPATIBILITY = PromptCompatibility(
+    dimensions={
+        "output_schema_version": "1.1.0",
+        "customqa_profile_version": "1.0.0",
+    }
+)
+
 #: Same two Layer-3 dimensions as the other two prompts -- the third
 #: registrant, still the same genuine reuse, not re-invention.
 _GENERATE_UTILITIES_COMPATIBILITY = PromptCompatibility(
@@ -449,6 +474,75 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 release_introduced="1.2.0",
             ),
             content=loaded_v1_2_0.content,
+        )
+    )
+
+    # --- generate_page_objects v1.3.0 --------------------------------------
+    # Additive: adds an OPTIONAL `return_type` field to each `methods` entry
+    # (a new RETURN-TYPE CONTRACT section instructs the model how to honor
+    # it) -- identical request/response shape to v1.2.0 otherwise. Fixes a
+    # live-measured defect found on the re-run after the defect-2/defect-3
+    # fixes: the step-definition generator's own verification calls assume
+    # a boolean return (`Assertions.assertTrue(page.isDisplayed())`), while
+    # the page-object generator -- never told what the call site expects
+    # back -- was free to declare that same method void (waiting/throwing
+    # internally instead of returning); measured on 5 of 30 (17%)
+    # is.../verify... methods. Investigated first: no ADR and no working
+    # reference example (SmokePage.java/SmokeSteps.java, the same reference
+    # that anchored the defect-2 fix) specifies this contract -- but it is
+    # cleanly DERIVABLE from the step-definition's own call-site usage, the
+    # exact mechanism `method_name` derivation already uses
+    # (`automation_engineering.generation.page_object_reference_derivation`,
+    # its own "RETURN-TYPE DERIVATION" section), extended to also derive the
+    # return type implied by how the call's result is used (a sole
+    # assertTrue/assertFalse argument implies boolean; an assignment implies
+    # its declared type; a bare statement implies void). `return_type` is
+    # `null` whenever that derivation is not clean -- the model chooses
+    # freely for that one method, identical to v1.2.0's own behavior, never
+    # a guessed constraint. MINOR per ADR-0014's own versioning table
+    # ("Additive section -- output schema compatibility preserved").
+    # v1.0.0/v1.1.0/v1.2.0's own files/metadata are UNCHANGED (ADR-0014
+    # invariant H.1: governed prompt wording is byte-for-byte frozen unless
+    # a governed version bump is performed -- this is that bump, added
+    # alongside, never edited in place). Registered DRAFT, mirroring every
+    # other Layer 3 prompt's own current lifecycle. This is the INPUT-side
+    # fix only -- it proves the derived return type reaches the prompt and
+    # the prompt instructs the model to honor it; whether the model actually
+    # complies is proven by the (separate, later) live regeneration re-run,
+    # not by this registration.
+    loaded_v1_3_0 = loader.load(
+        prompt_id="generate_page_objects",
+        version="1.3.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_page_objects",
+                name="Generate Page Objects",
+                version="1.3.0",
+                owner="Automation Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Generates one Java page-object class for MULTIPLE page-object "
+                    "actions at once -- identical request/response shape to v1.2.0, now "
+                    "accepting an OPTIONAL return_type per method entry (already derived "
+                    "by the platform from the calling step definition's own real usage: "
+                    "assertTrue(page.isX()) implies boolean, a bare call implies void, an "
+                    "assignment implies its declared type) and instructing the model to "
+                    "declare that EXACT return type -- so a verification method's return "
+                    "type agrees with what the already-generated step definition actually "
+                    "does with the result, fixing a live-measured defect (5 of 30, 17%, "
+                    "is.../verify... methods where the step-def assumed boolean and the "
+                    "page object declared void, which does not compile). return_type: "
+                    "null leaves the method unconstrained, identical to v1.2.0's own "
+                    "behavior. v1.2.0, v1.1.0, and v1.0.0 all remain registered, unedited."
+                ),
+                sha256=loaded_v1_3_0.sha256,
+                compatibility=_GENERATE_PAGE_OBJECTS_V1_3_0_COMPATIBILITY,
+                release_introduced="1.3.0",
+            ),
+            content=loaded_v1_3_0.content,
         )
     )
 

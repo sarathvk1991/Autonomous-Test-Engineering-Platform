@@ -119,11 +119,68 @@ generator's own prompt is still single-method-shaped
 follow-up task remains responsible for making a LIVE multi-method class
 actually generate correctly, this build closes the DETERMINISTIC seam gap
 only.
+
+RETURN-TYPE DERIVATION -- the SAME mechanism as method-name derivation,
+extended (additive, defect-4 fix)
+==========================================================================
+A live regeneration run found a second, independent compile-breaking
+mismatch on top of the three the first live run measured (defect 1
+above, and two step-definition/BasePage-inventory defects tracked
+elsewhere): the step-definition generator writes verification calls
+ASSUMING a boolean return (``Assertions.assertTrue(page.isDisplayed())``),
+while the page-object generator -- never told what the call site expects
+back -- is free to write that same method VOID (waiting/throwing
+internally instead of returning). Neither prompt conveys its own
+assumption to the other, so they silently disagree; measured live on 5 of
+30 (17%) ``is...``/``verify...`` methods.
+
+Investigated against the real, on-disk corpus this session confirmed
+still current (``output/latest/workspace/src/test/java/com/automation/
+steps/*.java``, 15 ``is.../verify...`` call sites across 15 files) before
+choosing a fix: no ADR and no working reference example (``SmokePage.java``/
+``SmokeSteps.java`` -- the same reference that anchored defect 2's fix --
+has no ``is...``/``verify...`` method at all, only a plain getter,
+``currentTitle()``) SPECIFIES this contract. But it is CLEANLY DERIVABLE
+from the step-definition's own call site, the exact same "the call site is
+the spec" principle ``method_name`` derivation above already established --
+and the real corpus confirms it: every one of the 15 real examples
+resolves unambiguously under three simple shapes:
+
+* The call is the sole first argument to ``Assertions.assertTrue(...)`` or
+  ``Assertions.assertFalse(...)`` -> the method must return ``boolean``
+  (13 of 15 real examples, e.g. ``ShoppingCartSteps.java``'s
+  ``Assertions.assertTrue(shoppingCartPage.isDisplayed(), "...")``).
+* The call's result is assigned to a declared-type local variable -> the
+  method must return that declared type (1 of 15,
+  ``ReportSteps.java``'s ``boolean isNamingPatternValid =
+  reportPage.verifyNamingPatternForElements(elementType);``).
+* The call is a bare statement, its result never used -> the method must
+  return ``void`` (1 of 15, ``CodebaseSteps.java``'s
+  ``codebasePage.verifyMethodLineCount(lineCount);``).
+
+:func:`_classify_call_site_return_types` performs this classification,
+walking the step method's own statements (module docstring's own
+javalang-based, no-LLM, no-semantic-inference discipline, unchanged) --
+never the arguments of a call (that is `_resolve_argument_type`'s own,
+separate job; this is the call's own USAGE CONTEXT, one level up). A call
+site that matches none of the three shapes above (e.g. the call result
+feeds a more complex expression, or is passed as a non-first argument to
+some other method) is honestly left UNRESOLVED, mirroring
+`_resolve_argument_type`'s own "never a crash, never a silently wrong
+guess" discipline: :attr:`DerivedPageObjectMethodCall.return_type` stays
+``None`` for that one method, and the page-object generation seam
+(:class:`~.page_object_generator.PageObjectGenerationContext`'s own
+``return_type``) receives no constraint for it -- IDENTICAL to this
+platform's pre-fix behavior for that one ambiguous case, never a guessed
+type. The 14 of 15 cleanly-classified real examples all reach the
+generator WITH a constraint; the corpus, investigated directly, shows zero
+real occurrences of the unresolved case today.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import javalang
@@ -165,10 +222,24 @@ _PAGE_OBJECT_TYPE_SUFFIX = "Page"
 class DerivedPageObjectMethodCall:
     """One page-object method a step-definition's own body calls --
     ``parameters`` resolved from the real call-site arguments (module
-    docstring), never assumed equal to `GherkinStepNeed.captures`."""
+    docstring), never assumed equal to `GherkinStepNeed.captures``.
+
+    ``return_type`` (additive, defect-4 fix) is the Java return type this
+    call site's own USAGE implies (module docstring's own "RETURN-TYPE
+    DERIVATION" section) -- ``"boolean"`` when the call is the sole first
+    argument to ``Assertions.assertTrue``/``assertFalse``, the declared
+    type of a local variable the call's result is assigned to, or
+    ``"void"`` for a bare, result-discarding statement. ``None`` when the
+    usage matches none of those three shapes -- an honest "not derivable"
+    signal, never a guess (mirrors ``_resolve_argument_type``'s own
+    ``"Object"`` fallback in spirit, but ``None`` here rather than a
+    placeholder type, since an unresolved RETURN type has no safe stand-in
+    the way an unresolved ARGUMENT type does).
+    """
 
     method_name: str
     parameters: tuple[JavaParameter, ...]
+    return_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +274,94 @@ def _resolve_argument_type(
         if value.lstrip("-").isdigit():
             return "int"
     return "Object"
+
+
+_ASSERT_QUALIFIER = "Assertions"
+_BOOLEAN_ASSERT_METHODS = frozenset({"assertTrue", "assertFalse"})
+
+
+def _iter_statements(
+    statements: Sequence[javalang.tree.Statement] | None,
+) -> list[javalang.tree.Statement]:
+    """Flatten a step method's own statement tree into the sequence of
+    statements a page-object call site can appear as (module docstring's
+    own "RETURN-TYPE DERIVATION" section) -- descends into the common
+    control-flow containers a short, `customqa:long-method`-compliant step
+    body can use, never a full expression walk (that remains
+    ``.filter(MethodInvocation)``'s own job, unchanged)."""
+    flattened: list[javalang.tree.Statement] = []
+    for statement in statements or ():
+        flattened.append(statement)
+        if isinstance(statement, javalang.tree.BlockStatement):
+            flattened.extend(_iter_statements(statement.statements))
+        elif isinstance(statement, javalang.tree.IfStatement):
+            flattened.extend(_iter_statements([statement.then_statement]))
+            if statement.else_statement is not None:
+                flattened.extend(_iter_statements([statement.else_statement]))
+        elif isinstance(
+            statement,
+            (javalang.tree.ForStatement, javalang.tree.WhileStatement, javalang.tree.DoStatement),
+        ):
+            flattened.extend(_iter_statements([statement.body]))
+        elif isinstance(statement, javalang.tree.TryStatement):
+            flattened.extend(_iter_statements(statement.block))
+    return flattened
+
+
+def _classify_call_site_return_types(
+    step_method: javalang.tree.MethodDeclaration, page_object_fields: dict[str, str]
+) -> dict[tuple[str, str], str]:
+    """Return ``{(field_qualifier, method_name): return_type}`` for every
+    page-object call site whose own USAGE cleanly implies a return type
+    (module docstring's own "RETURN-TYPE DERIVATION" section) -- three
+    shapes only, each proven against the real corpus:
+
+    * sole first argument to ``Assertions.assertTrue``/``assertFalse`` ->
+      ``"boolean"``;
+    * initializer of a declared-type local variable -> that declared type;
+    * a bare, result-discarding statement -> ``"void"``.
+
+    A call site matching none of these (embedded in a larger expression,
+    a non-first ``assertEquals``-style argument, ...) is simply ABSENT
+    from the returned mapping -- the honest "not derivable" signal
+    :attr:`DerivedPageObjectMethodCall.return_type` surfaces as ``None``,
+    never a guessed key. "First occurrence wins" if the same method is
+    called from more than one classified statement, mirroring
+    ``calls_by_class``'s own discipline in :func:`derive_page_object_requests`.
+    """
+    classified: dict[tuple[str, str], str] = {}
+
+    def _is_page_object_call(node: object) -> bool:
+        return (
+            isinstance(node, javalang.tree.MethodInvocation)
+            and node.qualifier in page_object_fields
+        )
+
+    for statement in _iter_statements(step_method.body):
+        if isinstance(statement, javalang.tree.LocalVariableDeclaration):
+            declared_type = type_name(statement.type)
+            for declarator in statement.declarators:
+                initializer = declarator.initializer
+                if _is_page_object_call(initializer):
+                    key = (initializer.qualifier, initializer.member)
+                    classified.setdefault(key, declared_type)
+        elif isinstance(statement, javalang.tree.StatementExpression):
+            expression = statement.expression
+            if _is_page_object_call(expression):
+                key = (expression.qualifier, expression.member)
+                classified.setdefault(key, "void")
+            elif (
+                isinstance(expression, javalang.tree.MethodInvocation)
+                and expression.qualifier == _ASSERT_QUALIFIER
+                and expression.member in _BOOLEAN_ASSERT_METHODS
+                and expression.arguments
+                and _is_page_object_call(expression.arguments[0])
+            ):
+                inner = expression.arguments[0]
+                key = (inner.qualifier, inner.member)
+                classified.setdefault(key, "boolean")
+
+    return classified
 
 
 def derive_page_object_requests(java_source: str) -> tuple[DerivedPageObjectRequest, ...]:
@@ -240,12 +399,13 @@ def derive_page_object_requests(java_source: str) -> tuple[DerivedPageObjectRequ
         return ()
 
     parameter_types = {p.name: type_name(p.type) for p in step_method.parameters}
+    return_types = _classify_call_site_return_types(step_method, page_object_fields)
 
-    # class_name -> method_name -> parameters ("first occurrence wins": a
+    # class_name -> method_name -> call ("first occurrence wins": a
     # well-formed generated step-def calls each method with one consistent
     # shape within its own single, short body, module docstring's own
     # `customqa:long-method` constraint keeping that body small).
-    calls_by_class: dict[str, dict[str, tuple[JavaParameter, ...]]] = defaultdict(dict)
+    calls_by_class: dict[str, dict[str, DerivedPageObjectMethodCall]] = defaultdict(dict)
     for _, invocation in step_method.filter(javalang.tree.MethodInvocation):
         if invocation.qualifier not in page_object_fields:
             continue
@@ -257,15 +417,18 @@ def derive_page_object_requests(java_source: str) -> tuple[DerivedPageObjectRequ
             )
             for index, argument in enumerate(invocation.arguments)
         )
-        calls_by_class[class_name].setdefault(invocation.member, parameters)
+        return_type = return_types.get((invocation.qualifier, invocation.member))
+        calls_by_class[class_name].setdefault(
+            invocation.member,
+            DerivedPageObjectMethodCall(
+                method_name=invocation.member, parameters=parameters, return_type=return_type
+            ),
+        )
 
     return tuple(
         DerivedPageObjectRequest(
             class_name=class_name,
-            method_calls=tuple(
-                DerivedPageObjectMethodCall(method_name=method_name, parameters=parameters)
-                for method_name, parameters in methods.items()
-            ),
+            method_calls=tuple(methods.values()),
         )
         for class_name, methods in calls_by_class.items()
     )
@@ -361,6 +524,7 @@ def generate_step_definition_with_derived_page_objects(
                 need=need,
                 method_name=call.method_name,
                 class_name_override=request.class_name,
+                return_type=call.return_type,
             )
             for call in request.method_calls
         )

@@ -193,6 +193,12 @@ def orchestrate_page_object_method(
     requires ``context.method_name``, exactly because a name the model
     invents from prose almost never matches the name a real call site
     needs).
+
+    The generation context's own ``return_type`` is set from
+    ``method_need.return_type`` the same way (additive, defect-4 fix) --
+    ``None`` unless a caller (:mod:`.page_object_reference_derivation`)
+    already derived one from the step-def's own call-site usage; see that
+    module's own "RETURN-TYPE DERIVATION" section.
     """
     decision = decide_reuse(
         method_need.need, catalog, matcher, confidence_threshold=confidence_threshold
@@ -234,6 +240,7 @@ def orchestrate_page_object_method(
             target_package=target_package,
             customqa_constraints=customqa_constraints,
             method_name=method_need.method_name,
+            return_type=method_need.return_type,
         )
         java_source = generator.generate(context)
         return GeneratedPageObject(
@@ -368,6 +375,7 @@ def orchestrate_page_object_class(
             customqa_constraints=customqa_constraints,
             additional_method_needs=tuple(rest),
             method_name=primary.method_name,
+            return_type=primary.return_type,
         )
         java_source = generator.generate(context)
         resolved.append(

@@ -98,6 +98,9 @@ class TestDerivationParsesRealCallSites:
     def test_login_fixture_produces_loginpage_with_its_three_methods(self) -> None:
         requests = derive_page_object_requests(_LOGIN_STEP_JAVA)
 
+        # Every call is a bare, result-discarding statement in this fixture
+        # -- return_type="void" for all three (the derivation's own third
+        # shape, module docstring's "RETURN-TYPE DERIVATION" section).
         assert requests == (
             DerivedPageObjectRequest(
                 class_name="LoginPage",
@@ -105,12 +108,16 @@ class TestDerivationParsesRealCallSites:
                     DerivedPageObjectMethodCall(
                         method_name="enterUsername",
                         parameters=(JavaParameter(name="arg0", java_type="String"),),
+                        return_type="void",
                     ),
                     DerivedPageObjectMethodCall(
                         method_name="enterPassword",
                         parameters=(JavaParameter(name="arg0", java_type="String"),),
+                        return_type="void",
                     ),
-                    DerivedPageObjectMethodCall(method_name="clickLogin", parameters=()),
+                    DerivedPageObjectMethodCall(
+                        method_name="clickLogin", parameters=(), return_type="void"
+                    ),
                 ),
             ),
         )
@@ -228,6 +235,163 @@ class TestArgumentTypeResolution:
     def test_determinism(self) -> None:
         first = derive_page_object_requests(_LOGIN_STEP_JAVA)
         second = derive_page_object_requests(_LOGIN_STEP_JAVA)
+
+        assert first == second
+
+
+class TestReturnTypeDerivation:
+    """Defect-4 fix: the derivation's own "RETURN-TYPE DERIVATION" section
+    (module docstring) -- a page-object call site's own USAGE in the
+    already-generated step-definition implies its return type, the exact
+    same "the call site is the spec" principle `method_name` derivation
+    already uses. Every fixture below is a REAL shape measured in the live
+    corpus (`output/latest/workspace/src/test/java/com/automation/steps/
+    *.java`), not invented."""
+
+    def test_sole_assert_true_argument_implies_boolean(self) -> None:
+        """The exact defect-4 case: `ShoppingCartSteps.java`'s
+        `Assertions.assertTrue(shoppingCartPage.isDisplayed(), "...")`."""
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class ShoppingCartSteps {\n"
+            "    private ShoppingCartPage shoppingCartPage;\n\n"
+            '    @Then("the shopping cart page is displayed")\n'
+            "    public void theShoppingCartPageIsDisplayed() {\n"
+            "        Assertions.assertTrue(shoppingCartPage.isDisplayed(), "
+            '"User was not redirected to the shopping cart page.");\n'
+            "    }\n"
+            "}\n"
+        )
+
+        requests = derive_page_object_requests(java)
+
+        assert requests == (
+            DerivedPageObjectRequest(
+                class_name="ShoppingCartPage",
+                method_calls=(
+                    DerivedPageObjectMethodCall(
+                        method_name="isDisplayed", parameters=(), return_type="boolean"
+                    ),
+                ),
+            ),
+        )
+
+    def test_sole_assert_false_argument_implies_boolean(self) -> None:
+        """`ProtectedPageSteps.java`'s
+        `Assertions.assertFalse(protectedPage.isAccessibleAfterBackNavigation(), "...")`."""
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class ProtectedPageSteps {\n"
+            "    private ProtectedPage protectedPage;\n\n"
+            '    @Then("the protected page is not accessible")\n'
+            "    public void theProtectedPageIsNotAccessible() {\n"
+            "        Assertions.assertFalse(protectedPage.isAccessibleAfterBackNavigation(), "
+            '"...");\n'
+            "    }\n"
+            "}\n"
+        )
+
+        requests = derive_page_object_requests(java)
+
+        assert requests[0].method_calls[0].return_type == "boolean"
+
+    def test_bare_statement_implies_void(self) -> None:
+        """`CodebaseSteps.java`'s bare
+        `codebasePage.verifyMethodLineCount(lineCount);`."""
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Given;\n\n"
+            "public class CodebaseSteps {\n"
+            "    private CodebasePage codebasePage;\n\n"
+            '    @Given("the codebase contains a method with {string} lines")\n'
+            "    public void theCodebaseContainsAMethodWithLines(String lineCount) {\n"
+            "        codebasePage.verifyMethodLineCount(lineCount);\n"
+            "    }\n"
+            "}\n"
+        )
+
+        requests = derive_page_object_requests(java)
+
+        assert requests == (
+            DerivedPageObjectRequest(
+                class_name="CodebasePage",
+                method_calls=(
+                    DerivedPageObjectMethodCall(
+                        method_name="verifyMethodLineCount",
+                        parameters=(JavaParameter(name="arg0", java_type="String"),),
+                        return_type="void",
+                    ),
+                ),
+            ),
+        )
+
+    def test_assignment_to_a_declared_type_variable_implies_that_type(self) -> None:
+        """`ReportSteps.java`'s
+        `boolean isNamingPatternValid = reportPage.verifyNamingPatternForElements(elementType);`."""
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class ReportSteps {\n"
+            "    private ReportPage reportPage;\n\n"
+            '    @Then("the report follows the naming pattern")\n'
+            "    public void theReportFollowsTheNamingPattern(String elementType) {\n"
+            "        boolean isNamingPatternValid = "
+            "reportPage.verifyNamingPatternForElements(elementType);\n"
+            "        Assertions.assertTrue(isNamingPatternValid, "
+            '"...");\n'
+            "    }\n"
+            "}\n"
+        )
+
+        requests = derive_page_object_requests(java)
+
+        assert requests[0].method_calls[0].return_type == "boolean"
+
+    def test_a_non_first_assert_equals_argument_is_left_unresolved_not_guessed(self) -> None:
+        """A shape none of the three derivable rules cover (the call feeds
+        a non-first `assertEquals` argument) -- `return_type` stays `None`,
+        the honest "not derivable" signal, never a guessed value. The
+        method/parameter derivation (defect-1's own mechanism) is
+        UNAFFECTED -- only the return-type signal is missing."""
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class TitleSteps {\n"
+            "    private TitlePage titlePage;\n\n"
+            '    @Then("the page title is {string}")\n'
+            "    public void thePageTitleIs(String expected) {\n"
+            "        Assertions.assertEquals(expected, titlePage.getTitle());\n"
+            "    }\n"
+            "}\n"
+        )
+
+        requests = derive_page_object_requests(java)
+
+        assert requests[0].method_calls[0].method_name == "getTitle"
+        assert requests[0].method_calls[0].return_type is None
+
+    def test_determinism(self) -> None:
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class ShoppingCartSteps {\n"
+            "    private ShoppingCartPage shoppingCartPage;\n\n"
+            '    @Then("the shopping cart page is displayed")\n'
+            "    public void theShoppingCartPageIsDisplayed() {\n"
+            "        Assertions.assertTrue(shoppingCartPage.isDisplayed(), \"...\");\n"
+            "    }\n"
+            "}\n"
+        )
+
+        first = derive_page_object_requests(java)
+        second = derive_page_object_requests(java)
 
         assert first == second
 
@@ -420,6 +584,106 @@ class TestWiringGeneratesAFreshPageObjectWithTheDerivedClassName:
         received = page_object_generator.received_contexts[0]
         assert received.class_name == "LoginPage"
         assert received.target_package == DEFAULT_PAGE_OBJECT_TARGET_PACKAGE
+
+
+class TestWiringCarriesTheDerivedReturnTypeThroughToGeneration:
+    """Defect-4 fix, proven end to end through this module's own wiring:
+    the derived return type (`TestReturnTypeDerivation` above) reaches the
+    page-object generation seam's own `PageObjectGenerationContext.return_type`,
+    the exact same path `method_name` already takes (defect-1's fix)."""
+
+    def test_a_derived_boolean_return_type_reaches_the_generation_context(self) -> None:
+        need = GherkinStepNeed(text="the shopping cart page is displayed", step_type="Then")
+        catalog = _catalog()  # empty -- NO_MATCH, must generate
+        step_matcher = StubSemanticMatcher({need.text: ()})
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class ShoppingCartSteps {\n"
+            "    private ShoppingCartPage shoppingCartPage;\n\n"
+            '    @Then("the shopping cart page is displayed")\n'
+            "    public void theShoppingCartPageIsDisplayed() {\n"
+            "        Assertions.assertTrue(shoppingCartPage.isDisplayed(), \"...\");\n"
+            "    }\n"
+            "}\n"
+        )
+        step_generator = StubStepDefinitionGenerator({need.text: java})
+        page_object_matcher = StubSemanticMatcher({need.text: ()})
+        canned_page_object = (
+            "package com.automation.pages;\n"
+            "public class ShoppingCartPage extends BasePage {\n"
+            "    public boolean isDisplayed() { return true; }\n"
+            "}\n"
+        )
+        page_object_generator = StubPageObjectGenerator({need.text: canned_page_object})
+
+        outcome = generate_step_definition_with_derived_page_objects(
+            need,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_generator,
+        )
+
+        assert isinstance(outcome, CoGeneratedStepDefinition)
+        generated = outcome.page_object_outcomes[0]
+        assert isinstance(generated, GeneratedPageObject)
+        assert generated.method_need.return_type == "boolean"
+        received = page_object_generator.received_contexts[0]
+        assert received.return_type == "boolean"
+
+    def test_a_bare_call_derives_void_and_a_non_derivable_usage_stays_none(self) -> None:
+        """A single class with TWO methods -- one bare (derivable, void),
+        one fed into a non-first `assertEquals` argument (not derivable) --
+        co-generated together (the multi-method seam), proving each
+        method's own `return_type` is resolved INDEPENDENTLY, never
+        smeared across the whole class."""
+        need = GherkinStepNeed(text="the checkout completes", step_type="Then")
+        catalog = _catalog()
+        step_matcher = StubSemanticMatcher({need.text: ()})
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class CheckoutSteps {\n"
+            "    private CheckoutPage checkoutPage;\n\n"
+            '    @Then("the checkout completes")\n'
+            "    public void theCheckoutCompletes() {\n"
+            "        checkoutPage.confirmOrder();\n"
+            "        Assertions.assertEquals(\"DONE\", checkoutPage.getStatus());\n"
+            "    }\n"
+            "}\n"
+        )
+        step_generator = StubStepDefinitionGenerator({need.text: java})
+        page_object_matcher = StubSemanticMatcher({need.text: ()})
+        canned_page_object = (
+            "package com.automation.pages;\n"
+            "public class CheckoutPage extends BasePage {\n"
+            "    public void confirmOrder() {}\n"
+            "    public String getStatus() { return \"DONE\"; }\n"
+            "}\n"
+        )
+        page_object_generator = StubPageObjectGenerator({need.text: canned_page_object})
+
+        outcome = generate_step_definition_with_derived_page_objects(
+            need,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_generator,
+        )
+
+        assert isinstance(outcome, CoGeneratedStepDefinition)
+        generated = outcome.page_object_outcomes[0]
+        assert isinstance(generated, GeneratedPageObject)
+        by_name = {generated.method_need.method_name: generated.method_need.return_type}
+        by_name.update(
+            {need.method_name: need.return_type for need in generated.additional_method_needs}
+        )
+        assert by_name == {"confirmOrder": "void", "getStatus": None}
 
 
 class TestWiringEscalatesTheWholeStepOnAnUnverifiedBinding:

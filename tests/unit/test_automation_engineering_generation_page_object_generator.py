@@ -91,6 +91,19 @@ class TestPageObjectGenerationContextAdditionalMethodNeeds:
         assert context.additional_method_needs == (extra,)
 
 
+class TestPageObjectGenerationContextReturnType:
+    """Defect-4 fix: `return_type` -- additive, `None` by default so every
+    pre-existing call site is unaffected."""
+
+    def test_defaults_to_none(self) -> None:
+        context = _context()
+        assert context.return_type is None
+
+    def test_carries_a_caller_supplied_return_type(self) -> None:
+        context = _context(return_type="boolean")
+        assert context.return_type == "boolean"
+
+
 # ---------------------------------------------------------------------------
 # StubPageObjectGenerator
 # ---------------------------------------------------------------------------
@@ -405,15 +418,16 @@ class TestLiveGeneratorMultiMethod:
         assert result == _COMPLETE_LOGIN_PAGE_JAVA
         assert provider.call_count == 1
 
-    def test_prompt_uses_the_v120_template_not_v100(self) -> None:
+    def test_prompt_uses_the_v130_template_not_v100(self) -> None:
         provider = _complete_provider()
         generator = LivePageObjectGenerator(provider)
 
         generator.generate(_multi_method_context())
 
         sent_prompt = provider.requests[0].prompt
-        assert "VERBATIM" in sent_prompt  # v1.1.0/v1.2.0's own OUTPUT CONTRACT language
-        assert provider.requests[0].metadata["prompt_version"] == "1.2.0"
+        # v1.1.0/v1.2.0/v1.3.0's own shared OUTPUT CONTRACT language.
+        assert "VERBATIM" in sent_prompt
+        assert provider.requests[0].metadata["prompt_version"] == "1.3.0"
 
     def test_prompt_input_includes_all_three_method_specs_in_order(self) -> None:
         provider = _complete_provider()
@@ -499,18 +513,19 @@ class TestSingleMethodNowRoutesThroughV110:
     """THE defect-1 fix, proven directly: a single-method context (no
     `additional_method_needs`) used to hit v1.0.0's own payload shape
     (`action_text`/`captures` at the top level, no `method_name` anywhere)
-    -- now it hits the SAME `methods`-list-shaped path (v1.2.0, since the
-    defect-3 fix; v1.1.0 introduced the shape) a multi-method context does,
-    as a length-one `methods` list, with `method_name` conveyed. No more
-    divergence between the two paths -- the root cause of defect 1."""
+    -- now it hits the SAME `methods`-list-shaped path (v1.3.0, since the
+    defect-4 fix; v1.2.0 since the defect-3 fix; v1.1.0 introduced the
+    shape) a multi-method context does, as a length-one `methods` list,
+    with `method_name` conveyed. No more divergence between the two paths
+    -- the root cause of defect 1."""
 
-    def test_uses_v120_not_v100(self) -> None:
+    def test_uses_v130_not_v100(self) -> None:
         provider = FakeProvider()
         generator = LivePageObjectGenerator(provider)
 
         generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
-        assert provider.requests[0].metadata["prompt_version"] == "1.2.0"
+        assert provider.requests[0].metadata["prompt_version"] == "1.3.0"
 
     def test_payload_is_a_length_one_methods_list_carrying_method_name(self) -> None:
         provider = FakeProvider()
@@ -570,15 +585,17 @@ class TestLiveGeneratorSuppliesBasePagesRealInventory:
     inherited `driver`/`wait` fields) and constrains the model to it. This is
     the INPUT-side proof only -- that the real inventory reaches the built
     prompt and the prompt instructs against inventing helpers -- not proof
-    the model complies (that is the live regeneration re-run's job)."""
+    the model complies (that is the live regeneration re-run's job). This
+    content survives unchanged into v1.3.0 (the defect-4 fix, purely
+    additive on top), which is what this generator now always renders."""
 
-    def test_prompt_uses_v120(self) -> None:
+    def test_prompt_uses_v130(self) -> None:
         provider = FakeProvider()
         generator = LivePageObjectGenerator(provider)
 
         generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
-        assert provider.requests[0].metadata["prompt_version"] == "1.2.0"
+        assert provider.requests[0].metadata["prompt_version"] == "1.3.0"
 
     def test_prompt_conveys_every_real_basepage_member(self) -> None:
         provider = FakeProvider()
@@ -619,4 +636,113 @@ class TestLiveGeneratorSuppliesBasePagesRealInventory:
 
         sent_prompt = provider.requests[0].prompt.lower()
         assert "do not call a basepage method that is not in this list" in sent_prompt
-        assert "never assume basepage exposes" in sent_prompt
+
+
+class TestLiveGeneratorConveysDerivedReturnType:
+    """Defect-4's own fix, proven directly: a live regeneration run measured
+    5 of 30 (17%) `is.../verify...` methods where the step-definition
+    generator's own verification call assumed a boolean return
+    (`Assertions.assertTrue(page.isX())`) while this generator, never told
+    what the call site expects back, was free to declare that method void.
+    `context.return_type` (derived by `page_object_reference_derivation`
+    from the step-def's own already-generated call site) now reaches the
+    built prompt as an OPTIONAL `return_type` field per `methods` entry,
+    with an instruction on how to honor it -- v1.3.0's only addition over
+    v1.2.0. This is the INPUT-side proof only; whether the model actually
+    declares the matching signature is the live regeneration re-run's job."""
+
+    def test_a_derived_return_type_is_conveyed_verbatim_per_method(self) -> None:
+        context = _context(
+            need=_need("the shopping cart page is displayed"),
+            class_name="ShoppingCartPage",
+            method_name="isDisplayed",
+            return_type="boolean",
+        )
+        provider = FakeProvider(text=_single_method_java("isDisplayed"))
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(context)
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert methods[0]["method_name"] == "isDisplayed"
+        assert methods[0]["return_type"] == "boolean"
+
+    def test_a_missing_derived_return_type_is_conveyed_as_null_unconstrained(self) -> None:
+        """`context.return_type` defaults to `None` -- rendered as JSON
+        `null`, the exact "no constraint, model chooses" signal v1.2.0's
+        payload always implied (that field simply didn't exist yet)."""
+        context = _context(method_name=_DEFAULT_METHOD_NAME)  # return_type left at default None
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(context)
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert methods[0]["return_type"] is None
+
+    def test_multi_method_payload_conveys_each_methods_own_return_type_independently(
+        self,
+    ) -> None:
+        additional = (
+            PageObjectMethodNeed(
+                need=_need("enter the password"),
+                method_name="enterPassword",
+                return_type="void",
+            ),
+            PageObjectMethodNeed(
+                need=_need("get the page title"), method_name="getTitle", return_type="String"
+            ),
+        )
+        context = _context(
+            _need("check if logged in"),
+            class_name="LoginPage",
+            method_name="isLoggedIn",
+            return_type="boolean",
+            additional_method_needs=additional,
+        )
+        provider = FakeProvider(
+            text=(
+                "package com.automation.pages;\n\n"
+                "public class LoginPage extends BasePage {\n"
+                "    public boolean isLoggedIn() { return true; }\n"
+                "    public void enterPassword(String password) {}\n"
+                "    public String getTitle() { return \"\"; }\n"
+                "}\n"
+            )
+        )
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(context)
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert [m["return_type"] for m in methods] == ["boolean", "void", "String"]
+
+    def test_prompt_conveys_the_return_type_contract_instructions(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME, return_type="boolean"))
+
+        sent_prompt = provider.requests[0].prompt
+        assert "RETURN-TYPE CONTRACT" in sent_prompt
+        assert "return_type" in sent_prompt
+        assert '"boolean"' in sent_prompt
+        assert "must not throw" in sent_prompt.lower() or "never throw" in sent_prompt.lower()
+
+    def test_v130_is_purely_additive_still_a_methods_list_still_verbatim_naming(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
+
+        sent_prompt = provider.requests[0].prompt
+        assert "VERBATIM" in sent_prompt
+        assert "methods" in sent_prompt
+        assert "open(String url)" in sent_prompt  # v1.2.0's own BasePage inventory, unchanged
+        assert "never assume basepage exposes" in sent_prompt.lower()

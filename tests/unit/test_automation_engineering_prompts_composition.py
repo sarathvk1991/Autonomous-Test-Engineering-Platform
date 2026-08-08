@@ -41,21 +41,22 @@ _EXPECTED_PROMPT_IDS = set(_ALL_PROMPT_IDS)
 
 
 def test_registry_seals_with_exactly_the_four_prompt_families() -> None:
-    """Four distinct `prompt_id`s, seven total registered definitions --
-    `generate_page_objects` carries three versions (v1.0.0, still
+    """Four distinct `prompt_id`s, eight total registered definitions --
+    `generate_page_objects` carries four versions (v1.0.0, still
     single-method; v1.1.0, additive multi-method support; v1.2.0, additive
-    real-BasePage-inventory support) and `generate_step_definitions` carries
-    two (v1.0.0; v1.1.0, additive real-WebDriver-lifecycle support, this
-    build)."""
+    real-BasePage-inventory support; v1.3.0, additive derived-return-type
+    support) and `generate_step_definitions` carries two (v1.0.0; v1.1.0,
+    additive real-WebDriver-lifecycle support)."""
     registry = build_prompt_registry()
 
     assert registry.state is PromptRegistryState.SEALED
-    assert registry.count() == 7
+    assert registry.count() == 8
     assert set(registry.list_prompt_ids()) == _EXPECTED_PROMPT_IDS
     for prompt_id in _ALL_PROMPT_IDS:
         assert registry.is_registered(prompt_id, "1.0.0")
     assert registry.is_registered("generate_page_objects", "1.1.0")
     assert registry.is_registered("generate_page_objects", "1.2.0")
+    assert registry.is_registered("generate_page_objects", "1.3.0")
     assert registry.is_registered("generate_step_definitions", "1.1.0")
 
 
@@ -495,6 +496,119 @@ class TestGeneratePageObjectsV120:
         v120 = registry.get("generate_page_objects", "1.2.0")
 
         assert v120.metadata.compatibility.dimensions == v110.metadata.compatibility.dimensions
+
+
+# ===========================================================================
+# generate_page_objects v1.3.0 -- derived verification return type (defect-4 fix)
+# ===========================================================================
+
+
+class TestGeneratePageObjectsV130:
+    """Fixes a live-measured defect found on the re-run after the
+    defect-2/defect-3 fixes: the step-definition generator's own
+    verification calls assume a boolean return
+    (`Assertions.assertTrue(page.isDisplayed())`), while this prompt never
+    told the model what the calling step definition expects back -- so the
+    model was free to declare that same method void, which does not
+    compile against the caller's own `assertTrue` usage. Measured on 5 of
+    30 (17%) `is.../verify...` methods. No ADR and no working reference
+    example specifies the contract, but it is cleanly DERIVABLE from the
+    step-definition's own call-site usage
+    (`automation_engineering.generation.page_object_reference_derivation`'s
+    own "RETURN-TYPE DERIVATION" section, the same mechanism `method_name`
+    derivation already uses). v1.3.0 is additive alongside v1.0.0/v1.1.0/
+    v1.2.0, never editing any of them (ADR-0014 invariant H.1). Registered
+    DRAFT, mirroring every other Layer 3 prompt's own current lifecycle."""
+
+    def test_registered_alongside_v100_v110_and_v120_not_instead_of_them(self) -> None:
+        registry = build_prompt_registry()
+
+        assert registry.is_registered("generate_page_objects", "1.0.0")
+        assert registry.is_registered("generate_page_objects", "1.1.0")
+        assert registry.is_registered("generate_page_objects", "1.2.0")
+        assert registry.is_registered("generate_page_objects", "1.3.0")
+
+    def test_v120_content_is_byte_for_byte_unchanged(self) -> None:
+        """The governed-frozen invariant, proven directly: v1.2.0's own
+        file/sha256 are exactly what they were before this build."""
+        registry = build_prompt_registry()
+        v120 = registry.get("generate_page_objects", "1.2.0")
+
+        assert v120.metadata.sha256 == (
+            "101c6b4b131d4246aaa6da0d6fe730015962487f0879d8734f1b9924b21d4ab3"
+        )
+
+    def test_lifecycle_is_draft(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+        assert d.metadata.lifecycle == PromptLifecycle.DRAFT
+
+    def test_release_introduced(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+        assert d.metadata.release_introduced == "1.3.0"
+
+    def test_sha256_matches_file_and_manifest(self) -> None:
+        versions_dir = Path("automation_engineering/prompts/versions")
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+        file_bytes = (versions_dir / "generate_page_objects_v1.3.0.txt").read_bytes()
+
+        assert d.metadata.sha256 == PromptLoader.compute_sha256(file_bytes)
+        assert d.content == file_bytes.decode("utf-8")
+
+    def test_conforms_to_the_governed_system_user_contract(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+
+        template = parse_governed_template(d.content)
+
+        assert template.system_prompt.strip()
+        assert "{artifact_context}" not in template.system_prompt
+        assert template.user_template.count("{artifact_context}") == 1
+
+    def test_still_a_methods_list_input_contract_not_a_regression(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+
+        assert "methods" in d.content
+        assert "method_name" in d.content
+        assert "action_text" in d.content
+
+    def test_still_embeds_both_customqa_rules_and_the_basepage_inventory(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+
+        assert "customqa:direct-webdriver-action" in d.content
+        assert "customqa:long-method" in d.content
+        assert "open(String url)" in d.content
+        assert "currentTitle()" in d.content
+
+    def test_adds_an_optional_return_type_field_to_each_methods_entry(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+
+        assert "return_type" in d.content
+
+    def test_conveys_the_three_derivable_shapes_and_the_null_fallback(self) -> None:
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+        content_lower = d.content.lower()
+
+        assert "boolean" in content_lower
+        assert "void" in content_lower
+        assert "null" in content_lower
+
+    def test_instructs_against_substituting_an_assertion_for_returning_a_value(self) -> None:
+        """The exact defect-4 failure mode -- a boolean-declared method that
+        throws/self-asserts instead of returning -- named as prohibited."""
+        d = build_prompt_registry().get("generate_page_objects", "1.3.0")
+        content_lower = d.content.lower()
+
+        assert "must not throw" in content_lower or "never throw" in content_lower
+
+    def test_compatibility_identical_to_v120_purely_additive_content(self) -> None:
+        """Both dimensions match v1.2.0's exactly -- this version adds
+        prompt CONTENT (the optional return_type field and its own
+        RETURN-TYPE CONTRACT section), not a new request or response
+        shape."""
+        registry = build_prompt_registry()
+        v120 = registry.get("generate_page_objects", "1.2.0")
+        v130 = registry.get("generate_page_objects", "1.3.0")
+
+        assert v130.metadata.compatibility.dimensions == v120.metadata.compatibility.dimensions
 
 
 # ===========================================================================

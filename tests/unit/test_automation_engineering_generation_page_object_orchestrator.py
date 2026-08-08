@@ -345,6 +345,64 @@ class TestCustomqaConstraintsAreInjectedIntoGeneration:
         assert received.target_package == "com.custom.pages"
 
 
+class TestDerivedReturnTypeReachesGeneration:
+    """Defect-4 fix: `PageObjectMethodNeed.return_type` (caller-supplied,
+    e.g. by `page_object_reference_derivation`) reaches
+    `PageObjectGenerationContext.return_type` -- the exact same passthrough
+    `method_name` already gets (defect-1's own fix)."""
+
+    def test_orchestrate_page_object_method_passes_return_type_through(self) -> None:
+        method_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="the page is displayed", step_type="PageAction"),
+            method_name="isDisplayed",
+            return_type="boolean",
+        )
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}
+        )
+
+        orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert generator.received_contexts[0].return_type == "boolean"
+
+    def test_defaults_to_none_when_the_need_carries_no_derived_return_type(self) -> None:
+        method_need = _method_need()  # return_type defaults to None
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}
+        )
+
+        orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert generator.received_contexts[0].return_type is None
+
+    def test_orchestrate_page_object_class_passes_the_primarys_return_type_through(self) -> None:
+        primary = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="the page is displayed", step_type="PageAction"),
+            method_name="isDisplayed",
+            return_type="boolean",
+        )
+        sibling = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="click continue", step_type="PageAction"),
+            method_name="clickContinue",
+            return_type="void",
+        )
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({primary.need.text: (), sibling.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {primary.need.text: "package com.automation.pages;\n"}
+        )
+
+        orchestrate_page_object_class([primary, sibling], catalog, matcher, generator)
+
+        received = generator.received_contexts[0]
+        assert received.return_type == "boolean"
+        assert [n.return_type for n in received.additional_method_needs] == ["void"]
+
+
 # ---------------------------------------------------------------------------
 # PART 2 -- THE METHOD-FIT DISCHARGE
 # ---------------------------------------------------------------------------

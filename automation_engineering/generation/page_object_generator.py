@@ -111,6 +111,19 @@ class PageObjectGenerationContext:
     :class:`~.page_object_generator.StubPageObjectGenerator` and any
     non-live caller that genuinely has no name to supply are unaffected) --
     only the LIVE generator enforces the requirement.
+
+    ``return_type`` (additive, defect-4 fix) is the PRIMARY method's own
+    caller-derived Java return type -- the ``additional_method_needs``
+    sibling to :class:`~.models.PageObjectMethodNeed.return_type`, threaded
+    through the same way ``method_name`` already is so a generation request
+    can constrain the return type of EVERY method it asks for, not just the
+    additional ones. ``None`` (the default) means "unconstrained" -- either
+    because the caller never derived one, or because the step-def call site
+    this method serves was not cleanly derivable (see
+    :mod:`.page_object_reference_derivation`'s own "RETURN-TYPE DERIVATION"
+    section) -- and preserves this platform's prior, sole behavior for that
+    method: the model chooses whichever return-type convention it judges
+    idiomatic, exactly as before this field existed.
     """
 
     need: GherkinStepNeed
@@ -119,6 +132,7 @@ class PageObjectGenerationContext:
     customqa_constraints: tuple[str, ...]
     additional_method_needs: tuple[PageObjectMethodNeed, ...] = ()
     method_name: str | None = None
+    return_type: str | None = None
 
 
 class PageObjectGenerator(Protocol):

@@ -118,6 +118,37 @@ performs no retries.
 template contract (exactly one ``{artifact_context}`` placeholder) --
 rendered via ``render_user_prompt``, not an append-a-final-section
 workaround.
+
+v1.2.0 -> v1.3.0 -- the derived verification-method return type (additive,
+defect-4 fix)
+--------------------------------------------------------------------------
+A live regeneration run (after the defect-2/defect-3 fixes above) found a
+fourth, independent compile-breaking mismatch: the step-definition
+generator's own verification calls assume a boolean return
+(``Assertions.assertTrue(page.isDisplayed())``), while this generator was
+never told what that call site expects back, so it was free to declare
+``isDisplayed()`` ``void`` -- self-asserting internally instead of
+returning a value. Neither prompt conveyed its own assumption to the
+other; measured live on 5 of 30 (17%) ``is...``/``verify...`` methods.
+
+No ADR and no working reference example specifies this contract (the same
+``SmokePage.java``/``SmokeSteps.java`` reference that anchored the
+defect-2 fix has no verification method at all, only a plain getter), but
+it is cleanly DERIVABLE from the step-definition's own call-site usage --
+the exact mechanism ``method_name`` derivation already uses
+(:mod:`.page_object_reference_derivation`), extended to also derive the
+return type the call site's own usage implies (see that module's own
+"RETURN-TYPE DERIVATION" section). ``PageObjectMethodNeed.return_type``/
+``PageObjectGenerationContext.return_type`` carry that derived value (or
+``None`` when the usage was not cleanly derivable) through to this
+generator, which now conveys it as an OPTIONAL ``return_type`` field per
+``methods`` entry -- ``v1.3.0``'s only addition over ``v1.2.0``, otherwise
+byte-identical request/response shape. This class now ALWAYS renders
+v1.3.0, the same "one prompt version, not a divergence" discipline the
+method-name and BasePage-inventory fixes above already established. This
+is the INPUT-side fix only: it proves the derived return type reaches the
+prompt; whether the model actually declares the matching signature is
+proven by the (separate, later) live regeneration re-run.
 """
 
 from __future__ import annotations
@@ -138,7 +169,7 @@ from shared.prompts.framework.prompt_registry import PromptRegistry
 from shared.prompts.framework.prompt_template_contract import parse_governed_template
 
 _PROMPT_ID = "generate_page_objects"
-_PROMPT_VERSION = "1.2.0"
+_PROMPT_VERSION = "1.3.0"
 
 #: Deterministic sampling by default, matching the platform-wide convention
 #: (``LLMRequest.temperature`` itself defaults to 0.0).
@@ -287,13 +318,20 @@ class LivePageObjectGenerator:
             context.need,
             *(need.need for need in context.additional_method_needs),
         )
+        expected_return_types = (
+            context.return_type,
+            *(need.return_type for need in context.additional_method_needs),
+        )
         methods_payload = [
             {
                 "method_name": method_name,
                 "action_text": need.text,
                 "captures": _capture_payload(need.captures),
+                "return_type": return_type,
             }
-            for method_name, need in zip(expected_method_names, method_needs, strict=True)
+            for method_name, need, return_type in zip(
+                expected_method_names, method_needs, expected_return_types, strict=True
+            )
         ]
         input_payload: dict[str, object] = {
             "class_name": context.class_name,

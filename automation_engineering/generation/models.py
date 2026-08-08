@@ -94,11 +94,32 @@ class PageObjectMethodNeed:
     already exists to prevent for method names specifically). ``None``
     (omitted) preserves the prior, sole behavior: the class name is derived
     from ``need.text`` exactly as it always was.
+
+    ``return_type`` (additive, defect-4 fix) is a THIRD, optional piece of
+    caller-supplied knowledge, the same class of fix ``class_name_override``
+    already is: when the caller already knows what Java return type this
+    method's own call site requires -- because
+    :mod:`.page_object_reference_derivation` parsed it out of an
+    ALREADY-GENERATED step-definition's own usage (``assertTrue(page.isX())``
+    implies ``boolean``; a bare, result-discarding call implies ``void``; an
+    assignment to a declared-type variable implies that type; see that
+    module's own "RETURN-TYPE DERIVATION" section) -- a freshly generated
+    page-object method must be declared with THAT exact return type, never
+    left for the generator to choose independently and risk disagreeing
+    with what the call site actually does with the result (the live-
+    measured defect this field exists to prevent: a step-def asserting
+    ``assertTrue(page.isDisplayed())`` while the page object declares
+    ``isDisplayed()`` ``void``, which does not compile). ``None`` (the
+    default) preserves the prior, sole behavior -- an unconstrained
+    generation, either because no caller derived a return type yet, or
+    because the call site's own usage was not cleanly derivable (module
+    docstring's own "never a guess" discipline).
     """
 
     need: GherkinStepNeed
     method_name: str
     class_name_override: str | None = None
+    return_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
