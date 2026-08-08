@@ -45,12 +45,16 @@ def _make_request(
 
 
 def _fake_response(
-    text: str = "Generated output",
+    text: str | None = "Generated output",
     finish_reason_name: str = "STOP",
     prompt_tokens: int = 10,
     completion_tokens: int = 20,
 ) -> MagicMock:
-    """Build a mock that mimics a google-genai GenerateContentResponse."""
+    """Build a mock that mimics a google-genai GenerateContentResponse.
+    ``text=None`` mimics a non-STOP completion with zero content parts
+    (e.g. Gemini's own ``MALFORMED_RESPONSE`` finish reason) -- the SDK's
+    own ``.text`` accessor returns ``None`` cleanly in that case, no
+    exception."""
     candidate = MagicMock()
     candidate.finish_reason.name = finish_reason_name
 
@@ -197,6 +201,82 @@ def test_response_mapping_populates_usage_and_raw_response() -> None:
     assert result.usage.total_tokens == 20
     assert result.raw_response["text"] == "result"
     assert result.raw_response["finish_reason"] == "STOP"
+
+
+# ---------------------------------------------------------------------------
+# 4b. None-text response mapping (the MALFORMED_RESPONSE crash fix)
+# ---------------------------------------------------------------------------
+#
+# A live regeneration run measured Gemini returning `finish_reason=
+# "MALFORMED_RESPONSE"` with zero content parts for 5 real prompts --
+# `.text` returns `None` cleanly (no SDK exception), which previously flowed
+# straight into `LLMResponse(generated_text=None, ...)` and crashed with an
+# untyped, leaky `pydantic.ValidationError` instead of this provider's own
+# documented `ProviderGenerationError`. `_fake_response` is reused with
+# `text=None` -- the exact shape the live run measured.
+
+
+@pytest.mark.unit
+def test_none_text_raises_generation_error_naming_the_finish_reason() -> None:
+    """THE crash, reversed: the exact MALFORMED_RESPONSE shape now raises
+    the DOCUMENTED, typed exception -- not a pydantic ValidationError."""
+    response = _fake_response(text=None, finish_reason_name="MALFORMED_RESPONSE")
+    client = _fake_client(response)
+    provider = GeminiProvider(api_key="fake-key")
+
+    with patch(_CLIENT_PATH, return_value=client):
+        with pytest.raises(ProviderGenerationError, match="MALFORMED_RESPONSE") as excinfo:
+            provider.generate(_make_request())
+
+    from pydantic import ValidationError
+
+    assert not isinstance(excinfo.value, ValidationError)
+
+
+@pytest.mark.unit
+def test_none_text_raises_regardless_of_which_non_stop_reason() -> None:
+    """The guard is on `.text is None`, not a hardcoded check for the one
+    finish-reason label the live run happened to measure -- any non-STOP
+    completion that yields no text raises the same way."""
+    response = _fake_response(text=None, finish_reason_name="SAFETY")
+    client = _fake_client(response)
+    provider = GeminiProvider(api_key="fake-key")
+
+    with patch(_CLIENT_PATH, return_value=client):
+        with pytest.raises(ProviderGenerationError, match="SAFETY"):
+            provider.generate(_make_request())
+
+
+@pytest.mark.unit
+def test_none_text_is_not_retried_the_call_already_succeeded() -> None:
+    """The retry boundary, confirmed: this is an ESCALATE, not a RETRY.
+    `_execute`'s own bounded retry-with-backoff wraps the SDK call, which
+    already succeeded (it returned a normal response object) -- there is
+    nothing to retry. `generate_content` is called exactly once."""
+    response = _fake_response(text=None, finish_reason_name="MALFORMED_RESPONSE")
+    client = _fake_client(response)
+    provider = GeminiProvider(api_key="fake-key")
+
+    with patch(_CLIENT_PATH, return_value=client):
+        with pytest.raises(ProviderGenerationError):
+            provider.generate(_make_request())
+
+    assert client.models.generate_content.call_count == 1
+
+
+@pytest.mark.unit
+def test_stop_with_text_is_unaffected_by_the_none_text_guard() -> None:
+    """No regression: the happy path (STOP, real text) is untouched by the
+    added guard -- paired directly against the None-text case above."""
+    response = _fake_response(text="normal output", finish_reason_name="STOP")
+    client = _fake_client(response)
+    provider = GeminiProvider(api_key="fake-key")
+
+    with patch(_CLIENT_PATH, return_value=client):
+        result = provider.generate(_make_request())
+
+    assert result.generated_text == "normal output"
+    assert result.finish_reason == "STOP"
 
 
 @pytest.mark.unit

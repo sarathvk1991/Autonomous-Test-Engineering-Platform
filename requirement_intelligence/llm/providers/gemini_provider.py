@@ -392,15 +392,51 @@ class GeminiProvider(LLMProvider):
 
         No Gemini SDK types escape this method.  The request metadata is echoed
         into ``raw_response`` so it is never lost.
+
+        **``None`` text is a generation failure, not a successful empty
+        response (additive, the MALFORMED_RESPONSE crash fix).** The SDK's
+        own ``.text`` accessor does not always raise on an unusable
+        response -- for a non-``STOP`` completion (a live-measured example:
+        Gemini's own ``MALFORMED_RESPONSE`` finish reason, an API-level
+        value the currently-installed SDK's own enum does not recognize)
+        with zero content parts, ``.text`` returns ``None`` cleanly, no
+        exception. Previously that ``None`` flowed straight into
+        ``LLMResponse(generated_text=None, ...)`` -- a pydantic model
+        whose ``generated_text`` field requires ``str`` -- so construction
+        itself raised an untyped, leaky ``pydantic.ValidationError``
+        instead of this provider's own documented, typed
+        :class:`~requirement_intelligence.llm.llm_exceptions.ProviderGenerationError`
+        (whose own docstring already names exactly this case: "Response
+        payload is missing the expected text field"). That ValidationError
+        happened OUTSIDE this provider's own retry-with-backoff (which
+        wraps only ``_execute``, the SDK call itself -- by the time
+        ``_map_response`` runs, the call already succeeded; there is
+        nothing left to retry), so every caller either had to catch a
+        wrong-typed, undocumented exception via a blanket ``except
+        Exception``, or would have seen an unhandled crash. Checking for
+        ``None`` here, before construction, and raising the SAME typed
+        exception the ``.text``-access failure path just above already
+        raises, makes the failure ESCALATABLE the documented way -- exactly
+        like a safety block or a quota-exhaustion failure, both of which
+        this exception's own docstring already lists as its examples.
         """
         try:
-            generated_text: str = raw.text
+            generated_text: str | None = raw.text
         except (AttributeError, ValueError) as exc:
             raise ProviderGenerationError(
                 f"Could not extract text from Gemini response: {exc}"
             ) from exc
 
         finish_reason = self._extract_finish_reason(raw)
+
+        if generated_text is None:
+            raise ProviderGenerationError(
+                "Gemini returned no text "
+                f"(finish_reason={finish_reason!r}) -- the model completed "
+                "the call but produced zero usable content, a provider-side "
+                "generation failure distinct from a call/transport failure."
+            )
+
         usage = self._extract_usage(raw)
 
         raw_response: dict[str, Any] = {

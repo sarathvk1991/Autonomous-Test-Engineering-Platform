@@ -27,6 +27,7 @@ from automation_engineering.generation.step_definition_generator import (
     StubStepDefinitionGenerator,
 )
 from automation_engineering.reuse.models import GherkinStepNeed
+from requirement_intelligence.llm.llm_exceptions import ProviderGenerationError
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from shared.enums.base import ExecutionStatus, ProviderType
@@ -255,6 +256,30 @@ class TestLlmBoundaryErrorHandling:
 
         with pytest.raises(LiveGenerationError, match="did not complete"):
             generator.generate(_context())
+
+    def test_a_malformed_response_from_the_provider_escalates_not_crashes(self) -> None:
+        """The MALFORMED_RESPONSE crash fix, proven at this boundary: a
+        `ProviderGenerationError` (what `GeminiProvider._map_response` now
+        raises for a None-text/non-STOP response, instead of letting a raw
+        pydantic `ValidationError` escape) is caught by this generator's own
+        pre-existing provider-exception boundary EXACTLY like any other
+        provider failure -- no crash, a clean, escalatable
+        `LiveGenerationError`, the SAME escalate-one-continue path a 429 or
+        a timeout already takes."""
+        provider = FakeProvider(
+            raises=ProviderGenerationError(
+                "Gemini returned no text (finish_reason='MALFORMED_RESPONSE') -- "
+                "the model completed the call but produced zero usable content, "
+                "a provider-side generation failure distinct from a call/"
+                "transport failure."
+            )
+        )
+        generator = LiveStepDefinitionGenerator(provider)
+
+        with pytest.raises(LiveGenerationError, match="MALFORMED_RESPONSE") as excinfo:
+            generator.generate(_context())
+
+        assert isinstance(excinfo.value.__cause__, ProviderGenerationError)
 
     def test_empty_response_raises(self) -> None:
         provider = FakeProvider(text="")
