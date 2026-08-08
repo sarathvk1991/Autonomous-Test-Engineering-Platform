@@ -51,7 +51,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from automation_engineering.catalog.models import CatalogAsset
+from automation_engineering.catalog.models import CatalogAsset, JavaParameter
 from automation_engineering.reuse.models import Escalation, GherkinStepNeed
 from contracts.test_data_specification import TestDataSpecification
 
@@ -114,12 +114,36 @@ class PageObjectMethodNeed:
     generation, either because no caller derived a return type yet, or
     because the call site's own usage was not cleanly derivable (module
     docstring's own "never a guess" discipline).
+
+    ``parameters`` (additive, the captures-arity fix) is a FOURTH, optional
+    piece of caller-supplied knowledge, completing the same call-site-is-
+    the-spec pattern ``method_name``/``return_type`` already establish: the
+    EXACT parameter shape (name + Java type, in order) the call site
+    actually passes to this method -- derived by
+    :mod:`.page_object_reference_derivation` from an ALREADY-GENERATED
+    step-definition's own call-site arguments
+    (:class:`~.page_object_reference_derivation.DerivedPageObjectMethodCall.parameters`),
+    never from ``need.captures`` (this class's own docstring above already
+    describes ``need.captures`` as "the required parameter shape," which is
+    only true when a step's SOLE page-object call consumes every one of its
+    own captures -- a live regeneration run measured a real, compile-
+    breaking counterexample: a step-def that routes its own captured value
+    into ``Assertions.assertEquals(expected, page.getX())`` rather than
+    passing it to ``page.getX(...)`` -- the call site takes ZERO arguments
+    even though the step's own text carries one capture. A freshly
+    generated page-object method must accept EXACTLY what the call site
+    passes, never what the outer Gherkin step happens to capture for its
+    own, possibly-different use). ``None`` (the default) preserves the
+    prior, sole behavior: the page-object generator falls back to
+    ``need.captures`` -- unconstrained by call-site arity, exactly as
+    before this field existed.
     """
 
     need: GherkinStepNeed
     method_name: str
     class_name_override: str | None = None
     return_type: str | None = None
+    parameters: tuple[JavaParameter, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)

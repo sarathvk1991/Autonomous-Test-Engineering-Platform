@@ -175,6 +175,78 @@ platform's pre-fix behavior for that one ambiguous case, never a guessed
 type. The 14 of 15 cleanly-classified real examples all reach the
 generator WITH a constraint; the corpus, investigated directly, shows zero
 real occurrences of the unresolved case today.
+
+CAPTURES-ARITY DERIVATION -- completing the call-site-derived contract
+(additive, the fifth-defect fix)
+==========================================================================
+A live regeneration run (against real Gemini generation, after the return-
+type fix above) measured a THIRD, independent compile-breaking mismatch,
+this one in the wiring below rather than in either generated Java side: 2
+of 30 (6.7%) generated pairs failed to compile with "argument lists differ
+in length." Root cause, confirmed directly against the generated source:
+this module's own docstring above ("Parameter shapes, resolved from the
+real call site, never assumed to equal `GherkinStepNeed.captures`") was
+true of :attr:`DerivedPageObjectMethodCall.parameters` -- the call-site
+argument analysis genuinely IS resolved from the real call site -- but
+FALSE of what actually reached :class:`~.models.PageObjectMethodNeed`: the
+wiring below built every method-need from the OUTER step's own ``need``
+(whose ``.captures`` is the STEP's total capture count), never from
+``call.parameters`` (the SAME call's own, already-computed, real argument
+count) -- so a page-object generation request always carried the step's
+capture count as its parameter-count instruction, regardless of what the
+call site actually passed.
+
+That divergence is invisible whenever a step's SOLE page-object call
+consumes every one of its own captures (the common case, and every
+fixture this module's own tests used before this fix) -- ``need.captures``
+and ``call.parameters`` simply agree in count there. It surfaces exactly
+when they do not: the live run's own real counterexample,
+``CartSteps``/``PostalCodeSteps``, routes a captured value into
+``Assertions.assertEquals(expected, page.getCartCount())`` rather than
+passing it to the page-object call -- the call site's own real arity is
+ZERO arguments, even though the step's own text carries ONE capture
+(``"the cart count should display {string}"``). The generation request
+built from ``need.captures`` told the page-object generator to declare a
+1-parameter method; the step-def's real call site invokes it with zero
+arguments; the mismatch is a genuine Java compile error
+("actual and formal argument lists differ in length"), not a cosmetic one.
+
+This is the SAME "genuine, unresolved limitation" this module's own
+:class:`CoGeneratedStepDefinition`-adjacent test suite already documented
+(a step body calling MULTIPLE page-object methods, each consuming a
+SUBSET of the step's own captures) -- the live run is this limitation's
+first real, compile-breaking confirmation, in a single-call form (a call
+consuming FEWER arguments than the step's own total captures, because the
+model routed the value elsewhere) rather than the originally-documented
+multi-call form. Both forms share the identical root cause and the
+identical fix: source the parameter shape from ``call.parameters``, never
+``need.captures``.
+
+**The fix, completing the pattern.** :class:`~.models.PageObjectMethodNeed`
+gains ``parameters`` (additive, ``None`` default) -- the THIRD call-site-
+derived contract piece, alongside ``method_name`` (defect 1) and
+``return_type`` (defect 4). The wiring below now threads
+``parameters=call.parameters`` -- the value this module ALREADY computed,
+never a new computation -- so name, return type, AND parameter shape are
+now ALL sourced from the same authority: the already-generated step-def's
+own call site. :attr:`DerivedPageObjectMethodCall.parameters` itself is
+unchanged (it already used ``_resolve_argument_type``'s own honest
+``"Object"`` fallback for an unresolvable argument, module docstring
+above) -- this fix only corrects WHERE that already-correct value goes.
+
+**Scope, honestly bounded.** This fixes the GENERATION path only (a
+NO_MATCH method-need's own :class:`~.page_object_generator.PageObjectGenerationContext`).
+The REUSE-BIND path's own precise-fit check
+(:func:`~.method_fit.verify_specific_method_fit`, called from
+:mod:`.page_object_orchestrator` on a TRUSTED_REUSE) still checks a
+candidate's arity against ``method_need.need.captures``, the SAME
+outer-step-captures source this fix moves away from for generation --
+that is a separate, still-open limitation on the BIND side (already
+flagged in this package's own test suite,
+``TestWiringBindsAnExistingPageObject``'s docstring), carried forward
+exactly as honestly as this fix's own predecessor limitation was, not
+fixed here (out of this fix's own scope: neither of the live run's two
+real failures was a TRUSTED_REUSE case -- both were NO_MATCH/generate).
 """
 
 from __future__ import annotations
@@ -525,6 +597,7 @@ def generate_step_definition_with_derived_page_objects(
                 method_name=call.method_name,
                 class_name_override=request.class_name,
                 return_type=call.return_type,
+                parameters=call.parameters,
             )
             for call in request.method_calls
         )

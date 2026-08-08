@@ -149,14 +149,52 @@ method-name and BasePage-inventory fixes above already established. This
 is the INPUT-side fix only: it proves the derived return type reaches the
 prompt; whether the model actually declares the matching signature is
 proven by the (separate, later) live regeneration re-run.
+
+Still v1.3.0 -- the derived call-site parameter shape (additive, no new
+prompt version, the captures-arity fix)
+--------------------------------------------------------------------------
+The SAME live regeneration run found a fifth, independent compile-breaking
+mismatch, this one in the WIRING rather than in either generated Java
+side: 2 of 30 (6.7%) pairs failed with "argument lists differ in length"
+-- the ``methods`` payload's own ``captures`` field was always built from
+``GherkinStepNeed.captures`` (the outer Gherkin step's total capture
+count), never from the call site's own real argument count, which can
+genuinely differ (a step-def that routes a captured value into
+``Assertions.assertEquals(expected, page.getX())`` rather than passing it
+to ``page.getX(...)`` calls that method with ZERO arguments even though
+the step's own text carries one capture). See
+:mod:`.page_object_reference_derivation`'s own "CAPTURES-ARITY
+DERIVATION" section for the full root-cause account.
+
+``PageObjectMethodNeed.parameters``/``PageObjectGenerationContext.parameters``
+(additive, ``None`` default) now carry the call-site-derived argument
+shape when available. This method builds the ``captures`` payload entry
+from ``parameters`` (via ``_capture_payload_from_parameters``) WHENEVER it
+is supplied, falling back to the pre-existing ``need.captures``-based
+``_capture_payload`` only when it is not -- the SAME JSON key the v1.3.0
+template's own INPUT CONTRACT already documents, no new field, **no new
+prompt version**: this is a Python-side data-source correction (which
+value populates an existing payload key), never a change to the governed
+prompt TEXT itself (ADR-0014's frozen-wording invariant governs the
+static template, not the caller-supplied JSON substituted into
+``{artifact_context}`` at render time). ``expression_type`` now carries a
+real Java type string when parameter-sourced (``"String"``, ``"boolean"``,
+``"Object"`` for an unresolvable argument -- the SAME honest fallback
+``_resolve_argument_type`` already uses) rather than a Cucumber Expression
+type; the model reads either as a self-explanatory type hint. This is the
+INPUT-side fix only: it proves the call-site-derived arity reaches the
+prompt; whether the model actually declares the matching signature is
+proven by the next live regeneration re-run, not by this change.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from uuid import uuid4
 
+from automation_engineering.catalog.models import JavaParameter
 from automation_engineering.errors import TransportFailureError
 from automation_engineering.generation.page_object_generator import (
     PageObjectGenerationContext,
@@ -211,7 +249,9 @@ def _declares_method(java_source: str, method_name: str) -> bool:
 def _capture_payload(need_captures: object) -> list[dict[str, object]]:
     """The capture-list rendering for the ``methods`` payload's own
     per-entry ``captures`` field -- only ever called with
-    ``GherkinStepNeed.captures``."""
+    ``GherkinStepNeed.captures``. The FALLBACK source (module docstring's
+    own "captures-arity fix" note below): used only when no call-site-
+    derived ``parameters`` is available for this method."""
     return [
         {
             "index": capture.index,
@@ -219,6 +259,28 @@ def _capture_payload(need_captures: object) -> list[dict[str, object]]:
             "expression_type": capture.expression_type,
         }
         for capture in need_captures  # type: ignore[attr-defined]
+    ]
+
+
+def _capture_payload_from_parameters(
+    parameters: Sequence[JavaParameter],
+) -> list[dict[str, object]]:
+    """The SAME ``methods`` payload entry's own ``captures`` field, built
+    from the call-site-derived ``PageObjectMethodNeed.parameters``
+    instead of ``GherkinStepNeed.captures`` (module docstring's own
+    "captures-arity fix" -- the PREFERRED source whenever it is available:
+    the real argument count the step-def's own call site passes, which can
+    genuinely differ from the outer step's total capture count). Reuses
+    the SAME JSON shape (``index``/``style``/``expression_type``) the
+    Gherkin-capture payload already uses -- one payload key, two possible
+    sources, never both at once -- so the model reads the exact same field
+    it always has; only ``expression_type`` now carries a real Java type
+    string (``"String"``, ``"int"``, ``"Object"``, ...) rather than a
+    Cucumber Expression type, which the model resolves identically either
+    way (both are self-explanatory type hints)."""
+    return [
+        {"index": index, "style": "call_site", "expression_type": parameter.java_type}
+        for index, parameter in enumerate(parameters)
     ]
 
 
@@ -322,15 +384,27 @@ class LivePageObjectGenerator:
             context.return_type,
             *(need.return_type for need in context.additional_method_needs),
         )
+        expected_parameters = (
+            context.parameters,
+            *(need.parameters for need in context.additional_method_needs),
+        )
         methods_payload = [
             {
                 "method_name": method_name,
                 "action_text": need.text,
-                "captures": _capture_payload(need.captures),
+                "captures": (
+                    _capture_payload_from_parameters(parameters)
+                    if parameters is not None
+                    else _capture_payload(need.captures)
+                ),
                 "return_type": return_type,
             }
-            for method_name, need, return_type in zip(
-                expected_method_names, method_needs, expected_return_types, strict=True
+            for method_name, need, return_type, parameters in zip(
+                expected_method_names,
+                method_needs,
+                expected_return_types,
+                expected_parameters,
+                strict=True,
             )
         ]
         input_payload: dict[str, object] = {

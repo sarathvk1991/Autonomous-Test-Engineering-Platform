@@ -403,6 +403,67 @@ class TestDerivedReturnTypeReachesGeneration:
         assert [n.return_type for n in received.additional_method_needs] == ["void"]
 
 
+class TestDerivedParametersReachGeneration:
+    """The captures-arity fix: `PageObjectMethodNeed.parameters`
+    (caller-supplied, e.g. the call-site-derived arity from
+    `page_object_reference_derivation`) reaches
+    `PageObjectGenerationContext.parameters` -- the exact same passthrough
+    `method_name`/`return_type` already get."""
+
+    def test_orchestrate_page_object_method_passes_parameters_through(self) -> None:
+        method_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="the cart count should display {string}", step_type="Then"),
+            method_name="getCartCount",
+            parameters=(),  # the call-site's own zero-arity, NOT the step's one capture
+        )
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}
+        )
+
+        orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert generator.received_contexts[0].parameters == ()
+
+    def test_defaults_to_none_when_the_need_carries_no_derived_parameters(self) -> None:
+        method_need = _method_need()  # parameters defaults to None
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}
+        )
+
+        orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert generator.received_contexts[0].parameters is None
+
+    def test_orchestrate_page_object_class_passes_the_primarys_parameters_through(self) -> None:
+        primary = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="the cart count should display {string}", step_type="Then"),
+            method_name="getCartCount",
+            parameters=(),
+        )
+        sibling = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="enter the username {string}", step_type="Given"),
+            method_name="enterUsername",
+            parameters=(JavaParameter(name="username", java_type="String"),),
+        )
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({primary.need.text: (), sibling.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {primary.need.text: "package com.automation.pages;\n"}
+        )
+
+        orchestrate_page_object_class([primary, sibling], catalog, matcher, generator)
+
+        received = generator.received_contexts[0]
+        assert received.parameters == ()
+        assert [n.parameters for n in received.additional_method_needs] == [
+            (JavaParameter(name="username", java_type="String"),)
+        ]
+
+
 # ---------------------------------------------------------------------------
 # PART 2 -- THE METHOD-FIT DISCHARGE
 # ---------------------------------------------------------------------------

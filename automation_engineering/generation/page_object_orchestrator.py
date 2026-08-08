@@ -199,6 +199,12 @@ def orchestrate_page_object_method(
     ``None`` unless a caller (:mod:`.page_object_reference_derivation`)
     already derived one from the step-def's own call-site usage; see that
     module's own "RETURN-TYPE DERIVATION" section.
+
+    The generation context's own ``parameters`` is set from
+    ``method_need.parameters`` the same way (additive, the captures-arity
+    fix) -- ``None`` unless a caller already derived the call site's real
+    argument shape; see that module's own "CAPTURES-ARITY DERIVATION"
+    section.
     """
     decision = decide_reuse(
         method_need.need, catalog, matcher, confidence_threshold=confidence_threshold
@@ -241,6 +247,7 @@ def orchestrate_page_object_method(
             customqa_constraints=customqa_constraints,
             method_name=method_need.method_name,
             return_type=method_need.return_type,
+            parameters=method_need.parameters,
         )
         java_source = generator.generate(context)
         return GeneratedPageObject(
@@ -376,6 +383,7 @@ def orchestrate_page_object_class(
             additional_method_needs=tuple(rest),
             method_name=primary.method_name,
             return_type=primary.return_type,
+            parameters=primary.parameters,
         )
         java_source = generator.generate(context)
         resolved.append(

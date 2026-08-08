@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from automation_engineering.catalog.models import StepCapture
+from automation_engineering.catalog.models import JavaParameter, StepCapture
 from automation_engineering.generation.live_page_object_generator import (
     LiveGenerationError,
     LivePageObjectGenerator,
@@ -102,6 +102,20 @@ class TestPageObjectGenerationContextReturnType:
     def test_carries_a_caller_supplied_return_type(self) -> None:
         context = _context(return_type="boolean")
         assert context.return_type == "boolean"
+
+
+class TestPageObjectGenerationContextParameters:
+    """The captures-arity fix: `parameters` -- additive, `None` by default
+    so every pre-existing call site is unaffected."""
+
+    def test_defaults_to_none(self) -> None:
+        context = _context()
+        assert context.parameters is None
+
+    def test_carries_a_caller_supplied_parameter_shape(self) -> None:
+        parameters = (JavaParameter(name="arg0", java_type="String"),)
+        context = _context(parameters=parameters)
+        assert context.parameters == parameters
 
 
 # ---------------------------------------------------------------------------
@@ -746,3 +760,140 @@ class TestLiveGeneratorConveysDerivedReturnType:
         assert "methods" in sent_prompt
         assert "open(String url)" in sent_prompt  # v1.2.0's own BasePage inventory, unchanged
         assert "never assume basepage exposes" in sent_prompt.lower()
+
+
+class TestLiveGeneratorConveysDerivedCallSiteParameters:
+    """The fifth-defect fix, proven directly: a live regeneration run
+    measured 2 of 30 (6.7%) pairs failing with "argument lists differ in
+    length" -- the `captures` payload entry was always built from
+    `GherkinStepNeed.captures` (the outer step's own total capture count),
+    never from the call site's own real argument count. `context.parameters`
+    (derived by `page_object_reference_derivation` from the step-def's own
+    already-generated call site) now reaches the built prompt's `captures`
+    field WHENEVER supplied -- no new prompt version (still v1.3.0): this is
+    a Python-side data-source correction over an existing payload key, not a
+    change to the governed template text."""
+
+    def test_a_derived_zero_arity_overrides_the_steps_own_one_capture(self) -> None:
+        """THE exact fifth-defect case: the step's own `need.captures` has
+        ONE entry, but `context.parameters` (call-site-derived) has ZERO --
+        the built `captures` payload must be EMPTY, not length-one."""
+        need = GherkinStepNeed(
+            text="the cart count should display {string}",
+            step_type="PageAction",
+            captures=(StepCapture(index=0, style="cucumber_expression", expression_type="string"),),
+        )
+        context = _context(
+            need,
+            class_name="CartPage",
+            method_name="getCartCount",
+            parameters=(),
+        )
+        provider = FakeProvider(text=_single_method_java("getCartCount"))
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(context)
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert methods[0]["captures"] == []
+
+    def test_a_derived_nonzero_parameter_shape_is_conveyed_with_its_java_type(self) -> None:
+        parameters = (JavaParameter(name="username", java_type="String"),)
+        context = _context(
+            _need("enter the username"),
+            class_name="LoginPage",
+            method_name="enterUsername",
+            parameters=parameters,
+        )
+        provider = FakeProvider(text=_single_method_java("enterUsername"))
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(context)
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert methods[0]["captures"] == [
+            {"index": 0, "style": "call_site", "expression_type": "String"}
+        ]
+
+    def test_an_unresolvable_argument_types_honest_object_fallback_is_conveyed(self) -> None:
+        """Mirrors `_resolve_argument_type`'s own honest `"Object"`
+        fallback (the derivation module's pre-existing discipline for an
+        argument that is neither a step-def parameter nor a literal) --
+        conveyed here exactly as computed, never silently dropped."""
+        parameters = (JavaParameter(name="arg0", java_type="Object"),)
+        context = _context(method_name=_DEFAULT_METHOD_NAME, parameters=parameters)
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(context)
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert methods[0]["captures"] == [
+            {"index": 0, "style": "call_site", "expression_type": "Object"}
+        ]
+
+    def test_missing_parameters_falls_back_to_the_steps_own_captures_unchanged(self) -> None:
+        """`context.parameters` left at its default `None` -- the prior,
+        sole behavior (`need.captures`-sourced) is preserved exactly, no
+        regression for a caller that hasn't derived call-site parameters."""
+        need = GherkinStepNeed(
+            text="enter the username {string}",
+            step_type="PageAction",
+            captures=(StepCapture(index=0, style="cucumber_expression", expression_type="string"),),
+        )
+        context = _context(need, method_name=_DEFAULT_METHOD_NAME)  # parameters defaults to None
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(context)
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert methods[0]["captures"] == [
+            {"index": 0, "style": "cucumber_expression", "expression_type": "string"}
+        ]
+
+    def test_multi_method_payload_sources_each_methods_own_parameters_independently(self) -> None:
+        additional = (
+            PageObjectMethodNeed(
+                need=_need("enter the password"),
+                method_name="enterPassword",
+                parameters=(JavaParameter(name="password", java_type="String"),),
+            ),
+            PageObjectMethodNeed(
+                need=_need("click the login button"),
+                method_name="clickLogin",
+                parameters=(),
+            ),
+        )
+        context = _context(
+            _need("enter the username"),
+            class_name="LoginPage",
+            method_name="enterUsername",
+            parameters=(JavaParameter(name="username", java_type="String"),),
+            additional_method_needs=additional,
+        )
+        provider = FakeProvider(text=_COMPLETE_LOGIN_PAGE_JAVA)
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(context)
+
+        payload = _sent_input_payload(provider.requests[0].prompt)
+        methods = payload["methods"]
+        assert isinstance(methods, list)
+        assert [len(m["captures"]) for m in methods] == [1, 1, 0]
+
+    def test_no_new_prompt_version_still_v130(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME, parameters=()))
+
+        assert provider.requests[0].metadata["prompt_version"] == "1.3.0"

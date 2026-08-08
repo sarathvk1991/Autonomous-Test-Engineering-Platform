@@ -51,6 +51,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from automation_engineering.catalog.models import JavaParameter
 from automation_engineering.generation.models import PageObjectMethodNeed
 from automation_engineering.reuse.models import GherkinStepNeed
 
@@ -124,6 +125,20 @@ class PageObjectGenerationContext:
     section) -- and preserves this platform's prior, sole behavior for that
     method: the model chooses whichever return-type convention it judges
     idiomatic, exactly as before this field existed.
+
+    ``parameters`` (additive, the captures-arity fix) is the PRIMARY
+    method's own caller-derived parameter shape -- the
+    ``additional_method_needs`` sibling to
+    :class:`~.models.PageObjectMethodNeed.parameters`, threaded through the
+    same way ``method_name``/``return_type`` already are. ``None`` (the
+    default) means "unconstrained by call-site arity" -- the generator
+    falls back to ``need.captures`` (the step's own total capture count),
+    exactly this platform's prior, sole behavior; every real production
+    caller now supplies ``call.parameters`` (see
+    :mod:`.page_object_reference_derivation`'s own "CAPTURES-ARITY
+    DERIVATION" section) so a generation request constrains EVERY method
+    it asks for to the arity its own call site actually uses, not the
+    outer step's capture count.
     """
 
     need: GherkinStepNeed
@@ -133,6 +148,7 @@ class PageObjectGenerationContext:
     additional_method_needs: tuple[PageObjectMethodNeed, ...] = ()
     method_name: str | None = None
     return_type: str | None = None
+    parameters: tuple[JavaParameter, ...] | None = None
 
 
 class PageObjectGenerator(Protocol):

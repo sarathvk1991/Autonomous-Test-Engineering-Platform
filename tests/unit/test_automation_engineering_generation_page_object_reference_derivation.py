@@ -686,6 +686,203 @@ class TestWiringCarriesTheDerivedReturnTypeThroughToGeneration:
         assert by_name == {"confirmOrder": "void", "getStatus": None}
 
 
+class TestWiringCarriesTheDerivedParametersThroughToGeneration:
+    """The fifth-defect fix, proven end to end through this module's own
+    wiring: the call-site-derived parameter shape (already computed by
+    `derive_page_object_requests` -- `DerivedPageObjectMethodCall
+    .parameters` -- module docstring's own "CAPTURES-ARITY DERIVATION"
+    section) now reaches `PageObjectMethodNeed.parameters`, the same path
+    `method_name`/`return_type` already take, INSTEAD of the outer step's
+    own `need.captures`."""
+
+    def test_a_call_site_with_fewer_args_than_the_steps_own_captures_wins(self) -> None:
+        """THE exact fifth-defect case, reversed: `CartSteps`'s own real
+        shape -- the step has ONE capture (`{string}`) but the call site
+        (`assertEquals(expectedCount, cartPage.getCartCount())`) passes
+        ZERO arguments to `getCartCount`. `method_need.parameters` must be
+        `()` -- the CALL SITE's own arity -- never `(JavaParameter(...),)`
+        derived from the step's own capture count."""
+        need = GherkinStepNeed(
+            text="the cart count should display {string}",
+            step_type="Then",
+            captures=(StepCapture(index=0, style="cucumber_expression", expression_type="string"),),
+        )
+        catalog = _catalog()  # empty -- NO_MATCH, must generate
+        step_matcher = StubSemanticMatcher({need.text: ()})
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class CartSteps {\n"
+            "    private CartPage cartPage;\n\n"
+            '    @Then("the cart count should display {string}")\n'
+            "    public void theCartCountShouldDisplay(String expectedCount) {\n"
+            "        Assertions.assertEquals(expectedCount, cartPage.getCartCount());\n"
+            "    }\n"
+            "}\n"
+        )
+        step_generator = StubStepDefinitionGenerator({need.text: java})
+        page_object_matcher = StubSemanticMatcher({need.text: ()})
+        canned_page_object = (
+            "package com.automation.pages;\n"
+            "public class CartPage extends BasePage {\n"
+            "    public String getCartCount() { return \"0\"; }\n"
+            "}\n"
+        )
+        page_object_generator = StubPageObjectGenerator({need.text: canned_page_object})
+
+        # The step's OWN captures carry one entry -- proving the fix isn't
+        # a coincidence: if `need.captures` were still the source, this
+        # would be a false pass.
+        assert len(need.captures) == 1
+
+        outcome = generate_step_definition_with_derived_page_objects(
+            need,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_generator,
+        )
+
+        assert isinstance(outcome, CoGeneratedStepDefinition)
+        generated = outcome.page_object_outcomes[0]
+        assert isinstance(generated, GeneratedPageObject)
+        assert generated.method_need.method_name == "getCartCount"
+        assert generated.method_need.parameters == ()
+
+    def test_a_call_site_consuming_the_capture_still_works_no_regression(self) -> None:
+        """The working case preserved: `loginPage.enterUsername(username)`
+        -- the call site's own single argument, resolved to the step-def's
+        own declared `String` parameter type -- still reaches
+        `method_need.parameters` unchanged."""
+        catalog = _catalog()
+        step_matcher = StubSemanticMatcher({_NEED.text: ()})
+        single_method_java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Given;\n\n"
+            "public class LoginSteps {\n"
+            "    private LoginPage loginPage;\n\n"
+            '    @Given("I log in as {string} with password {string}")\n'
+            "    public void iLogInAsWithPassword(String username, String password) {\n"
+            "        loginPage.enterUsername(username);\n"
+            "    }\n"
+            "}\n"
+        )
+        step_generator = StubStepDefinitionGenerator({_NEED.text: single_method_java})
+        page_object_matcher = StubSemanticMatcher({_NEED.text: ()})
+        canned_page_object = "package com.automation.pages;\npublic class LoginPage {}\n"
+        page_object_generator = StubPageObjectGenerator({_NEED.text: canned_page_object})
+
+        outcome = generate_step_definition_with_derived_page_objects(
+            _NEED,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_generator,
+        )
+
+        assert isinstance(outcome, CoGeneratedStepDefinition)
+        generated = outcome.page_object_outcomes[0]
+        assert isinstance(generated, GeneratedPageObject)
+        assert generated.method_need.parameters == (
+            JavaParameter(name="arg0", java_type="String"),
+        )
+
+    def test_name_return_type_and_parameters_are_all_call_site_sourced(self) -> None:
+        """Consistency proof: the THREE call-site-derived contract pieces
+        (method_name -- defect 1, return_type -- defect 4, parameters --
+        this fix) all land on the SAME `PageObjectMethodNeed`, all sourced
+        from the SAME already-generated step-def's own call site -- the
+        completed derivation."""
+        need = GherkinStepNeed(text="the shopping cart page is displayed", step_type="Then")
+        catalog = _catalog()
+        step_matcher = StubSemanticMatcher({need.text: ()})
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class ShoppingCartSteps {\n"
+            "    private ShoppingCartPage shoppingCartPage;\n\n"
+            '    @Then("the shopping cart page is displayed")\n'
+            "    public void theShoppingCartPageIsDisplayed() {\n"
+            "        Assertions.assertTrue(shoppingCartPage.isDisplayed(), \"...\");\n"
+            "    }\n"
+            "}\n"
+        )
+        step_generator = StubStepDefinitionGenerator({need.text: java})
+        page_object_matcher = StubSemanticMatcher({need.text: ()})
+        canned_page_object = (
+            "package com.automation.pages;\n"
+            "public class ShoppingCartPage extends BasePage {\n"
+            "    public boolean isDisplayed() { return true; }\n"
+            "}\n"
+        )
+        page_object_generator = StubPageObjectGenerator({need.text: canned_page_object})
+
+        outcome = generate_step_definition_with_derived_page_objects(
+            need,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_generator,
+        )
+
+        assert isinstance(outcome, CoGeneratedStepDefinition)
+        method_need = outcome.page_object_outcomes[0].method_need
+        assert method_need.method_name == "isDisplayed"  # defect 1
+        assert method_need.return_type == "boolean"  # defect 4
+        assert method_need.parameters == ()  # this fix
+
+    def test_determinism(self) -> None:
+        need = GherkinStepNeed(
+            text="the cart count should display {string}",
+            step_type="Then",
+            captures=(StepCapture(index=0, style="cucumber_expression", expression_type="string"),),
+        )
+        catalog = _catalog()
+        step_matcher = StubSemanticMatcher({need.text: ()})
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class CartSteps {\n"
+            "    private CartPage cartPage;\n\n"
+            '    @Then("the cart count should display {string}")\n'
+            "    public void theCartCountShouldDisplay(String expectedCount) {\n"
+            "        Assertions.assertEquals(expectedCount, cartPage.getCartCount());\n"
+            "    }\n"
+            "}\n"
+        )
+        step_generator = StubStepDefinitionGenerator({need.text: java})
+        page_object_matcher = StubSemanticMatcher({need.text: ()})
+        canned_page_object = (
+            "package com.automation.pages;\n"
+            "public class CartPage extends BasePage {\n"
+            "    public String getCartCount() { return \"0\"; }\n"
+            "}\n"
+        )
+
+        def _run() -> tuple[JavaParameter, ...] | None:
+            page_object_generator = StubPageObjectGenerator({need.text: canned_page_object})
+            outcome = generate_step_definition_with_derived_page_objects(
+                need,
+                catalog,
+                step_matcher,
+                step_generator,
+                page_object_matcher=page_object_matcher,
+                page_object_generator=page_object_generator,
+            )
+            assert isinstance(outcome, CoGeneratedStepDefinition)
+            generated = outcome.page_object_outcomes[0]
+            assert isinstance(generated, GeneratedPageObject)
+            return generated.method_need.parameters
+
+        assert _run() == _run() == ()
+
+
 class TestWiringEscalatesTheWholeStepOnAnUnverifiedBinding:
     def test_a_trusted_reuse_missing_the_specific_method_escalates_the_whole_step(self) -> None:
         login_page = PageObjectAsset(
