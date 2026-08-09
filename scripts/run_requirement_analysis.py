@@ -109,6 +109,25 @@ REASONING_CONTRACT_VERSION = meta.REASONING_CONTRACT_VERSION
 # even though this is the first CLI wiring to construct a
 # LiveSonarQualityGateAdapter (CP3's own submit-a-scan seam) against it.
 _DEFAULT_SONAR_BASE_URL = "http://localhost:9000"
+# Step-definition generation's OWN model choice -- deliberately NOT the shared
+# GEMINI_MODEL/args.model the `provider` variable below resolves to (still
+# gemini-3.1-flash-lite by default), and deliberately scoped to
+# LiveStepDefinitionGenerator alone, never the platform-wide default (the
+# MALFORMED_RESPONSE coverage probe, 2026-08-09: 3-5 of a live corpus's
+# step-def needs returned a live-measured MALFORMED_RESPONSE finish reason
+# with zero content parts on the lite model at every sampling temperature
+# tried, 0.0-1.0 -- consistent with the lite model exhausting its internal
+# reasoning budget on these needs specifically, not a sampling artifact a
+# temperature change can route around. The SAME needs generated cleanly,
+# every time, on a non-lite model at default settings -- gemini-2.5-flash and
+# gemini-3.5-flash both proved out live, at 4-10s latency; a same-model
+# thinking_config escalation also worked but cost ~130-180s/call, ~20x
+# slower, for the identical outcome). Feature-generation/remediation and
+# test-data generation (`provider`, below) never showed this failure in the
+# probe and stay on the shared lite default -- this is a step-definition-
+# generation-specific fix, not a platform-wide model change.
+_DEFAULT_STEP_DEFINITION_MODEL = "gemini-2.5-flash"
+_ENV_STEP_DEFINITION_MODEL = "STEP_DEF_GEMINI_MODEL"
 # Synthetic request id used for --dry-run, where no execution_id is generated.
 _DRY_RUN_REQUEST_ID = "dry-run"
 # Schema/organization version stamped on the single-execution HistoricalDatasetReference
@@ -242,6 +261,17 @@ def _provider_display(provider: str, model: str | None) -> str:
     """Render ``provider (model)``, falling back to the environment-configured model."""
     effective = model or os.environ.get("GEMINI_MODEL", "")
     return f"{provider} ({effective})" if effective else provider
+
+
+def _step_definition_model() -> str:
+    """The model `LiveStepDefinitionGenerator`'s own provider is built with --
+    read fresh at call time (never at import time), same discipline as
+    ``_DEFAULT_SONAR_BASE_URL``'s own env lookup. Overridable via
+    ``STEP_DEF_GEMINI_MODEL``; defaults to a non-lite model
+    (``_DEFAULT_STEP_DEFINITION_MODEL``), independent of ``GEMINI_MODEL``/
+    ``args.model`` -- see ``_DEFAULT_STEP_DEFINITION_MODEL``'s own module-level
+    docstring for why this is scoped to step-definition generation alone."""
+    return os.environ.get(_ENV_STEP_DEFINITION_MODEL, _DEFAULT_STEP_DEFINITION_MODEL)
 
 
 def _print_startup_banner(
@@ -1641,11 +1671,23 @@ def handle_analyze(args: argparse.Namespace) -> int:
             feature_engineering_result is not None or fe_stage.status == StageStatus.SKIPPED
         ):
             console.action("\nGenerating Automation (Layer 3)")
+            # Step-definition generation gets its OWN provider instance, built
+            # with its own (non-lite) model -- `_step_definition_model()` --
+            # deliberately never the shared `provider` above (still the
+            # lite-by-default `GEMINI_MODEL`/`args.model`) that
+            # `LiveTestDataGenerator` below, and Feature Engineering's own
+            # `LiveFeatureContentGenerator`/`LiveFeatureRemediator` above, keep
+            # using unchanged. See `_DEFAULT_STEP_DEFINITION_MODEL`'s own
+            # docstring for why this one caller is scoped out.
+            step_definition_provider = context.create_provider(
+                args.provider, _step_definition_model()
+            )
+            step_definition_provider.validate_connection()
             automation_engineering_result = execute_automation_engineering_stage(
                 run_state_mgr,
                 target_dir,
                 matcher=LiveSemanticMatcher(GeminiEmbeddingProvider()),
-                step_definition_generator=LiveStepDefinitionGenerator(provider),
+                step_definition_generator=LiveStepDefinitionGenerator(step_definition_provider),
                 test_data_generator=LiveTestDataGenerator(provider),
                 sonar_adapter=LiveSonarQualityGateAdapter(
                     base_url=os.environ.get("SONAR_BASE_URL", _DEFAULT_SONAR_BASE_URL),

@@ -7,6 +7,7 @@ made and no real input files are read.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import importlib.util
 import json
@@ -2941,3 +2942,170 @@ def test_resume_detects_a_failed_automation_engineering_stage_and_resumes_it(
     package = json.loads((run_dir / "automation_engineering_package.json").read_text())
     assert len(package["records"]) >= 1
     assert all(r["escalated"] is True for r in package["records"])
+
+
+# ===========================================================================
+# Step-definition generation's own non-lite model (MALFORMED_RESPONSE
+# coverage-probe fix, scoped to LiveStepDefinitionGenerator alone)
+# ===========================================================================
+
+
+@pytest.mark.unit
+def test_step_definition_model_defaults_to_non_lite() -> None:
+    """`_step_definition_model()` -- the pure resolution function, no CLI
+    machinery needed -- defaults to a non-lite model, independent of
+    whatever `GEMINI_MODEL` resolves to."""
+    assert cli._step_definition_model() == "gemini-2.5-flash"
+
+
+@pytest.mark.unit
+def test_step_definition_model_overridable_via_its_own_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Overridable via `STEP_DEF_GEMINI_MODEL` -- distinct from `GEMINI_MODEL`,
+    which this function never reads."""
+    monkeypatch.setenv("STEP_DEF_GEMINI_MODEL", "gemini-3.5-flash")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.1-flash-lite")  # must have no effect here
+    assert cli._step_definition_model() == "gemini-3.5-flash"
+
+
+class _RecordingStepDefinitionGenerator:
+    """Records the provider it was constructed with into the enclosing
+    test's `captured` dict; never actually exercised (mirrors
+    `_NeverCalledAutomationStepDefinitionGenerator` -- the matcher below
+    transport-fails every need before generation is reached)."""
+
+    def __init__(self, provider: Any, captured: dict[str, Any]) -> None:
+        captured["step_definition_provider"] = provider
+
+    def generate(self, context: Any) -> str:
+        raise AssertionError("should never be called -- the matcher transport-fails first")
+
+
+class _RecordingTestDataGenerator:
+    """Records its provider the same way, but IS exercised (ADR-0044 D7:
+    test-data generation is unconditional) -- mirrors
+    `_AllTransportEscalatingAutomationTestDataGenerator`'s own
+    transport-fail-every-need discipline so the stage still reaches
+    SUCCEEDED-with-escalations, never generating/promoting anything."""
+
+    def __init__(self, provider: Any, captured: dict[str, Any]) -> None:
+        captured["test_data_provider"] = provider
+
+    def generate(self, context: Any) -> str:
+        raise TransportFailureError(
+            f"simulated LLM rate-limit for {context.specification.requirement_id!r}"
+        )
+
+
+class _RecordingFeatureContentGenerator(_FakeLiveFeatureContentGenerator):
+    """`_FakeLiveFeatureContentGenerator`, plus recording its provider --
+    stage 14 must actually succeed (a real, CP2-passing feature) so stage 15
+    has something to consume."""
+
+    def __init__(self, provider: Any, captured: dict[str, Any]) -> None:
+        super().__init__(provider)
+        captured["feature_content_provider"] = provider
+
+
+class _ModelTaggingFakeContext(FakeContext):
+    """`FakeContext`, except `create_provider` tags the returned mock with
+    the `model` it was actually called with (plain `FakeContext.create_provider`
+    ignores `model` entirely) -- lets a test distinguish "the shared provider"
+    from "step-definition generation's own provider" by inspecting
+    `.requested_model` on what each live generator was constructed with."""
+
+    def create_provider(self, provider_name: str, model: str | None = None) -> MagicMock:
+        provider = MagicMock()
+        provider.requested_model = model
+        return provider
+
+
+def _run_with_recording_providers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, captured: dict[str, Any]
+) -> None:
+    """Drives the same `--with-automation-engineering` CLI path
+    `test_resume_detects_a_failed_automation_engineering_stage_and_resumes_it`
+    already proves resumes correctly, swapping in the three `_Recording*`
+    fakes above (bound to `captured` via `functools.partial`, since the CLI
+    constructs each with a single `provider` positional argument) so this
+    test can inspect exactly which `context.create_provider(...)` result each
+    live generator was actually built with."""
+    feature_content_cls = functools.partial(_RecordingFeatureContentGenerator, captured=captured)
+    step_definition_cls = functools.partial(_RecordingStepDefinitionGenerator, captured=captured)
+    test_data_cls = functools.partial(_RecordingTestDataGenerator, captured=captured)
+
+    monkeypatch.setattr(cli, "LiveFeatureContentGenerator", feature_content_cls)
+    monkeypatch.setattr(cli, "LiveFeatureRemediator", _NeverCalledFeatureRemediator)
+    monkeypatch.setattr(cli, "LiveSemanticMatcher", _AllTransportEscalatingAutomationMatcher)
+    monkeypatch.setattr(cli, "LiveStepDefinitionGenerator", step_definition_cls)
+    monkeypatch.setattr(cli, "LiveTestDataGenerator", test_data_cls)
+    monkeypatch.setattr(cli, "LiveSonarQualityGateAdapter", _PassingSonarAdapter)
+    monkeypatch.setattr(
+        cli,
+        "PlatformContext",
+        lambda: _ModelTaggingFakeContext(
+            [FakeArtifact("cons-a", quality=3)], result=_real_analysis_result_for_stage14()
+        ),
+    )
+    _patched_context_for_stage14(monkeypatch)
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+
+    exit_code = cli.main(
+        [
+            "analyze",
+            "--validate",
+            "--with-automation-engineering",
+            "--output-dir",
+            str(tmp_path / "ex"),
+        ]
+    )
+    assert exit_code == 0
+
+
+@pytest.mark.unit
+def test_step_definition_generator_gets_a_separate_non_lite_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The scoped fix, proven at the real CLI wiring site (not just the pure
+    `_step_definition_model()` function): `LiveStepDefinitionGenerator` is
+    constructed with a provider from a SEPARATE `context.create_provider(...)`
+    call (model=`_step_definition_model()`, non-lite by default) -- never the
+    shared `provider` `LiveFeatureContentGenerator`/`LiveFeatureRemediator`
+    (Feature Engineering) and `LiveTestDataGenerator` (the OTHER Automation
+    Engineering live generator, still in the SAME stage) are built with."""
+    captured: dict[str, Any] = {}
+    _run_with_recording_providers(monkeypatch, tmp_path, captured)
+
+    step_definition_model = captured["step_definition_provider"].requested_model
+    feature_content_model = captured["feature_content_provider"].requested_model
+    test_data_model = captured["test_data_provider"].requested_model
+
+    assert step_definition_model == "gemini-2.5-flash"  # non-lite, scoped
+    # Feature Engineering and Automation Engineering's own test-data
+    # generation are UNCHANGED -- still built from `args.model` (None here,
+    # so the provider reads the environment-configured, still-lite default).
+    assert feature_content_model is None
+    assert test_data_model is None
+    # Genuinely separate provider instances -- not merely a re-tagged shared one.
+    assert captured["step_definition_provider"] is not captured["feature_content_provider"]
+    assert captured["step_definition_provider"] is not captured["test_data_provider"]
+    # Feature Engineering and Automation Engineering's test-data generation
+    # share the SAME provider instance (unchanged from before this fix).
+    assert captured["feature_content_provider"] is captured["test_data_provider"]
+
+
+@pytest.mark.unit
+def test_step_definition_generator_provider_honors_env_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The override path, proven end-to-end: `STEP_DEF_GEMINI_MODEL` changes
+    which model the step-definition generator's dedicated provider is built
+    with, while every other live generator's model resolution is untouched."""
+    monkeypatch.setenv("STEP_DEF_GEMINI_MODEL", "gemini-3.5-flash")
+    captured: dict[str, Any] = {}
+    _run_with_recording_providers(monkeypatch, tmp_path, captured)
+
+    assert captured["step_definition_provider"].requested_model == "gemini-3.5-flash"
+    assert captured["feature_content_provider"].requested_model is None
+    assert captured["test_data_provider"].requested_model is None
