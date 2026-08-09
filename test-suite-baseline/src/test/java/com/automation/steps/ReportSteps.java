@@ -1,16 +1,18 @@
 package com.automation.steps;
 
+import com.automation.base.DriverFactory;
+import com.automation.pages.ReportPage;
 import io.cucumber.java.en.Then;
 import org.junit.jupiter.api.Assertions;
-import com.automation.pages.ReportPage;
 
 public class ReportSteps {
 
-    private final ReportPage reportPage = new ReportPage();
+    private ReportPage reportPage;
 
     @Then("the report should indicate that all {string} follow the required naming pattern")
-    public void theReportShouldIndicateThatAllFollowTheRequiredNamingPattern(String elementType) {
-        boolean isNamingPatternValid = reportPage.verifyNamingPatternForElements(elementType);
-        Assertions.assertTrue(isNamingPatternValid, "The report indicates that some " + elementType + " do not follow the required naming pattern.");
+    public void theReportShouldIndicateThatAllFollowTheRequiredNamingPattern(String itemType) {
+        reportPage = reportPage != null ? reportPage : new ReportPage(DriverFactory.get());
+        Assertions.assertTrue(reportPage.verifyNamingPatternForItems(itemType), 
+            "The report did not indicate that all " + itemType + " follow the required naming pattern.");
     }
 }

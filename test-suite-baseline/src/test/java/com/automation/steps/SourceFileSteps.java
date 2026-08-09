@@ -1,14 +1,16 @@
 package com.automation.steps;
 
+import com.automation.base.DriverFactory;
+import com.automation.pages.SourceFilePage;
 import io.cucumber.java.en.When;
-import com.automation.pages.SourceFileScannerPage;
 
 public class SourceFileSteps {
 
-    private final SourceFileScannerPage sourceFileScannerPage = new SourceFileScannerPage();
+    private SourceFilePage sourceFilePage;
 
     @When("I scan the source file {string} for naming violations")
-    public void iScanTheSourceFileForNamingViolations(String filePath) {
-        sourceFileScannerPage.scanFileForNamingViolations(filePath);
+    public void iScanTheSourceFileForNamingViolations(String fileName) {
+        sourceFilePage = sourceFilePage != null ? sourceFilePage : new SourceFilePage(DriverFactory.get());
+        sourceFilePage.scanFileForNamingViolations(fileName);
     }
 }

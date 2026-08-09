@@ -124,11 +124,20 @@ class TestRealTrackedBaseline:
         assert then.pattern == "the page title is not empty"
 
     def test_smoke_page_is_catalogued_as_page_object(self) -> None:
+        """`>= 1`, never `== 1` (additive, the real-corpus compile-gap-
+        closing commit): the tracked baseline's own page objects legitimately
+        grew from 1 (`SmokePage` alone) once the live step-def/page-object
+        regeneration this commit lands actually produced compiling output --
+        the SAME "known asset, not exact population" invariant this class's
+        own docstring already establishes for `test_smoke_steps_are_catalogued`
+        and `test_framework_and_runner_packages_are_excluded` (below); this
+        test asserts `SmokePage`'s own known shape AMONG whatever else the
+        live baseline now contains, never an exact total count."""
         catalog = reconcile(_REAL_BASELINE_ROOT)
 
-        assert len(catalog.page_objects) == 1
-        smoke_page = catalog.page_objects[0]
-        assert smoke_page.class_name == "com.automation.pages.SmokePage"
+        assert len(catalog.page_objects) >= 1  # SmokePage, plus whatever else
+        by_class_name = {p.class_name: p for p in catalog.page_objects}
+        smoke_page = by_class_name["com.automation.pages.SmokePage"]
         assert smoke_page.extends == "BasePage"
         assert smoke_page.kind is AssetKind.PAGE_OBJECT
         method_names = {m.name for m in smoke_page.methods}

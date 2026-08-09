@@ -1,16 +1,17 @@
 package com.automation.steps;
 
+import com.automation.base.DriverFactory;
+import com.automation.pages.PostalCodePage;
 import io.cucumber.java.en.Then;
 import org.junit.jupiter.api.Assertions;
-import com.automation.pages.PostalCodePage;
 
 public class PostalCodeSteps {
 
-    private final PostalCodePage postalCodePage = new PostalCodePage();
+    private PostalCodePage postalCodePage;
 
     @Then("the system should display {string} for the postal code")
-    public void theSystemShouldDisplayValidationResultForThePostalCode(String validationResult) {
-        Assertions.assertEquals(validationResult, postalCodePage.getPostalCodeValidationMessage(), 
-            "The displayed postal code validation message does not match the expected result.");
+    public void theSystemShouldDisplayForThePostalCode(String expectedPostalCode) {
+        postalCodePage = postalCodePage != null ? postalCodePage : new PostalCodePage(DriverFactory.get());
+        Assertions.assertEquals(expectedPostalCode, postalCodePage.getDisplayedPostalCode(), "The displayed postal code does not match the expected value.");
     }
 }

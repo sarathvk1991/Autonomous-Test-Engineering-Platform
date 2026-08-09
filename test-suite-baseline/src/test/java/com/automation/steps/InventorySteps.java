@@ -1,16 +1,18 @@
 package com.automation.steps;
 
+import com.automation.base.DriverFactory;
+import com.automation.pages.InventoryPage;
 import io.cucumber.java.en.Then;
 import org.junit.jupiter.api.Assertions;
-import com.automation.pages.InventoryPage;
 
 public class InventorySteps {
 
-    private final InventoryPage inventoryPage = new InventoryPage();
+    private InventoryPage inventoryPage;
 
     @Then("the inventory items should be displayed in {string} order")
-    public void theInventoryItemsShouldBeDisplayedInOrder(String expectedOrder) {
-        Assertions.assertTrue(inventoryPage.isInventorySortedBy(expectedOrder), 
-            "Inventory items are not displayed in the expected order: " + expectedOrder);
+    public void theInventoryItemsShouldBeDisplayedInOrder(String order) {
+        inventoryPage = inventoryPage != null ? inventoryPage : new InventoryPage(DriverFactory.get());
+        Assertions.assertTrue(inventoryPage.isInventorySortedBy(order), 
+            "Inventory items were not displayed in the expected " + order + " order.");
     }
 }
