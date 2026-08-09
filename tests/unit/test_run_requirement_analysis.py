@@ -2954,8 +2954,12 @@ def test_resume_detects_a_failed_automation_engineering_stage_and_resumes_it(
 def test_step_definition_model_defaults_to_non_lite() -> None:
     """`_step_definition_model()` -- the pure resolution function, no CLI
     machinery needed -- defaults to a non-lite model, independent of
-    whatever `GEMINI_MODEL` resolves to."""
-    assert cli._step_definition_model() == "gemini-2.5-flash"
+    whatever `GEMINI_MODEL` resolves to. gemini-3.5-flash, not gemini-2.5-
+    flash (2026-08-09, the compile-gap-closing real-corpus re-run measured
+    gemini-2.5-flash producing defective Java 76% of the time; gemini-3.5-
+    flash showed none of those defects and still covers the same
+    MALFORMED_RESPONSE needs)."""
+    assert cli._step_definition_model() == "gemini-3.5-flash"
 
 
 @pytest.mark.unit
@@ -2963,10 +2967,12 @@ def test_step_definition_model_overridable_via_its_own_env_var(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Overridable via `STEP_DEF_GEMINI_MODEL` -- distinct from `GEMINI_MODEL`,
-    which this function never reads."""
-    monkeypatch.setenv("STEP_DEF_GEMINI_MODEL", "gemini-3.5-flash")
+    which this function never reads. Overrides to a value DIFFERENT from
+    the current default (gemini-3.5-flash) so this proves the override
+    actually takes effect, not merely that the default happens to match."""
+    monkeypatch.setenv("STEP_DEF_GEMINI_MODEL", "gemini-2.5-pro")
     monkeypatch.setenv("GEMINI_MODEL", "gemini-3.1-flash-lite")  # must have no effect here
-    assert cli._step_definition_model() == "gemini-3.5-flash"
+    assert cli._step_definition_model() == "gemini-2.5-pro"
 
 
 class _RecordingStepDefinitionGenerator:
@@ -3081,7 +3087,7 @@ def test_step_definition_generator_gets_a_separate_non_lite_provider(
     feature_content_model = captured["feature_content_provider"].requested_model
     test_data_model = captured["test_data_provider"].requested_model
 
-    assert step_definition_model == "gemini-2.5-flash"  # non-lite, scoped
+    assert step_definition_model == "gemini-3.5-flash"  # non-lite, scoped, clean+covering
     # Feature Engineering and Automation Engineering's own test-data
     # generation are UNCHANGED -- still built from `args.model` (None here,
     # so the provider reads the environment-configured, still-lite default).
@@ -3101,11 +3107,13 @@ def test_step_definition_generator_provider_honors_env_override(
 ) -> None:
     """The override path, proven end-to-end: `STEP_DEF_GEMINI_MODEL` changes
     which model the step-definition generator's dedicated provider is built
-    with, while every other live generator's model resolution is untouched."""
-    monkeypatch.setenv("STEP_DEF_GEMINI_MODEL", "gemini-3.5-flash")
+    with, while every other live generator's model resolution is untouched.
+    Overrides to a value DIFFERENT from the current default
+    (gemini-3.5-flash) so this proves the override actually takes effect."""
+    monkeypatch.setenv("STEP_DEF_GEMINI_MODEL", "gemini-2.5-pro")
     captured: dict[str, Any] = {}
     _run_with_recording_providers(monkeypatch, tmp_path, captured)
 
-    assert captured["step_definition_provider"].requested_model == "gemini-3.5-flash"
+    assert captured["step_definition_provider"].requested_model == "gemini-2.5-pro"
     assert captured["feature_content_provider"].requested_model is None
     assert captured["test_data_provider"].requested_model is None

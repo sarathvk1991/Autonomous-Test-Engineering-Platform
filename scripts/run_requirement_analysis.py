@@ -120,13 +120,35 @@ _DEFAULT_SONAR_BASE_URL = "http://localhost:9000"
 # reasoning budget on these needs specifically, not a sampling artifact a
 # temperature change can route around. The SAME needs generated cleanly,
 # every time, on a non-lite model at default settings -- gemini-2.5-flash and
-# gemini-3.5-flash both proved out live, at 4-10s latency; a same-model
-# thinking_config escalation also worked but cost ~130-180s/call, ~20x
-# slower, for the identical outcome). Feature-generation/remediation and
-# test-data generation (`provider`, below) never showed this failure in the
-# probe and stay on the shared lite default -- this is a step-definition-
+# gemini-3.5-flash both proved out live in that probe, at 4-10s latency.
+#
+# **gemini-2.5-flash superseded by gemini-3.5-flash (additive, 2026-08-09,
+# the compile-gap-closing real-corpus re-run).** The probe above measured
+# gemini-2.5-flash's COVERAGE (does it avoid MALFORMED_RESPONSE) but not its
+# QUALITY -- the real-corpus re-run measured that separately, live, at scale
+# (17 real generations), and found it produced defective Java 76% of the
+# time: a wrong Cucumber import package (`io.cucumber.java.When` instead of
+# `io.cucumber.java.en.When`, 8/17), a markdown code fence despite this
+# platform's own prompt explicitly forbidding one (2/17), or a fabricated
+# inline/duplicate page-object class instead of referencing an external one
+# (3-4/17) -- only ~24% (4/17) were fully clean. The SAME re-run measured
+# ZERO of these defects across 30 gemini-3.1-flash-lite and 5 gemini-3.5-
+# flash generations. gemini-3.5-flash is therefore both CLEAN (matches
+# lite's own defect rate) AND COMPLETE (covers the MALFORMED_RESPONSE needs
+# lite alone cannot) -- strictly better evidence than gemini-2.5-flash on
+# both axes measured, not a tradeoff. Kept as a single default (not a
+# lite-primary/non-lite-fallback split) deliberately: the fallback's own
+# cost-optimization (non-lite spend for only the ~5 needs that need it,
+# rather than all ~33) is real but unproven-necessary until non-lite cost
+# is shown to matter in practice -- correct-and-simple now, refine into a
+# fallback later if warranted, per this platform's own "no abstraction
+# before the need is real" discipline.
+#
+# Feature-generation/remediation and test-data generation (`provider`,
+# below) never showed the MALFORMED_RESPONSE failure in the original probe
+# and stay on the shared lite default -- this remains a step-definition-
 # generation-specific fix, not a platform-wide model change.
-_DEFAULT_STEP_DEFINITION_MODEL = "gemini-2.5-flash"
+_DEFAULT_STEP_DEFINITION_MODEL = "gemini-3.5-flash"
 _ENV_STEP_DEFINITION_MODEL = "STEP_DEF_GEMINI_MODEL"
 # Synthetic request id used for --dry-run, where no execution_id is generated.
 _DRY_RUN_REQUEST_ID = "dry-run"
