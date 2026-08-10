@@ -89,6 +89,31 @@ def test_submit_scan_uses_the_fully_qualified_sonar_goal(tmp_path: Path) -> None
     assert "sonar:sonar" not in argv
 
 
+def test_submit_scan_passes_the_jacoco_coverage_report_path(tmp_path: Path) -> None:
+    """ADR-0047 D5/D11 (latent #5/item #39): the scan now always passes
+    `sonar.coverage.jacoco.xmlReportPaths`, pointed at
+    `test-suite-baseline/pom.xml`'s own `jacoco-maven-plugin` report
+    output -- this is what turns CP7's `coverage` metric from
+    permanently unmeasured into a real, Sonar-computed value once a prior
+    `mvn test` has produced that report. Passed unconditionally (this
+    adapter never runs tests itself); a missing report degrades to
+    Sonar's own "nothing found at this path" behavior, not a scan
+    failure -- proven separately by the happy-path submit tests above,
+    none of which create a jacoco.xml and all of which still submit
+    successfully."""
+    report_dir = tmp_path / "target" / "sonar"
+    report_dir.mkdir(parents=True)
+    (report_dir / "report-task.txt").write_text("ceTaskId=ABC123\n", encoding="utf-8")
+    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+    with patch(_SUBPROCESS_RUN, return_value=completed) as run:
+        _adapter().submit_scan(tmp_path, "demo")
+
+    argv = run.call_args.args[0]
+    expected_path = tmp_path / "target" / "site" / "jacoco" / "jacoco.xml"
+    assert f"-Dsonar.coverage.jacoco.xmlReportPaths={expected_path}" in argv
+
+
 def test_submit_scan_raises_on_nonzero_exit(tmp_path: Path) -> None:
     completed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="build failed")
     with (

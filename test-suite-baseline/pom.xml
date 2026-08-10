@@ -91,6 +91,16 @@
     </dependencies>
 
     <build>
+        <!-- This module is test-only (ADR-0037 Path A: everything under src/test/java,
+             no src/main/java). jacoco-maven-plugin's own report goal is hardcoded to
+             check project.build.outputDirectory (main classes) for its own "is there
+             anything to report on" guard, which never exists here and otherwise makes
+             it silently skip, logging "Skipping JaCoCo execution due to missing
+             classes directory". Pointing outputDirectory at the SAME place
+             testOutputDirectory already resolves to is the standard workaround for a
+             test-only module; it changes nothing else, since no other plugin here
+             reads outputDirectory (there is no main compile step for it to affect). -->
+        <outputDirectory>${project.build.directory}/test-classes</outputDirectory>
         <plugins>
             <!-- Picks up maven.compiler.release automatically; no explicit <configuration>
                  needed for the release property itself. -->
@@ -111,6 +121,32 @@
                         <include>**/runners/RunCucumberTest.java</include>
                     </includes>
                 </configuration>
+            </plugin>
+
+            <!-- JaCoCo (ADR-0047 D5/D11, latent #5/item #39): standard, minimal setup.
+                 prepare-agent instruments the test JVM; report emits the XML CP7's Sonar
+                 scan reads via sonar.coverage.jacoco.xmlReportPaths (LiveSonarQualityGateAdapter).
+                 No excludes, includes, or thresholds added; coverage stays report-only
+                 (D5); this plugin only makes the number real, it does not gate anything. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -295,6 +295,59 @@ D3, D4, and D5 above each rest on, not independently re-derivable assumptions:
   independently confirm the widely-documented Community Edition constraint, and states this
   distinction honestly rather than blurring "observed" with "inherited public knowledge."
 
+**Additive correction (2026-08-10, the JaCoCo-wiring task, latent #5/`architecture-baseline-v2.md`
+item #39).** Two updates to the bullet list immediately above, neither changing D5/D10's own
+Decision text, both directly re-verified live against the real server rather than assumed stale:
+
+- **`duplicated_lines_density` is no longer "unmeasured" — it now returns `0.0` for
+  `Automation-POC`**, confirmed twice, independently, both before and after this task's own JaCoCo
+  build (`GET /api/measures/component`, the pipeline's own least-privilege token, unchanged query
+  shape). D10's original bullet recorded it as absent at the time it was written (2026-08-06); the
+  server has since accumulated a scan that produces a real value for it. `coverage` remains
+  genuinely absent (below) — the two metrics D5/D10 grouped together no longer share the same
+  fate, and should not be assumed to going forward.
+- **`coverage` remains unmeasured — but the root cause is now understood, and it is deeper than
+  "no JaCoCo report exists" (D11's own framing).** This task built exactly what D11 named as the
+  tracked prerequisite: `test-suite-baseline/pom.xml` gained the `jacoco-maven-plugin` (`prepare-
+  agent` + `report`, standard config), and `LiveSonarQualityGateAdapter.submit_scan` now always
+  passes `-Dsonar.coverage.jacoco.xmlReportPaths=<the produced jacoco.xml>`. Run live: `mvn clean
+  test` genuinely executes the tracked suite's one real scenario (a live browser launch via
+  Selenium Manager, a real SUT reached, `Tests run: 1, Failures: 0`) and JaCoCo produces a real,
+  non-fabricated report — 57/419 lines covered (~13.6%) across the framework classes
+  (`DriverFactory`/`Hooks`/`ConfigReader`/`BasePage`) and the one tracked scenario's own classes
+  (`SmokePage`/`SmokeSteps`); every one of the other ~64 promoted classes reads 0% because their
+  own `.feature` files were never promoted alongside the Java (ADR-0045 D1 scopes promotion to
+  Java assets only) — an honest, low-but-real number, not a broken build. The Sonar Maven plugin's
+  own "JaCoCo XML Report Importer" sensor reads that exact file successfully, confirmed live via
+  `-X` debug output (`Reading report '.../target/site/jacoco/jacoco.xml'`, no error, 38ms) — the
+  wiring mechanics are correct end to end. **`coverage` still reads as completely absent from
+  `/api/measures/component` afterward — confirmed live at BOTH the project level and, directly, at
+  the file level for `BasePage.java` (JaCoCo's own report: 8/8 lines covered, 100%; Sonar's own
+  measures for that exact file: an empty array, no `coverage` entry at all).** Root cause,
+  confirmed via `GET /api/components/tree?qualifiers=FIL,UTS`: every one of this project's 71+
+  files is classified `UTS` (unit-test source) — **zero are `FIL` (main source)** — a direct,
+  structural consequence of ADR-0037 Path A committing the entire generated suite under
+  `src/test/java`. SonarQube's own Java coverage sensor computes the `coverage` family exclusively
+  over `FIL`-classified files; a project with no `FIL` files has no coverage to aggregate,
+  regardless of how accurate or complete the underlying JaCoCo data is. **This is the same MAIN-
+  vs-TEST scope boundary that already defeated `customqa:long-method`'s original Sonar path (item
+  22, `java:S138`'s own permanent `scope:MAIN`)** — a second, independent metric family blocked by
+  the identical architectural fact, not a coincidence: any Sonar metric scoped to MAIN files is
+  structurally unreachable for this platform's own generated code, by design (ADR-0037 Path A puts
+  it all under `src/test/java`), and no scan-argument or plugin-configuration change can route
+  around that from the Sonar side. **Not resolved here — tracked as a new, more precise successor
+  to D11.** A future task's own choice: (a) accept the limitation and report coverage via a
+  DIFFERENT path CP7 or a sibling control point owns directly (reading the JaCoCo XML itself,
+  bypassing Sonar's own coverage aggregation entirely, mirroring how `long-method` moved to a
+  static Layer 3 check rather than continuing to await a Sonar-side fix); or (b) reclassify
+  `sonar.sources`/`sonar.tests` so some files present as `FIL` — explicitly NOT attempted here,
+  since it risks misrepresenting genuinely-test code as main code across every OTHER Sonar-driven
+  metric this project already depends on (violations, `customqa:*`, duplication), a change with a
+  blast radius far beyond coverage alone and squarely outside this task's own scope (JaCoCo
+  wiring, not a `sonar.sources` reclassification decision). CP7's `coverage`
+  `Cp7MeasureFinding(value=None, measured=False)` therefore remains the accurate, honest state of
+  the world after this task, unchanged in VALUE though now understood in cause.
+
 ## Consequences
 
 - **CP7 and CP8 are now fully designed and locked (D1–D9), the same detail ADR-0046 D2–D6 already

@@ -76,6 +76,19 @@ from automation_engineering.cp3.sonar.models import (
 _TERMINAL_TASK_STATUSES = frozenset({"SUCCESS", "FAILED", "CANCELED"})
 _REPORT_TASK_RELATIVE_PATH = Path("target/sonar/report-task.txt")
 
+#: ADR-0047 D5/D11 (latent #5/item #39): the JaCoCo XML report path this
+#: adapter now always passes to the scan, matching where
+#: ``test-suite-baseline/pom.xml``'s own ``jacoco-maven-plugin`` (``report``
+#: goal, bound to the ``test`` phase) writes it. This adapter never runs
+#: tests itself (this module's own docstring: it scans an already-on-disk
+#: project) -- the report must already exist from a prior ``mvn test`` for
+#: coverage to become measured; if it does not (tests were never run before
+#: the scan, or a project with no JaCoCo plugin at all), the Sonar Maven
+#: plugin simply finds nothing at this path and coverage stays unmeasured,
+#: exactly the pre-existing degrade -- passing this argument unconditionally
+#: never turns a missing report into a scan failure.
+_JACOCO_XML_REPORT_RELATIVE_PATH = Path("target/site/jacoco/jacoco.xml")
+
 #: The FULLY QUALIFIED Sonar-Maven-plugin goal (F3, 2026-08-05, this stage-15
 #: wiring build). The short form (`sonar:sonar`) only resolves if the
 #: invoking machine's own `~/.m2/settings.xml` registers
@@ -137,6 +150,8 @@ class LiveSonarQualityGateAdapter:
                 _SONAR_GOAL,
                 f"-Dsonar.host.url={self._base_url}",
                 f"-Dsonar.projectKey={project_key}",
+                f"-Dsonar.coverage.jacoco.xmlReportPaths="
+                f"{project_root / _JACOCO_XML_REPORT_RELATIVE_PATH}",
             ],
             capture_output=True,
             text=True,
