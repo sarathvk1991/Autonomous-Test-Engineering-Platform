@@ -128,7 +128,7 @@ class TestNoMatchGenerates:
             "import org.openqa.selenium.By;\n"
             "import org.openqa.selenium.WebDriver;\n\n"
             "public class ForgotPasswordLinkPage extends BasePage {\n"
-            "    private final By link = By.id(\"forgot-password\");\n\n"
+            '    private final By link = By.id("forgot-password");\n\n'
             "    public ForgotPasswordLinkPage(WebDriver driver) {\n"
             "        super(driver);\n"
             "    }\n\n"
@@ -147,9 +147,7 @@ class TestNoMatchGenerates:
         assert "extends BasePage" in outcome.java_source
         assert "WebDriver driver" in outcome.java_source
         assert (
-            outcome.target_package
-            == DEFAULT_PAGE_OBJECT_TARGET_PACKAGE
-            == "com.automation.pages"
+            outcome.target_package == DEFAULT_PAGE_OBJECT_TARGET_PACKAGE == "com.automation.pages"
         )
         assert outcome.class_name == "ForgotPasswordLinkPage"
         assert generator.call_count == 1
@@ -392,9 +390,7 @@ class TestDerivedReturnTypeReachesGeneration:
         )
         catalog = _catalog()
         matcher = StubSemanticMatcher({primary.need.text: (), sibling.need.text: ()})
-        generator = StubPageObjectGenerator(
-            {primary.need.text: "package com.automation.pages;\n"}
-        )
+        generator = StubPageObjectGenerator({primary.need.text: "package com.automation.pages;\n"})
 
         orchestrate_page_object_class([primary, sibling], catalog, matcher, generator)
 
@@ -451,9 +447,7 @@ class TestDerivedParametersReachGeneration:
         )
         catalog = _catalog()
         matcher = StubSemanticMatcher({primary.need.text: (), sibling.need.text: ()})
-        generator = StubPageObjectGenerator(
-            {primary.need.text: "package com.automation.pages;\n"}
-        )
+        generator = StubPageObjectGenerator({primary.need.text: "package com.automation.pages;\n"})
 
         orchestrate_page_object_class([primary, sibling], catalog, matcher, generator)
 
@@ -633,6 +627,260 @@ class TestCoarseAndPreciseCatchDifferentThings:
         outcome = orchestrate_page_object_method(method_need, catalog, matcher, generator)
 
         assert isinstance(outcome, BoundPageObjectMethod)
+
+
+class TestPreciseMethodFitUsesCallSiteArityOnTheBindPath:
+    """The BIND-side mirror of the captures-arity fix (`TestDerivedParametersReachGeneration`
+    above is its GENERATE-side sibling): latent #2 (`docs/architecture/architecture-baseline-v2.md`
+    item 36). `verify_specific_method_fit` used to check a TRUSTED_REUSE candidate's
+    fit against `need.captures` unconditionally -- the outer step's own capture
+    count, which can diverge from what the step-def call site actually passes
+    (the SAME live-measured counterexample `PageObjectMethodNeed.parameters`'s own
+    docstring records: a captured value routed into `Assertions.assertEquals(...)`
+    rather than passed to the page-object call, so the call site takes ZERO
+    arguments even though the step's own text captures one). These proofs show
+    the bind decision now follows `method_need.parameters` (the call-site arity)
+    whenever it is supplied -- the same field the generate path already reads --
+    and falls back to `need.captures` exactly as before when it is not."""
+
+    def test_divergence_a_call_site_arity_zero_candidate_binds_despite_one_need_capture(
+        self,
+    ) -> None:
+        """The exact scenario the fifth defect was: the outer step captures
+        one value, but the call site the step-def actually uses passes ZERO
+        arguments (the captured value went into an assertion instead). A
+        zero-arg candidate method is the RIGHT bind for what the call site
+        needs -- the OLD `need.captures`-only check would have wrongly
+        escalated this (1 required capture vs. a 0-arg method).
+
+        The class also carries a decoy method whose shape fits
+        `need.captures` (1 string arg), so the COARSE screen
+        (`automation_engineering.reuse.engine.decide_reuse`, untouched by
+        this fix and unaware of call-site arity by design -- ADR-0044 D4's
+        own "coarse" framing) genuinely returns `TrustedReuse` here, the
+        same way ADR-0044 D4's own clarification-note example (a `LoginPage`
+        with `open()`, reused for `clickForgotPasswordLink()`) reaches the
+        PRECISE check at all -- without it, the coarse screen alone would
+        reject this candidate before the precise check the bind-path fix
+        touches is ever consulted, and this test would not be exercising
+        the fix."""
+        asset = _page_object(
+            methods=(
+                JavaMethod(
+                    name="someOtherCoarsePassingMethod",
+                    parameters=(JavaParameter(name="value", java_type="String"),),
+                    return_type="void",
+                ),
+                JavaMethod(name="getCartCount", parameters=(), return_type="int"),
+            )
+        )
+        catalog = _catalog(asset)
+        method_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(
+                text="the cart count should display {string}",
+                step_type="Then",
+                captures=(
+                    StepCapture(index=0, style="cucumber_expression", expression_type="string"),
+                ),
+            ),
+            method_name="getCartCount",
+            parameters=(),  # the call site's own zero-arity -- diverges from need.captures
+        )
+        candidate = MatchCandidate(
+            asset_id=_LOGIN_ASSET_ID, confidence=0.95, content_hash=_CURRENT_HASH
+        )
+        matcher = StubSemanticMatcher({method_need.need.text: (candidate,)})
+        generator = StubPageObjectGenerator({})
+
+        outcome = orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert isinstance(outcome, BoundPageObjectMethod)
+        assert generator.call_count == 0
+
+    def test_divergence_b_a_candidate_matching_only_the_need_captures_now_escalates(
+        self,
+    ) -> None:
+        """The OTHER direction of the same divergence: a candidate whose
+        arity matches `need.captures` (1) but NOT the call site's real
+        arity (0) is now correctly REJECTED -- binding it would produce a
+        call passing 0 arguments to a 1-parameter method, which does not
+        compile. The OLD `need.captures`-only check would have wrongly
+        bound this."""
+        asset = _page_object(
+            methods=(
+                JavaMethod(
+                    name="getCartCount",
+                    parameters=(JavaParameter(name="expected", java_type="String"),),
+                    return_type="int",
+                ),
+            )
+        )
+        catalog = _catalog(asset)
+        method_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(
+                text="the cart count should display {string}",
+                step_type="Then",
+                captures=(
+                    StepCapture(index=0, style="cucumber_expression", expression_type="string"),
+                ),
+            ),
+            method_name="getCartCount",
+            parameters=(),  # the call site's own zero-arity
+        )
+        candidate = MatchCandidate(
+            asset_id=_LOGIN_ASSET_ID, confidence=0.95, content_hash=_CURRENT_HASH
+        )
+        matcher = StubSemanticMatcher({method_need.need.text: (candidate,)})
+        generator = StubPageObjectGenerator({})
+
+        outcome = orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert isinstance(outcome, EscalatedPageObjectMethodNeed)
+        assert outcome.escalation.check == EscalationCheck.METHOD_FIT
+        assert "call-site argument" in outcome.escalation.detail
+        assert generator.call_count == 0
+
+    def test_verify_specific_method_fit_directly_uses_the_parameters_kwarg_not_captures(
+        self,
+    ) -> None:
+        """Unit-level proof of :func:`verify_specific_method_fit` itself:
+        passing `parameters=()` escalates a 1-arg candidate even though
+        `need.captures` (2) would, on its own, also mismatch -- and passing
+        `parameters` matching the candidate's own arity clears it, showing
+        the comparison genuinely switched sources, not merely started
+        agreeing with `need.captures` by coincidence."""
+        asset = _page_object(
+            methods=(
+                JavaMethod(
+                    name="enterUsername",
+                    parameters=(JavaParameter(name="username", java_type="String"),),
+                    return_type="void",
+                ),
+            )
+        )
+        candidate = MatchCandidate(
+            asset_id=_LOGIN_ASSET_ID, confidence=0.95, content_hash=_CURRENT_HASH
+        )
+        need = GherkinStepNeed(
+            text="enter credentials {string} and {string}",
+            step_type="Given",
+            captures=(
+                StepCapture(index=0, style="cucumber_expression", expression_type="string"),
+                StepCapture(index=1, style="cucumber_expression", expression_type="string"),
+            ),
+        )
+
+        escalation_zero_arity = verify_specific_method_fit(
+            need, asset, candidate, "enterUsername", parameters=()
+        )
+        assert escalation_zero_arity is not None
+        assert "0 call-site argument(s)" in escalation_zero_arity.detail
+
+        escalation_matching_arity = verify_specific_method_fit(
+            need,
+            asset,
+            candidate,
+            "enterUsername",
+            parameters=(JavaParameter(name="username", java_type="String"),),
+        )
+        assert escalation_matching_arity is None
+
+    def test_no_regression_when_call_site_arity_and_need_captures_agree(self) -> None:
+        """The ordinary, non-divergent case (the common one in practice) --
+        `parameters` supplied and equal in count to `need.captures` -- still
+        binds cleanly, exactly as the pre-fix `need.captures`-only check
+        already did for this shape."""
+        asset = _page_object(
+            methods=(
+                JavaMethod(
+                    name="loginAs",
+                    parameters=(
+                        JavaParameter(name="username", java_type="String"),
+                        JavaParameter(name="password", java_type="String"),
+                    ),
+                    return_type="void",
+                ),
+            )
+        )
+        catalog = _catalog(asset)
+        method_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(
+                text="log in as {string} with password {string}",
+                step_type="When",
+                captures=(
+                    StepCapture(index=0, style="cucumber_expression", expression_type="string"),
+                    StepCapture(index=1, style="cucumber_expression", expression_type="string"),
+                ),
+            ),
+            method_name="loginAs",
+            parameters=(
+                JavaParameter(name="username", java_type="String"),
+                JavaParameter(name="password", java_type="String"),
+            ),
+        )
+        candidate = MatchCandidate(
+            asset_id=_LOGIN_ASSET_ID, confidence=0.95, content_hash=_CURRENT_HASH
+        )
+        matcher = StubSemanticMatcher({method_need.need.text: (candidate,)})
+        generator = StubPageObjectGenerator({})
+
+        outcome = orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert isinstance(outcome, BoundPageObjectMethod)
+
+    def test_parity_orchestrate_page_object_class_bind_branch_also_uses_call_site_arity(
+        self,
+    ) -> None:
+        """The SECOND bind call site (`orchestrate_page_object_class`, the
+        multi-method-per-class seam) gets the identical fix -- proven
+        independently since it is a separate call to
+        `verify_specific_method_fit`, not a shared code path with
+        `orchestrate_page_object_method`. Carries the same coarse-passing
+        decoy method the divergence proofs above need, for the same
+        reason."""
+        asset = _page_object(
+            methods=(
+                JavaMethod(
+                    name="someOtherCoarsePassingMethod",
+                    parameters=(JavaParameter(name="value", java_type="String"),),
+                    return_type="void",
+                ),
+                JavaMethod(name="getCartCount", parameters=(), return_type="int"),
+            )
+        )
+        catalog = _catalog(asset)
+        bound_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(
+                text="the cart count should display {string}",
+                step_type="Then",
+                captures=(
+                    StepCapture(index=0, style="cucumber_expression", expression_type="string"),
+                ),
+            ),
+            method_name="getCartCount",
+            parameters=(),
+        )
+        fresh_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(text="open the cart page", step_type="Given"),
+            method_name="open",
+        )
+        candidate = MatchCandidate(
+            asset_id=_LOGIN_ASSET_ID, confidence=0.95, content_hash=_CURRENT_HASH
+        )
+        matcher = StubSemanticMatcher(
+            {bound_need.need.text: (candidate,), fresh_need.need.text: ()}
+        )
+        generator = StubPageObjectGenerator(
+            {fresh_need.need.text: "package com.automation.pages;\n"}
+        )
+
+        outcomes = orchestrate_page_object_class(
+            [bound_need, fresh_need], catalog, matcher, generator
+        )
+
+        bound_outcomes = [o for o in outcomes if isinstance(o, BoundPageObjectMethod)]
+        assert len(bound_outcomes) == 1
+        assert bound_outcomes[0].asset is asset
 
 
 # ---------------------------------------------------------------------------

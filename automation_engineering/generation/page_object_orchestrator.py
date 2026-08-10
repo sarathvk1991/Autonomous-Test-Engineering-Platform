@@ -225,7 +225,11 @@ def orchestrate_page_object_method(
                 "the matcher passed in must only ever search catalog.page_objects."
             )
         method_fit_escalation = verify_specific_method_fit(
-            method_need.need, decision.asset, decision.candidate, method_need.method_name
+            method_need.need,
+            decision.asset,
+            decision.candidate,
+            method_need.method_name,
+            parameters=method_need.parameters,
         )
         if method_fit_escalation is not None:
             return EscalatedPageObjectMethodNeed(
@@ -336,7 +340,11 @@ def orchestrate_page_object_class(
                     "the matcher passed in must only ever search catalog.page_objects."
                 )
             method_fit_escalation = verify_specific_method_fit(
-                method_need.need, decision.asset, decision.candidate, method_need.method_name
+                method_need.need,
+                decision.asset,
+                decision.candidate,
+                method_need.method_name,
+                parameters=method_need.parameters,
             )
             if method_fit_escalation is not None:
                 resolved.append(
