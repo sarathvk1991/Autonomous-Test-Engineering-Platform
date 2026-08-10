@@ -90,6 +90,14 @@ _CHECKOUT_FEATURE = """Feature: Checkout
     When I check out
 """
 
+_COLLISION_FEATURE = """Feature: Login
+
+  @SCN-101
+  Scenario: Login collision
+    Given the user attempts to login with valid credentials
+    Then the system displays an error message
+"""
+
 _PARAMETERLESS_STEP_JAVA = """package com.automation.steps;
 
 import io.cucumber.java.en.Given;
@@ -1350,3 +1358,196 @@ class TestTransportFailureIsolation:
         on_disk = json.loads((run_dir / "run_state.json").read_text())
         record = next(s for s in on_disk["stages"] if s["stageId"] == STAGE_ID)
         assert record["status"] == "succeeded"
+
+
+# ---------------------------------------------------------------------------
+# Class-name collision: the assembly-write gap a live regeneration run hit
+# and fixed by hand (two independently generated needs both named
+# "LoginSteps", silently overwritten on the first assembly pass, caught only
+# by a catalog count mismatch). Proves the fix: DETECTED, merged
+# deterministically -- never silently overwritten.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestClassNameCollision:
+    def test_two_colliding_needs_merge_into_one_workspace_file(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """Two DIFFERENT step needs whose generated Java independently
+        names the same class (`LoginSteps`) -- the generator derives a
+        class name from "the step's own subject" with no visibility into
+        any other need's own choice, so this is a real, not contrived,
+        collision shape. Proves the collision is DETECTED and MERGED: one
+        workspace file, both methods present -- never one silently
+        clobbering the other (the old, pre-fix behavior)."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "collision.feature", _COLLISION_FEATURE)
+        package = _package((_feature_record("REQ-1", "collision.feature"),))
+
+        matcher = StubSemanticMatcher(
+            {
+                "the user attempts to login with valid credentials": (),
+                "the system displays an error message": (),
+            }
+        )
+        step_gen = StubStepDefinitionGenerator(
+            {
+                "the user attempts to login with valid credentials": _clean_java(
+                    "LoginSteps", "theUserAttemptsToLoginWithValidCredentials"
+                ),
+                "the system displays an error message": _clean_java(
+                    "LoginSteps", "theSystemDisplaysAnErrorMessage"
+                ),
+            }
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        # Both needs generated -- neither silently dropped nor escalated.
+        assert len(result.package.records) == 2
+        assert {r.outcome for r in result.package.records} == {"generated"}
+        assert {r.class_name for r in result.package.records} == {"com.automation.steps.LoginSteps"}
+        # Both point at the exact SAME workspace file -- one class, not two.
+        workspace_paths = {r.workspace_path for r in result.package.records}
+        assert len(workspace_paths) == 1
+
+        # ONE file on disk, containing BOTH methods -- nothing lost to a
+        # silent overwrite (the pre-fix failure mode this proves is gone).
+        login_files = list(workspace_dir.glob("src/test/java/**/LoginSteps.java"))
+        assert len(login_files) == 1
+        content = login_files[0].read_text(encoding="utf-8")
+        assert "theUserAttemptsToLoginWithValidCredentials" in content
+        assert "theSystemDisplaysAnErrorMessage" in content
+
+        assert result.cp3_passed is True
+        assert result.cp4_passed is True
+
+    def test_merge_promotes_once_not_twice(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """A merged class is a single promotion candidate -- the SECOND
+        (merged-away) need must not be independently promoted a second
+        time through the same path (promotion's own identity mechanism,
+        `resolve_candidate_identity`, requires exactly one asset per
+        candidate, which a multi-method merged class is not)."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "collision.feature", _COLLISION_FEATURE)
+        package = _package((_feature_record("REQ-1", "collision.feature"),))
+
+        matcher = StubSemanticMatcher(
+            {
+                "the user attempts to login with valid credentials": (),
+                "the system displays an error message": (),
+            }
+        )
+        step_gen = StubStepDefinitionGenerator(
+            {
+                "the user attempts to login with valid credentials": _clean_java(
+                    "LoginSteps", "theUserAttemptsToLoginWithValidCredentials"
+                ),
+                "the system displays an error message": _clean_java(
+                    "LoginSteps", "theSystemDisplaysAnErrorMessage"
+                ),
+            }
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        # The class promotes exactly once -- not once per contributing need.
+        assert len(result.promoted_baseline_paths) == 1
+        promotion_statuses = [r.promotion_status for r in result.package.records]
+        assert promotion_statuses.count("promoted") == 1
+        assert promotion_statuses.count(None) == 1
+
+    def test_unsafe_collision_escalates_instead_of_overwriting(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """Two needs colliding on the SAME class name AND the SAME method
+        name, with DIFFERENT bodies, cannot be merged without silently
+        picking a winner -- the second need escalates instead, and the
+        first need's own file is left untouched."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "collision.feature", _COLLISION_FEATURE)
+        package = _package((_feature_record("REQ-1", "collision.feature"),))
+
+        first_java = (
+            "package com.automation.steps;\n\n"
+            "public class LoginSteps {\n\n"
+            "    public void theUserLogsIn() {\n"
+            '        System.out.println("first");\n'
+            "    }\n"
+            "}\n"
+        )
+        conflicting_java = (
+            "package com.automation.steps;\n\n"
+            "public class LoginSteps {\n\n"
+            "    public void theUserLogsIn() {\n"
+            '        System.out.println("second, different body");\n'
+            "    }\n"
+            "}\n"
+        )
+        matcher = StubSemanticMatcher(
+            {
+                "the user attempts to login with valid credentials": (),
+                "the system displays an error message": (),
+            }
+        )
+        step_gen = StubStepDefinitionGenerator(
+            {
+                "the user attempts to login with valid credentials": first_java,
+                "the system displays an error message": conflicting_java,
+            }
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        records_by_outcome = {r.need_text: r for r in result.package.records}
+        first_record = records_by_outcome["the user attempts to login with valid credentials"]
+        second_record = records_by_outcome["the system displays an error message"]
+
+        assert first_record.outcome == "generated"
+        assert second_record.outcome == "escalated"
+        assert second_record.escalation_check == "class_name_collision"
+        assert second_record.escalated is True
+
+        # The first need's own file is intact -- untouched by the failed
+        # merge attempt, never partially overwritten.
+        login_files = list(workspace_dir.glob("src/test/java/**/LoginSteps.java"))
+        assert len(login_files) == 1
+        content = login_files[0].read_text(encoding="utf-8")
+        assert "first" in content
+        assert "second, different body" not in content

@@ -45,7 +45,26 @@ The chain, in order
    :func:`automation_engineering.promotion.identity.resolve_candidate_identity`
    resolves it to -- the SAME identity mechanism promotion itself uses, so
    a written file and its own future promotion identity can never drift
-   apart.
+   apart. Two independently generated needs can resolve to the SAME class
+   name (the generator derives it from "the step's own subject," a
+   many-to-one function, with no cross-need visibility) -- ``_write_generated_java``
+   DETECTS this (a class name already written earlier in this run) and
+   merges the two deterministically (:mod:`.class_collision`) rather than
+   silently overwriting the earlier write, the exact gap a live regeneration
+   run caught only by luck (a catalog count mismatch), fixed by hand at the
+   time. A merge that is not safe to resolve automatically (different
+   package/superclass, or a same-named member with a conflicting body)
+   escalates the SECOND need instead (``escalation_check="class_name_collision"``)
+   rather than guessing a winner. A merged class is written once, to the
+   workspace, for THIS run's compilation/CP3 evaluation; only the FIRST
+   contributing need's own (unmerged, single-method) outcome is promoted
+   through the existing per-candidate promotion mechanism (:mod:`.promotion.identity`
+   requires exactly one asset per candidate, a step-def class with more than
+   one annotated method is not a shape that mechanism accepts) -- the
+   SECOND need's own contribution reaches the tracked baseline only once a
+   future promotion extension accepts a multi-method merged candidate; it is
+   never lost from the workspace or from THIS run's own coverage/CP3
+   evaluation in the meantime.
 7. CP3 (:func:`automation_engineering.cp3.gate.evaluate_cp3`) over every
    feature's own outcomes, the Sonar adapter, and every freshly generated
    class; CP4 (:func:`automation_engineering.cp4.gate.evaluate_cp4`) over
@@ -82,6 +101,10 @@ from automation_engineering.cp3.sonar.adapter import SonarQualityGateAdapter
 from automation_engineering.cp4.gate import evaluate_cp4
 from automation_engineering.cp4.models import Cp4Result
 from automation_engineering.errors import TransportFailureError
+from automation_engineering.generation.class_collision import (
+    UnsafeClassMergeError,
+    merge_java_classes,
+)
 from automation_engineering.generation.models import (
     BoundStepDefinition,
     EscalatedStepNeed,
@@ -175,26 +198,68 @@ def _eligible_records(package: FeatureEngineeringPackage) -> tuple[FeatureRecord
     return tuple(r for r in package.records if r.feature_path is not None and not r.escalated)
 
 
-def _write_generated_java(java_source: str, workspace_dir: Path) -> tuple[str, Path]:
-    """Write ``java_source`` into ``workspace_dir``'s own ``src/test/java``
-    tree, at the exact path its own resolved identity implies -- the SAME
-    mechanism (:func:`~automation_engineering.promotion.identity.
-    resolve_candidate_identity`) promotion itself uses, so a freshly
-    written workspace file and its own future promotion identity can never
-    drift apart. Returns ``(class_name, written_path)``.
-    """
-    asset, relative_path = resolve_candidate_identity(java_source)
-    target = workspace_dir / JAVA_SOURCE_SUBPATH / relative_path
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(java_source, encoding="utf-8")
-    return asset.class_name, target
-
-
 @dataclass(frozen=True, slots=True)
 class _GeneratedJava:
     class_name: str
     java_source: str
     workspace_path: Path
+
+
+def _write_generated_java(
+    java_source: str,
+    workspace_dir: Path,
+    generated_java: list[_GeneratedJava],
+    index_by_class_name: dict[str, int],
+) -> tuple[str, Path, bool]:
+    """Write ``java_source`` into ``workspace_dir``'s own ``src/test/java``
+    tree, at the exact path its own resolved identity implies -- the SAME
+    mechanism (:func:`~automation_engineering.promotion.identity.
+    resolve_candidate_identity`) promotion itself uses, so a freshly
+    written workspace file and its own future promotion identity can never
+    drift apart.
+
+    ``generated_java``/``index_by_class_name`` are this RUN's own collision
+    ledger, mutated in place: if ``java_source``'s own class name was never
+    written before this call, it is written as-is and recorded. If it WAS
+    (two independently generated needs resolving to the same class name --
+    the generator derives a class name from "the step's own subject," a
+    many-to-one function with no cross-need visibility, module docstring
+    step 6), the two are merged deterministically
+    (:func:`~automation_engineering.generation.class_collision.merge_java_classes`)
+    and the SAME workspace file is rewritten with the merged content --
+    never silently overwritten with only the newer side. Raises
+    :class:`~automation_engineering.generation.class_collision.UnsafeClassMergeError`
+    if the two classes are not safe to merge (different package/superclass,
+    or a same-named member whose two declarations disagree) -- the caller
+    must escalate that need rather than write anything for it.
+
+    Returns ``(class_name, written_path, merged)`` -- ``merged`` is ``True``
+    iff this call's class name collided with an earlier write in THIS run.
+    """
+    asset, relative_path = resolve_candidate_identity(java_source)
+    class_name = asset.class_name
+    target = workspace_dir / JAVA_SOURCE_SUBPATH / relative_path
+
+    existing_index = index_by_class_name.get(class_name)
+    if existing_index is None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(java_source, encoding="utf-8")
+        index_by_class_name[class_name] = len(generated_java)
+        generated_java.append(
+            _GeneratedJava(class_name=class_name, java_source=java_source, workspace_path=target)
+        )
+        return class_name, target, False
+
+    existing = generated_java[existing_index]
+    merged_source = merge_java_classes(existing.java_source, java_source)
+    if merged_source != existing.java_source:
+        existing.workspace_path.write_text(merged_source, encoding="utf-8")
+        generated_java[existing_index] = _GeneratedJava(
+            class_name=class_name,
+            java_source=merged_source,
+            workspace_path=existing.workspace_path,
+        )
+    return class_name, existing.workspace_path, True
 
 
 def run_automation_engineering_stage(
@@ -267,7 +332,14 @@ def run_automation_engineering_stage(
     # the loop CONTINUES with the remaining needs either way.
     step_outcomes: list[StepDefinitionOutcome] = []
     generated_java: list[_GeneratedJava] = []
+    generated_java_by_class_name: dict[str, int] = {}
     asset_records: list[AssetRecord] = []
+    # Outcomes merged into an EARLIER need's own class this run (module
+    # docstring step 6) -- excluded from the promotion loop below so the
+    # SAME class is never independently promoted twice, and so promotion
+    # never has to resolve a merged, multi-method candidate's identity
+    # (:mod:`.promotion.identity` requires exactly one asset per candidate).
+    not_independently_promotable: set[int] = set()
 
     for need in unique_needs:
         try:
@@ -286,17 +358,27 @@ def run_automation_engineering_stage(
                 )
             )
             continue
-        step_outcomes.append(outcome)
 
         if isinstance(outcome, GeneratedStepDefinition):
-            class_name, written_path = _write_generated_java(outcome.java_source, workspace_dir)
-            generated_java.append(
-                _GeneratedJava(
-                    class_name=class_name,
-                    java_source=outcome.java_source,
-                    workspace_path=written_path,
+            try:
+                class_name, written_path, merged = _write_generated_java(
+                    outcome.java_source, workspace_dir, generated_java, generated_java_by_class_name
                 )
-            )
+            except UnsafeClassMergeError as exc:
+                asset_records.append(
+                    AssetRecord(
+                        need_text=outcome.need.text,
+                        need_kind="step_definition",
+                        outcome="escalated",
+                        escalated=True,
+                        escalation_check="class_name_collision",
+                        escalation_reason=str(exc),
+                    )
+                )
+                continue
+            step_outcomes.append(outcome)
+            if merged:
+                not_independently_promotable.add(id(outcome))
             asset_records.append(
                 AssetRecord(
                     need_text=outcome.need.text,
@@ -308,6 +390,7 @@ def run_automation_engineering_stage(
                 )
             )
         elif isinstance(outcome, BoundStepDefinition):
+            step_outcomes.append(outcome)
             asset_records.append(
                 AssetRecord(
                     need_text=outcome.need.text,
@@ -317,6 +400,7 @@ def run_automation_engineering_stage(
                 )
             )
         elif isinstance(outcome, EscalatedStepNeed):
+            step_outcomes.append(outcome)
             asset_records.append(
                 AssetRecord(
                     need_text=outcome.need.text,
@@ -354,14 +438,22 @@ def run_automation_engineering_stage(
         generated_test_data.append(td_outcome)
 
     for td_outcome in generated_test_data:
-        class_name, written_path = _write_generated_java(td_outcome.java_source, workspace_dir)
-        generated_java.append(
-            _GeneratedJava(
-                class_name=class_name,
-                java_source=td_outcome.java_source,
-                workspace_path=written_path,
+        try:
+            class_name, written_path, _merged = _write_generated_java(
+                td_outcome.java_source, workspace_dir, generated_java, generated_java_by_class_name
             )
-        )
+        except UnsafeClassMergeError as exc:
+            asset_records.append(
+                AssetRecord(
+                    need_text=td_outcome.specification.requirement_id,
+                    need_kind="test_data",
+                    outcome="escalated",
+                    escalated=True,
+                    escalation_check="class_name_collision",
+                    escalation_reason=str(exc),
+                )
+            )
+            continue
         asset_records.append(
             AssetRecord(
                 need_text=td_outcome.specification.requirement_id,
@@ -416,7 +508,10 @@ def run_automation_engineering_stage(
 
     # -- Promotion: every Generated step-definition outcome (never Bound --
     # nothing new to promote; never test-data -- structurally excluded from
-    # promote_outcome's own type signature, ADR-0044 D7). ------------------
+    # promote_outcome's own type signature, ADR-0044 D7); never a need MERGED
+    # into an earlier need's own class this run either (`not_independently_
+    # promotable`, module docstring step 6) -- the merged class already
+    # promotes once, through the FIRST contributing need's own outcome. -----
     gates = AssetGateOutcomes(
         cp2_verdict=ValidationVerdict.PASS,  # every eligible record is CP2-clean by construction
         cp3_result=cp3_result,  # decomposed per-candidate inside AssetGateOutcomes.first_failure
@@ -424,6 +519,8 @@ def run_automation_engineering_stage(
     )
     promoted_paths: list[Path] = []
     for outcome in step_outcomes:
+        if id(outcome) in not_independently_promotable:
+            continue
         decision = promote_outcome(outcome, gates, tracked_catalog)
         if decision is None:
             continue
