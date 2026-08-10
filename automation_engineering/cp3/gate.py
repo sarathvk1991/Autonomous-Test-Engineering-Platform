@@ -24,6 +24,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
+
 from automation_engineering.cp3.architecture import (
     Cp3GeneratedClassInput,
     evaluate_direct_webdriver_action,
@@ -117,12 +119,17 @@ def _evaluate_sonar_gate(
     """A deterministic pass/fail on the server's own verdict (ADR-0040
     Decision 2) -- the server judges, this function only gates on the
     boolean it returned. A :class:`SonarScanError` (submission failure,
-    poll timeout, an unreachable server) is caught here and turned into a
-    FAIL criterion rather than propagating -- CP3 fails closed, it never
+    poll timeout, an unreachable server) OR a raw :class:`httpx.HTTPError`
+    (a mid-poll transport failure or non-2xx response propagating unwrapped
+    out of the live adapter's own ``poll_for_completion``/
+    ``fetch_quality_gate_result`` -- mirrors ``suite_quality_governance.
+    stage.runner._fetch_cp7_report_outcome``'s own both-exceptions catch at
+    the identical kind of boundary) is caught here and turned into a FAIL
+    criterion rather than propagating -- CP3 fails closed, it never
     crashes."""
     try:
         result = run_quality_gate(adapter, sonar_input.project_root, sonar_input.project_key)
-    except SonarScanError as exc:
+    except (SonarScanError, httpx.HTTPError) as exc:
         return Cp3CriterionResult(
             criterion=CRITERION_SONAR_QUALITY_GATE,
             verdict=ValidationVerdict.FAIL,
