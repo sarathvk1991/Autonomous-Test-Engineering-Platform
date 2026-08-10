@@ -20,25 +20,44 @@ follow ADR-0033 (`docs/adr/0033-naming-disambiguation-and-package-renames.md`).
 | Layer | Name                                     | Package                     | Status                |
 |-------|-------------------------------------------|-----------------------------|-----------------------|
 | L1    | Requirement Intelligence                 | `requirement_intelligence/` | 🟢 Complete            |
-| L2    | Feature Engineering                      | `feature_engineering/`      | ⚪ Not started          |
-| L3    | Automation Engineering                   | `automation_engineering/`   | ⚪ Not started          |
-| L4    | Suite Quality Governance                 | `suite_quality_governance/` | ⚪ Not started          |
+| L2    | Feature Engineering                      | `feature_engineering/`      | 🟢 Built & wired (always-on, stage 14) |
+| L3    | Automation Engineering                   | `automation_engineering/`   | 🟡 Built & wired (opt-in, stage 15)    |
+| L4    | Suite Quality Governance                 | `suite_quality_governance/` | 🟡 Built & wired (opt-in, stage 16)    |
 | L5    | Test Execution                           | `test_execution/`           | ⚪ Not started          |
 | L6    | Failure Intelligence & Self-Healing      | `failure_intelligence/`     | ⚪ Not started          |
 | L7    | Governance Dashboard (Streamlit)         | `governance_dashboard/`     | ⚪ Scaffolded           |
 
 > L1 is implemented end to end: connectors (FILE and live API ingestion),
 > consolidation, engineering context orchestration, prompt governance, Gemini analysis,
-> **evidence grounding & traceability**, normalization, response validation, CP1
-> engineering-readiness, and the execution package. Architecture Version **1.2.0**.
+> requirement enhancement, **evidence grounding & traceability**, normalization,
+> response validation, CP1 engineering-readiness, the terminal quality-governance
+> release decision, and the execution package. Architecture Version **1.2.0**.
 > See the [demo guide](docs/demo/demo-guide.md) to run it.
 >
-> L2–L6 are placeholder packages only (a `README.md` and an empty `__init__.py` each) —
-> no code, and no feature file has ever been generated. L7 additionally has a scaffold
-> `app.py`; nothing in it is wired to the rest of the platform. **L1 internally contains
-> its own run-scoped quality-governance and execution-artifact subsystems**
-> (`requirement_quality_governance/`, `execution_package/`) — these are unrelated to L4
-> and L5 above; ADR-0033 exists specifically to keep the two pairs from being confused.
+> **L2 (Feature Engineering, ADR-0043) is built and runs unconditionally** as part of
+> `analyze`, once a `TestableRequirementSet` exists (run-state stage 14, ADR-0036):
+> Gherkin generation, CP2 lint/remediation, and test-data-spec derivation.
+> **L3 (Automation Engineering, ADR-0044) is built and wired as an opt-in stage**
+> (stage 15, `analyze --with-automation-engineering`): a cross-run reuse catalog,
+> step-definition/page-object/utility/test-data generation, CP3/CP4, and promotion of
+> clean, non-duplicate assets into the tracked `test-suite-baseline/` — a step
+> definition promoted in one run is reused, not regenerated, in the next. **L4 (Suite
+> Quality Governance, ADR-0046/ADR-0047) is built and wired as a second opt-in stage**
+> (stage 16, `analyze --with-suite-quality-governance`, requires
+> `--with-automation-engineering` too): CP5 (orphaned-glue detection, cross-suite
+> near-duplicate sweep, aggregate-release cohesion — does the assembled suite compile)
+> and CP8 (static execution-readiness) both gate; CP7 (whole-suite Sonar measures)
+> reports every metric family and additionally gates `reliability_rating`/`sqale_rating`
+> at an A-or-B floor. The tracked `test-suite-baseline/` currently compiles
+> (`mvn test-compile`, 71 generated Java sources) — see
+> [`docs/architecture/architecture-baseline-v2.md`](docs/architecture/architecture-baseline-v2.md)
+> for the full build history and the still-open engineering latents. **L5 and L6 remain
+> placeholder packages only** (a `README.md` and an empty `__init__.py` each) — no code.
+> L7 additionally has a scaffold `app.py`; nothing in it is wired to the rest of the
+> platform. **L1 internally contains its own run-scoped quality-governance and
+> execution-artifact subsystems** (`requirement_quality_governance/`, `execution_package/`)
+> — these are unrelated to L4 and L5 above; ADR-0033 exists specifically to keep the two
+> pairs from being confused.
 
 ## Architecture at a glance
 
@@ -321,9 +340,9 @@ autonomous-test-engineering-platform/
 │   ├── execution_package/     #   execution package (writer + per-artifact builders)
 │   ├── api/                   #   HTTP routes (future integration surface; not yet wired)
 │   └── tests/                 #   layer tests (unit/integration)
-├── feature_engineering/       # L2 — Feature Engineering (placeholder)
-├── automation_engineering/    # L3 — Automation Engineering (placeholder)
-├── suite_quality_governance/  # L4 — Suite Quality Governance (placeholder)
+├── feature_engineering/       # L2 — Feature Engineering (built & wired, stage 14, always-on)
+├── automation_engineering/    # L3 — Automation Engineering (built & wired, stage 15, opt-in)
+├── suite_quality_governance/  # L4 — Suite Quality Governance (built & wired, stage 16, opt-in)
 ├── test_execution/            # L5 — Test Execution (placeholder)
 ├── failure_intelligence/      # L6 — Failure Intelligence & Self-Healing (placeholder)
 ├── governance_dashboard/      # L7 — Governance Dashboard, Streamlit (scaffolded)
@@ -347,6 +366,8 @@ autonomous-test-engineering-platform/
 - Python **3.11+**
 - A Google AI Studio API key (`GOOGLE_API_KEY`) for AI features
 - For live API ingestion only: reachable JIRA, SonarQube, and OWASP ZAP
+- For `--with-automation-engineering` / `--with-suite-quality-governance` only: a
+  JDK 21 + Maven toolchain (ADR-0041) and a reachable SonarQube server
 
 ### Setup
 ```bash
@@ -383,11 +404,20 @@ ingested — `EXECUTION_MODE=FILE` (default) or `EXECUTION_MODE=API`.
 # Check every configured source before you run anything
 python scripts/run_requirement_analysis.py health
 
-# Full analysis with validation and CP1, from bundled sample data
+# Full analysis with validation and CP1, from bundled sample data.
+# Feature Engineering (Layer 2, stage 14) runs automatically as part of this —
+# no separate flag.
 python scripts/run_requirement_analysis.py analyze --validate
 
 # The same pipeline against live JIRA / SonarQube / OWASP ZAP
 EXECUTION_MODE=API python scripts/run_requirement_analysis.py analyze --validate
+
+# Also generate/reuse and promote automation code (Layer 3, stage 15, opt-in —
+# needs a reachable SonarQube server), then run suite-level governance
+# (Layer 4, stage 16, opt-in — needs a JDK/Maven toolchain too). Both flags
+# are off by default; see each flag's own --help text for what it gates.
+python scripts/run_requirement_analysis.py analyze --validate \
+  --with-automation-engineering --with-suite-quality-governance
 ```
 
 Start with the **[demo guide](docs/demo/demo-guide.md)** — it assumes no prior
@@ -405,6 +435,7 @@ every required variable before the pipeline runs and names any that are missing.
 - [Operations runbook](docs/operations/runbook.md) — running and troubleshooting
 - [Requirement Analysis CLI](docs/user-guide/requirement-analysis-cli.md)
 - [Architecture overview](docs/architecture/overview.md)
+- [Architecture Baseline](docs/architecture/architecture-baseline-v2.md) — the consolidated index of locked ADR decisions, completed build milestones, and open engineering latents
 - [Execution Package](docs/architecture/execution-package.md) — every generated artifact and its lineage
 - [Coding standards](docs/coding-standards.md)
 - [Naming conventions](docs/naming-conventions.md)
@@ -412,8 +443,11 @@ every required variable before the pipeline runs and names any that are missing.
 
 ## Contributing
 Follow the coding standards and naming conventions above. Use Conventional
-Commits and `type/short-description` branch names. All quality gates
-(`make check`) must pass before a PR is merged.
+Commits and `type/short-description` branch names. `make lint` and `make test`
+must be green before a PR is merged. `make typecheck` (mypy, strict mode via
+`pyproject.toml`) is run and tracked against a pre-existing error baseline —
+the discipline is "no rise," not zero errors, so a nonzero `make typecheck`/
+`make check` exit is not on its own a merge blocker.
 
 ## License
 TBD.
