@@ -112,6 +112,40 @@ posture for the near-dup threshold, applied here to a different metric family fo
 reason: a threshold locked against data collected before the underlying defect it would help
 catch is even fixable is not evidence, it is a guess dressed as a number.
 
+**Amendment note (additive, 2026-08-10, CP7 rating-gating activation).** D3's own trigger, above,
+is now met: the suite genuinely compiles (`mvn clean test-compile` exit 0, 71 source files,
+commit `4db1ea2`, reconfirmed unchanged at `5f5c6ce`) and a fresh Sonar scan was run against that
+exact compiling state — the resulting analysis's own `revision` (`GET /api/project_analyses
+/search`) matched `git rev-parse HEAD` (`5f5c6ce...`) exactly, proving the scores below are real
+and current, not the stale pre-compile-failure measurements D3's own text warns against. Real,
+calibratable scores obtained: `reliability_rating=1.0` (A), `sqale_rating=1.0` (A), `violations=2`,
+`bugs=0`, `code_smells=2` (two real MAJOR issues: `java:S6204` and `java:S1068` — a live-suite-
+scores investigation, this ADR's own evidentiary basis for this note, the same role D10's own live
+discovery plays for D1). **CP7 now GATES on `reliability_rating` and `sqale_rating` — PASS iff
+both are A-or-B (`<= 2.0`), FAIL if either is worse than B.** This floor is deliberately ONE NOTCH
+below D3's own parenthetical "A grade" framing, not the stricter A-only floor: the suite's own real
+measurement is A on both today, so an A-or-B gate has real headroom (gates a genuine regression to
+C/D/E) rather than a zero-headroom floor that would fail the suite's very next MAJOR-severity smell
+regardless of whether it reflects a meaningful regression — the same "gate a regression, do not
+demand perfection" posture ADR-0046 D3 already established for the near-dup threshold. `violations`
+and `bugs`/`code_smells`'s own raw counts stay report-only — D3 named ratings, specifically, as the
+gating candidates ("reliability_rating"/"sqale_rating"), never the raw counts. An unmeasured or
+unavailable rating (no Sonar adapter configured, or a live fetch failure) produces neither PASS nor
+FAIL but the third, already-governed `ValidationVerdict.WARN` state — mirroring CP1's own
+FAIL-beats-WARN-beats-PASS aggregation (`requirement_intelligence/cp1/engine/cp1_engine.py
+::_derive_verdict`, ADR-0012 §8) rather than inventing a new rule, and never composing as a stage
+failure (the same "unavailable is honest, never fatal" discipline D3's own report-only posture
+already established, extended to the gating half). Implemented in `suite_quality_governance/cp7
+/rating_gate.py` (`evaluate_rating_gate`), composed into the stage-16 verdict alongside CP5/CP8
+(`suite_quality_governance/stage/runner.py`, see this ADR's own D9). **D3's own text above is
+otherwise unchanged** — this note activates its own pre-declared trigger; it does not rewrite it.
+`coverage`/`duplicated_lines_density` (D5) and `vulnerabilities`/`security_hotspots`/
+`security_rating` (D4) are UNCHANGED by this note — report-only, exactly as those Decisions already
+require, for the reasons stated there, not this one. (`duplicated_lines_density` did return a real
+value, `0.0`, on this same fresh scan — updating D5's own prior "recorded as unresolved" note as a
+fact, but D5's own report-only requirement for it is untouched; it was never a gating candidate D3
+named, and this note does not make it one.)
+
 ### D4 — CP7's security dimension: report-only, permanently, absent a future explicit decision
 
 **Locked, resolving the design proposal's open decision 2.** `vulnerabilities`,

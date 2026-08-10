@@ -12,13 +12,18 @@ Stage 16 is Layer 4's own one run-state stage (ADR-0036's own reservation) --
 CP5, CP7, and CP8 all join it (ADR-0047's own "one Layer 4 stage, not new
 stages" framing). CP5 produces exactly ONE verdict per invocation
 (``Cp5PromotionWrapResult``, `suite_quality_governance.cp5.models`); CP8
-mirrors that shape (``Cp8Result``, gates, ADR-0047 D9); CP7 deliberately does
-NOT (``Cp7WholeSuiteQualityReport`` carries no verdict at all, ADR-0047 D3) --
+mirrors that shape (``Cp8Result``, gates, ADR-0047 D9); CP7 is MIXED
+(ADR-0047 D3's own amendment note, 2026-08-10): its whole-suite measures
+report (``Cp7WholeSuiteQualityReport``) still carries no verdict at all --
 wrapped here in ``Cp7ReportOutcome`` so its own "measures obtained, or
-honestly unavailable" state has somewhere to live without inventing a verdict
-CP7 itself does not have. This module adds only the persistence contract
-around all three: report filenames, a markdown summary, and the stage-result
-wrapper ``execute_suite_quality_governance_stage`` returns.
+honestly unavailable" state has somewhere to live -- but its own two rating
+metrics (``reliability_rating``/``sqale_rating``) now gate via a SEPARATE,
+additive result, ``Cp7RatingGateResult`` (`suite_quality_governance.cp7
+.models`/`.rating_gate`), composed into the stage's own ``overall_verdict``
+alongside CP5/CP8 (`.runner`'s own module docstring). This module adds only
+the persistence contract around all three: report filenames, a markdown
+summary, and the stage-result wrapper
+``execute_suite_quality_governance_stage`` returns.
 """
 
 from __future__ import annotations
@@ -28,7 +33,7 @@ from pathlib import Path
 
 from shared.enums.base import ValidationVerdict
 from suite_quality_governance.cp5.models import Cp5PromotionWrapResult
-from suite_quality_governance.cp7.models import Cp7WholeSuiteQualityReport
+from suite_quality_governance.cp7.models import Cp7RatingGateResult, Cp7WholeSuiteQualityReport
 from suite_quality_governance.cp8.models import Cp8Result
 
 #: This package's own contract version -- independent of
@@ -76,12 +81,18 @@ class SuiteQualityGovernanceStageResult:
     every existing CP5-wiring caller/test keeps working verbatim). ``overall_
     verdict`` is the STAGE's own composed verdict -- ``PASS`` iff CP5's
     ``result.overall_verdict`` AND CP8's ``cp8_result.overall_verdict`` are
-    both ``PASS`` (ADR-0047 D8/D9: CP8 gates, alongside CP5's own two gating
-    components; CP7 never contributes here, D3)."""
+    both ``PASS`` AND CP7's own ``cp7_rating_result.overall_verdict`` is not
+    ``FAIL`` (ADR-0047 D8/D9 for CP5/CP8; D3's amendment note, 2026-08-10,
+    for CP7's rating-gate half -- an unmeasured rating is ``WARN``, which
+    composes as non-blocking, never as a stage failure). ``cp7_outcome``
+    (the whole-suite measures report, or its own honest absence) remains
+    entirely report-only and never itself enters this composition -- only
+    ``cp7_rating_result``, computed FROM ``cp7_outcome.report``, does."""
 
     result: Cp5PromotionWrapResult
     cp8_result: Cp8Result
     cp7_outcome: Cp7ReportOutcome
+    cp7_rating_result: Cp7RatingGateResult
     overall_verdict: ValidationVerdict
     cp5_report_path: Path
     cp8_report_path: Path

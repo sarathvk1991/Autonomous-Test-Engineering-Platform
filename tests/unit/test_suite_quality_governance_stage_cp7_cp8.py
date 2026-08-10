@@ -6,12 +6,17 @@ stays in `test_suite_quality_governance_stage.py`, untouched.
 Covers: all three control points run in one stage invocation; CP8's own
 static-readiness gate composes into the stage's own verdict alongside CP5
 (ADR-0047 D9) -- a suite that fails CP8 fails the stage even when CP5
-alone would have passed; CP7's own measures never gate the stage (D3) --
-surfaced regardless of content; CP7's own live Sonar dependence degrades
-to an honest "unavailable" outcome (no adapter configured, or a genuine
-fetch failure) without failing the stage; the stage's own composition
-matrix (CP5 x CP8 -> overall_verdict); and every test here uses ONLY stub
-Sonar adapters / stub compiler / stub embeddings -- no live dependency.
+alone would have passed; CP7's own RATING metrics (`reliability_rating`/
+`sqale_rating`) now gate the stage too (ADR-0047 D3's own amendment note,
+2026-08-10) at an A-or-B floor, while CP7's OTHER measures (raw counts,
+security, coverage/duplication) stay report-only, surfaced regardless of
+content; CP7's own live Sonar dependence degrades to an honest
+"unavailable" outcome (no adapter configured, or a genuine fetch failure)
+without failing the stage -- the rating-gate itself degrades to `WARN`,
+never `FAIL`, on the same unavailable report; the stage's own composition
+matrix (CP5 x CP8 x CP7-rating-gate -> overall_verdict); and every test
+here uses ONLY stub Sonar adapters / stub compiler / stub embeddings -- no
+live dependency.
 """
 
 from __future__ import annotations
@@ -36,7 +41,11 @@ from requirement_intelligence.run_state.run_state_manager import RunStateManager
 from shared.enums.base import ValidationVerdict
 from suite_quality_governance.cp5.compile_check import StubCompileChecker
 from suite_quality_governance.cp5.models import CompileResult
-from suite_quality_governance.cp7.models import ALL_CP7_METRICS
+from suite_quality_governance.cp7.models import (
+    ALL_CP7_METRICS,
+    CRITERION_RELIABILITY_RATING_GATE,
+    CRITERION_SQALE_RATING_GATE,
+)
 from suite_quality_governance.cp8.models import CRITERION_GLUE_PACKAGE_RESOLVES
 from suite_quality_governance.stage.runner import (
     STAGE_ID,
@@ -173,10 +182,20 @@ def _find_stage(run_state_mgr: RunStateManager, stage_id: str) -> StageRecord:
     return next(s for s in run_state_mgr.state.stages if s.stage_id == stage_id)
 
 
+_RATING_METRIC_KEYS = frozenset({"reliability_rating", "sqale_rating"})
+
+
 def _clean_measures(project_key: str = DEFAULT_SONAR_PROJECT_KEY) -> SonarMeasuresResult:
+    """Every CP7 metric at its own "clean" value -- `"1.0"` (Sonar's own A
+    rating) for the two metrics the rating-gate reads, `"0"` for every
+    other (report-only) count, so this fixture's own name stays true now
+    that a real gate exists over the two rating metrics specifically."""
     return SonarMeasuresResult(
         project_key=project_key,
-        measures=tuple(SonarMeasure(metric_key=k, value="0") for k in ALL_CP7_METRICS),
+        measures=tuple(
+            SonarMeasure(metric_key=k, value="1.0" if k in _RATING_METRIC_KEYS else "0")
+            for k in ALL_CP7_METRICS
+        ),
     )
 
 
@@ -232,13 +251,19 @@ class TestAllThreeControlPointsRunInTheStage:
         assert {f.metric_key for f in result.cp7_outcome.report.all_findings} == set(
             ALL_CP7_METRICS
         )
+        # CP7's own rating-gate: clean (A/A) measures pass it.
+        assert result.cp7_rating_result.overall_verdict == ValidationVerdict.PASS
+        assert result.overall_verdict == ValidationVerdict.PASS
         # The stage report/JSON artifacts for all three exist.
         assert result.cp5_report_path.exists()
         assert result.cp8_report_path.exists()
         assert result.cp7_report_path.exists()
         report_text = result.report_path.read_text(encoding="utf-8")
         assert "CP8 static-readiness verdict" in report_text
+        assert "CP7 rating gate" in report_text
         assert "CP7 whole-suite Sonar measures" in report_text
+        cp7_report_json = json.loads(result.cp7_report_path.read_text(encoding="utf-8"))
+        assert cp7_report_json["ratingGate"]["overallVerdict"] == "pass"
 
 
 class TestCp8GatesTheStage:
@@ -278,19 +303,33 @@ class TestCp8GatesTheStage:
         assert CRITERION_GLUE_PACKAGE_RESOLVES in report_text
 
 
-class TestCp7NeverGatesTheStage:
-    def test_cp5_and_cp8_pass_but_cp7_measures_show_issues_stage_still_passes(
+class TestCp7ReportOnlyMetricsNeverGateTheStage:
+    """`violations`/`bugs`/`code_smells`' own raw counts, security, and
+    coverage/duplication stay report-only (D3/D4/D5, unchanged by the
+    amendment note) -- only `reliability_rating`/`sqale_rating` gate
+    (`TestCp7RatingGateComposesIntoTheStage`, below)."""
+
+    def test_bad_report_only_measures_with_clean_ratings_stage_still_passes(
         self, baseline_root: Path, run_dir: Path
     ) -> None:
         _clean_cp5_and_cp8_fixture(baseline_root)
-        # Deliberately "bad-looking" measures -- CP7 structurally has no
-        # verdict concept (ADR-0047 D3), so this must never affect the
-        # stage's own overall_verdict.
+        # Deliberately "bad-looking" report-only measures (bugs,
+        # vulnerabilities, violations, code_smells, security_hotspots) --
+        # never gates, regardless of content -- paired with CLEAN ratings
+        # (A) so this test isolates the report-only half from the new
+        # rating-gate half (covered separately, below).
         concerning_measures = SonarMeasuresResult(
             project_key=DEFAULT_SONAR_PROJECT_KEY,
             measures=tuple(
                 SonarMeasure(
-                    metric_key=k, value="10" if k in ("bugs", "vulnerabilities") else "3.0"
+                    metric_key=k,
+                    value=(
+                        "1.0"
+                        if k in ("reliability_rating", "sqale_rating")
+                        else "10"
+                        if k in ("bugs", "vulnerabilities")
+                        else "3.0"
+                    ),
                 )
                 for k in ALL_CP7_METRICS
             ),
@@ -310,7 +349,130 @@ class TestCp7NeverGatesTheStage:
         assert report is not None
         bugs = next(f for f in report.all_findings if f.metric_key == "bugs")
         assert bugs.value == "10"
-        assert result.overall_verdict == ValidationVerdict.PASS  # CP7 content never gates
+        assert result.cp7_rating_result.overall_verdict == ValidationVerdict.PASS
+        assert result.overall_verdict == ValidationVerdict.PASS  # report-only content never gates
+
+
+class TestCp7RatingGateComposesIntoTheStage:
+    """`reliability_rating`/`sqale_rating` GATE the stage now (ADR-0047
+    D3's own amendment note, 2026-08-10) -- PASS at A-or-B, FAIL worse
+    than B, and an unmeasured/unavailable rating is `WARN`, never `FAIL`
+    (never blocks)."""
+
+    def test_a_or_b_ratings_pass_the_gate(self, baseline_root: Path, run_dir: Path) -> None:
+        _clean_cp5_and_cp8_fixture(baseline_root)
+        b_rating_measures = SonarMeasuresResult(
+            project_key=DEFAULT_SONAR_PROJECT_KEY,
+            measures=tuple(
+                SonarMeasure(
+                    metric_key=k,
+                    value="2.0" if k in ("reliability_rating", "sqale_rating") else "0",
+                )
+                for k in ALL_CP7_METRICS
+            ),
+        )
+
+        result = run_suite_quality_governance_stage(
+            run_dir,
+            (),
+            compile_checker=StubCompileChecker(result=CompileResult(passed=True)),
+            embedding_provider=_StubEmbeddingProvider({}),
+            baseline_root=baseline_root,
+            sonar_adapter=StubSonarQualityGateAdapter(measures=b_rating_measures),
+        )
+
+        assert result.cp7_rating_result.overall_verdict == ValidationVerdict.PASS
+        assert (
+            result.cp7_rating_result.criterion(CRITERION_RELIABILITY_RATING_GATE).verdict
+            == ValidationVerdict.PASS
+        )
+        assert (
+            result.cp7_rating_result.criterion(CRITERION_SQALE_RATING_GATE).verdict
+            == ValidationVerdict.PASS
+        )
+        assert result.overall_verdict == ValidationVerdict.PASS
+
+    def test_a_c_rating_fails_the_gate_and_the_stage_even_though_cp5_and_cp8_pass(
+        self, baseline_root: Path, run_dir: Path
+    ) -> None:
+        _clean_cp5_and_cp8_fixture(baseline_root)
+        c_reliability_measures = SonarMeasuresResult(
+            project_key=DEFAULT_SONAR_PROJECT_KEY,
+            measures=tuple(
+                SonarMeasure(
+                    metric_key=k,
+                    value=(
+                        "3.0"
+                        if k == "reliability_rating"
+                        else "1.0"
+                        if k == "sqale_rating"
+                        else "0"
+                    ),
+                )
+                for k in ALL_CP7_METRICS
+            ),
+        )
+
+        result = run_suite_quality_governance_stage(
+            run_dir,
+            (),
+            compile_checker=StubCompileChecker(result=CompileResult(passed=True)),
+            embedding_provider=_StubEmbeddingProvider({}),
+            baseline_root=baseline_root,
+            sonar_adapter=StubSonarQualityGateAdapter(measures=c_reliability_measures),
+        )
+
+        assert result.result.overall_verdict == ValidationVerdict.PASS  # CP5 alone: clean
+        assert result.cp8_result.overall_verdict == ValidationVerdict.PASS  # CP8 alone: clean
+        assert (
+            result.cp7_rating_result.criterion(CRITERION_RELIABILITY_RATING_GATE).verdict
+            == ValidationVerdict.FAIL
+        )
+        assert (
+            result.cp7_rating_result.criterion(CRITERION_SQALE_RATING_GATE).verdict
+            == ValidationVerdict.PASS
+        )
+        assert result.cp7_rating_result.overall_verdict == ValidationVerdict.FAIL
+        assert result.overall_verdict == ValidationVerdict.FAIL  # the STAGE fails
+        assert result.passed is False
+
+        report_text = result.report_path.read_text(encoding="utf-8")
+        assert "Suite-level reject" in report_text
+        assert CRITERION_RELIABILITY_RATING_GATE in report_text
+
+    def test_an_unmeasured_rating_warns_but_does_not_fail_the_gate_or_the_stage(
+        self, baseline_root: Path, run_dir: Path
+    ) -> None:
+        _clean_cp5_and_cp8_fixture(baseline_root)
+        # reliability_rating is absent from the scripted response entirely
+        # -- the same "server has no value" shape ADR-0047 D5 already
+        # establishes for coverage/duplication, reused here.
+        missing_rating_measures = SonarMeasuresResult(
+            project_key=DEFAULT_SONAR_PROJECT_KEY,
+            measures=tuple(
+                SonarMeasure(metric_key=k, value="1.0" if k == "sqale_rating" else "0")
+                for k in ALL_CP7_METRICS
+                if k != "reliability_rating"
+            ),
+        )
+
+        result = run_suite_quality_governance_stage(
+            run_dir,
+            (),
+            compile_checker=StubCompileChecker(result=CompileResult(passed=True)),
+            embedding_provider=_StubEmbeddingProvider({}),
+            baseline_root=baseline_root,
+            sonar_adapter=StubSonarQualityGateAdapter(measures=missing_rating_measures),
+        )
+
+        reliability_criterion = result.cp7_rating_result.criterion(
+            CRITERION_RELIABILITY_RATING_GATE
+        )
+        assert reliability_criterion.verdict == ValidationVerdict.WARN
+        assert reliability_criterion.value is None
+        assert result.cp7_rating_result.overall_verdict == ValidationVerdict.WARN
+        assert result.cp7_rating_result.passed is True  # WARN never blocks
+        assert result.overall_verdict == ValidationVerdict.PASS  # unmeasured != FAIL
 
 
 class TestCp7SonarUnavailableDegradesHonestly:
@@ -331,6 +493,8 @@ class TestCp7SonarUnavailableDegradesHonestly:
         assert result.cp7_outcome.available is False
         assert result.cp7_outcome.report is None
         assert "no Sonar adapter" in (result.cp7_outcome.unavailable_reason or "")
+        # The rating-gate itself degrades to WARN (unmeasured), never FAIL.
+        assert result.cp7_rating_result.overall_verdict == ValidationVerdict.WARN
         assert result.overall_verdict == ValidationVerdict.PASS  # gating parts unaffected
 
     def test_a_genuine_sonar_fetch_failure_is_unavailable_but_does_not_fail_the_stage(
@@ -359,6 +523,8 @@ class TestCp7SonarUnavailableDegradesHonestly:
         assert result is not None
         assert result.cp7_outcome.available is False
         assert result.cp7_outcome.unavailable_reason is not None
+        # The rating-gate itself degrades to WARN (unmeasured), never FAIL.
+        assert result.cp7_rating_result.overall_verdict == ValidationVerdict.WARN
         # The gating parts still produced a real verdict -- CP7's absence
         # is surfaced, never fatal to the stage's own run-state outcome.
         assert result.overall_verdict == ValidationVerdict.PASS
@@ -368,7 +534,12 @@ class TestCp7SonarUnavailableDegradesHonestly:
 
 class TestCompositionMatrix:
     """The stage's own verdict = CP5.overall_verdict AND CP8.overall_verdict
-    -- proven across all four PASS/FAIL combinations (ADR-0047 D8/D9)."""
+    -- proven across all four PASS/FAIL combinations (ADR-0047 D8/D9). No
+    `sonar_adapter` is configured in any scenario here, so CP7's own
+    rating-gate is `WARN` throughout (unmeasured, never blocking) --
+    exercising the CP5 x CP8 matrix in isolation from CP7's own gating
+    half, which gets its own dedicated composition proof
+    (`TestCp7RatingGateComposesIntoTheStage`, above)."""
 
     def test_cp5_pass_and_cp8_pass_yields_stage_pass(
         self, baseline_root: Path, run_dir: Path

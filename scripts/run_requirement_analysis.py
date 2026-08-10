@@ -1786,9 +1786,10 @@ def handle_analyze(args: argparse.Namespace) -> int:
                     cp5 = suite_quality_governance_result.result
                     cp8 = suite_quality_governance_result.cp8_result
                     cp7 = suite_quality_governance_result.cp7_outcome
+                    cp7_rating = suite_quality_governance_result.cp7_rating_result
                     console.ok(
                         f"Stage verdict: {suite_quality_governance_result.overall_verdict.value} "
-                        "(CP5 AND CP8; CP7 report-only, never gates)"
+                        "(CP5 AND CP8 AND CP7 rating-gate; CP7's other measures stay report-only)"
                     )
                     console.note(
                         f"  CP5 cohesion={cp5.cohesion.overall_verdict.value} "
@@ -1796,11 +1797,15 @@ def handle_analyze(args: argparse.Namespace) -> int:
                         f"near_dup_clusters={len(cp5.near_duplicates.clusters)}"
                     )
                     console.note(f"  CP8 static-readiness={cp8.overall_verdict.value}")
+                    console.note(
+                        f"  CP7 rating-gate (reliability/sqale, A-or-B)="
+                        f"{cp7_rating.overall_verdict.value}"
+                    )
                     if cp7.available:
                         console.note("  CP7 measures: obtained (see cp7_report.json)")
                     else:
                         console.note(f"  CP7 measures: unavailable ({cp7.unavailable_reason})")
-                    if cp5.has_review_worthy_findings or not cp8.passed:
+                    if cp5.has_review_worthy_findings or not cp8.passed or not cp7_rating.passed:
                         console.note(
                             "  ⚠ Suite Quality Governance findings need human review "
                             f"(see {suite_quality_governance_result.report_path.name}); "

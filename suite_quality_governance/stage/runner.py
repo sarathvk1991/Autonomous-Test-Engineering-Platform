@@ -20,13 +20,19 @@ the identical "GLUE, not a fifth CP5 component" posture stage 15's own module
 docstring already establishes for ITS six subsystems, extended here across
 control points.
 
-**Composition (ADR-0047 D8/D9): CP8 gates alongside CP5; CP7 never gates.**
-The stage's own ``overall_verdict`` is ``PASS`` iff CP5's own
+**Composition (ADR-0047 D8/D9, D3's own amendment note 2026-08-10): CP8
+gates alongside CP5; CP7's own measures REPORT, but its two RATINGS now
+gate too.** The stage's own ``overall_verdict`` is ``PASS`` iff CP5's own
 ``result.overall_verdict`` AND CP8's own ``cp8_result.overall_verdict`` are
-both ``PASS`` -- CP8's static-readiness gate composes into the stage exactly
-like CP5's cohesion/orphaned-glue gates already do (D9: "CP8 gates
-immediately... unconditional on compile state"). CP7's own measures
-(D3: report-only, permanently until an explicit future decision) are
+both ``PASS`` AND CP7's own ``cp7_rating_result.overall_verdict``
+(`.rating_gate.evaluate_rating_gate`, over ``reliability_rating``/
+``sqale_rating`` only) is not ``FAIL`` -- CP8's static-readiness gate
+composes into the stage exactly like CP5's cohesion/orphaned-glue gates
+already do (D9: "CP8 gates immediately... unconditional on compile
+state"); CP7's rating-gate composes the SAME way, additively, now that
+D3's own deferral trigger (suite compiles + real, calibratable scores) is
+met. CP7's own OTHER measures (violations/bugs/code_smells' own raw
+counts, security, coverage/duplication -- D3/D4/D5, unchanged) are
 surfaced in the stage's own report/JSON artifacts but never enter this
 composition -- carried in ``Cp7ReportOutcome`` (`.models`), alongside the
 verdict, never inside it. CP5's own near-duplicate sweep remains advisory
@@ -34,17 +40,19 @@ exactly as CP5 already established (ADR-0046 D6) -- unaffected by this
 stage's own new composition.
 
 **CP7's own live Sonar dependence degrades honestly, never fatally
-(ADR-0047 D3).** ``sonar_adapter`` is optional -- when ``None`` (no adapter
-configured for this stage run) or when the adapter's own fetch genuinely
-fails (an unreachable server, a scan error), CP7's own report is recorded as
+(ADR-0047 D3, extended to the rating-gate half by D3's amendment note).**
+``sonar_adapter`` is optional -- when ``None`` (no adapter configured for
+this stage run) or when the adapter's own fetch genuinely fails (an
+unreachable server, a scan error), CP7's own report is recorded as
 UNAVAILABLE (`.models.Cp7ReportOutcome`), never as a stage failure and never
-as a faked-clean report -- CP7 never gated the stage to begin with, so its
-own absence cannot un-gate it either. This mirrors
+as a faked-clean report -- CP7's own OTHER measures never gated the stage to
+begin with, so their own absence cannot un-gate it either; and
+``cp7_rating_result`` degrades to ``WARN`` (never ``FAIL``) on the SAME
+unavailable report, per ``evaluate_rating_gate``'s own contract, which
+composes as non-blocking here too. This mirrors
 `suite_quality_governance.cp5.cohesion._evaluate_compiles`'s own "a
 live-tool failure is caught and turned into an honest outcome, never left to
-crash the caller" discipline, one component over -- extended here to a
-report-only component whose own honest failure state is "unavailable," not
-"FAIL" (CP7 structurally has no FAIL, D3).
+crash the caller" discipline, one component over.
 
 **Wrap order (ADR-0046 D4), satisfied by WHEN this stage is invoked, not by
 anything in this module's own code.** D4 requires CP5 to run "after
@@ -115,7 +123,12 @@ from suite_quality_governance.cp5.near_duplicate_sweep import DEFAULT_NEAR_DUPLI
 from suite_quality_governance.cp5.orphaned_glue import DEFAULT_SEMANTIC_HINT_FLOOR
 from suite_quality_governance.cp5.promotion_wrap import evaluate_promotion_wrap
 from suite_quality_governance.cp7.measures import fetch_whole_suite_quality_report
-from suite_quality_governance.cp7.models import Cp7MeasureFinding, Cp7WholeSuiteQualityReport
+from suite_quality_governance.cp7.models import (
+    Cp7MeasureFinding,
+    Cp7RatingGateResult,
+    Cp7WholeSuiteQualityReport,
+)
+from suite_quality_governance.cp7.rating_gate import evaluate_rating_gate
 from suite_quality_governance.cp8.models import Cp8Result
 from suite_quality_governance.cp8.readiness import evaluate_static_readiness
 from suite_quality_governance.stage.models import (
@@ -270,9 +283,32 @@ def _cp7_findings_to_json(findings: tuple[Cp7MeasureFinding, ...]) -> list[dict[
     ]
 
 
-def _cp7_outcome_to_json(outcome: Cp7ReportOutcome) -> dict[str, object]:
+def _cp7_rating_gate_to_json(result: Cp7RatingGateResult) -> dict[str, object]:
+    return {
+        "overallVerdict": result.overall_verdict.value,
+        "criteria": [
+            {
+                "criterion": c.criterion,
+                "metricKey": c.metric_key,
+                "verdict": c.verdict.value,
+                "value": c.value,
+                "detail": c.detail,
+            }
+            for c in result.criteria
+        ],
+    }
+
+
+def _cp7_outcome_to_json(
+    outcome: Cp7ReportOutcome, rating_result: Cp7RatingGateResult
+) -> dict[str, object]:
+    rating_gate_json = _cp7_rating_gate_to_json(rating_result)
     if outcome.report is None:
-        return {"available": False, "unavailableReason": outcome.unavailable_reason}
+        return {
+            "available": False,
+            "unavailableReason": outcome.unavailable_reason,
+            "ratingGate": rating_gate_json,
+        }
     report = outcome.report
     return {
         "available": True,
@@ -280,6 +316,7 @@ def _cp7_outcome_to_json(outcome: Cp7ReportOutcome) -> dict[str, object]:
         "genericQuality": _cp7_findings_to_json(report.generic_quality),
         "security": _cp7_findings_to_json(report.security),
         "coverageAndDuplication": _cp7_findings_to_json(report.coverage_and_duplication),
+        "ratingGate": rating_gate_json,
     }
 
 
@@ -312,6 +349,7 @@ def _build_report(
     cp5_result: Cp5PromotionWrapResult,
     cp8_result: Cp8Result,
     cp7_outcome: Cp7ReportOutcome,
+    cp7_rating_result: Cp7RatingGateResult,
     overall_verdict: ValidationVerdict,
     staged_paths: tuple[Path, ...],
 ) -> str:
@@ -325,8 +363,10 @@ def _build_report(
         f"- Near-duplicate clusters found (advisory): {len(result.near_duplicates.clusters)}",
         f"- CP5 overall verdict: {result.overall_verdict.value}",
         f"- CP8 static-readiness verdict: {cp8_result.overall_verdict.value}",
-        f"- Stage overall verdict (CP5 AND CP8; CP7 never gates, ADR-0047 D3/D9): "
-        f"{overall_verdict.value}",
+        f"- CP7 rating-gate verdict (reliability/sqale at A-or-B, ADR-0047 D3 amendment): "
+        f"{cp7_rating_result.overall_verdict.value}",
+        f"- Stage overall verdict (CP5 AND CP8 AND CP7 rating-gate; CP7's OTHER measures "
+        f"stay report-only, ADR-0047 D3/D9): {overall_verdict.value}",
     ]
     if result.compile_attribution is not None:
         lines.append(f"- Compile-failure attribution: {result.compile_attribution.detail}")
@@ -353,6 +393,9 @@ def _build_report(
             if cp8_criterion.verdict != ValidationVerdict.PASS:
                 for message in cp8_criterion.messages:
                     lines.append(f"- {cp8_criterion.criterion}: {message}")
+        for cp7_rating_criterion in cp7_rating_result.criteria:
+            if cp7_rating_criterion.verdict == ValidationVerdict.FAIL:
+                lines.append(f"- {cp7_rating_criterion.criterion}: {cp7_rating_criterion.detail}")
     if result.near_duplicates.clusters:
         lines.append("")
         lines.append("## Near-duplicate clusters (advisory -- never blocks)")
@@ -360,7 +403,17 @@ def _build_report(
             names = ", ".join(f"{m.class_name}.{m.method_name}" for m in cluster.members)
             lines.append(f"- {names}")
     lines.append("")
-    lines.append("## CP7 whole-suite Sonar measures (report-only -- ADR-0047 D3, never gates)")
+    lines.append(
+        "## CP7 rating gate (GATES -- reliability_rating/sqale_rating at A-or-B, "
+        "ADR-0047 D3 amendment note, 2026-08-10)"
+    )
+    for cp7_rating_criterion in cp7_rating_result.criteria:
+        lines.append(f"- {cp7_rating_criterion.criterion}: {cp7_rating_criterion.detail}")
+    lines.append("")
+    lines.append(
+        "## CP7 whole-suite Sonar measures (report-only, D3/D4/D5 -- never gates, "
+        "except the two ratings above)"
+    )
     if cp7_outcome.report is not None:
         report = cp7_outcome.report
         for family_name, findings in (
@@ -412,11 +465,13 @@ def run_suite_quality_governance_stage(
     )
     cp8_result = evaluate_static_readiness(baseline_root)
     cp7_outcome = _fetch_cp7_report_outcome(sonar_adapter, sonar_project_key)
+    cp7_rating_result = evaluate_rating_gate(cp7_outcome.report)
 
     overall_verdict = (
         ValidationVerdict.PASS
         if cp5_result.overall_verdict == ValidationVerdict.PASS
         and cp8_result.overall_verdict == ValidationVerdict.PASS
+        and cp7_rating_result.overall_verdict != ValidationVerdict.FAIL
         else ValidationVerdict.FAIL
     )
 
@@ -427,11 +482,13 @@ def run_suite_quality_governance_stage(
     atomic_write_json(cp8_report_path, _cp8_result_to_json(cp8_result))
 
     cp7_report_path = run_dir / CP7_REPORT_FILENAME
-    atomic_write_json(cp7_report_path, _cp7_outcome_to_json(cp7_outcome))
+    atomic_write_json(cp7_report_path, _cp7_outcome_to_json(cp7_outcome, cp7_rating_result))
 
     report_path = run_dir / SUITE_QUALITY_GOVERNANCE_REPORT_FILENAME
     report_path.write_text(
-        _build_report(cp5_result, cp8_result, cp7_outcome, overall_verdict, staged_paths),
+        _build_report(
+            cp5_result, cp8_result, cp7_outcome, cp7_rating_result, overall_verdict, staged_paths
+        ),
         encoding="utf-8",
     )
 
@@ -439,6 +496,7 @@ def run_suite_quality_governance_stage(
         result=cp5_result,
         cp8_result=cp8_result,
         cp7_outcome=cp7_outcome,
+        cp7_rating_result=cp7_rating_result,
         overall_verdict=overall_verdict,
         cp5_report_path=cp5_report_path,
         cp8_report_path=cp8_report_path,
