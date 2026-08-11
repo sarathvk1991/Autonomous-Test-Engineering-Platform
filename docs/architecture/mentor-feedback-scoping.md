@@ -367,6 +367,71 @@ conventions, the human-gate principle from item #6) — and, in the same act, fo
 0021/0024/0025/0026/0028's own long-Proposed status. Make this decision deliberately; do not let a
 new document silently become a ninth "constitution" alongside the existing eight.
 
+**DESIGN DECISION SURFACED (2026-08-11), a design-surfacing task (build nothing) — this note
+resolves the (a)/(b) choice above into a recommendation and adds a hierarchy-level finding this
+block did not yet have.**
+
+**What's new since the block above:** a direct read of STD-000's own text (not just its status
+fields) surfaces a structural fact that sharpens the (a)/(b) choice beyond "which one avoids an
+ADR-0038 amendment." STD-000 §6 states plainly that it does **not** occupy HB-001 §5's
+"Platform Constitution" tier — that tier is realized by the constitutional-tier ADRs themselves
+(0020/0021/0024–0026/0028). STD-000 occupies the lower **Standards** tier, as "the Standards
+family's own constitutional member." §7.1 makes the consequence explicit: STD-000 is inherited as
+an authority dependency by Capabilities/Runtime/Certification documents, but **never by
+Architecture or Governance** — "neither may cite STD-000 as the source of its own legitimacy,"
+because HB-001 §13's dependency matrix permits no authority dependency from ADR onto STD in either
+direction. Every deterministic gate checked (`requirement_intelligence/cp1/criteria/engineering_input_availability.py`,
+`automation_engineering/cp3/gate.py`) is governed by an ADR at the Architecture tier, cited in its
+own module docstring (e.g. "governed by ADR-0013 (Accepted)"). So if the mentor's "every gate
+cites its article" means the gate's *governing ADR* treats the constitution as its authority
+(reading (ii), below), **Option A structurally cannot deliver that** — promoting STD-000 into
+Track A would make it a normative Track-A *Standards* document, not a Platform-Constitution-tier
+one, and HB-001's own matrix still forbids an ADR from citing it as authority. Only a document that
+itself sits at the Architecture tier — i.e., Option B's new Track-A ADR — can be cited as authority
+by the gates' own governing ADRs without contradicting HB-001 §13.
+
+**The citation mechanism, checked directly, not assumed:** two readings exist, and only one is
+built. (i) *Documentation mapping* — already pervasive and strong: every checked criterion/gate
+names its governing ADR (and often a specific decision letter, e.g. "ADR-0013 §D2") in its own
+module docstring. (ii) *Runtime/code citation* — not built. `CP1CriterionMetadata` (`requirement_intelligence/cp1/framework/criterion_metadata.py`)
+carries a `documentation_reference` field, but its own docstring labels it "Reserved... has no
+behaviour today" — anticipated, never populated, and no criterion sets it. If the mentor pictures
+(ii) — a citation visible in gate *output*, not just in source comments — that is new, small,
+additive work (populate the existing reserved field) layered on top of whichever of (a)/(b) is
+chosen; it does not change the (a)/(b) decision itself.
+
+**Recommendation, sharpened: Option B — a new, short, Track-A "Engineering Constitution" ADR.**
+Reasons, in order of weight: (1) it is the only option structurally compatible with HB-001 §13's
+dependency matrix if gates' own governing ADRs are meant to cite it as authority; (2) it lets the
+same act formally resolve 0021/0024/0025/0026/0028's live governance-consistency gap (Accepted,
+live capabilities standing on foundations that are themselves still Proposed) — Option A does not
+touch this at all, since STD-000 restates philosophy, not the ADR lineage's own status; (3) it can
+still draw on STD-000 as raw material (observationally, per §7.1 — an ADR may reference STD-000 for
+reader convenience) without requiring STD-000 itself to move tracks. **Option A is not wrong, only
+narrower than it first appears** — promoting STD-000 is a legitimate, smaller act (ratify one
+existing Standards-tier document), but it resolves neither the constitutional-tier ADR
+lineage's unratified status nor the gate-citation structural requirement, so it would likely need
+to be *followed by* something like Option B anyway. **Option C (thin index/view over existing
+ADRs+gates, no new normative authority)** is the cheapest and lowest-risk of the three, and is
+worth naming as a fallback if the reconciliation-ADR route (B) is judged too heavy for a first
+cut — it makes today's already-real doc-level citations (i) explicit and browsable without
+creating a ninth normative document — but it does not, by itself, resolve the 0021/0024–0026/0028
+unratified-status gap either, and may under-deliver against a mentor picturing genuinely new
+normative articles rather than a catalog of existing ones.
+
+**Clarify-with-mentor nuance, flagged though #5 was scored independent-of-Nitin's-pending-answers:**
+the (a)/(b)/(c) choice hinges partly on which citation reading (i vs. ii) and which authority shape
+(new ADR vs. promoted Standard vs. index) the mentor actually pictures when he says "every gate
+cites its article" — the scoping block above did not have this granularity because it had not yet
+read STD-000's own §6/§7.1 text. This is a narrow, cheap question to put to the mentor (a
+one-round clarification, not a blocker) before committing to Option B's write-up, since B is real
+authoring work even though it is "cheap relative to its consensus value."
+
+**Nothing built by this note.** No ADR written, no STD-000 edit, no ADR-0038 amendment, no gate
+code touched. This note surfaces the (a)/(b)/(c) decision with its blast radius and a sharpened
+recommendation; writing the constitution (or the ADR-0038 amendment, or the thin index) remains a
+future, separate task once the approach is confirmed.
+
 ---
 
 ### Item 6 — Human-controlled gate after failure analysis (no unbounded auto-remediate)
