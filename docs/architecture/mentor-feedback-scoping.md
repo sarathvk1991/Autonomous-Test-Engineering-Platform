@@ -159,6 +159,45 @@ suggestion. Worth asking directly: is there a *specific* gap in mind (e.g., conc
 Layer 6 self-healing loop — the one place in the roadmap where something agent-shaped might
 plausibly first be considered, and which does not exist yet, register-confirmed "none yet")?
 
+**CLARIFICATION RECEIVED (2026-08-11) — Nitin's actual meaning, and a correction to this block's
+own prior framing.** Nitin clarified what "skills-first, agents-next" means: decompose the
+platform's work into discrete, **named, reusable SKILLS** (e.g., a code-generation skill, a
+linting/quality-check skill) as the default building block wherever possible, and reserve
+**agents** for the specific places genuine autonomy is actually needed — skills where you can,
+agents where you must. This connects to a separate, earlier point of his: codify knowledge as
+skills first (viable even inside a single-agent harness), then layer multi-agent structure on top
+only where warranted — the same "skills as the primary abstraction, agents added where needed"
+idea, restated.
+
+**This is a real gap, not the already-partly-done finding above.** The assessment above answered a
+different question than the one Nitin was actually asking. "Is generation wastefully
+multi-agent?" — no, confirmed, and that finding stands (there genuinely is no agent/tool-loop
+architecture here). But that is not the same question as "is the platform's work organized as a
+composable catalog of discrete, named, individually-invokable skills?" — and the honest answer to
+*that* question is also no: the platform has generator *classes*
+(`LiveStepDefinitionGenerator`, `LivePageObjectGenerator`, and siblings), each doing one job well,
+but they are not exposed, named, or governed as a first-class **skill catalog** the way, say, the
+prompt registry (ADR-0014) governs prompts as first-class, versioned, registered objects. Being
+single-shot is not the same as being skill-structured. The "already-partly-done" reading above is
+corrected, not retracted — it remains true and worth keeping (the platform really did avoid the
+specific failure mode of wasteful multi-agent looping) — but it does not answer what Nitin was
+actually asking, and #2 should now be treated as a real, open item.
+
+**The sizing question this raises — recorded, not answered here.** Whether adopting a skill-catalog
+structure is a **re-framing** (the existing generator classes are already effectively discrete
+skills — just not named, registered, or exposed as a catalog; making them first-class may be mostly
+organizational: a registry, a consistent interface, consistent naming, mirroring the prompt
+registry's own shape) or a genuine **re-architecture** (a real skill-selection/routing layer, skills
+as independently-invokable units with their own governed contracts, agent-vs-skill routing decided
+per step) is not determined by this note. That is exactly the question a future #2
+design-surfacing task would need to resolve, by reading the real generator/orchestrator structure
+in `automation_engineering/generation/` and `stage/runner.py` against what a genuine skill catalog
+would require — not assumed here either way.
+
+**Recommendation, updated:** from `clarify-with-mentor` (now done — see above) to
+**surface-as-own-design-task** — the next step is a dedicated design-surfacing task to resolve the
+re-framing-vs-re-architecture sizing question above, not a build.
+
 ---
 
 ### Item 3 — Requirements Intelligence: subset-not-everything + completeness + Knowledge Graph (Neo4j)
@@ -543,7 +582,12 @@ alignment explicit rather than changing anything in the sequence itself.
   shipped; blocked only on a non-engineering licensing decision.
 
 **(b) Already-partly-done / clarify-with-mentor before building anything:**
-- **#2 (skills-first)** — the platform already has no agent architecture to migrate away from.
+- ~~**#2 (skills-first)** — the platform already has no agent architecture to migrate away from.~~
+  **Reclassified (2026-08-11), see item #2's own CLARIFICATION note above.** Nitin's actual meaning
+  ("organize the work as a catalog of discrete, reusable skills, agents only where genuine autonomy
+  is needed") is a different question than the one this bullet answered — #2 is no longer
+  already-partly-done. Moved out of this group; see the new "Reclassified after mentor
+  clarification" note below, group (c)/(d).
 - **#4 (spec-based development)** — the call-site-is-the-spec design (ADR-0044 D4) is close to a
   literal match already.
 - **#3's own Knowledge Graph sub-part** — a real, Accepted, live KG subsystem already exists; it
@@ -567,6 +611,15 @@ alignment explicit rather than changing anything in the sequence itself.
   yet for it to gate. It belongs here, not in group (a).
 - **#7 (dashboard)** — genuinely blocked on Layer 7 (`governing_citation="none yet"`, and ADR-0036
   §D5's own shape question still open).
+
+**Reclassified after mentor clarification (2026-08-11):**
+- **#2 (skills-first)** — no longer group (b). Nitin's clarification (item #2's own note, above)
+  revealed the platform lacks a real skill catalog, not merely that it avoided wasteful
+  multi-agent looping. Does not fit group (c) either (no frozen layer, no Layer-1 conflict) or
+  group (d) (nothing is layer-blocked — the generator classes this would restructure already
+  exist and run today). It is its own kind of item: **a real gap, additive, no ADR conflict, size
+  genuinely unknown until its own design-surfacing task determines re-framing vs. re-architecture**
+  (see item #2's own note). Recorded here rather than force-fit into an existing group.
 
 ### The completeness thread
 
@@ -593,9 +646,14 @@ weight than its size alone would suggest.
 
 1. **#5 — resolve the reconciliation question, then write.** Cheap relative to its consensus value;
    the raw material already exists.
-2. **Clarify with the mentor:** #2, #4, and #3's own KG sub-part, plus Nitin's eval-harness and
+2. **Clarify with the mentor:** ~~#2,~~ #4, and #3's own KG sub-part, plus Nitin's eval-harness and
    token-loss points — confirm what specifically is still wanted once the "already-done" state is
-   shown, before spending any build effort here.
+   shown, before spending any build effort here. (#2 struck: clarification already received — see
+   item #2's own CLARIFICATION note; it moves to step 2a below, not this clarify-first step.)
+2a. **#2's own dedicated design-surfacing task (added 2026-08-11)** — resolve the re-framing-vs-
+    re-architecture sizing question (item #2's own note, above) by reading the real generator/
+    orchestrator structure against what a genuine skill catalog would require. No ADR conflict, no
+    frozen layer — buildable whenever prioritized, size unknown until this task runs.
 3. **#3's own dedicated design-surfacing task** — specifically to answer the one question that
    determines this item's real size: can completeness be scoped as an arm's-length Layer 2+
    consumer (small-ish), or does it genuinely require lifting ADR-0032 (large)? Given both mentors'
