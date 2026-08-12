@@ -106,6 +106,29 @@ one-off live runs, not a standing harness. **Recommendation:** clarify with the 
 they mean — the existing mechanism already satisfies "golden-set regression"; a quality-grading
 harness would be new, real work.
 
+**NITIN'S CLARIFICATION (2026-08-12) — confirms the quality-grading reading, with specifics.** Nitin
+means quality-grading, not structural regression (which he treats as already covered, separately).
+His model: treat each skill/agent as a software component, each with its own curated eval set
+(expected outputs, or rubrics, per component) and a score tracked over time, so that a change to a
+model, prompt, or framework that causes silent quality drift is caught in CI before it is adopted,
+not discovered later in production or by accident. His own example, healthcare-specific: a model swap
+that silently starts missing allergy validation or insurance eligibility rules should be caught by
+CI, not by a person noticing downstream. He is explicit both mechanisms are needed together, not
+either/or: structural regression (does the shape/consistency still hold — the existing golden-
+baseline harness) plus quality eval (a generated artifact can compile cleanly and still validate the
+wrong state, which structural regression cannot catch).
+
+**Confirms an existing gap, doesn't invent a new one.** This validates a defect this document (and
+this arc) already found the hard way: the `gemini-2.5-flash` 76%-defect-rate measurement was caught
+by a one-off, manual, ad hoc live-regen run — exactly the kind of silent quality drift Nitin's harness
+is meant to catch automatically, in CI, before a model swap ships.
+
+**Reclassification.** No longer `clarify-with-mentor` (resolved: quality-grading, not structural
+regression — confirmed, not "already-done"). Moved to **real build item** — a genuinely new
+capability (curated eval sets per generator/skill, a tracked score, a CI gate on drift), distinct
+from and additive to the existing golden-baseline harness. **Nothing designed or built here —
+recorded only.**
+
 **Playwright.** Not built. Two possible homes exist, verified, with materially different cost:
 (a) `docs/adr/0030-executable-specification-engineering.md` (CAP-087, **Proposed**, Layer 2.5's own
 placement still unresolved per ADR-0031 §D4/ADR-0042 Decision 7) already designs a governed
@@ -123,6 +146,53 @@ Accepted mechanism: `RunStateManager.should_skip(stage_id, input_artifacts=, out
 (ADR-0036) is used by every stage this platform runs (`execute_automation_engineering_stage` and
 its siblings all call it) to skip unchanged work on resume. This is a strong already-done finding,
 not a gap.
+
+**NITIN'S CLARIFICATION (2026-08-12) — a finer grain than the stage-level skip already found; not
+"already-done" once his actual ask is read.** Nitin wants caching pushed below the stage level to the
+**artifact level, content-addressed**: key each individual artifact on spec-slice + prompt-version +
+model-version + source-snapshot, so that if only one rule changes, only the downstream scenarios/
+steps/assets that actually depend on it regenerate — not the full suite `should_skip` currently
+protects at the stage boundary. He explicitly combines this with **delta-scoped regeneration** driven
+by the change-impact graph (his own graph-type (2), recorded under item #3's KG clarification, above)
+— the cache tells you an artifact is stale; the change-impact graph tells you exactly which
+downstream artifacts that staleness actually reaches.
+
+Three further, concrete pieces of his answer:
+
+- **(a) Separate deterministic generation from LLM inference.** Scaffolding, imports, and templates
+  should be produced deterministically, with the LLM reserved only for the parts that genuinely need
+  judgment, binding, or repair — narrowing what even needs to be cached/re-run through the expensive
+  path at all.
+- **(b) Pin and version models and prompts explicitly.** Makes cache keys meaningful, changes
+  intentional (not silent drift), and lets an eval-harness trigger (his eval-harness answer, above)
+  target exactly what changed rather than re-validating everything.
+- **(c) — his own emphasis, "Critically" — instrument token consumption by stage and by run.** Find
+  out, with real data, where token spend is actually concentrated before optimizing anything else.
+  This is his explicitly highest-priority, cheapest concrete ask of the four clarifications: pure
+  observability, no architecture change, and it is what would tell the platform where the other three
+  pieces (artifact caching, delta-scoping, deterministic/LLM split) pay off most.
+
+**Reclassification.** No longer `clarify-with-mentor` / "already-substantially-solved" — the
+stage-level `should_skip` finding stands (it is real and still true), but it answers a coarser
+question than the one Nitin is actually asking. Moved to **real, multi-part build item**: artifact-
+level content-addressed caching + delta-scoped regeneration (via the change-impact graph, item #3) +
+deterministic/LLM separation + explicit model/prompt pinning + token-consumption instrumentation.
+Token instrumentation (c) is the cheap, high-value, no-architecture-change first step he flagged as
+critical — a natural first slice if this item is ever sequenced. **Nothing designed or built here —
+recorded only.**
+
+**THE THROUGH-LINE (2026-08-12) — Nitin's own framing across all four answers, recorded, not
+interpreted.** Nitin states his own recommendations are meant to "contain bias, save
+token-maxxing costs, optimize iteratively" — a single stated intent behind all four clarifications,
+not four unrelated asks. Read together, the four answers interconnect directly, each in his own
+words already cited above: **spec-slicing (#4)** scopes what a generation run may touch in the first
+place; the **change-impact graph (#3)** is what a delta-scoped regeneration would query to know
+what a change actually reaches; **caching (re-run)** needs **pinning** (also re-run, piece (b)) to
+have a meaningful, invalidatable key; and the **traceability graph (#3)** is the mechanism that makes
+corpus-level completeness queryable — tying this whole cluster back to the "completeness thread"
+already identified (Synthesis, below) as both mentors' shared top strategic risk. Recorded here as
+one coherent architecture, not four isolated features — **no sequencing or design decision is made
+by this note**; that remains for each item's own future design-surfacing task.
 
 ---
 
@@ -274,6 +344,43 @@ freeze-lift path is real, slower work. Either way: a dedicated design-surfacing 
 code, exactly like the #3+#6 page-object-wiring and #1 promotion-multi-method decisions already
 made this arc.
 
+**NITIN'S CLARIFICATION (2026-08-12) — a specific graph taxonomy, and a correction to what the
+existing built KG actually is.** Nitin's "Knowledge Graph" point is not one graph — he names four
+graph types, and is specific about which value each one adds:
+
+1. **Traceability/coverage graph** — requirement → behavior → scenario → step → page-object →
+   execution-result. Its value: makes gaps *queryable* — requirements with no test, behaviors never
+   covered.
+2. **Change-impact graph** — code/pages → elements → steps → scenarios. His own example: "a selector
+   change should let you identify the 8 affected tests, not rerun hundreds."
+3. **State/flow graph** — application states and journeys, exposing untested states.
+4. **Asset/catalog graph** — reuse, similarity, and provenance, to prevent wrong reuse.
+
+His own steer, direct: **"your current structural graph is closest to (4), the asset/catalog graph;
+(1) traceability and (2) change-impact add holistic value"** on top of it — i.e. the block above's
+finding that the built `knowledge_graph/` subsystem "answers a different question" is correct, and
+Nitin's own words now say *which* question it does answer (asset/catalog) and which two it does not
+(traceability, change-impact). On tooling: a graph database (Neo4j/GraphDB) should be used **only
+when scale or query complexity actually warrants it** — Neo4j is explicitly not required now; a
+bespoke structure (mirroring how the existing KG engine is already bespoke, not Neo4j) is fine as a
+first cut.
+
+**Two connections, both his own.** The **traceability graph (1)** is, in his framing, the mechanism
+that makes corpus-level completeness *queryable* — this ties directly to the "completeness thread"
+this document already identified as both mentors' shared top strategic risk (see the Synthesis
+section, "The completeness thread," below). The **change-impact graph (2)** is what a delta-scoped
+regeneration capability would run against — this ties directly to his re-run/token-cost answer
+(below): "regenerate only what changed" needs a graph that knows what a change actually touches.
+
+**Reclassification.** No longer `clarify-with-mentor`. The existing KG subsystem (ADR-0023,
+Accepted, live) is confirmed as the asset/catalog graph, already built — that finding stands
+unchanged. What's newly real: **traceability** and **change-impact** graphs are distinct, not-yet-
+built capabilities, each independently motivated by Nitin's own examples, and each connected to a
+separate existing thread in this document (completeness; re-run cost). Moved to
+**surface-as-own-design-task** (real design item, graph-DB-vs-bespoke and traceability-vs-
+change-impact sequencing both open questions for that task) — **not build-now**; the "no graph DB
+required today" note narrows the design task's own first question but does not answer it.
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)
@@ -311,6 +418,36 @@ already-Proposed-but-unresolved item.
 **Recommendation: clarify-with-mentor.** Very likely already substantially satisfied by the current
 Gherkin/call-site-derivation chain. Ask specifically whether the suggestion means the current chain
 (done) or CAP-087's own canonical-domain-model idea (a materially bigger, still-open ask).
+
+**NITIN'S CLARIFICATION (2026-08-12) — neither reading above; a third meaning, more specific than
+both.** Nitin does not mean the current Gherkin/call-site-derivation chain (already-done, above), and
+he does not mean CAP-087's canonical-domain-model-as-source-of-truth idea either. He means
+**branch-scoped vertical slices**: a small vertical feature (UI + service/API + DB, together) built
+on its own branch, tied to one requirement slice — e.g. his own "Reschedule Patient Appointment"
+example. The **branch spec is the contract** for everything generated on that branch. Tests are built
+in the same branch, as the definition of done. Critically, page-object (and other artifact) changes
+are **limited to what that feature actually touches** — his example again: only the related UI,
+service, DB, tests, and page objects change; the unrelated appointment/billing/pharmacy flows are
+*not* regenerated just because they share a domain. His stated rationale: cheaper, reviewable, and a
+contained blast radius. He is explicit that the canonical domain model **is** still useful — for
+system-engineering completeness and as "the map" — but it is not meant to be the *per-run generation
+context*; each branch is meant to work from the relevant slice of that map only, not the whole thing.
+
+**This connects to a separate answer, not a coincidence.** Nitin's own framing ties this directly to
+his re-run/token-cost answer (see the "RE-RUN TOKEN COST" clarification, below, under the Item 1
+cross-cutting sub-items): branch-scoped slicing is what makes delta-scoped regeneration possible in
+the first place — if a branch's spec already bounds what may change, regeneration has a natural,
+pre-declared blast-radius boundary to check itself against, not just a graph-derived one.
+
+**Reclassification.** #4 is no longer `clarify-with-mentor` (now resolved) and is no longer
+"already-partly-done" in the sense the block above concluded — the existing Gherkin/call-site chain
+answers "is generation driven by a structured spec," which is true, but not "is each generation run
+scoped to a branch-bounded slice of the requirement corpus with a contained blast radius," which is
+the actual ask and is not built. Moved to **surface-as-own-design-task** (real design item, not a
+build item yet) — the open question for that future task is how a branch spec is represented/
+enforced as a boundary on what a generation run is allowed to touch, and how it composes with the
+existing `TestableRequirementSet`/`.feature`/call-site-derivation chain rather than replacing it.
+**Nothing designed here — recorded only.**
 
 ---
 
@@ -653,13 +790,23 @@ alignment explicit rather than changing anything in the sequence itself.
   is needed") is a different question than the one this bullet answered — #2 is no longer
   already-partly-done. Moved out of this group; see the new "Reclassified after mentor
   clarification" note below, group (c)/(d).
-- **#4 (spec-based development)** — the call-site-is-the-spec design (ADR-0044 D4) is close to a
-  literal match already.
-- **#3's own Knowledge Graph sub-part** — a real, Accepted, live KG subsystem already exists; it
+- ~~**#4 (spec-based development)** — the call-site-is-the-spec design (ADR-0044 D4) is close to a
+  literal match already.~~ **Reclassified (2026-08-12), see item #4's own NITIN'S CLARIFICATION
+  note above.** Nitin's actual meaning (branch-scoped vertical slices, the branch spec as the
+  generation-run's contract, contained blast radius) is a different question than the one this
+  bullet answered. Moved out of this group; see "Reclassified after mentor clarification
+  (2026-08-12)" below.
+- ~~**#3's own Knowledge Graph sub-part** — a real, Accepted, live KG subsystem already exists; it
   answers a different question than "Neo4j for requirement completeness," so this needs
-  clarification even though something real is already there.
-- Nitin's eval-harness point and re-run-token-loss point — both substantially already-solved by
-  existing mechanisms (the golden-baseline regression harness; `RunStateManager.should_skip`).
+  clarification even though something real is already there.~~ **Reclassified (2026-08-12), see
+  item #3's own NITIN'S CLARIFICATION note above.** Nitin named four specific graph types
+  (traceability, change-impact, state/flow, asset/catalog) and confirmed the existing KG is the
+  asset/catalog graph only. Moved out of this group; see below.
+- ~~Nitin's eval-harness point and re-run-token-loss point — both substantially already-solved by
+  existing mechanisms (the golden-baseline regression harness; `RunStateManager.should_skip`).~~
+  **Reclassified (2026-08-12), see the eval-harness and re-run-token-cost NITIN'S CLARIFICATION
+  notes under Item 1 above.** Both are real, more specific asks than the mechanisms that were
+  thought to already cover them. Moved out of this group; see below.
 
 **(c) Heaviest / touches a frozen layer / biggest new build:**
 - **#3's completeness + subset sub-parts** — touches ADR-0032's Layer 1 freeze directly, and its
@@ -686,6 +833,30 @@ alignment explicit rather than changing anything in the sequence itself.
   genuinely unknown until its own design-surfacing task determines re-framing vs. re-architecture**
   (see item #2's own note). Recorded here rather than force-fit into an existing group.
 
+**Reclassified after mentor clarification (2026-08-12):**
+- **#4 (spec-based development)** — no longer group (b). Nitin's clarification (item #4's own
+  note, above) is branch-scoped vertical slices with the branch spec as generation-run contract,
+  not the already-done Gherkin/call-site chain and not CAP-087's canonical-domain-model idea
+  either. No frozen-layer conflict found (it composes with, rather than touches, the existing
+  `TestableRequirementSet`/`.feature`/call-site chain). **surface-as-own-design-task.**
+- **#3's Knowledge Graph sub-part (traceability + change-impact graphs)** — no longer group (b).
+  Nitin's clarification (item #3's own note, above) separates four graph types; the existing
+  Accepted, live KG remains confirmed as the asset/catalog graph (unchanged finding), but
+  traceability and change-impact are distinct, unbuilt capabilities, each tied to a separate
+  existing thread (completeness; re-run cost). No new ADR conflict found beyond the completeness
+  sub-part's own already-documented ADR-0032 tension (see Conflicts table, below — that tension
+  belongs to completeness, not to the graph types themselves). **surface-as-own-design-task.**
+- **Nitin's eval-harness point** — no longer group (b). His clarification (Item 1's own note,
+  above) confirms this means LLM-output quality-grading (curated eval sets, tracked scores, a CI
+  drift gate), not the existing golden-baseline structural-regression harness. No ADR conflict
+  found — additive to the existing harness. **real build item.**
+- **Nitin's re-run-token-cost point** — no longer group (b). His clarification (Item 1's own note,
+  above) is a finer grain than the stage-level `should_skip` finding: artifact-level
+  content-addressed caching, delta-scoped regeneration (via the change-impact graph, item #3),
+  deterministic/LLM separation, explicit pinning, and — his own "Critically" — token-consumption
+  instrumentation by stage and run. No ADR conflict found. **real, multi-part build item**; token
+  instrumentation is the cheap first slice if this is ever sequenced.
+
 ### The completeness thread
 
 Both mentors' own #1 strategic risk is the same thing under two names: Nitin's "house of cards" /
@@ -698,6 +869,15 @@ list (group c) and, by both mentors' own independent framing, the single highest
 item — the "surface-as-own-design-task" recommendation under #3 should be read as carrying more
 weight than its size alone would suggest.
 
+**Sharpened by Nitin's clarification (2026-08-12).** Nitin's own graph taxonomy (item #3's KG
+clarification, above) names the mechanism that would make this thread concrete: the
+**traceability/coverage graph** (requirement → behavior → scenario → step → page-object →
+execution-result) is what turns "is the corpus incomplete" from a qualitative worry into a
+queryable question — requirements with no test, behaviors never covered. This does not change the
+thread's own size or status (still group c, still unbuilt, still gated on the same ADR-0032/
+Historical-Dataset prerequisites) — it names, for the first time in this document, the concrete
+graph type that thread would need if pursued.
+
 ### Conflicts with Accepted ADRs (need the additive-amendment treatment, never a silent adopt)
 
 | Item | Conflicts with | Nature of conflict |
@@ -705,25 +885,53 @@ weight than its size alone would suggest.
 | #3 (completeness/subset) | **ADR-0032** (Layer 1 freeze, Accepted) | New Layer 1 reasoning is not covered by any of the freeze's 5 carve-outs; needs a freeze-lift or an arm's-length Layer 2+ scoping (recommended). |
 | #5 (constitution) | **ADR-0038** (Track A/B governance, Accepted) | Ratifying/promoting `STD-000` into Track A requires amending ADR-0038's own declaration; a fresh Track-A document instead needs to explicitly reconcile, not silently orphan, the existing 0020/0021/0024–0026/0028/STD-000 lineage. |
 | Nitin's Playwright point | **ADR-0041** (Java stack, Accepted, locks Selenium) | Only if added directly to the current baseline — avoidable by using CAP-087's own already-designed `RendererRegistry` extension point instead (recommended). |
-| #2, #4, #6, #7, #8 | *(none found)* | Each either affirms existing Accepted architecture or is additive to a layer that does not exist yet. |
+| #2, #6, #7, #8 | *(none found)* | Each either affirms existing Accepted architecture or is additive to a layer that does not exist yet. |
+
+**Updated by Nitin's clarification (2026-08-12):** #4 and #3's KG sub-part no longer belong in the
+"none found" row above at their old descriptions — their *content* changed, not their conflict
+status. **#4 is now branch-scoped vertical slicing** (not the already-done Gherkin/call-site chain,
+not CAP-087's canonical-domain-model idea) — still *(none found)*: it composes with, rather than
+touches, the existing `TestableRequirementSet`/`.feature`/call-site chain. **#3's KG sub-part is now
+specifically traceability + change-impact graphs** (not "a KG" generically, and not Neo4j) — also
+*(none found)*: both are new, additive Layer 2+-style consumers of existing structural data, distinct
+from the completeness sub-part's own real ADR-0032 tension in the row above. Nitin's eval-harness and
+re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
 
 ### Suggested sequence (a recommendation, not a lock)
 
 1. **#5 — resolve the reconciliation question, then write.** Cheap relative to its consensus value;
    the raw material already exists.
-2. **Clarify with the mentor:** ~~#2,~~ #4, and #3's own KG sub-part, plus Nitin's eval-harness and
-   token-loss points — confirm what specifically is still wanted once the "already-done" state is
-   shown, before spending any build effort here. (#2 struck: clarification already received — see
-   item #2's own CLARIFICATION note; it moves to step 2a below, not this clarify-first step.)
+2. **Clarify with the mentor:** ~~#2,~~ ~~#4, and #3's own KG sub-part, plus Nitin's eval-harness and
+   token-loss points~~ — confirm what specifically is still wanted once the "already-done" state is
+   shown, before spending any build effort here. (#2 struck 2026-08-11; #4, #3's KG sub-part,
+   eval-harness, and token-loss struck 2026-08-12 — **all four now resolved, see the NITIN'S
+   CLARIFICATION notes under items #4, #3, and Item 1's eval-harness/re-run-token-cost sub-items,
+   above.** Nothing left to clarify in this step; each moves to its own step below.)
 2a. **#2's own dedicated design-surfacing task (added 2026-08-11)** — resolve the re-framing-vs-
     re-architecture sizing question (item #2's own note, above) by reading the real generator/
     orchestrator structure against what a genuine skill catalog would require. No ADR conflict, no
     frozen layer — buildable whenever prioritized, size unknown until this task runs.
-3. **#3's own dedicated design-surfacing task** — specifically to answer the one question that
-   determines this item's real size: can completeness be scoped as an arm's-length Layer 2+
-   consumer (small-ish), or does it genuinely require lifting ADR-0032 (large)? Given both mentors'
-   independent agreement this is the top strategic risk, this deserves the next big investment
-   after the cheap items above are cleared.
+2b. **#4's own dedicated design-surfacing task (added 2026-08-12)** — resolve how a branch spec is
+    represented and enforced as a boundary on what a generation run may touch, and how it composes
+    with the existing `TestableRequirementSet`/`.feature`/call-site chain (item #4's own note,
+    above). Connects to 2d below (re-run/delta-scoping) by Nitin's own framing.
+2c. **#3's traceability + change-impact graph design-surfacing task (added 2026-08-12)** —
+    resolve sequencing (traceability first, since it feeds the completeness thread directly; or
+    change-impact first, since it feeds delta-scoped regeneration) and bespoke-vs-graph-DB, per
+    item #3's own KG clarification, above. The existing asset/catalog KG (ADR-0023) is unaffected.
+2d. **Nitin's eval-harness build item (added 2026-08-12)** — curated eval sets per generator/skill,
+    a tracked score, a CI drift gate; additive to the existing golden-baseline structural-regression
+    harness, not a replacement for it (Item 1's own note, above).
+2e. **Nitin's re-run/token-cost build item (added 2026-08-12)** — start with token-consumption
+    instrumentation by stage and run (his own "Critically"-flagged, cheapest, no-architecture-change
+    first step); artifact-level caching, delta-scoped regeneration (depends on 2c's change-impact
+    graph), deterministic/LLM separation, and pinning follow (Item 1's own note, above).
+3. **#3's own dedicated design-surfacing task (completeness/subset)** — specifically to answer the
+   one question that determines this item's real size: can completeness be scoped as an
+   arm's-length Layer 2+ consumer (small-ish), or does it genuinely require lifting ADR-0032
+   (large)? Given both mentors' independent agreement this is the top strategic risk, this
+   deserves the next big investment after the cheap items above are cleared. Connects to 2c above
+   (the traceability graph is the mechanism that would make this thread queryable).
 4. **#8 — build once a vendor/license decision is made.** Purely a scheduling question at that
    point; the engineering pattern is proven.
 5. **Nitin's catalog-hygiene and pass-bias points** — small, standalone, low-risk; can slot in
@@ -731,6 +939,12 @@ weight than its size alone would suggest.
 6. **Playwright** — defer to CAP-087's own resolution; do not fast-track ahead of that ADR.
 7. **#6 and #7** — defer; bake in as founding design constraints whenever Layer 6 and Layer 7
    respectively get their own architecture-freeze ADRs.
+
+**Note on interconnection (2026-08-12):** steps 2b–2e above are not independent — see "THE
+THROUGH-LINE" note under Item 1, above, which records Nitin's own framing that spec-slicing (2b),
+the change-impact graph (2c), caching-plus-pinning (2e), and the traceability graph (2c, feeding
+into 3) form one coherent architecture aimed at containing bias and token cost. This note records
+the interconnection; it does not resolve a build order among 2b–2e beyond what is already stated.
 
 Steps 3 and 7 above are the build-then-wire sequencing principle in practice, not a coincidence: a
 new capability proven standalone before it earns a wiring decision (step 3), and unbuilt layers left
