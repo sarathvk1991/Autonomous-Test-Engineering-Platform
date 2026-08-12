@@ -29,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -72,6 +73,7 @@ from requirement_intelligence.execution_package import (  # noqa: E402
 from requirement_intelligence.knowledge_graph.models import (  # noqa: E402
     HistoricalDatasetReference as KnowledgeGraphHistoricalDatasetReference,
 )
+from requirement_intelligence.llm.token_usage import TokenUsageTracker  # noqa: E402
 from requirement_intelligence.mappers.base_mapper import MapperError  # noqa: E402
 from requirement_intelligence.platform import (  # noqa: E402
     PlatformCapabilities,
@@ -971,6 +973,14 @@ def handle_analyze(args: argparse.Namespace) -> int:
         return 2
 
     context = PlatformContext()
+    # Token-usage-by-call-type instrumentation (2026-08-12, Nitin's own
+    # "Critically"-flagged re-run/token-cost clarification -- see
+    # `docs/architecture/mentor-feedback-scoping.md`). One tracker per run,
+    # threaded into every LLM-calling collaborator below as an optional
+    # `usage_recorder` -- purely additive measurement, changes nothing about
+    # what any call site generates, gates, caches, or skips. Surfaced at the
+    # end of this run (see "Execution Finished", below).
+    usage_tracker = TokenUsageTracker()
 
     # Run/stage state (ADR-0036, ADR-0032 carve-out 2): run_id becomes the run
     # directory's name; --execution-name is recorded as an internal label only
@@ -1256,6 +1266,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
             prompt_builder,
             provider,
             context.create_analysis_configuration(REASONING_CONTRACT_VERSION),
+            usage_recorder=usage_tracker,
         )
         try:
             result = service.analyze(engineering_context)
@@ -1655,8 +1666,8 @@ def handle_analyze(args: argparse.Namespace) -> int:
             run_state_mgr,
             target_dir,
             testable_requirement_set,
-            content_generator=LiveFeatureContentGenerator(provider),
-            remediator=LiveFeatureRemediator(provider),
+            content_generator=LiveFeatureContentGenerator(provider, usage_recorder=usage_tracker),
+            remediator=LiveFeatureRemediator(provider, usage_recorder=usage_tracker),
             input_artifacts=[target_dir / "testable_requirement_set.json"],
         )
         fe_stage = next(
@@ -1709,8 +1720,10 @@ def handle_analyze(args: argparse.Namespace) -> int:
                 run_state_mgr,
                 target_dir,
                 matcher=LiveSemanticMatcher(GeminiEmbeddingProvider()),
-                step_definition_generator=LiveStepDefinitionGenerator(step_definition_provider),
-                test_data_generator=LiveTestDataGenerator(provider),
+                step_definition_generator=LiveStepDefinitionGenerator(
+                    step_definition_provider, usage_recorder=usage_tracker
+                ),
+                test_data_generator=LiveTestDataGenerator(provider, usage_recorder=usage_tracker),
                 sonar_adapter=LiveSonarQualityGateAdapter(
                     base_url=os.environ.get("SONAR_BASE_URL", _DEFAULT_SONAR_BASE_URL),
                     token=os.environ.get("SONAR_TOKEN", ""),
@@ -1848,6 +1861,27 @@ def handle_analyze(args: argparse.Namespace) -> int:
             console.note(
                 f"  CP5 findings : verdict={final_cp5.overall_verdict.value} "
                 f"(see {suite_quality_governance_result.report_path.name})"
+            )
+
+    # Token-usage-by-call-type surface (2026-08-12): a sibling artifact next
+    # to run_state.json/manifest.json, never a new field on either -- neither
+    # is touched, so neither's own governed schema (ADR-0036) or golden-
+    # baseline checksum is affected. Written whenever at least one call was
+    # recorded; a dry-run or an all-skipped resume leaves the tracker empty
+    # and nothing is written.
+    usage_totals = usage_tracker.by_call_type()
+    if usage_totals:
+        usage_report_path = target_dir / "token_usage.json"
+        usage_report_path.write_text(
+            json.dumps(usage_tracker.as_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        )
+        grand_total = usage_tracker.grand_total()
+        distribution = usage_tracker.distribution()
+        console.note(f"\n  token usage : {grand_total.total_tokens} total (see token_usage.json)")
+        for call_type, totals in usage_totals.items():
+            console.note(
+                f"    {call_type}: {totals.total_tokens} tokens "
+                f"({distribution[call_type]}%), {totals.call_count} call(s)"
             )
     run_lock.release()
     return 0

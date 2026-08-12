@@ -46,8 +46,13 @@ from feature_engineering.generation.errors import TransportFailureError
 from feature_engineering.prompts.composition import build_prompt_registry
 from requirement_intelligence.llm.llm_models import LLMRequest
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.llm.token_usage import TokenUsageTracker
 from shared.enums.base import ExecutionStatus
 from shared.prompts.framework.prompt_registry import PromptRegistry
+
+#: This generator's own token-usage call-type identifier (token-usage-by-stage
+#: instrumentation, 2026-08-12 -- Nitin's "Critically"-flagged clarification).
+CALL_TYPE = "feature_content_generation"
 
 _PROMPT_ID = "generate_feature"
 _PROMPT_VERSION = "1.1.0"
@@ -107,11 +112,13 @@ class LiveFeatureContentGenerator:
         *,
         prompt_registry: PromptRegistry | None = None,
         temperature: float = _DEFAULT_TEMPERATURE,
+        usage_recorder: TokenUsageTracker | None = None,
     ) -> None:
         self._provider = provider
         registry = prompt_registry if prompt_registry is not None else build_prompt_registry()
         self._definition = registry.get(_PROMPT_ID, _PROMPT_VERSION)
         self._temperature = temperature
+        self._usage_recorder = usage_recorder
 
     def generate(self, requirement: TestableRequirement) -> str:
         """Return raw scenario/background content for *requirement*.
@@ -144,6 +151,9 @@ class LiveFeatureContentGenerator:
                 f"requirement_id={requirement.requirement_id!r}: LLM provider "
                 f"call failed: {exc}"
             ) from exc
+
+        if self._usage_recorder is not None:
+            self._usage_recorder.record(CALL_TYPE, response.usage)
 
         if response.execution_status != ExecutionStatus.COMPLETED:
             raise LiveGenerationError(

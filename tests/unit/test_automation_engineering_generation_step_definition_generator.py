@@ -19,6 +19,7 @@ import pytest
 
 from automation_engineering.catalog.models import StepCapture
 from automation_engineering.generation.live_step_definition_generator import (
+    CALL_TYPE,
     LiveGenerationError,
     LiveStepDefinitionGenerator,
 )
@@ -30,6 +31,7 @@ from automation_engineering.reuse.models import GherkinStepNeed
 from requirement_intelligence.llm.llm_exceptions import ProviderGenerationError
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.llm.token_usage import TokenUsageTracker
 from shared.enums.base import ExecutionStatus, ProviderType
 
 pytestmark = pytest.mark.unit
@@ -358,3 +360,44 @@ class TestLiveGeneratorConveysTheRealWebDriverLifecycle:
         assert "new XPage()" in sent_prompt  # named as the thing that never compiles
         assert "without an inline initializer" in sent_prompt
         assert "null check" in sent_prompt.lower()
+
+
+class TestTokenUsageRecording:
+    """Token-usage-by-call-type instrumentation (2026-08-12) -- purely
+    additive: a generator given no `usage_recorder` behaves exactly as it
+    did before this module existed (every other test in this file proves
+    that, implicitly, by never passing one)."""
+
+    def test_successful_call_is_recorded_under_this_generators_own_call_type(self) -> None:
+        provider = FakeProvider()
+        tracker = TokenUsageTracker()
+        generator = LiveStepDefinitionGenerator(provider, usage_recorder=tracker)
+
+        generator.generate(_context())
+
+        totals = tracker.by_call_type()["step_definition_generation"]
+        assert totals.call_count == 1
+        assert totals.total_tokens == 30
+        assert totals.prompt_tokens == 10
+        assert totals.completion_tokens == 20
+
+    def test_call_type_matches_the_module_level_constant(self) -> None:
+        assert CALL_TYPE == "step_definition_generation"
+
+    def test_no_recorder_is_a_no_op(self) -> None:
+        provider = FakeProvider()
+        generator = LiveStepDefinitionGenerator(provider)  # no usage_recorder
+
+        result = generator.generate(_context())
+
+        assert result  # generation still succeeds, unaffected by the omission
+
+    def test_a_failed_call_records_nothing(self) -> None:
+        provider = FakeProvider(raises=ValueError("boom"))
+        tracker = TokenUsageTracker()
+        generator = LiveStepDefinitionGenerator(provider, usage_recorder=tracker)
+
+        with pytest.raises(LiveGenerationError):
+            generator.generate(_context())
+
+        assert tracker.by_call_type() == {}

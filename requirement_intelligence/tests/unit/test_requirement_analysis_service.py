@@ -26,6 +26,7 @@ from requirement_intelligence.analysis.analysis_exceptions import (
 )
 from requirement_intelligence.analysis.analysis_models import AnalysisResult
 from requirement_intelligence.analysis.requirement_analysis_service import (
+    CALL_TYPE,
     RequirementAnalysisService,
 )
 from requirement_intelligence.context_orchestration import (
@@ -37,6 +38,7 @@ from requirement_intelligence.context_orchestration import (
 from requirement_intelligence.llm.llm_exceptions import ProviderGenerationError
 from requirement_intelligence.llm.llm_models import LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.llm.token_usage import TokenUsageTracker
 from requirement_intelligence.models.consolidated_artifact import ConsolidatedArtifact
 from requirement_intelligence.models.enums import (
     RiskLevel,
@@ -123,6 +125,7 @@ def _make_service(
     llm_response: LLMResponse | None = None,
     build_side_effect: Exception | None = None,
     generate_side_effect: Exception | None = None,
+    usage_recorder: TokenUsageTracker | None = None,
 ) -> tuple[RequirementAnalysisService, MagicMock, MagicMock]:
     """Build a service with mocked collaborators; return (service, builder, provider)."""
     builder = MagicMock(spec=RequirementPromptBuilder)
@@ -142,6 +145,7 @@ def _make_service(
         prompt_builder=builder,
         provider=provider,
         configuration=_config(),
+        usage_recorder=usage_recorder,
     )
     return service, builder, provider
 
@@ -400,3 +404,40 @@ def test_configuration_reasoning_version_propagates() -> None:
     )
     result = service.analyze(_context())
     assert result.reasoning_contract_version == "rc-9.9.9"
+
+
+# ---------------------------------------------------------------------------
+# Token-usage-by-call-type instrumentation (2026-08-12)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_analyze_records_usage_under_the_services_own_call_type() -> None:
+    tracker = TokenUsageTracker()
+    service, _, _ = _make_service(usage_recorder=tracker)
+
+    service.analyze(_context())
+
+    totals = tracker.by_call_type()[CALL_TYPE]
+    assert totals.call_count == 1
+    assert totals.total_tokens == 12  # from _llm_response()'s own LLMUsage
+
+
+@pytest.mark.unit
+def test_analyze_with_no_usage_recorder_is_unaffected() -> None:
+    service, _, _ = _make_service(usage_recorder=None)
+    result = service.analyze(_context())
+    assert isinstance(result, AnalysisResult)
+
+
+@pytest.mark.unit
+def test_failed_provider_call_records_nothing() -> None:
+    tracker = TokenUsageTracker()
+    service, _, _ = _make_service(
+        usage_recorder=tracker, generate_side_effect=RuntimeError("boom")
+    )
+
+    with pytest.raises(ProviderExecutionError):
+        service.analyze(_context())
+
+    assert tracker.by_call_type() == {}

@@ -117,6 +117,7 @@ from requirement_intelligence.learning.learning_service import (
 from requirement_intelligence.learning.policy import LearningPolicy, default_learning_policy
 from requirement_intelligence.llm.llm_factory import create_provider as _create_provider
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.llm.token_usage import TokenUsageTracker
 from requirement_intelligence.organizational_memory.organizational_memory_service import (
     DeterministicOrganizationalMemoryService,
     OrganizationalMemoryService,
@@ -725,12 +726,19 @@ class PlatformContext:
         prompt_builder: RequirementPromptBuilder,
         provider: LLMProvider,
         configuration: AnalysisConfiguration,
+        *,
+        usage_recorder: TokenUsageTracker | None = None,
     ) -> RequirementAnalysisService:
-        """Return the requirement analysis service wired with its collaborators."""
+        """Return the requirement analysis service wired with its collaborators.
+
+        ``usage_recorder`` is optional token-usage-by-stage instrumentation
+        (2026-08-12); ``None`` (the default) preserves prior behavior exactly.
+        """
         return RequirementAnalysisService(
             prompt_builder=prompt_builder,
             provider=provider,
             configuration=configuration,
+            usage_recorder=usage_recorder,
         )
 
     def create_response_validator(self) -> ResponseValidator:

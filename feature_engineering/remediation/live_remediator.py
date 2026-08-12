@@ -50,8 +50,14 @@ from feature_engineering.gherkin_lint.models import Violation
 from feature_engineering.prompts.composition import build_prompt_registry
 from requirement_intelligence.llm.llm_models import LLMRequest
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.llm.token_usage import TokenUsageTracker
 from shared.enums.base import ExecutionStatus
 from shared.prompts.framework.prompt_registry import PromptRegistry
+
+#: This remediator's own token-usage call-type identifier (token-usage-by-
+#: stage instrumentation, 2026-08-12 -- Nitin's "Critically"-flagged
+#: clarification).
+CALL_TYPE = "feature_remediation"
 
 _PROMPT_ID = "fix_gherkin_lint"
 _PROMPT_VERSION = "1.0.0"
@@ -123,11 +129,13 @@ class LiveFeatureRemediator:
         *,
         prompt_registry: PromptRegistry | None = None,
         temperature: float = _DEFAULT_TEMPERATURE,
+        usage_recorder: TokenUsageTracker | None = None,
     ) -> None:
         self._provider = provider
         registry = prompt_registry if prompt_registry is not None else build_prompt_registry()
         self._definition = registry.get(_PROMPT_ID, _PROMPT_VERSION)
         self._temperature = temperature
+        self._usage_recorder = usage_recorder
 
     def remediate(self, content: str, violations: tuple[Violation, ...]) -> str:
         """Return a remediated version of `content` addressing `violations`.
@@ -163,6 +171,9 @@ class LiveFeatureRemediator:
             # exception (including an SDK timeout) is allowed to cross this
             # boundary unwrapped.
             raise LiveRemediationError(f"LLM provider call failed: {exc}") from exc
+
+        if self._usage_recorder is not None:
+            self._usage_recorder.record(CALL_TYPE, response.usage)
 
         if response.execution_status != ExecutionStatus.COMPLETED:
             raise LiveRemediationError(

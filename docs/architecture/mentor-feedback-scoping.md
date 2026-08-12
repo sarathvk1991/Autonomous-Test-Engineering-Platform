@@ -181,6 +181,19 @@ Token instrumentation (c) is the cheap, high-value, no-architecture-change first
 critical — a natural first slice if this item is ever sequenced. **Nothing designed or built here —
 recorded only.**
 
+**TOKEN INSTRUMENTATION BUILT (2026-08-12).** Piece (c) — the "Critically"-flagged first slice — is
+now built: `requirement_intelligence/llm/token_usage.py` (`TokenUsageTracker`/`TokenUsageTotals`),
+threaded as an optional `usage_recorder` collaborator through all 7 LLM call sites (L1's
+`RequirementAnalysisService`; L2's `LiveFeatureContentGenerator`/`LiveFeatureRemediator`; L3's
+`LiveStepDefinitionGenerator`/`LivePageObjectGenerator`/`LiveUtilityGenerator`/
+`LiveTestDataGenerator`), wired live in `scripts/run_requirement_analysis.py`'s `handle_analyze` for
+the four call sites the CLI actually constructs today. Purely additive measurement, as scoped:
+capture was already present at the provider (`GeminiProvider._extract_usage`) but discarded by every
+caller; this build attributes it per call type and surfaces a `token_usage.json` + console breakdown
+at the end of a run — nothing about generation, gating, caching, or skipping changed. The other four
+pieces (artifact-level caching, delta-scoped regeneration, deterministic/LLM separation, pinning)
+remain unbuilt, as does the traceability/change-impact graph work (item #3) and the eval harness.
+
 **THE THROUGH-LINE (2026-08-12) — Nitin's own framing across all four answers, recorded, not
 interpreted.** Nitin states his own recommendations are meant to "contain bias, save
 token-maxxing costs, optimize iteratively" — a single stated intent behind all four clarifications,

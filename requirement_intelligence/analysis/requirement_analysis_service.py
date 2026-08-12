@@ -43,6 +43,7 @@ from requirement_intelligence.context_orchestration.models.engineering_context i
 )
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
+from requirement_intelligence.llm.token_usage import TokenUsageTracker
 from requirement_intelligence.prompts.requirement_prompt_builder import (
     PromptRequest,
     RequirementPromptBuilder,
@@ -51,6 +52,10 @@ from requirement_intelligence.prompts.requirement_prompt_builder import (
 #: Joins the contributing group ids recorded on an ``AnalysisResult``. Matches
 #: the separator the prompt builder uses, so the two can never disagree.
 _ID_SEPARATOR = ", "
+
+#: This service's own token-usage call-type identifier (token-usage-by-stage
+#: instrumentation, 2026-08-12 -- Nitin's "Critically"-flagged clarification).
+CALL_TYPE = "requirement_analysis"
 
 
 class RequirementAnalysisService:
@@ -66,6 +71,8 @@ class RequirementAnalysisService:
         prompt_builder: RequirementPromptBuilder,
         provider: LLMProvider,
         configuration: AnalysisConfiguration,
+        *,
+        usage_recorder: TokenUsageTracker | None = None,
     ) -> None:
         """Inject the orchestration collaborators and execution configuration.
 
@@ -78,6 +85,11 @@ class RequirementAnalysisService:
         configuration:
             The immutable :class:`AnalysisConfiguration` defining execution
             policy (reasoning contract version and future run-time policies).
+        usage_recorder:
+            Optional token-usage-by-stage instrumentation (2026-08-12). When
+            given, every successful provider call's token usage is recorded
+            against this service's own :data:`CALL_TYPE`. ``None`` (the
+            default) is a no-op -- existing callers are unaffected.
 
         Raises
         ------
@@ -95,6 +107,7 @@ class RequirementAnalysisService:
         self._prompt_builder = prompt_builder
         self._provider = provider
         self._configuration = configuration
+        self._usage_recorder = usage_recorder
 
     # ------------------------------------------------------------------
     # Public API (frozen for Phase 1)
@@ -146,6 +159,8 @@ class RequirementAnalysisService:
 
         # Step 5 — invoke the provider.
         llm_response = self._execute(llm_request)
+        if self._usage_recorder is not None:
+            self._usage_recorder.record(CALL_TYPE, llm_response.usage)
 
         # Step 6 — capture completion timestamp and compute duration.
         completed_at = datetime.now(UTC)

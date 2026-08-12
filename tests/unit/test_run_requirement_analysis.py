@@ -218,7 +218,12 @@ class FakeContext:
         return MagicMock()
 
     def create_requirement_analysis_service(
-        self, prompt_builder: Any, provider: Any, configuration: Any
+        self,
+        prompt_builder: Any,
+        provider: Any,
+        configuration: Any,
+        *,
+        usage_recorder: Any = None,
     ) -> MagicMock:
         service = MagicMock()
         service.analyze.return_value = self._result
@@ -2516,7 +2521,10 @@ class _FakeLiveFeatureContentGenerator:
     own fake bypasses the provider for Layer 1's analysis call). Always
     produces a lint-clean, CP2-passing feature."""
 
-    def __init__(self, provider: Any) -> None:
+    def __init__(self, provider: Any, **_kwargs: Any) -> None:
+        # **_kwargs swallows optional collaborators the real
+        # LiveFeatureContentGenerator now accepts (e.g. usage_recorder,
+        # 2026-08-12) that this deterministic fake has no use for.
         self.provider = provider
 
     def generate(self, requirement: Any) -> str:
@@ -2533,7 +2541,7 @@ class _FakeLiveFeatureContentGenerator:
 class _NeverCalledFeatureRemediator:
     """Proves CP2 passed on the first try -- remediation must never be reached."""
 
-    def __init__(self, provider: Any) -> None:
+    def __init__(self, provider: Any, **_kwargs: Any) -> None:
         self.provider = provider
 
     def remediate(self, content: str, violations: Any) -> str:
@@ -2544,7 +2552,7 @@ class _FakeDirtyLiveFeatureContentGenerator:
     """Deterministic stand-in producing a genuinely CP2-failing feature
     (duplicate scenario names) -- for the escalation-visibility proof."""
 
-    def __init__(self, provider: Any) -> None:
+    def __init__(self, provider: Any, **_kwargs: Any) -> None:
         self.provider = provider
 
     def generate(self, requirement: Any) -> str:
@@ -2564,7 +2572,7 @@ class _NeverFixesFeatureRemediator:
     """Always returns the SAME (still-broken) content -- forces D5 to exhaust
     its 2 attempts and escalate, deterministically."""
 
-    def __init__(self, provider: Any) -> None:
+    def __init__(self, provider: Any, **_kwargs: Any) -> None:
         self.provider = provider
 
     def remediate(self, content: str, violations: Any) -> str:
@@ -2706,7 +2714,7 @@ class _AlwaysFailsFeatureContentGenerator:
     reproducing the "feature_engineering: failed" run-state shape F2's fix
     must make --resume recognize as not-complete."""
 
-    def __init__(self, provider: Any) -> None:
+    def __init__(self, provider: Any, **_kwargs: Any) -> None:
         self.provider = provider
 
     def generate(self, requirement: Any) -> str:
@@ -2981,7 +2989,7 @@ class _RecordingStepDefinitionGenerator:
     `_NeverCalledAutomationStepDefinitionGenerator` -- the matcher below
     transport-fails every need before generation is reached)."""
 
-    def __init__(self, provider: Any, captured: dict[str, Any]) -> None:
+    def __init__(self, provider: Any, captured: dict[str, Any], **_kwargs: Any) -> None:
         captured["step_definition_provider"] = provider
 
     def generate(self, context: Any) -> str:
@@ -2995,7 +3003,7 @@ class _RecordingTestDataGenerator:
     transport-fail-every-need discipline so the stage still reaches
     SUCCEEDED-with-escalations, never generating/promoting anything."""
 
-    def __init__(self, provider: Any, captured: dict[str, Any]) -> None:
+    def __init__(self, provider: Any, captured: dict[str, Any], **_kwargs: Any) -> None:
         captured["test_data_provider"] = provider
 
     def generate(self, context: Any) -> str:
@@ -3009,7 +3017,7 @@ class _RecordingFeatureContentGenerator(_FakeLiveFeatureContentGenerator):
     stage 14 must actually succeed (a real, CP2-passing feature) so stage 15
     has something to consume."""
 
-    def __init__(self, provider: Any, captured: dict[str, Any]) -> None:
+    def __init__(self, provider: Any, captured: dict[str, Any], **_kwargs: Any) -> None:
         super().__init__(provider)
         captured["feature_content_provider"] = provider
 
