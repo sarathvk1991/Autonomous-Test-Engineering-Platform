@@ -4,7 +4,7 @@
 | --- | --- |
 | Document type | Decision-support analysis (not an ADR, not governance) |
 | Status | Analysis only — no code, no ADR, no register entry produced by this document |
-| Scope | The mentor's 8 feedback items, plus Nitin's reply, assessed against the platform's real, current architecture |
+| Scope | Nitin's 8 original feedback items, plus his own later reply and clarifications, assessed against the platform's real, current architecture |
 | Method | Every claim below is verified against a real artifact (an ADR's own Status line, real code, the register) as of this document's own date. Where this document's characterization of an item differs from the source feedback's own framing, that is called out explicitly — the artifacts win. |
 | Date | 2026-08-11 |
 | Owner | None yet — this is analysis; adoption of any item is a future, separate decision (per-item ADR/task) |
@@ -58,7 +58,7 @@ repository is touched.
 
 ### Item 1 — Nitin's reply (cross-cutting)
 
-Nitin's reply is not one item — it is eight compact points that partly overlap the mentor's own
+Nitin's reply is not one item — it is eight compact points that partly overlap his own original
 eight, and partly stand alone. Mapped as instructed, then the standalone remainder assessed on its
 own:
 
@@ -228,7 +228,7 @@ place; the **change-impact graph (#3)** is what a delta-scoped regeneration woul
 what a change actually reaches; **caching (re-run)** needs **pinning** (also re-run, piece (b)) to
 have a meaningful, invalidatable key; and the **traceability graph (#3)** is the mechanism that makes
 corpus-level completeness queryable — tying this whole cluster back to the "completeness thread"
-already identified (Synthesis, below) as both mentors' shared top strategic risk. Recorded here as
+already identified (Synthesis, below) as Nitin's own top strategic risk. Recorded here as
 one coherent architecture, not four isolated features — **no sequencing or design decision is made
 by this note**; that remains for each item's own future design-surfacing task.
 
@@ -260,7 +260,8 @@ conflict.
 **Effort + blast radius:** none, if the ask is "adopt this principle" (already true). If the mentor
 means something more specific not yet identified, effort is unknown until clarified.
 
-**Consensus signal:** high — Nitin's "agent/re-run token loss" raises the same theme independently.
+**Consensus signal:** high — Nitin's own follow-up ("agent/re-run token loss") reiterates the same
+theme from his original list.
 
 **Recommendation: clarify-with-mentor.** The platform likely already satisfies the spirit of this
 suggestion. Worth asking directly: is there a *specific* gap in mind (e.g., concern about a future
@@ -331,7 +332,7 @@ rule catalog, a deterministic engine, node/edge projectors, a subgraph detector)
    concept in `enhancement/` (rules, policy) and `grounding/` (metrics) — but scoped **per
    requirement** (is this one requirement's own fields/acceptance-criteria complete), never
    **across the corpus** (are we missing whole requirements, or the relationships between them).
-   The corpus-level question — the one both mentors are actually worried about — is genuinely new.
+   The corpus-level question — the one Nitin is actually worried about — is genuinely new.
 3. *Knowledge Graph (Neo4j).* **Substantially built, but not what was asked for.** ADR-0023
    (Accepted; "Runtime status: **Live**," CAP-084C) built a real, governed, deterministic
    `requirement_intelligence/knowledge_graph/` subsystem — typed `KnowledgeNode`/`KnowledgeEdge`/
@@ -367,10 +368,10 @@ not something this new work would be first to need; (3) a deliberate choice betw
 already-built deterministic KG engine vs. introducing Neo4j as new infrastructure (no graph DB
 dependency exists anywhere today).
 
-**Consensus signal: highest of all eight items.** Both mentors flag this independently (Nitin's
-"house of cards"/input-quality framing; the mentor's completeness + KG framing) — this is squarely
-both mentors' shared #1 strategic risk, even though it is also the heaviest single item on this
-list.
+**Consensus signal: highest of all eight items.** Nitin flags this repeatedly, in both rounds of his
+own feedback (his reply's "house of cards"/input-quality framing, and his original list's
+completeness + KG framing) — this is squarely Nitin's own #1 strategic risk, even though it is also
+the heaviest single item on this list.
 
 **Recommendation: surface-as-own-design-task**, not adopt-now. The single highest-leverage next
 question — cheaper to answer than the whole item — is: **can requirement completeness be scoped as
@@ -405,7 +406,7 @@ first cut.
 
 **Two connections, both his own.** The **traceability graph (1)** is, in his framing, the mechanism
 that makes corpus-level completeness *queryable* — this ties directly to the "completeness thread"
-this document already identified as both mentors' shared top strategic risk (see the Synthesis
+this document already identified as Nitin's own top strategic risk (see the Synthesis
 section, "The completeness thread," below). The **change-impact graph (2)** is what a delta-scoped
 regeneration capability would run against — this ties directly to his re-run/token-cost answer
 (below): "regenerate only what changed" needs a graph that knows what a change actually touches.
@@ -528,7 +529,7 @@ execution-result).**
   `knowledge_graph`-shaped package (~30+ files by precedent) — not small, but additive, no ADR
   conflict found (reads already-emitted Layer 1-3 runtime contracts/artifacts, does not reimplement
   their reasoning, mirroring the completeness sub-part's own "arm's-length Layer 2+ consumer"
-  framing). **Highest strategic value on this list** — both mentors' independently-named #1 risk;
+  framing). **Highest strategic value on this list** — Nitin's own consistently-named #1 risk;
   this is literally the mechanism the completeness thread has been waiting for.
 - **CHANGE-IMPACT** — same sibling-service pattern; method-level scope buildable now from existing
   call-site-derivation data (today transient/internal to the generation pipeline — would need to be
@@ -543,8 +544,8 @@ execution-result).**
   prioritize it; deferred, not scoped here.
 
 **The completeness convergence.** The traceability graph is the concrete mechanism the
-"completeness thread" (this document's own Synthesis section, below, and both mentors'
-independently-named #1 risk) has been missing since this item's own earlier assessment:
+"completeness thread" (this document's own Synthesis section, below, and Nitin's own
+consistently-named #1 risk) has been missing since this item's own earlier assessment:
 requirement→scenario/step queryability turns "is the corpus incomplete" from a qualitative worry
 into a queryable answer, mostly buildable now, without L5. Building traceability *is* addressing
 completeness — the two are not separate future tasks, they are the same work read from two angles.
@@ -552,7 +553,7 @@ This also connects forward to the L1 as-built LLD and mentor item #3-completenes
 underlying work, not duplicated effort.
 
 **Recommendation.** Build **traceability first** — highest strategic value, mostly buildable now
-(module the execution-result hop to L5), and it is the completeness mechanism both mentors already
+(module the execution-result hop to L5), and it is the completeness mechanism Nitin already
 flagged as the top risk. Approach: a new sibling service reusing ADR-0023's *pattern* (typed
 nodes/edges, governed `StrEnum` vocabulary, deterministic rule-gated pipeline, type-agnostic
 subgraph/cycle analysis) with its own entry point over L1-L3 Runtime Truth/Execution-Package
@@ -726,7 +727,7 @@ already exists, scattered across Accepted-but-superseded and Proposed-but-unrati
 real cost is the reconciliation decision, which is a governance question, not a large engineering
 one.
 
-**Consensus signal: high** — both Nitin and the mentor raise this independently.
+**Consensus signal: high** — Nitin raises this in both his original list and his later reply.
 
 **Recommendation: adopt-now, but as a scoped reconciliation task, not a blank-page write.** Given
 strong pre-existing raw material and near-consensus mentor interest, this is a good near-term
@@ -835,7 +836,7 @@ designed, incorporating this is low incremental cost given the proven ADR-0040 b
 pattern already exists to mirror — but this genuinely cannot be built in isolation; it is L6-shaped
 work, and L6 does not exist.
 
-**Consensus signal: high** — both mentors raise it.
+**Consensus signal: high** — Nitin raises this consistently across his feedback.
 
 **Recommendation: adopt-when-building-that-layer.** Not a standalone task today. Record as a hard
 design constraint for L6's own future architecture-freeze ADR, citing ADR-0040's bounded-remediation
@@ -875,7 +876,7 @@ one of them (standing service reading an accumulated corpus) is what a real BI t
 large — mostly artifact-to-BI-tool plumbing, given the rich existing artifact corpus, not new domain
 logic.
 
-**Consensus signal:** raised only by the mentor, not clearly present in Nitin's own points.
+**Consensus signal:** raised in Nitin's original list, not clearly repeated in his own reply points.
 
 **Recommendation: adopt-when-building-that-layer**, combined with **clarify-with-mentor** on which
 specific BI tool (an external, license/tooling decision, similar in kind to item #8's own
@@ -1093,13 +1094,13 @@ alignment explicit rather than changing anything in the sequence itself.
 
 ### The completeness thread
 
-Both mentors' own #1 strategic risk is the same thing under two names: Nitin's "house of cards" /
-input-quality framing, and the mentor's own completeness + Knowledge Graph framing, are both
-pointing at the same underlying question — **does this platform know when its own requirement
-corpus is incomplete, not just whether the requirements it has are individually well-formed?**
-Verified: no corpus-level completeness check exists anywhere today (only per-requirement
-completeness, in `enhancement/`/`grounding/`). This is simultaneously the heaviest item on this
-list (group c) and, by both mentors' own independent framing, the single highest-strategic-value
+Nitin's own #1 strategic risk appears under two names across his two rounds of feedback: his "house
+of cards" / input-quality framing (his reply), and his own completeness + Knowledge Graph framing
+(his original list), both pointing at the same underlying question — **does this platform know when
+its own requirement corpus is incomplete, not just whether the requirements it has are individually
+well-formed?** Verified: no corpus-level completeness check exists anywhere today (only
+per-requirement completeness, in `enhancement/`/`grounding/`). This is simultaneously the heaviest
+item on this list (group c) and, by Nitin's own repeated framing, the single highest-strategic-value
 item — the "surface-as-own-design-task" recommendation under #3 should be read as carrying more
 weight than its size alone would suggest.
 
@@ -1167,7 +1168,7 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
 3. **#3's own dedicated design-surfacing task (completeness/subset)** — specifically to answer the
    one question that determines this item's real size: can completeness be scoped as an
    arm's-length Layer 2+ consumer (small-ish), or does it genuinely require lifting ADR-0032
-   (large)? Given both mentors' independent agreement this is the top strategic risk, this
+   (large)? Given Nitin's own repeated emphasis that this is the top strategic risk, this
    deserves the next big investment after the cheap items above are cleared. Connects to 2c above
    (the traceability graph is the mechanism that would make this thread queryable).
 4. **#8 — build once a vendor/license decision is made.** Purely a scheduling question at that
