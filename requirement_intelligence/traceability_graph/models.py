@@ -1,9 +1,14 @@
 """Canonical models for the Traceability Graph — the minimal slice.
 
-Scope, deliberately: `requirement -> scenario -> step` only. Page-object and
-execution-result hops, change-impact, and state/flow are explicitly deferred
-(mentor item #3's "GRAPHS DESIGN SURFACED" note, `docs/architecture/
-mentor-feedback-scoping.md`) — additive later, not modeled here.
+Scope, deliberately: `requirement -> scenario -> step` only, plus the
+step-definition-binding annotation (`UnboundStep`/`BindingCompletenessReport`
+below) — the binding-data half of ADR-0048 D4's named "page-object hop"
+(D5's own text: "the deferred page-object/step-definition hop"). The
+step-definition's own internal call sites into page objects — the other
+half of that named hop — stay deferred, along with the execution-result hop,
+change-impact, and state/flow (mentor item #3's "GRAPHS DESIGN SURFACED"
+note, `docs/architecture/mentor-feedback-scoping.md`) — additive later, not
+modeled here.
 
 Every model is frozen (`shared.contracts.base.Schema`), camelCase, and
 reference-not-copy: a node carries only the referenced entity's own id, never
@@ -143,12 +148,64 @@ class CompletenessReport(Schema):
         return self
 
 
+class UnboundStep(Schema):
+    """One STEP node the binding sweep found without a resolved step-definition."""
+
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    step_id: str = Field(..., min_length=1, description="The STEP node's own referenced_id.")
+    step_text: str = Field(..., min_length=1, description="The step's raw Gherkin text.")
+    reason: str = Field(
+        ...,
+        min_length=1,
+        description='Either "escalated" (a step-definition need was derived for this text but '
+        "the reuse engine could neither bind nor generate one) or \"no_step_definition_need\" "
+        "(no automation-engineering record exists for this text at all).",
+    )
+
+
+class BindingCompletenessReport(Schema):
+    """Corpus-level step-definition-binding completeness — the binding-hop payoff.
+
+    Distinct from `CompletenessReport` (Gherkin-authoring completeness): a
+    step this graph counts as authored may still have no proven, bound step
+    definition — this report closes exactly that gap, for the identical step
+    set (ADR-0048 D5's own two-layer finding: 100% authoring, ~50% binding,
+    previously only visible via a manual CP3 cross-reference). Report-only,
+    same posture as `CompletenessReport`: no gate, no threshold, no fail
+    logic anywhere in this module.
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    graph_id: str = Field(..., min_length=1)
+    total_steps: int = Field(..., ge=0)
+    bound_step_count: int = Field(..., ge=0)
+    unbound_step_count: int = Field(..., ge=0)
+    coverage_percentage: float = Field(..., ge=0.0, le=100.0)
+    unbound_steps: tuple[UnboundStep, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _counts_are_consistent(self) -> BindingCompletenessReport:
+        """Enforce the report's own arithmetic — explainable, never asserted blind."""
+        counted = self.bound_step_count + self.unbound_step_count
+        if counted != self.total_steps:
+            raise ValueError(
+                "bound_step_count + unbound_step_count must equal total_steps."
+            )
+        if len(self.unbound_steps) != self.unbound_step_count:
+            raise ValueError("unbound_steps length must equal unbound_step_count.")
+        return self
+
+
 __all__ = [
+    "BindingCompletenessReport",
     "CompletenessReport",
     "TraceabilityEdge",
     "TraceabilityEdgeType",
     "TraceabilityGraph",
     "TraceabilityNode",
     "TraceabilityNodeType",
+    "UnboundStep",
     "UncoveredRequirement",
 ]

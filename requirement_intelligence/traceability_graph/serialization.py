@@ -18,7 +18,11 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from requirement_intelligence.traceability_graph.models import CompletenessReport, TraceabilityGraph
+from requirement_intelligence.traceability_graph.models import (
+    BindingCompletenessReport,
+    CompletenessReport,
+    TraceabilityGraph,
+)
 
 
 def render_graph_json(graph: TraceabilityGraph) -> dict[str, Any]:
@@ -59,6 +63,38 @@ def render_completeness_report(report: CompletenessReport) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_binding_completeness_json(report: BindingCompletenessReport) -> dict[str, Any]:
+    """Return the canonical binding-completeness-report dict — a straight `model_dump`."""
+    return report.model_dump(mode="json", by_alias=True)
+
+
+def render_binding_completeness_report(report: BindingCompletenessReport) -> str:
+    """Return a human-readable Markdown rendering of *report*. Projection only."""
+    lines: list[str] = [
+        "# Traceability Binding Completeness Report",
+        "",
+        f"- Graph: `{report.graph_id}`",
+        "",
+        "## Summary",
+        "",
+        f"- Total steps: **{report.total_steps}**",
+        f"- Bound (resolved step definition): **{report.bound_step_count}**",
+        f"- Unbound: **{report.unbound_step_count}**",
+        f"- Coverage: **{report.coverage_percentage:.2f}%**",
+        "",
+        "## Unbound Steps",
+        "",
+        "| Step | Reason |",
+        "| --- | --- |",
+    ]
+    for unbound in report.unbound_steps:
+        lines.append(f"| `{unbound.step_text}` | {unbound.reason} |")
+    if not report.unbound_steps:
+        lines.append("| _None — full binding coverage_ | - |")
+
+    return "\n".join(lines) + "\n"
+
+
 def render_graph_report(graph: TraceabilityGraph) -> str:
     """Return a human-readable Markdown rendering of *graph*'s nodes/edges. Projection only."""
     node_type_counts = sorted(Counter(str(node.node_type) for node in graph.nodes).items())
@@ -95,6 +131,8 @@ def render_graph_report(graph: TraceabilityGraph) -> str:
 
 
 __all__ = [
+    "render_binding_completeness_json",
+    "render_binding_completeness_report",
     "render_completeness_json",
     "render_completeness_report",
     "render_graph_json",

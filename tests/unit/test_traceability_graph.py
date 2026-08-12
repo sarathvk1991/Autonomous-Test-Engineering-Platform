@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from automation_engineering.stage.models import AssetRecord, AutomationEngineeringPackage
 from contracts.testable_requirement import (
     AcceptanceCriterionInput,
     Category,
@@ -34,20 +35,25 @@ from contracts.testable_requirement import (
 )
 from feature_engineering.stage.models import FeatureEngineeringPackage, FeatureRecord
 from requirement_intelligence.traceability_graph import (
+    BindingCompletenessReport,
     CompletenessReport,
     TraceabilityEdge,
     TraceabilityEdgeType,
     TraceabilityGraph,
     TraceabilityNode,
     TraceabilityNodeType,
+    UnboundStep,
     UncoveredRequirement,
     build_directed_adjacency,
     edge_id_for,
+    evaluate_binding_completeness,
     evaluate_completeness,
     graph_id_for,
     node_id_for,
     project_traceability_graph,
     reachable_from,
+    render_binding_completeness_json,
+    render_binding_completeness_report,
     render_completeness_json,
     render_completeness_report,
     render_graph_json,
@@ -137,6 +143,37 @@ def _package(records: tuple[FeatureRecord, ...], *, run_id: str = "run-traceabil
         contract_version="1.0.0",
         run_id=run_id,
         requirement_set_run_id=run_id,
+        generated_at=datetime.now(UTC).isoformat(),
+        records=records,
+    )
+
+
+def _asset_record(
+    need_text: str, *, need_kind: str = "step_definition", escalated: bool = False
+) -> AssetRecord:
+    return AssetRecord(
+        need_text=need_text,
+        need_kind=need_kind,
+        outcome="escalated" if escalated else "bound",
+        class_name=None if escalated else "com.automation.steps.Steps",
+        target_package=None,
+        workspace_path=None,
+        escalated=escalated,
+        escalation_check="confidence" if escalated else None,
+        escalation_reason="match confidence below threshold" if escalated else None,
+        promotion_status=None,
+        promotion_detail=None,
+        promoted_path=None,
+    )
+
+
+def _automation_package(
+    records: tuple[AssetRecord, ...], *, run_id: str = "run-traceability-test"
+) -> AutomationEngineeringPackage:
+    return AutomationEngineeringPackage(
+        contract_version="1.0.0",
+        run_id=run_id,
+        feature_engineering_run_id=run_id,
         generated_at=datetime.now(UTC).isoformat(),
         records=records,
     )
@@ -315,6 +352,130 @@ class TestCompletenessDetection:
         )
 
 
+class TestBindingCompleteness:
+    """The step-definition-binding hop (ADR-0048 D4/D5): a companion
+    completeness layer over the SAME `requirement -> scenario -> step`
+    graph, joined against the automation-engineering stage's own per-need
+    binding outcomes."""
+
+    def _tested_graph(self, tmp_path: Path) -> TraceabilityGraph:
+        req = _requirement("A")
+        requirement_set = _requirement_set([req])
+        features_root = tmp_path / "features"
+        features_root.mkdir()
+        (features_root / "tested.feature").write_text(_TESTED_FEATURE, encoding="utf-8")
+        package = _package((_feature_record(req.requirement_id, "tested.feature"),))
+        return project_traceability_graph(requirement_set, package, features_root=features_root)
+
+    def test_bound_escalated_and_missing_needs_are_distinguished(self, tmp_path: Path) -> None:
+        """`_TESTED_FEATURE` has 3 steps: 'a precondition', 'an action occurs',
+        'an outcome is observed'. One is bound, one is escalated, and one has
+        no automation-package record at all -- the three distinct outcomes
+        the join must separate."""
+        graph = self._tested_graph(tmp_path)
+        automation_package = _automation_package(
+            (
+                _asset_record("a precondition", escalated=False),
+                _asset_record("an action occurs", escalated=True),
+                # "an outcome is observed" deliberately absent.
+            )
+        )
+
+        report = evaluate_binding_completeness(graph, automation_package)
+
+        assert report.total_steps == 3
+        assert report.bound_step_count == 1
+        assert report.unbound_step_count == 2
+        assert report.coverage_percentage == pytest.approx(33.33, abs=0.01)
+
+        reasons_by_text = {u.step_text: u.reason for u in report.unbound_steps}
+        assert reasons_by_text["an action occurs"] == "escalated"
+        assert reasons_by_text["an outcome is observed"] == "no_step_definition_need"
+        assert "a precondition" not in reasons_by_text
+
+    def test_full_binding_coverage_yields_100_percent(self, tmp_path: Path) -> None:
+        graph = self._tested_graph(tmp_path)
+        automation_package = _automation_package(
+            tuple(
+                _asset_record(text, escalated=False)
+                for text in ("a precondition", "an action occurs", "an outcome is observed")
+            )
+        )
+
+        report = evaluate_binding_completeness(graph, automation_package)
+
+        assert report.coverage_percentage == 100.0
+        assert report.unbound_steps == ()
+
+    def test_non_step_definition_records_never_count_as_a_binding(self, tmp_path: Path) -> None:
+        """A `test_data` need sharing a step's own text must never be read as
+        that step's step-definition binding -- only `need_kind ==
+        "step_definition"` records are eligible."""
+        graph = self._tested_graph(tmp_path)
+        automation_package = _automation_package(
+            (_asset_record("a precondition", need_kind="test_data", escalated=False),)
+        )
+
+        report = evaluate_binding_completeness(graph, automation_package)
+
+        assert report.bound_step_count == 0
+        assert report.unbound_step_count == 3
+        assert {u.reason for u in report.unbound_steps} == {"no_step_definition_need"}
+
+    def test_zero_steps_is_handled_without_division_error(self) -> None:
+        empty_graph = TraceabilityGraph(graph_id=graph_id_for("run-empty"), nodes=(), edges=())
+
+        report = evaluate_binding_completeness(empty_graph, _automation_package(()))
+
+        assert report.total_steps == 0
+        assert report.coverage_percentage == 0.0
+        assert report.unbound_steps == ()
+
+    def test_authoring_and_binding_are_two_distinct_layers_on_one_graph(
+        self, tmp_path: Path
+    ) -> None:
+        """A step fully reachable (authoring-complete) may still be unbound
+        (binding-incomplete) -- the exact two-layer picture ADR-0048 D5's
+        real measurement first surfaced via a manual CP3 cross-reference."""
+        graph = self._tested_graph(tmp_path)
+        automation_package = _automation_package(
+            (
+                _asset_record("a precondition", escalated=False),
+                _asset_record("an action occurs", escalated=True),
+                _asset_record("an outcome is observed", escalated=True),
+            )
+        )
+
+        authoring = evaluate_completeness(graph)
+        binding = evaluate_binding_completeness(graph, automation_package)
+
+        assert authoring.coverage_percentage == 100.0
+        assert authoring.untested_requirements == ()
+        assert binding.coverage_percentage == pytest.approx(33.33, abs=0.01)
+        assert binding.unbound_step_count == 2
+
+    def test_report_structure_is_gate_ready_but_has_no_gating(self) -> None:
+        report = BindingCompletenessReport(
+            graph_id="tg-000000000000",
+            total_steps=2,
+            bound_step_count=1,
+            unbound_step_count=1,
+            coverage_percentage=50.0,
+            unbound_steps=(UnboundStep(step_id="step-1", step_text="a step", reason="escalated"),),
+        )
+        assert report.coverage_percentage == 50.0
+        assert not hasattr(report, "passed")
+        assert not hasattr(report, "verdict")
+        assert not hasattr(report, "gate_status")
+
+        import requirement_intelligence.traceability_graph as package
+
+        assert not any(
+            name in package.__all__
+            for name in ("evaluate_gate", "check_threshold", "GateDecision", "GateResult")
+        )
+
+
 class TestModelInvariants:
     def test_graph_rejects_edge_to_absent_node(self) -> None:
         requirement_node = TraceabilityNode(
@@ -354,6 +515,28 @@ class TestModelInvariants:
                 untested_requirement_count=1,
                 coverage_percentage=50.0,
                 untested_requirements=(),  # length 0, but count says 1
+            )
+
+    def test_binding_report_rejects_mismatched_counts(self) -> None:
+        with pytest.raises(ValidationError, match="must equal total_steps"):
+            BindingCompletenessReport(
+                graph_id="tg-1",
+                total_steps=5,
+                bound_step_count=1,
+                unbound_step_count=1,  # 1 + 1 != 5
+                coverage_percentage=20.0,
+                unbound_steps=(),
+            )
+
+    def test_binding_report_rejects_unbound_list_length_mismatch(self) -> None:
+        with pytest.raises(ValidationError, match="must equal unbound_step_count"):
+            BindingCompletenessReport(
+                graph_id="tg-1",
+                total_steps=2,
+                bound_step_count=1,
+                unbound_step_count=1,
+                coverage_percentage=50.0,
+                unbound_steps=(),  # length 0, but count says 1
             )
 
 
@@ -415,6 +598,30 @@ class TestSerialization:
         graph_md = render_graph_report(graph)
         assert "requirement" in graph_md
         assert "has_scenario" in graph_md
+
+    def test_renders_binding_report_without_recomputing(self, tmp_path: Path) -> None:
+        req = _requirement("A")
+        requirement_set = _requirement_set([req])
+        features_root = tmp_path / "features"
+        features_root.mkdir()
+        (features_root / "tested.feature").write_text(_TESTED_FEATURE, encoding="utf-8")
+        package = _package((_feature_record(req.requirement_id, "tested.feature"),))
+        graph = project_traceability_graph(requirement_set, package, features_root=features_root)
+        automation_package = _automation_package(
+            (
+                _asset_record("a precondition", escalated=False),
+                _asset_record("an action occurs", escalated=True),
+            )
+        )
+        report = evaluate_binding_completeness(graph, automation_package)
+
+        report_json = render_binding_completeness_json(report)
+        assert report_json["totalSteps"] == report.total_steps
+        assert report_json["coveragePercentage"] == report.coverage_percentage
+
+        report_md = render_binding_completeness_report(report)
+        assert "escalated" in report_md
+        assert "no_step_definition_need" in report_md
 
 
 class TestScopeDiscipline:

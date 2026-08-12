@@ -664,6 +664,47 @@ Decision 7) rather than silently asserting "Layer 2" where the constitution does
 ADR-0023 itself is referenced, not edited — additive only. `make lint`/`make test`: 5771 passed,
 unchanged; only the new ADR file added.
 
+**STEP-DEFINITION-BINDING HOP BUILT (2026-08-12) — closes the exact gap this section's own
+"honest caveat" named, within ADR-0048's already-named scope, no ADR amendment needed.**
+Pre-flight read ADR-0048 D4's canonical deferred-hops list (page-object, execution-result,
+change-impact, state/flow) against D5's own later text, above, which names the SAME deferred item
+as **"the deferred page-object/step-definition hop"** — a single bundled hop, not two. D4 itself
+only ever describes the page-object *call-site* linkage (`page_object_reference_derivation.py`),
+never the step→step-definition existence question CP3 answers; but D5's own compound name, written
+by this ADR's own author when tying the CP3 finding back to D4, is direct textual evidence the
+binding question was already folded into that one named hop, not silently omitted. Verdict:
+**in-scope — built, no ADR-0048 amendment required.**
+
+Added a companion, not a replacement: `BindingCompletenessReport`/`UnboundStep`
+(`traceability_graph/models.py`) and `evaluate_binding_completeness`
+(`traceability_graph/completeness.py`), joining each STEP node's own `label` (the raw Gherkin text
+`project_traceability_graph` already carries) against `AutomationEngineeringPackage`'s
+`need_kind == "step_definition"` records (`automation_engineering.stage.models` — the same
+structured artifact this section's own real measurement, above, already cited; a clean,
+already-established peer dependency, mirroring the existing `feature_engineering.stage.models`
+import in `projection.py`). A step is bound iff a matching record exists and is not `escalated`.
+**Shape chosen: annotation, not a step-definition node layer** — an escalated need's own
+`class_name` is `null` (no identity yet), which would violate `TraceabilityNode.referenced_id`'s
+`min_length=1` invariant if modeled as a node; a lightweight report mirrors `CompletenessReport`
+instead, no change to the existing node/edge shape.
+
+**Re-run against the same real run's artifacts this section already measured
+(`run-20260812T064317663150Z-a20b0cc2`): 67 STEP nodes, 33 bound / 34 unbound, 49.25% —
+reproducing CP3's own "34/67 steps unmapped (49.3% step coverage)" exactly**, all 34 unbound for
+reason `"escalated"` (zero `"no_step_definition_need"` cases — every step's text matched a real
+automation-package need, as expected for a same-run artifact set). The two-layer picture above
+(100% authoring, ~50% binding) is now one graph's own two reports, not a manual cross-reference.
+Scope discipline held: the step-definition's own internal call sites into page objects (the other
+half of D4's named hop), the execution-result hop, change-impact, and state/flow all remain
+deferred, untouched. `make lint`: clean. `make test`: **5780 passed** (5771 + 9 new, fixture-based,
+`tests/unit/test_traceability_graph.py`). `mypy` on the touched packages: clean, no new errors.
+Report-only, unchanged posture: no gate, no threshold on either completeness layer. Not wired into
+any execution pipeline — same as the rest of this capability. Neither `docs/adr/0048-traceability-graph.md`
+nor the `CAP-088` row in `docs/governance/platform-capability-matrix.md` needed a status change: the
+binding hop was governed *within* ADR-0048's existing text before this build, not amended by it —
+this entry is the additive record of the build, mirroring how "CAPABILITY ADR WRITTEN" above records
+the ADR without retro-editing it.
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)
