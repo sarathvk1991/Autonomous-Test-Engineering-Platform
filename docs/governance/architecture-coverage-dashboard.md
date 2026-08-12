@@ -106,6 +106,7 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-071 | Prompt Governance Subsystem | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-072 | Prompt Canonical Models | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-073 | Prompt Governance Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-088 | Traceability Graph | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 
 > **CAP-070 Productization** verifies the completed architecture end-to-end against the
 > golden **Release Regression Baseline** (`docs/productization/golden-baseline.md`). Its
@@ -118,21 +119,34 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 > Validation, CP1, and the execution package; it owns **verification only**, not the
 > subsystems it exercises. **Status: Implemented.**
 
+> **CAP-088 Traceability Graph** projects a deterministic `requirement → scenario →
+> step` graph and reports corpus completeness (governed by **ADR-0048, Accepted**).
+> Its `Framework` stage is **not applicable** (shown `✓` — no outstanding work: it
+> reuses the ADR-0023 Knowledge Graph *pattern* only, never a dedicated framework of
+> its own). `Canonical Models`, `Implementation`, and `Testing` are complete (7
+> modules, 15 unit tests, all passing). `Frozen` is **`✗`**: nothing about this
+> capability is declared immutable yet. **Not wired into any execution pipeline** —
+> no `PlatformContext` composition-root method, no golden-baseline entry (§7). Its
+> placement in the platform's layer model is **explicitly open** (ADR-0048 D2): it
+> consumes Runtime Truth directly, so it does not satisfy ADR-0021's strict Layer-2
+> boundary — mirroring CAP-087's own still-open placement. **Status: Implemented,
+> measured, not wired.**
+
 ## 5. Overall coverage summary
 
-Objective counts across all **42** capabilities (no percentages estimated). For
+Objective counts across all **43** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 42 | 0 | 0 | — (CAP-060 governed by ADR-0011/0012; CAP-070 governed by the Productization Governance Contract; CAP-071 governed by ADR-0014). |
-| **Framework** | 42 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 42 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 35 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049. |
-| **Testing** | 35 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 2 | 36 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031, CAP-070 (governance contract frozen; dataset independently versioned). |
+| **Architecture** | 43 | 0 | 0 | — (CAP-060 governed by ADR-0011/0012; CAP-070 governed by the Productization Governance Contract; CAP-071 governed by ADR-0014; CAP-088 governed by ADR-0048). |
+| **Framework** | 43 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 43 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 36 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049. |
+| **Testing** | 36 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 2 | 37 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031, CAP-070 (governance contract frozen; dataset independently versioned). CAP-088 joins the `✗` outstanding set (not frozen). |
 
-**Implementation Readiness distribution** (39 total): **Ready 32** · **In Progress
+**Implementation Readiness distribution** (40 total): **Ready 33** · **In Progress
 3** (CAP-044, CAP-046, CAP-049) · **Blocked 0** · **Planned 4** (CAP-045,
 CAP-047, CAP-048, CAP-050).
 

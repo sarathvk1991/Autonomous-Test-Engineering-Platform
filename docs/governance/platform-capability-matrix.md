@@ -394,6 +394,33 @@ and `Golden CP1 FAIL` (both **Planned**), documented in
 [`docs/productization/golden-baseline.md`](../productization/golden-baseline.md) §9.
 No new datasets are invented here; the two named datasets are the only planned additions.
 
+**Traceability Graph (CAP-088)** is **built, tested, and measured** for its minimal
+`requirement → scenario → step` slice (Accepted, governed by ADR-0048) — but it is
+**not wired** into any execution pipeline. Remaining work, each with a named trigger
+(ADR-0048 D4 / Consequences; no dates):
+
+1. **Runtime integration** — a `PlatformContext` composition-root method and live
+   pipeline wiring; not yet designed.
+2. **Page-object hop** (`scenario/step → page-object`) — deferred; trigger: a
+   decision to wire page-object generation live.
+3. **Execution-result hop** (`step → execution-result`) — deferred; trigger: Layer 5
+   (test execution) existing at all — it currently carries `governing_citation="none
+   yet"`.
+4. **Change-impact graph** (code/pages → elements → steps → scenarios) — a distinct
+   capability; trigger: its own separate design-then-build task.
+5. **State/flow graph** — named by Nitin as a fourth graph type but **not
+   prioritized** by him; deferred without further design work.
+6. **Gating on top of `CompletenessReport`** — deferred; trigger: a deliberate
+   future decision informed by the first real measurement (D5), never a silent
+   addition.
+
+None of these require a redesign of the built capability when taken up — each is an
+additive extension of the same node/edge/traversal pattern (ADR-0048 D2). Per D2,
+this capability's placement in the platform's layer model is itself still **open**
+(it consumes Runtime Truth directly, so it does not satisfy ADR-0021's strict
+Layer-2 boundary) — the runtime-integration milestone above does not presuppose an
+answer to that open question.
+
 > The roadmap lists only work with an existing architectural mandate. Downstream
 > layers named in the Architecture Overview (Feature/Test Generation, Execution,
 > Failure Intelligence, Governance Dashboard) are known future direction and are
