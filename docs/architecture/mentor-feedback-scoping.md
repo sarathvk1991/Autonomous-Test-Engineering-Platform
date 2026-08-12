@@ -574,6 +574,47 @@ engineering time, the same way item #5's Option B was flagged for a narrow follo
 This surfaces the extend-vs-separate answer, the real data-availability picture per graph, and a
 sequenced recommendation; building either graph remains a future, separate task.
 
+**MINIMAL TRACEABILITY GRAPH BUILT (2026-08-12) — the first #3 piece, following the recommendation
+above.** `requirement_intelligence/traceability_graph/` is a new, standalone package: typed
+`TraceabilityNode`/`TraceabilityEdge`/`TraceabilityGraph` models (deterministic SHA-256 identity,
+mirroring ADR-0023's identity pattern), a directed-adjacency BFS traversal helper (mirroring
+`SubgraphDetector`'s own pattern), a deterministic projector
+(`project_traceability_graph`) that joins two real, already-produced artifacts —
+`TestableRequirementSet` (L1) and `FeatureEngineeringPackage` (L2), re-parsing each `.feature` file
+with the same parser `traceability.json` already uses — into `requirement -> scenario -> step`
+nodes/edges, and a completeness evaluator (`evaluate_completeness`) that traverses the graph to
+answer exactly the question this item exists for: which requirements have no full test chain, and
+why (`no_scenario` vs. `scenario_without_steps`). Report-only: `CompletenessReport`'s shape (counts,
+coverage %, the untested list) is gate-ready, but no threshold, gate, or fail logic exists anywhere
+in this package — scores-first, as scoped. 15 new deterministic tests (fixture-based, no LLM, no
+live run), including a containment test proving no import of `knowledge_graph/` anywhere in the new
+package — the extend-vs-separate verdict above (CASE B at the service boundary) held in the actual
+build, not just the design. `make lint`/`make test` green (5771, +15, 0 regressions); mypy on the
+new code clean, whole-repo count unchanged (432, pre-existing).
+
+**Scope held exactly as recommended.** `requirement -> scenario -> step` only — no page-object hop
+(deferred; the arc exists per the data-availability finding above but was not added here), no
+execution-result hop (blocked on L5, unchanged), no change-impact, no state/flow. The existing
+ADR-0023 `knowledge_graph/` package is untouched — not imported, not modified. Not wired into any
+execution pipeline (`scripts/run_requirement_analysis.py`, `PlatformContext`) — architecture-plus-
+implementation only, mirroring ADR-0023's own CAP-084A/B milestones before its CAP-084C runtime
+integration; wiring it live is a deliberate, separately-scoped follow-up.
+
+**Governance flag — an ADR likely belongs here, not yet written.** Every prior Layer-2 peer
+(Continuous Improvement, ADR-0022; Knowledge Graph, ADR-0023) got its own architecture-freeze ADR
+before or alongside its implementation. This build inverted that order deliberately (scores-first,
+per this task's own explicit framing) to get real completeness numbers fast rather than spend a
+design cycle on ceremony for a slice this small. Recommend a short capability ADR before any further
+extension (the page-object hop, the execution-result hop once L5 exists, change-impact, or live
+wiring) — documenting the pattern-reuse decision this note already made, the node/edge vocabulary,
+and the deliberate avoidance of ADR-0023's Historical-Truth-only boundary — but not as a blocker on
+this already-built, already-tested minimal slice itself.
+
+**Remaining #3 work, unchanged by this build:** the page-object hop, the execution-result hop
+(blocked on L5), change-impact (both graphs per the options above), state/flow (deferred, not
+prioritized by Nitin), and gating on top of `CompletenessReport` (a deliberate, separate future
+decision — this build only surfaces the numbers).
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)
