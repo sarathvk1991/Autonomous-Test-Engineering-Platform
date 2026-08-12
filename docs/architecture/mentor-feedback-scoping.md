@@ -419,6 +419,161 @@ separate existing thread in this document (completeness; re-run cost). Moved to
 change-impact sequencing both open questions for that task) — **not build-now**; the "no graph DB
 required today" note narrows the design task's own first question but does not answer it.
 
+**GRAPHS DESIGN SURFACED (2026-08-12) — a design-surfacing task (build nothing), resolving the
+extend-vs-separate question above against the real ADR-0023 code and the platform's real artifact
+chain.**
+
+*Pre-flight.* Clean tree, `main`, tip `ff60c01`. `make lint` clean. `make test`: 5756 passed,
+unchanged. This note adds text only to this document; nothing else touched.
+
+**The ADR-0023 graph's real shape, read directly.** `requirement_intelligence/knowledge_graph/`
+(~35 files) is a governed, typed graph substrate: `KnowledgeNode`/`KnowledgeEdge` models carry a
+governed `KnowledgeNodeType`/`KnowledgeEdgeType` `StrEnum` vocabulary (9 node types, 9 edge types
+today, `models/enums.py`), a `DeterministicKnowledgeGraphEngine` that is a thin pipeline
+orchestrator over independent collaborators (`NodeProjector` → `EdgeProjector` →
+`SubgraphDetector` → `ObservationEngine` → `FindingEngine` → `SummaryBuilder`/`MetricsBuilder` →
+`ResultBuilder`), and a governed `KnowledgeGraphRuleCatalog` (22 rules: 7 NODE, 9 EDGE, 6
+STRUCTURAL) that policy-gates which types are emitted. Two collaborators are genuinely
+**type-agnostic, general graph algorithms**: `SubgraphDetector` (connected-component BFS) and the
+cycle-detector inside `FindingEngine` operate on whatever `KnowledgeNode`/`KnowledgeEdge` instances
+they're given — unchanged by new node/edge types. But `NodeProjector`/`EdgeProjector`
+(`engine/projection/`) are **not** generic rule-interpreters — each is hard-coded against one
+fixed, 8-field `HistoricalExecutionRecord` dataclass (`engine/historical_dataset.py`:
+`execution_id`, `requirement_id`, `recommendation_id`, `finding_id`, `capability_id`,
+`document_id`, plus ordinal/dependency flags), with an explicit `if`/`_add`/`_link` call per
+field. The rule catalog only toggles an already-wired type on/off; it does not add a new type's
+wiring by itself.
+
+**A second, load-bearing finding: today's data source is synthetic, not real.**
+`KnowledgeGraphService.build` takes exactly one input, `HistoricalDatasetReference` (D2/
+Recommendation 1/Recommendation 9 — **mandatory, frozen**: Knowledge Graph "never imports a Layer
+1 subsystem," never consumes "a Layer 1 runtime contract directly," never an Execution Package
+artifact). No real, multi-execution Historical Dataset exists (ADR-0021 §Stage 6, still Proposed —
+the same prerequisite the completeness sub-part above is blocked on). The shipped default,
+`DeterministicHistoricalDatasetProvider`, synthesizes every id — including the **requirement id**
+— via SHA-256 digest of the reference's own provenance fields (`f"{dataset_id}-req-{ordinal}"`),
+never the real `TestableRequirement` id this run actually produced. Live today (CAP-084C) the
+reference itself is a single-execution stand-in (`first_execution_id == last_execution_id == this
+run's own execution_id`, `execution_count=1`). So the live Knowledge Graph in production emits a
+small, real-shaped but **referentially synthetic** graph — not one tied to this platform's actual
+requirement/scenario/step/page-object corpus.
+
+**The extend-vs-separate answer: neither pure CASE A nor pure CASE B — split by layer.**
+- *Model/vocabulary/analysis layer: CASE-A-flavored.* The `StrEnum` vocabulary is designed to grow
+  additively ("a future edge type is added by an additive `StrEnum` member, never by relaxing the
+  field to a plain string," Recommendation 3), and the connected-component/cycle-detection analysis
+  is genuinely type-agnostic. Adding `BEHAVIOR`/`SCENARIO`/`STEP`/`PAGE_OBJECT`/
+  `EXECUTION_RESULT` node types and a trace edge (reusing or extending `TRACEABLE_TO`) is
+  structurally cheap and precedented.
+- *Projection layer: real new code, not config.* `NodeProjector`/`EdgeProjector` would need new
+  fields on a new record shape and new hard-coded `_add`/`_link` wiring — a rule-catalog entry
+  alone does not make a new type project itself.
+- *Service/runtime boundary: CASE B — the deciding constraint.* `KnowledgeGraphService.build`
+  is frozen to consume Historical Truth only (D2, Recommendation 9: "must never blur" the Truth
+  Hierarchy). Traceability's real source data — `TestableRequirementSet` (L1), `.feature`
+  scenario/step ids (L2/L3), generated step-def call sites and page-object classes (L3) — is
+  exactly the per-run **Runtime Truth**/Execution-Package-shaped data this boundary forbids the
+  existing service from consuming directly. Routing it through instead would require first
+  building the real multi-execution Historical Dataset (ADR-0021 §Stage 6) — the same heavy
+  prerequisite already blocking this item's own completeness sub-part — and is a poor fit anyway:
+  traceability needs *this run's* own fresh artifacts, not accumulated cross-execution history.
+  **Verdict: reuse the ADR-0023 *pattern* (typed nodes/edges, deterministic pipeline, governed
+  rule-gated catalog) for a new, sibling service with its own entry point reading Runtime
+  Truth/Execution-Package artifacts directly — do not extend `KnowledgeGraphService.build`
+  itself.** This mirrors the platform's own precedent: Continuous Improvement and Knowledge Graph
+  are already two independent Layer 2 peers, neither importing the other (D1/Recommendation 1); a
+  Traceability/Change-Impact service would be a third peer, not a graft onto the second.
+
+**Data availability — TRACEABILITY (requirement → behavior → scenario → step → page-object →
+execution-result).**
+- Requirement (L1, `TestableRequirementSet`) ✓ real, structured, versioned.
+- Behavior/scenario/step (L2 `.feature` files ADR-0043, L3 generated step-defs) ✓ real, structured
+  Gherkin + parsed Java.
+- Page-object ✓ **method-level**, real: `automation_engineering/generation/
+  page_object_reference_derivation.py` deterministically derives, from the generated step-def's own
+  call site (`javalang`-parsed, no LLM), exactly which page-object class + method + params + return
+  type each step calls (`DerivedPageObjectRequest`/`DerivedPageObjectMethodCall`). Caveat: produced
+  only when page-object generation actually runs, and per `[[cap-page-object-live-wiring-decision]]`
+  it is **not live-wired into `handle_analyze` by default** — real today via the script harness, not
+  yet in every ordinary live run.
+- Execution-result ✗ **BLOCKED.** L5 (`test_execution`, stage 17,
+  `requirement_intelligence/run_state/stages.py`) carries `governing_citation="none yet"` —
+  genuinely unbuilt, confirmed directly. No execution outcome of any kind exists anywhere in the
+  platform today.
+- **Conclusion:** the requirement→...→page-object chain is buildable now (with the page-object
+  live-wiring caveat above); only the final execution-result hop waits on L5. Crucially,
+  requirement→scenario/step linkage alone already answers the **completeness** question this item
+  exists for — "requirements with no test, behaviors never covered" is queryable without execution
+  results at all. Most of the completeness payoff does not wait on L5.
+
+**Data availability — CHANGE-IMPACT (code/pages → elements → steps → scenarios).**
+- Step → page-object **method** ✓ real, same `page_object_reference_derivation.py` data as above —
+  a change to which method a step calls is already capturable.
+- Page-object **element/selector** → method ✗ **not captured**. Locators/selectors live inside
+  opaque, LLM-generated Java source; no structured locator model exists anywhere in the generation
+  pipeline. Nitin's own example — "a selector change should let you identify the 8 affected tests"
+  — needs exactly this finer mapping, and it is a real, separate, unbuilt prerequisite, not
+  something the existing call-site-derivation data already provides.
+- **Conclusion:** change-impact is buildable now only at method-level granularity (page-object
+  method → its calling steps/scenarios); Nitin's own literal selector-level example is gated on a
+  real, separate piece of work (either a structured locator model added to page-object generation,
+  or a deterministic post-hoc parse of generated Java for locator declarations, mirroring the same
+  javalang-based approach already proven for call-site derivation).
+
+**Options + blast radius.**
+- **TRACEABILITY** — new sibling service, ADR-0023's pattern (typed nodes/edges, StrEnum vocab,
+  rule-gated deterministic pipeline), own entry point reading L1-L3 Runtime Truth/Execution-Package
+  artifacts directly (not `HistoricalDatasetReference`); scope: requirement→behavior→scenario→
+  step→page-object now, execution-result hop deferred to L5. Size: comparable to standing up a new
+  `knowledge_graph`-shaped package (~30+ files by precedent) — not small, but additive, no ADR
+  conflict found (reads already-emitted Layer 1-3 runtime contracts/artifacts, does not reimplement
+  their reasoning, mirroring the completeness sub-part's own "arm's-length Layer 2+ consumer"
+  framing). **Highest strategic value on this list** — both mentors' independently-named #1 risk;
+  this is literally the mechanism the completeness thread has been waiting for.
+- **CHANGE-IMPACT** — same sibling-service pattern; method-level scope buildable now from existing
+  call-site-derivation data (today transient/internal to the generation pipeline — would need to be
+  persisted as its own artifact to be graph-queryable across a run). Element/selector-level scope —
+  the part that actually delivers Nitin's own "8 affected tests, not hundreds" example — is
+  **dependent on** a new locator-model or post-hoc-parse prerequisite; without it, change-impact
+  only ever answers "which steps call this method," a real but smaller win. Payoff validated by
+  today's token-distribution data (Item 1's own re-run-token-cost clarification notes, above — no
+  single dominant generation stage; a change-impact graph is what would let regeneration skip
+  untouched scenarios instead of the current all-or-nothing shape).
+- Asset/catalog (ADR-0023 as-is) — unchanged, remains. State/flow — Nitin named it but did not
+  prioritize it; deferred, not scoped here.
+
+**The completeness convergence.** The traceability graph is the concrete mechanism the
+"completeness thread" (this document's own Synthesis section, below, and both mentors'
+independently-named #1 risk) has been missing since this item's own earlier assessment:
+requirement→scenario/step queryability turns "is the corpus incomplete" from a qualitative worry
+into a queryable answer, mostly buildable now, without L5. Building traceability *is* addressing
+completeness — the two are not separate future tasks, they are the same work read from two angles.
+This also connects forward to the L1 as-built LLD and mentor item #3-completeness — same
+underlying work, not duplicated effort.
+
+**Recommendation.** Build **traceability first** — highest strategic value, mostly buildable now
+(module the execution-result hop to L5), and it is the completeness mechanism both mentors already
+flagged as the top risk. Approach: a new sibling service reusing ADR-0023's *pattern* (typed
+nodes/edges, governed `StrEnum` vocabulary, deterministic rule-gated pipeline, type-agnostic
+subgraph/cycle analysis) with its own entry point over L1-L3 Runtime Truth/Execution-Package
+artifacts — do not extend `KnowledgeGraphService.build` itself (blocked by its frozen
+Historical-Truth-only boundary). Defer: the execution-result hop to L5's own future design;
+change-impact's element/selector-level dependency (its own small prerequisite, worth naming as a
+distinct next question); state/flow (not prioritized by Nitin). Change-impact can follow
+traceability, starting at the method-level scope that's already buildable, with element-level as an
+explicit, separately-scoped follow-on.
+
+**Clarify-with-mentor nuance, flagged.** Nitin confirmed the four graph types and the
+traceability+change-impact priority, but did not weigh in on the specific service-boundary
+question this note resolves (new sibling service vs. extending the existing one) — that question
+didn't exist in a form he was asked about. The recommendation above is this note's own reading of
+the ADR-0023 code, not something Nitin confirmed; worth a lightweight check before committing
+engineering time, the same way item #5's Option B was flagged for a narrow follow-up question.
+
+**Nothing built by this note.** No new package, no new node/edge type, no ADR, no register entry.
+This surfaces the extend-vs-separate answer, the real data-availability picture per graph, and a
+sequenced recommendation; building either graph remains a future, separate task.
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)
@@ -953,10 +1108,14 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
     represented and enforced as a boundary on what a generation run may touch, and how it composes
     with the existing `TestableRequirementSet`/`.feature`/call-site chain (item #4's own note,
     above). Connects to 2d below (re-run/delta-scoping) by Nitin's own framing.
-2c. **#3's traceability + change-impact graph design-surfacing task (added 2026-08-12)** —
-    resolve sequencing (traceability first, since it feeds the completeness thread directly; or
-    change-impact first, since it feeds delta-scoped regeneration) and bespoke-vs-graph-DB, per
-    item #3's own KG clarification, above. The existing asset/catalog KG (ADR-0023) is unaffected.
+2c. **#3's traceability + change-impact graph design-surfacing task — DONE (2026-08-12), see
+    "GRAPHS DESIGN SURFACED" under item #3, above.** Sequencing resolved: traceability first
+    (highest strategic value, mostly buildable now, feeds the completeness thread directly);
+    change-impact's method-level scope can follow, with its own element/selector-level mapping
+    flagged as a separate prerequisite. Extend-vs-separate resolved: reuse ADR-0023's pattern
+    (typed nodes/edges, deterministic pipeline) in a new sibling service with its own entry point
+    over Runtime Truth — do not extend `KnowledgeGraphService.build` itself (frozen to Historical
+    Truth only). The existing asset/catalog KG (ADR-0023) is unaffected. Nothing built.
 2d. **Nitin's eval-harness build item (added 2026-08-12)** — curated eval sets per generator/skill,
     a tracked score, a CI drift gate; additive to the existing golden-baseline structural-regression
     harness, not a replacement for it (Item 1's own note, above).
