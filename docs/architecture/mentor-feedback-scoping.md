@@ -616,6 +616,38 @@ this already-built, already-tested minimal slice itself.
 prioritized by Nitin), and gating on top of `CompletenessReport` (a deliberate, separate future
 decision — this build only surfaces the numbers).
 
+**REAL COMPLETENESS MEASURED (2026-08-12) — Nitin's #1 concern answered with real numbers, on the
+real corpus (not the synthetic ADR-0023 provider).** Ran the projector + `evaluate_completeness`
+against the most recent real live run's own artifacts
+(`output/executions/run-20260812T064317663150Z-a20b0cc2/` — the same 20-requirement, real-Gemini
+run the token-instrumentation measurement used) via a thin, uncommitted scratch harness (mirrors the
+page-object script-harness pattern; not wired into the pipeline, not a repo artifact) — loading the
+real `testable_requirement_set.json` and `feature_engineering_package.json`, re-parsing the real
+on-disk `.feature` files under the run's own `workspace/src/test/resources/features/`. **Result: 20
+requirements, 20 scenarios, 67 steps, 100% coverage — every requirement has a full
+requirement→scenario→step chain. Zero uncovered requirements.** The corpus is Gherkin-complete at
+this minimal slice.
+
+**The honest caveat this result demands — "complete" here means "has a test chain," not "has a
+passing test."** Cross-referencing the SAME run's `cp3_report.json` and
+`automation_engineering_package.json` shows a real, separate gap this graph's own minimal scope
+cannot see: CP3 reports 34 of these exact same 67 steps have no step-definition binding at all
+("34/67 steps unmapped, 49.3% step coverage," `overallVerdict: fail`) — consistent with the
+automation-engineering package's own step-definition-need outcomes (60 unique step-definition needs
+after dedup, 30 `bound` / 30 `escalated`, an exact 50/50 split). **This is not a contradiction — it
+is two different, both-real layers of completeness, measured honestly:** Gherkin-authoring
+completeness (this graph, 100%) and step-definition-binding completeness (CP3, ~49–50%) are
+distinct questions, and this graph's own deliberately-deferred page-object/step-definition hop is
+exactly the gap between them. A requirement counted "covered" by this report has a scenario and
+steps written; it does not yet have a proven, working generated test — that is precisely the future
+hop this build already flagged as deferred, now given a concrete number.
+
+**Scope-specific, not a general claim.** This is the real completeness picture for this specific,
+current saucedemo-based 20-requirement corpus, not a claim about corpus completeness in general —
+a different or larger corpus could show real requirement-level gaps this minimal slice is fully
+built to detect (the fixture tests already prove the `no_scenario`/`scenario_without_steps`
+detection works; this corpus simply doesn't happen to exercise it).
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)
