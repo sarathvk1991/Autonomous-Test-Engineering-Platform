@@ -194,6 +194,31 @@ at the end of a run — nothing about generation, gating, caching, or skipping c
 pieces (artifact-level caching, delta-scoped regeneration, deterministic/LLM separation, pinning)
 remain unbuilt, as does the traceability/change-impact graph work (item #3) and the eval harness.
 
+**REAL TOKEN DISTRIBUTION CAPTURED (2026-08-12), live run
+`run-20260812T064317663150Z-a20b0cc2` (real Gemini, real JIRA/Sonar/ZAP evidence, 20 requirements,
+`--with-automation-engineering`).** 49,291 tokens total across 41 calls. Not a single dominant sink
+(Nitin's own 60/15 framing) — two near-equal co-dominant call types instead:
+`feature_content_generation` 22,383 tokens (45.4%, 20 calls) and `test_data_generation` 21,387 tokens
+(43.4%, 20 calls), together ~89% of the run; `requirement_analysis` a distant third at 5,521 tokens
+(11.2%, 1 call) — though on a **per-call** basis that single L1 call (5,521 tokens) dwarfs the
+per-call average of either co-dominant type (~1,119 and ~1,069 tokens/call respectively).
+**`step_definition_generation` and `feature_remediation` recorded ZERO tokens this run** — verified
+against `automation_engineering_package.json` as a real finding, not an instrumentation gap: of 60
+step-definition needs, 30 were catalog reuse hits (`outcome=bound`, no LLM call) and 30 escalated at
+the reuse-decision stage itself (`signature_fit`/`confidence` failures) before ever reaching the
+generator; feature generation was CP2-clean for all 20 requirements on the first pass, so the
+remediation loop never fired. **The diagnostic:** with step-definition generation absorbed by reuse/
+pre-generation escalation this run, optimization leverage points toward feature-content and
+test-data generation jointly, not a single stage — the opposite of a one-stage-dominates picture,
+though a corpus with a colder catalog (more step-def cache misses) could shift this substantially,
+which is itself an argument for the artifact-level caching + delta-scoped regeneration pieces above
+rather than treating this one run's shape as fixed. **The known caveat still applies in full:**
+`LivePageObjectGenerator`/`LiveUtilityGenerator` are not live-constructed in `handle_analyze`, so
+page-object/utility generation — a heavy step earlier in this arc's own live-regen findings — is
+absent from this distribution entirely; the true full-pipeline picture requires wiring them live
+first (the #3+#6 decision, [[cap-page-object-live-wiring-decision]]). This run's own artifact:
+`output/executions/run-20260812T064317663150Z-a20b0cc2/token_usage.json` (gitignored, not tracked).
+
 **THE THROUGH-LINE (2026-08-12) — Nitin's own framing across all four answers, recorded, not
 interpreted.** Nitin states his own recommendations are meant to "contain bias, save
 token-maxxing costs, optimize iteratively" — a single stated intent behind all four clarifications,
