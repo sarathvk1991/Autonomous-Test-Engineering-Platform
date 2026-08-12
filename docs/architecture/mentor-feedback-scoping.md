@@ -648,6 +648,22 @@ a different or larger corpus could show real requirement-level gaps this minimal
 built to detect (the fixture tests already prove the `no_scenario`/`scenario_without_steps`
 detection works; this corpus simply doesn't happen to exercise it).
 
+**CAPABILITY ADR WRITTEN (2026-08-12) — closes the scores-first governance debt this build itself
+flagged.** `docs/adr/0048-traceability-graph.md` — **Accepted**, recommended id `CAP-088` (not yet
+entered in `docs/governance/platform-capability-matrix.md` — flagged as a follow-on, not performed).
+Records the capability, the CASE-B decision (reuse ADR-0023's pattern, not its frozen
+Historical-Truth-only service), the minimal-slice scope + named deferred hops, the scores-first
+report-only posture, and D5's own real measurement above as the capability's first recorded data
+point. **A genuine placement nuance surfaced while writing it, not previously stated this
+precisely:** this capability consumes Runtime Truth directly (`TestableRequirementSet`,
+`FeatureEngineeringPackage`) — exactly why it could not extend `KnowledgeGraphService` — which means
+it does not satisfy ADR-0021's own strict Layer-2 Historical-Truth-only definition. The ADR records
+this honestly (its own D2) and leaves precise layer placement an explicitly open question for a
+future ADR-0020/ADR-0031 amendment, mirroring `CAP-087`'s own still-open placement (ADR-0042
+Decision 7) rather than silently asserting "Layer 2" where the constitution does not actually fit.
+ADR-0023 itself is referenced, not edited — additive only. `make lint`/`make test`: 5771 passed,
+unchanged; only the new ADR file added.
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)

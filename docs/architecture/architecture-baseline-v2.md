@@ -43,6 +43,61 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Traceability Graph (CAP-088, ADR-0048) BUILT and FROZEN — the minimal `requirement → scenario →
+  step` completeness mechanism, report-only, not wired (2026-08-12).** Answers mentor item #3 —
+  Nitin's own "house of cards" completeness concern, restated across both rounds of his feedback —
+  with a real, re-runnable measurement instead of a qualitative worry. `requirement_intelligence/
+  traceability_graph/` (7 modules: `models`, `identity`, `projection`, `traversal`, `completeness`,
+  `serialization`, `__init__`): typed `TraceabilityNode`/`TraceabilityEdge`/`TraceabilityGraph`
+  models, SHA-256 deterministic identity, a directed-adjacency BFS traversal helper, and
+  `project_traceability_graph` — a deterministic projector reading two real, already-produced
+  artifacts directly (`TestableRequirementSet`, ADR-0034/ADR-0042; `FeatureEngineeringPackage`,
+  ADR-0043), re-parsing the real on-disk `.feature` files with the same parser
+  `feature_engineering.stage.traceability.build_traceability_index` already uses — never a
+  synthetic stand-in. **The architectural decision (ADR-0048 D2), a real prompt-vs-code finding:**
+  the existing Knowledge Graph (`knowledge_graph/`, ADR-0023, Accepted, live) could not be extended
+  for this — `KnowledgeGraphService.build` is frozen to consume Historical Truth only (ADR-0021
+  §Recommendation 11), and this capability's real source data is genuine Runtime Truth. This
+  capability reuses ADR-0023's architectural *pattern* (typed vocabulary, deterministic pipeline) as
+  an independent sibling, never its runtime service — enforced by a containment test walking every
+  module's own AST for a `knowledge_graph` import (zero found), not merely a documentation claim.
+  Consuming Runtime Truth directly also means this capability does not satisfy ADR-0021's own strict
+  Layer-2 Truth-Hierarchy definition, despite reusing Layer 2's pattern — its precise placement in
+  the platform's layer model is left explicitly open (ADR-0048 D2), mirroring `CAP-087`'s own
+  still-open placement (ADR-0042 Decision 7), rather than asserting a "Layer 2" fit the constitution
+  does not actually support. **Scope: the minimal slice only** — `requirement →[HAS_SCENARIO]→
+  scenario →[HAS_STEP]→ step`. No page-object hop, no execution-result hop (blocked on Layer 5,
+  `governing_citation="none yet"`), no change-impact graph, no state/flow graph — each named with
+  its own trigger (ADR-0048 D4), not silently out of scope. **Scores-first, report-only:**
+  `CompletenessReport` (total/tested/untested counts, coverage %, a per-requirement `no_scenario`/
+  `scenario_without_steps` reason) is structured so a future gate could evaluate it directly, but no
+  threshold, gate, or fail logic exists anywhere in the package — enforced by the model's own
+  count-consistency invariant and nothing more. **The first real measurement, run against a real
+  live run's own artifacts** (`testable_requirement_set.json`/`feature_engineering_package.json`,
+  not fixtures): 20 requirements, 20 scenarios, 67 steps, **100% requirement→scenario→step
+  coverage** — zero uncovered requirements, for this specific corpus. Cross-referenced against the
+  same run's `cp3_report.json`/`automation_engineering_package.json`: **34 of those identical 67
+  steps have no step-definition binding** ("34/67 steps unmapped, 49.3% step coverage," CP3
+  `overallVerdict: fail`; matches exactly 30 of 60 unique step-definition needs `escalated`, a clean
+  50/50 split) — two distinct, both-real completeness layers, not a contradiction: Gherkin-authoring
+  completeness (this graph, 100%) versus step-definition-binding completeness (CP3, ~49–50%) on the
+  identical step set. **Written after the code, on purpose, closing its own governance debt:** this
+  capability was built (2026-08-12) before ADR-0048 existed, inverting every prior Layer 2 peer's
+  own freeze-before-code discipline (ADR-0022, ADR-0023) — ADR-0048 is the retroactive architecture
+  record, written before any further extension of the capability, exactly as its own build recorded.
+  `make lint`: clean; `make test`: 5771, unchanged (fixture-based, no LLM); mypy (informational):
+  432 → 432, no rise, new code fully clean. **This entry itself closes the ADR-0048 governance loop
+  it flagged as recommended follow-ons** — the two recordings ADR-0048's own Consequences named (a
+  `docs/governance/platform-capability-matrix.md` `CAP-088` row, §5.11; this register entry) are
+  both now recorded, additively, alongside the ADR; no existing row, item, or ADR body was
+  retro-edited to produce either. **Owner:** `requirement_intelligence/traceability_graph/`.
+  **Trigger for the next task:** runtime integration (a `PlatformContext` composition root + live
+  pipeline wiring, mirroring ADR-0022 §D11/ADR-0023 §D12) or one of the deferred hops (page-object,
+  change-impact, execution-result once Layer 5 exists) — none yet designed; a future ADR-0020/
+  ADR-0031 amendment to resolve this capability's own still-open layer placement (ADR-0048 D2);
+  gating on top of `CompletenessReport`, a deliberate future decision informed by the real numbers
+  above, never a silent addition.
+
 - **CP7 (Layer 4, ADR-0047 D1-D6) BUILT — report-only whole-suite Sonar quality governance, no gating, not yet wired (2026-08-06).** `suite_quality_governance/cp7/` (new package): `measures.py::fetch_whole_suite_quality_report(adapter, project_key)` reads the tracked baseline's own already-accumulated Sonar project measures in ONE call (never a per-run re-scan — every promoted asset was already scanned by CP3 at promotion time; Sonar's own project-level measures are a running rollup) and groups them into three named families exactly matching ADR-0047's own literal Decision-text enumerations: generic quality (D3 — `violations`/`bugs`/`code_smells`/`sqale_rating`/`reliability_rating`), security (D4 — `vulnerabilities`/`security_hotspots`/`security_rating`), coverage/duplication (D5 — `coverage`/`duplicated_lines_density`, genuinely unmeasured on the real server today). `Cp7WholeSuiteQualityReport` (`models.py`) carries NO `overall_verdict`/`passed` field anywhere — proven structurally (`__dataclass_fields__`), not merely by never failing — mirroring `Cp5NearDuplicateSweepResult`'s own no-verdict shape one component over. A metric the server has no value for surfaces as `Cp7MeasureFinding(value=None, measured=False)`, never faked as clean (`has_unmeasured_findings` is the one property a consumer needs). **The adapter extension (ADR-0047 D6), not a parallel one:** `automation_engineering.cp3.sonar.adapter.SonarQualityGateAdapter` (CP3's own Protocol) gained a fourth method, `fetch_measures(project_key, metric_keys) -> SonarMeasuresResult`, alongside two new, generic (non-CP7-specific) shapes in `cp3/sonar/models.py` (`SonarMeasure`, `SonarMeasuresResult`) — `StubSonarQualityGateAdapter` gained a scripted `measures=` constructor param mirroring its own existing `result=`/`poll_error=` discipline exactly (raises if unscripted); `LiveSonarQualityGateAdapter.fetch_measures` is a real `GET /api/measures/component` call, fake-tested (`respx`, no live Sonar in `make test`) — confirmed live-observed behavior reproduced exactly: a metric the server's own response array omits becomes `value=None`, never a faked default. CP3's own three existing methods and all 25 of its own pre-existing adapter/gate tests are unmodified and pass unchanged — the Protocol grew a method, nothing about its other three shrank or changed. `make test`: 5491 → 5506 (+15: 3 in `test_automation_engineering_cp3_sonar_stub_adapter.py`, 3 in `test_automation_engineering_cp3_sonar_live_adapter.py`, 9 in the new `test_suite_quality_governance_cp7_measures.py`); `make lint`: clean; mypy (informational): 432 → 432, no rise. **Not wired into any CLI stage or run-state** — this task builds CP7's own component only, the same "components first, a later task wires them" sequencing CP5's own four components went through before the stage-16 wiring task. **Owner:** `suite_quality_governance/cp7/`, `automation_engineering/cp3/sonar/`. **Trigger for the next task:** wire CP7 into the pipeline (report-only, alongside or after CP8); CP8 itself, still unbuilt; the JaCoCo-report-submission prerequisite and the page-object generation gap, both tracked by ADR-0047 as CP7's own rating-gating triggers, neither touched here.
 - **CP7/CP8 (Layer 4) FROZEN — ADR-0047 (2026-08-06), graduating the design proposal's own eight open decisions into binding Decision text, the same two-step process ADR-0046 itself completed for CP5.** A companion ADR, not an edit to ADR-0046 (mirrors exactly how ADR-0046 itself is a companion to ADR-0040/ADR-0044/ADR-0045, never an edit to any of them — Decision text is never retroactively edited, only additively amended). CP7: absolute Sonar measures via `/api/measures/component`, never the built-in leak-scoped gate, never an admin-created custom one; report-only across every metric family at first (generic-quality/reliability rating-gating deferred until the suite compiles and real scores exist; security report-only pending an explicit future decision; coverage/duplication report-only pending a JaCoCo-wiring prerequisite); extends the existing `SonarQualityGateAdapter` seam with `fetch_measures`, never a second Protocol. CP8: validates this platform's own real `pom.xml`/`junit-platform.properties`/runner-class config — POM validated against its OWN declarations, never a hardcoded expected-dependency list — and gates immediately, deterministically, unconditional on compile state; distinct from and complementary to CP5-cohesion's own compile check, never merged into one verdict. Additive amendment notes added to ADR-0046 (D1/D8) and ADR-0044 (D5's own Sonar honesty story extended to suite scale). Deferred, tracked, not built here: the CP7 rating-gate floor (trigger: suite compiles + real scores); the JaCoCo-report-submission build task; the `fetch_measures` adapter build; CP8's own static-readiness build; the page-object generation gap that keeps the tracked baseline from compiling today (CP7's own rating-gating prerequisite). `make lint`: clean; `make test`: 5491 passed, unchanged (documentation-only). **Owner:** none yet — a future implementation milestone, per ADR-0047's own authorization.
 - **CP7/CP8 (Layer 4, ADR-0046 D8) design proposal committed — the Sonar Community Edition capability discovery D8 flagged as a precondition, done live (2026-08-06).** `docs/proposals/layer-4-cp7-cp8-design.md` — design only, no ADR frozen, no code built. Confirmed directly against the real, locally-running SonarQube server (initially unreachable, then found and reached via `docker ps`/`docker logs` once its container finished booting): edition is genuinely `community` (`/api/navigation/global`'s own `edition` field, not assumed); the server's one built-in quality gate (`Sonar way`) is entirely `new_*`/leak-period-scoped, the wrong tool for a whole-suite check, so CP7's design reads absolute measures via `/api/measures/component` instead (all readable by the pipeline's own least-privilege token); `coverage`/`duplicated_lines_density` are unmeasured today (no JaCoCo XML report ever submitted, though the import plugin is deployed) — flagged as a tracked prerequisite, not gated on; Sonar CE genuinely evaluates 36 security-hotspot + 35 vulnerability Java rules (refining, not overturning, the LLD review's own S3/S6 lean — the review workflow is what a non-admin token can't reach, not the detection itself), so CP7 proposes reporting security metrics rather than hard-gating them. CP8 is designed against this platform's own real `pom.xml`/`junit-platform.properties`/`RunCucumberTest.java`, with an explicit, reasoned boundary against CP5-cohesion's own compile check (CP8 = declared-and-well-formed; CP5-cohesion = actually compiles/resolves) and against Layer 5 (CP8 never executes anything). `make lint`: clean; `make test`: 5491 passed, unchanged (documentation-only). **Owner:** none yet — a future CP7/CP8 design-then-freeze task, per this proposal's own §5 open decisions.
