@@ -28,6 +28,22 @@ def build_directed_adjacency(edges: tuple[TraceabilityEdge, ...]) -> dict[str, l
     return adjacency
 
 
+def build_reverse_directed_adjacency(edges: tuple[TraceabilityEdge, ...]) -> dict[str, list[str]]:
+    """Build a deterministic REVERSE directed adjacency list — every edge
+    walked target-to-source instead of source-to-target.
+
+    Change-impact's own need (mentor item #3's "CHANGE-IMPACT GRAPH DESIGN
+    SURFACED" note): given a changed `PAGE_OBJECT_METHOD` node, find every
+    node that can reach it going FORWARD (its callers, their steps, their
+    scenarios) — i.e. walk the graph backward from the method. Reuses
+    `reachable_from` unchanged; only the adjacency direction differs.
+    """
+    adjacency: dict[str, list[str]] = {}
+    for edge in edges:
+        adjacency.setdefault(edge.target_node_id, []).append(edge.source_node_id)
+    return adjacency
+
+
 def reachable_from(adjacency: dict[str, list[str]], start_node_id: str) -> set[str]:
     """Return every node id reachable from *start_node_id*, including itself."""
     visited: set[str] = {start_node_id}
@@ -41,4 +57,4 @@ def reachable_from(adjacency: dict[str, list[str]], start_node_id: str) -> set[s
     return visited
 
 
-__all__ = ["build_directed_adjacency", "reachable_from"]
+__all__ = ["build_directed_adjacency", "build_reverse_directed_adjacency", "reachable_from"]

@@ -20,6 +20,7 @@ from typing import Any
 
 from requirement_intelligence.traceability_graph.models import (
     BindingCompletenessReport,
+    ChangeImpactReport,
     CompletenessReport,
     TraceabilityGraph,
 )
@@ -95,6 +96,39 @@ def render_binding_completeness_report(report: BindingCompletenessReport) -> str
     return "\n".join(lines) + "\n"
 
 
+def render_change_impact_json(report: ChangeImpactReport) -> dict[str, Any]:
+    """Return the canonical change-impact-report dict — a straight `model_dump`."""
+    return report.model_dump(mode="json", by_alias=True)
+
+
+def render_change_impact_report(report: ChangeImpactReport) -> str:
+    """Return a human-readable Markdown rendering of *report*. Projection only."""
+    lines: list[str] = [
+        "# Traceability Change-Impact Report",
+        "",
+        f"- Graph: `{report.graph_id}`",
+        "",
+        "## Summary",
+        "",
+        f"- Total page-object methods tracked: **{report.total_methods}**",
+        "",
+        "## Method Impact",
+        "",
+        "| Method | Affected Scenarios | Count |",
+        "| --- | --- | --- |",
+    ]
+    for impact in report.method_impacts:
+        scenarios = ", ".join(f"`{s}`" for s in impact.affected_scenario_ids) or "_none_"
+        lines.append(
+            f"| `{impact.class_name}.{impact.method_name}` | {scenarios} | "
+            f"{impact.affected_scenario_count} |"
+        )
+    if not report.method_impacts:
+        lines.append("| _None tracked_ | - | 0 |")
+
+    return "\n".join(lines) + "\n"
+
+
 def render_graph_report(graph: TraceabilityGraph) -> str:
     """Return a human-readable Markdown rendering of *graph*'s nodes/edges. Projection only."""
     node_type_counts = sorted(Counter(str(node.node_type) for node in graph.nodes).items())
@@ -133,6 +167,8 @@ def render_graph_report(graph: TraceabilityGraph) -> str:
 __all__ = [
     "render_binding_completeness_json",
     "render_binding_completeness_report",
+    "render_change_impact_json",
+    "render_change_impact_report",
     "render_completeness_json",
     "render_completeness_report",
     "render_graph_json",

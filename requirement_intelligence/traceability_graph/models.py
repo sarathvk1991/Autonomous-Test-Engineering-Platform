@@ -1,14 +1,17 @@
-"""Canonical models for the Traceability Graph — the minimal slice.
+"""Canonical models for the Traceability Graph — the minimal slice, plus
+method-level change-impact.
 
-Scope, deliberately: `requirement -> scenario -> step` only, plus the
+Scope: `requirement -> scenario -> step` (the minimal slice), the
 step-definition-binding annotation (`UnboundStep`/`BindingCompletenessReport`
 below) — the binding-data half of ADR-0048 D4's named "page-object hop"
-(D5's own text: "the deferred page-object/step-definition hop"). The
-step-definition's own internal call sites into page objects — the other
-half of that named hop — stay deferred, along with the execution-result hop,
-change-impact, and state/flow (mentor item #3's "GRAPHS DESIGN SURFACED"
-note, `docs/architecture/mentor-feedback-scoping.md`) — additive later, not
-modeled here.
+(D5's own text: "the deferred page-object/step-definition hop") — and now
+`PAGE_OBJECT_METHOD`/`CALLS_METHOD` (`MethodImpact`/`ChangeImpactReport`
+below): the method-level half of ADR-0048 D4's own separately-named
+"change-impact graph" (`docs/architecture/mentor-feedback-scoping.md` item
+#3's "CHANGE-IMPACT GRAPH DESIGN SURFACED" note), extending this SAME graph
+rather than a new sibling. Element/locator-level change-impact (a locator
+field's own value, as opposed to the method that uses it) and the
+execution-result/state-flow hops remain deferred, not modeled here.
 
 Every model is frozen (`shared.contracts.base.Schema`), camelCase, and
 reference-not-copy: a node carries only the referenced entity's own id, never
@@ -38,6 +41,7 @@ class TraceabilityNodeType(StrEnum):
     REQUIREMENT = "requirement"
     SCENARIO = "scenario"
     STEP = "step"
+    PAGE_OBJECT_METHOD = "page_object_method"
 
 
 class TraceabilityEdgeType(StrEnum):
@@ -45,6 +49,7 @@ class TraceabilityEdgeType(StrEnum):
 
     HAS_SCENARIO = "has_scenario"
     HAS_STEP = "has_step"
+    CALLS_METHOD = "calls_method"
 
 
 class TraceabilityNode(Schema):
@@ -198,9 +203,63 @@ class BindingCompletenessReport(Schema):
         return self
 
 
+class MethodImpact(Schema):
+    """One `PAGE_OBJECT_METHOD` node's own change-impact — the scenarios
+    reachable from it by walking `CALLS_METHOD`/`HAS_STEP`/`HAS_SCENARIO`
+    edges BACKWARD (a change to this method potentially affects each).
+
+    Report-only, same posture as `CompletenessReport`/
+    `BindingCompletenessReport`: identifies the affected set, never gates,
+    never regenerates anything. A future delta-scoped-regeneration
+    capability is this report's own intended consumer, not built here.
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    class_name: str = Field(..., min_length=1)
+    method_name: str = Field(..., min_length=1)
+    affected_scenario_count: int = Field(..., ge=0)
+    affected_scenario_ids: tuple[str, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _count_matches_ids(self) -> MethodImpact:
+        """Enforce the report's own arithmetic — explainable, never asserted blind."""
+        if len(self.affected_scenario_ids) != self.affected_scenario_count:
+            raise ValueError(
+                "affected_scenario_ids length must equal affected_scenario_count."
+            )
+        return self
+
+
+class ChangeImpactReport(Schema):
+    """Corpus-level change-impact — the full method -> affected-scenarios
+    map, one `MethodImpact` per `PAGE_OBJECT_METHOD` node in the graph.
+
+    Report-only: no gate, no threshold, no fail logic anywhere in this
+    module. Structured so a future delta-scoped-regeneration capability
+    could consume it directly (regenerate only the scenarios a changed
+    method's own `MethodImpact` names) — but nothing here decides that.
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel)
+
+    graph_id: str = Field(..., min_length=1)
+    total_methods: int = Field(..., ge=0)
+    method_impacts: tuple[MethodImpact, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _count_matches_impacts(self) -> ChangeImpactReport:
+        """Enforce the report's own arithmetic — explainable, never asserted blind."""
+        if len(self.method_impacts) != self.total_methods:
+            raise ValueError("method_impacts length must equal total_methods.")
+        return self
+
+
 __all__ = [
     "BindingCompletenessReport",
+    "ChangeImpactReport",
     "CompletenessReport",
+    "MethodImpact",
     "TraceabilityEdge",
     "TraceabilityEdgeType",
     "TraceabilityGraph",

@@ -865,6 +865,80 @@ blocked scope, corrects the stale "no locator data exists" finding against the r
 recommends method-level change-impact as the next build (a future, separate task) reusing
 `traceability_graph/`'s own pattern as an extension.
 
+**METHOD-LEVEL CHANGE-IMPACT BUILT (2026-08-13) — the buildable-now half of the design-surfacing
+note above, built exactly as scoped: an extension of `traceability_graph/`, method-level only.**
+Two additions to the SAME `TraceabilityGraph` model, never a new sibling: `PAGE_OBJECT_METHOD`
+(`TraceabilityNodeType`) and `CALLS_METHOD` (`TraceabilityEdgeType`, `STEP -> PAGE_OBJECT_METHOD`).
+A new module, `requirement_intelligence/traceability_graph/change_impact.py`:
+`project_change_impact(graph, automation_package, workspace_dir=...)` extends an already-projected
+graph by joining each `STEP` node's own text against `AutomationEngineeringPackage`'s
+`step_definition` records (the SAME join `evaluate_binding_completeness` already uses), reading the
+matched **`"generated"`** record's own real Java source off disk
+(`workspace_dir / record.workspace_path`) and deriving its page-object call sites via the platform's
+own, already-built, already-tested `automation_engineering.generation.
+page_object_reference_derivation.derive_page_object_requests` — no new derivation logic, only a new
+call site, exactly as the design-surfacing note predicted. `traversal.py` gained one small, pure,
+type-agnostic addition, `build_reverse_directed_adjacency` (swap source/target; `reachable_from`
+itself, already generic, needed no change) — proven directly to walk `CALLS_METHOD -> HAS_STEP ->
+HAS_SCENARIO` backward from a changed method to every ancestor STEP/SCENARIO/REQUIREMENT in one BFS.
+Two new query functions answer the delta-scoping question: `change_impact_for_method(graph,
+class_name, method_name) -> MethodImpact | None` (one method's own affected-scenario set) and
+`build_change_impact_report(graph) -> ChangeImpactReport` (the full method -> affected-scenarios
+map, the shape a future delta-scoped-regeneration capability would consume). Both report-only —
+`ChangeImpactReport`/`MethodImpact` carry no `passed`/`verdict`/`gate_status` field anywhere, proven
+structurally in the same style the binding-hop's own report-ready-but-no-gating test already used,
+not merely by never failing.
+
+**Proof, fixture-based, no LLM, no live run.** A two-scenario-share-one-step-text, one-scenario-
+distinct-text fixture (mirroring `derive_unique_step_needs`'s own dedup-by-text rule): scenarios
+`SCN-S1`/`SCN-S2` both use the literal step "user logs in," bound to a **generated**
+`LoginSteps.java` whose body calls `LoginPage.clickLogin()`; `SCN-S3` uses "user logs out," bound to
+a **generated** `LogoutSteps.java` calling `DashboardPage.logout()`. `change_impact_for_method`
+returns exactly `{SCN-S1, SCN-S2}` for `LoginPage.clickLogin` and exactly `{SCN-S3}` for
+`DashboardPage.logout` — proving the delta-scoping narrowing precisely, never over- or
+under-inclusive. `build_change_impact_report` reproduces both entries as one map. Determinism
+proven directly (two `project_change_impact` calls over identical input produce an identical
+graph). **The scope boundary held, proven not assumed:** a `"bound"` record (no `workspace_path`)
+and an `"escalated"` record each contribute nothing (`extended == graph`, no exception); a
+`workspace_path` naming a file that does not exist on disk is skipped silently, mirroring
+`project_traceability_graph`'s own "absence is a signal, never a crash" discipline for `.feature`
+files, applied here for generated Java. **Non-corruption of the existing layers, proven directly:**
+`evaluate_completeness`/`evaluate_binding_completeness` return byte-identical results computed over
+the base graph vs. the SAME graph after `project_change_impact` extended it — adding new node/edge
+types does not perturb the existing traversal-based reports, confirmed by equality assertion, not
+argued from code reading alone.
+
+**Scope held exactly as recommended.** Method-level only — no element/locator-level change-impact
+(the field -> method usage link remains the named follow-on), no gating, no delta-regen action (this
+graph *identifies* the affected set; *acting* on it — regenerating only those scenarios — is
+Nitin's own future caching cluster, untouched here), no live wiring (`PlatformContext` gains no new
+method, mirroring how the completeness/binding layers are also not wired into any execution
+pipeline). The containment invariant holds unchanged — `TestScopeDiscipline`'s own AST-walking test
+already globs every `*.py` file in the package, so the new `change_impact.py` module is covered
+without a test change, and it imports no `knowledge_graph` module.
+
+**Governance: no ADR-0048 amendment, additive record only — the identical determination the
+binding hop already made.** ADR-0048 §D4 already named "change-impact graph" as deferred scope,
+verbatim, including the exact method-level/element-level split this build's own design-surfacing
+note quoted — this entry is that named scope's own build record, not a new decision. Neither
+`docs/adr/0048-traceability-graph.md` nor the `CAP-088` row in
+`docs/governance/platform-capability-matrix.md` needed a status change, mirroring exactly how the
+step-definition-binding hop's own entry, above, reached the identical conclusion.
+
+`make lint`: clean. `make test`: **5796 passed** (5780 + 16 new: `tests/unit/
+test_traceability_graph.py` gained `TestChangeImpactProjection` (6 tests), `TestChangeImpactQuery`
+(6 tests), two `TestModelInvariants` validator tests, one `TestIdentityAndTraversal` reverse-adjacency
+test, and one `TestSerialization` renderer test). One unrelated pre-existing flaky thread-safety
+test (`test_cp1_engine.py::TestThreadSafety::test_concurrent_runs_are_independent`) failed once
+under full-suite load and passed on immediate rerun in isolation and in the full suite — not caused
+by this build, confirmed by its own unrelated file and by the rerun. `mypy`: whole-repo count
+unchanged (432, pre-existing); zero errors in `traceability_graph/` or the new
+`change_impact.py` module. **The delta-regen dependency, now genuinely unblocked, not merely
+named:** Nitin's own delta-scoped-regeneration cluster (`[[cap-mentor-clarification-prep]]`) can now
+consume a real `ChangeImpactReport` instead of a design note — this build is that cluster's
+prerequisite, not that cluster itself; no caching, pinning, or regeneration logic exists anywhere in
+this package.
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)

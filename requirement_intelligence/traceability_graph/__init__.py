@@ -1,22 +1,28 @@
-"""Traceability Graph — the minimal completeness mechanism (mentor item #3).
+"""Traceability Graph — the minimal completeness mechanism, plus method-level
+change-impact (mentor item #3).
 
 A new, standalone Layer-2 peer answering both mentors' independently-named
 #1 strategic risk: "does this platform know when its own requirement corpus
 is incomplete?" (`docs/architecture/mentor-feedback-scoping.md` item #3,
-"The completeness thread" / "GRAPHS DESIGN SURFACED").
+"The completeness thread" / "GRAPHS DESIGN SURFACED"), and the direct
+prerequisite for Nitin's own #2-prioritized graph, change-impact ("a
+selector change should let you identify the 8 affected tests, not rerun
+hundreds" — item #3's "CHANGE-IMPACT GRAPH DESIGN SURFACED" note).
 
-**Scope, deliberately minimal.** `requirement -> scenario -> step` only,
-plus the step-definition-binding annotation over that same STEP layer
+**Scope.** `requirement -> scenario -> step` (the minimal completeness
+slice), the step-definition-binding annotation over that same STEP layer
 (`evaluate_binding_completeness`) — the binding-data half of ADR-0048 D4's
 named "page-object hop" (D5: "the deferred page-object/step-definition
-hop"). The step-definition's own internal call sites into page objects (the
-other half of that named hop), the execution-result hop (blocked on L5,
-unbuilt), change-impact, and state/flow remain additive, separately-scoped
-later work, per the design-surfacing note this build follows. No gating:
-this package answers "what is the coverage," never "should this run pass or
-fail" — both `CompletenessReport` and `BindingCompletenessReport` are
-gate-ready in shape, but nothing here evaluates either against a bound
-(scores-first).
+hop") — and now `PAGE_OBJECT_METHOD`/`CALLS_METHOD` (`project_change_impact`,
+`change_impact_for_method`, `build_change_impact_report`): method-level
+change-impact, the OTHER half of ADR-0048 D4's own separately-named
+"change-impact graph," extending this SAME graph rather than a new sibling.
+Element/locator-level change-impact (a locator field's own value) and the
+execution-result/state-flow hops remain additive, separately-scoped later
+work. No gating anywhere in this package: it answers "what is the coverage"
+and "what is affected," never "should this run pass or fail," and never
+regenerates anything — every report here is gate-ready in shape, but
+nothing evaluates any of them against a bound (scores-first).
 
 **Reuses the ADR-0023 Knowledge Graph pattern, never its code or its
 service.** Typed node/edge models, deterministic SHA-256 identity minting,
@@ -37,6 +43,11 @@ of this build.
 
 from __future__ import annotations
 
+from requirement_intelligence.traceability_graph.change_impact import (
+    build_change_impact_report,
+    change_impact_for_method,
+    project_change_impact,
+)
 from requirement_intelligence.traceability_graph.completeness import (
     evaluate_binding_completeness,
     evaluate_completeness,
@@ -48,7 +59,9 @@ from requirement_intelligence.traceability_graph.identity import (
 )
 from requirement_intelligence.traceability_graph.models import (
     BindingCompletenessReport,
+    ChangeImpactReport,
     CompletenessReport,
+    MethodImpact,
     TraceabilityEdge,
     TraceabilityEdgeType,
     TraceabilityGraph,
@@ -61,6 +74,8 @@ from requirement_intelligence.traceability_graph.projection import project_trace
 from requirement_intelligence.traceability_graph.serialization import (
     render_binding_completeness_json,
     render_binding_completeness_report,
+    render_change_impact_json,
+    render_change_impact_report,
     render_completeness_json,
     render_completeness_report,
     render_graph_json,
@@ -68,12 +83,15 @@ from requirement_intelligence.traceability_graph.serialization import (
 )
 from requirement_intelligence.traceability_graph.traversal import (
     build_directed_adjacency,
+    build_reverse_directed_adjacency,
     reachable_from,
 )
 
 __all__ = [
     "BindingCompletenessReport",
+    "ChangeImpactReport",
     "CompletenessReport",
+    "MethodImpact",
     "TraceabilityEdge",
     "TraceabilityEdgeType",
     "TraceabilityGraph",
@@ -81,16 +99,22 @@ __all__ = [
     "TraceabilityNodeType",
     "UnboundStep",
     "UncoveredRequirement",
+    "build_change_impact_report",
     "build_directed_adjacency",
+    "build_reverse_directed_adjacency",
+    "change_impact_for_method",
     "edge_id_for",
     "evaluate_binding_completeness",
     "evaluate_completeness",
     "graph_id_for",
     "node_id_for",
+    "project_change_impact",
     "project_traceability_graph",
     "reachable_from",
     "render_binding_completeness_json",
     "render_binding_completeness_report",
+    "render_change_impact_json",
+    "render_change_impact_report",
     "render_completeness_json",
     "render_completeness_report",
     "render_graph_json",

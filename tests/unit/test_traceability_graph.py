@@ -36,7 +36,9 @@ from contracts.testable_requirement import (
 from feature_engineering.stage.models import FeatureEngineeringPackage, FeatureRecord
 from requirement_intelligence.traceability_graph import (
     BindingCompletenessReport,
+    ChangeImpactReport,
     CompletenessReport,
+    MethodImpact,
     TraceabilityEdge,
     TraceabilityEdgeType,
     TraceabilityGraph,
@@ -44,16 +46,22 @@ from requirement_intelligence.traceability_graph import (
     TraceabilityNodeType,
     UnboundStep,
     UncoveredRequirement,
+    build_change_impact_report,
     build_directed_adjacency,
+    build_reverse_directed_adjacency,
+    change_impact_for_method,
     edge_id_for,
     evaluate_binding_completeness,
     evaluate_completeness,
     graph_id_for,
     node_id_for,
+    project_change_impact,
     project_traceability_graph,
     reachable_from,
     render_binding_completeness_json,
     render_binding_completeness_report,
+    render_change_impact_json,
+    render_change_impact_report,
     render_completeness_json,
     render_completeness_report,
     render_graph_json,
@@ -80,6 +88,49 @@ _EMPTY_SCENARIO_FEATURE = """Feature: Empty scenario
 
   @SCN-EMPTY-001
   Scenario: No steps at all
+"""
+
+_IMPACT_FEATURE = """Feature: Change impact test
+
+  @SCN-S1
+  Scenario: First login
+    Given user logs in
+
+  @SCN-S2
+  Scenario: Second login
+    Given user logs in
+
+  @SCN-S3
+  Scenario: Logout
+    Given user logs out
+"""
+
+_LOGIN_STEP_JAVA = """package com.automation.steps;
+
+import io.cucumber.java.en.Given;
+
+public class LoginSteps {
+    private LoginPage loginPage;
+
+    @Given("user logs in")
+    public void userLogsIn() {
+        loginPage.clickLogin();
+    }
+}
+"""
+
+_LOGOUT_STEP_JAVA = """package com.automation.steps;
+
+import io.cucumber.java.en.Given;
+
+public class LogoutSteps {
+    private DashboardPage dashboardPage;
+
+    @Given("user logs out")
+    public void userLogsOut() {
+        dashboardPage.logout();
+    }
+}
 """
 
 
@@ -177,6 +228,61 @@ def _automation_package(
         generated_at=datetime.now(UTC).isoformat(),
         records=records,
     )
+
+
+def _generated_asset_record(need_text: str, class_name: str, workspace_path: str) -> AssetRecord:
+    """A `"generated"` step-definition record — real `workspace_path`, the
+    only outcome `project_change_impact` reads a Java source for (module
+    docstring's own scope: `"bound"`/`"escalated"` records are excluded)."""
+    return AssetRecord(
+        need_text=need_text,
+        need_kind="step_definition",
+        outcome="generated",
+        class_name=class_name,
+        target_package="com.automation.steps",
+        workspace_path=workspace_path,
+        escalated=False,
+        escalation_check=None,
+        escalation_reason=None,
+        promotion_status=None,
+        promotion_detail=None,
+        promoted_path=None,
+    )
+
+
+_ImpactFixture = tuple[TraceabilityGraph, AutomationEngineeringPackage, Path]
+
+
+@pytest.fixture
+def change_impact_fixture(tmp_path: Path) -> _ImpactFixture:
+    """Two scenarios (S1, S2) share the literal step text "user logs in"
+    (dedup-by-text, mirroring `derive_unique_step_needs`'s own rule) and are
+    bound to a GENERATED `LoginSteps` class whose body calls
+    `LoginPage.clickLogin()`; a third (S3) uses distinct text "user logs
+    out", bound to a GENERATED `LogoutSteps` class calling
+    `DashboardPage.logout()` — proving the affected set correctly narrows to
+    exactly the scenarios that route through a given method."""
+    req = _requirement("A")
+    requirement_set = _requirement_set([req])
+    features_root = tmp_path / "features"
+    features_root.mkdir()
+    (features_root / "impact.feature").write_text(_IMPACT_FEATURE, encoding="utf-8")
+    package = _package((_feature_record(req.requirement_id, "impact.feature"),))
+    graph = project_traceability_graph(requirement_set, package, features_root=features_root)
+
+    workspace_dir = tmp_path / "workspace"
+    steps_dir = workspace_dir / "steps"
+    steps_dir.mkdir(parents=True)
+    (steps_dir / "LoginSteps.java").write_text(_LOGIN_STEP_JAVA, encoding="utf-8")
+    (steps_dir / "LogoutSteps.java").write_text(_LOGOUT_STEP_JAVA, encoding="utf-8")
+
+    automation_package = _automation_package(
+        (
+            _generated_asset_record("user logs in", "LoginSteps", "steps/LoginSteps.java"),
+            _generated_asset_record("user logs out", "LogoutSteps", "steps/LogoutSteps.java"),
+        )
+    )
+    return graph, automation_package, workspace_dir
 
 
 _Fixture = tuple[TestableRequirementSet, FeatureEngineeringPackage, Path]
@@ -476,6 +582,209 @@ class TestBindingCompleteness:
         )
 
 
+class TestChangeImpactProjection:
+    """Method-level change-impact (ADR-0048 D4's own "change-impact graph"):
+    extends the SAME `TraceabilityGraph` with `PAGE_OBJECT_METHOD` nodes and
+    `CALLS_METHOD` edges, sourced from the platform's own already-built
+    `derive_page_object_requests` call-site derivation."""
+
+    def test_extends_the_same_graph_with_method_nodes_and_edges(
+        self, change_impact_fixture: _ImpactFixture
+    ) -> None:
+        graph, automation_package, workspace_dir = change_impact_fixture
+
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        # The base requirement/scenario/step nodes+edges are preserved, not replaced.
+        assert extended.graph_id == graph.graph_id
+        base_node_ids = {node.node_id for node in graph.nodes}
+        base_edge_ids = {edge.edge_id for edge in graph.edges}
+        extended_node_ids = {node.node_id for node in extended.nodes}
+        extended_edge_ids = {edge.edge_id for edge in extended.edges}
+        assert base_node_ids <= extended_node_ids
+        assert base_edge_ids <= extended_edge_ids
+
+        method_nodes = {
+            (n.node_type, n.referenced_id)
+            for n in extended.nodes
+            if n.node_type == TraceabilityNodeType.PAGE_OBJECT_METHOD
+        }
+        assert method_nodes == {
+            (TraceabilityNodeType.PAGE_OBJECT_METHOD, "LoginPage.clickLogin"),
+            (TraceabilityNodeType.PAGE_OBJECT_METHOD, "DashboardPage.logout"),
+        }
+        assert TraceabilityEdgeType.CALLS_METHOD in {e.edge_type for e in extended.edges}
+
+    def test_bound_records_are_not_covered_no_workspace_path(self, tmp_path: Path) -> None:
+        """A `"bound"` step-definition (reused from the tracked baseline)
+        has no `workspace_path` — its own already-catalogued source is not
+        read here (module docstring's own named scope boundary)."""
+        req = _requirement("A")
+        requirement_set = _requirement_set([req])
+        features_root = tmp_path / "features"
+        features_root.mkdir()
+        (features_root / "impact.feature").write_text(_IMPACT_FEATURE, encoding="utf-8")
+        package = _package((_feature_record(req.requirement_id, "impact.feature"),))
+        graph = project_traceability_graph(requirement_set, package, features_root=features_root)
+
+        automation_package = _automation_package(
+            (_asset_record("user logs in", escalated=False),)  # outcome="bound", no workspace_path
+        )
+        workspace_dir = tmp_path / "workspace"
+        workspace_dir.mkdir()
+
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        assert extended == graph  # nothing added
+
+    def test_escalated_records_are_not_covered(self, tmp_path: Path) -> None:
+        req = _requirement("A")
+        requirement_set = _requirement_set([req])
+        features_root = tmp_path / "features"
+        features_root.mkdir()
+        (features_root / "impact.feature").write_text(_IMPACT_FEATURE, encoding="utf-8")
+        package = _package((_feature_record(req.requirement_id, "impact.feature"),))
+        graph = project_traceability_graph(requirement_set, package, features_root=features_root)
+
+        automation_package = _automation_package(
+            (_asset_record("user logs in", escalated=True),)
+        )
+        workspace_dir = tmp_path / "workspace"
+        workspace_dir.mkdir()
+
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        assert extended == graph  # nothing added
+
+    def test_missing_generated_file_on_disk_is_skipped_not_a_crash(self, tmp_path: Path) -> None:
+        req = _requirement("A")
+        requirement_set = _requirement_set([req])
+        features_root = tmp_path / "features"
+        features_root.mkdir()
+        (features_root / "impact.feature").write_text(_IMPACT_FEATURE, encoding="utf-8")
+        package = _package((_feature_record(req.requirement_id, "impact.feature"),))
+        graph = project_traceability_graph(requirement_set, package, features_root=features_root)
+
+        automation_package = _automation_package(
+            (_generated_asset_record("user logs in", "LoginSteps", "steps/Missing.java"),)
+        )
+        workspace_dir = tmp_path / "workspace"
+        workspace_dir.mkdir()  # the referenced file is never written
+
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        assert extended == graph  # nothing added, no exception
+
+    def test_is_deterministic(self, change_impact_fixture: _ImpactFixture) -> None:
+        graph, automation_package, workspace_dir = change_impact_fixture
+
+        extended_1 = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+        extended_2 = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        assert extended_1 == extended_2
+
+    def test_existing_completeness_queries_are_unaffected_by_the_extension(
+        self, change_impact_fixture: _ImpactFixture
+    ) -> None:
+        """Adding PAGE_OBJECT_METHOD/CALLS_METHOD must not change what
+        `evaluate_completeness`/`evaluate_binding_completeness` already
+        compute over the SAME graph — proven directly, not assumed."""
+        graph, automation_package, workspace_dir = change_impact_fixture
+
+        base_completeness = evaluate_completeness(graph)
+        base_binding = evaluate_binding_completeness(graph, automation_package)
+
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        assert evaluate_completeness(extended) == base_completeness
+        assert evaluate_binding_completeness(extended, automation_package) == base_binding
+
+
+class TestChangeImpactQuery:
+    """The delta-scoping payoff: given a changed method, exactly the
+    affected scenarios — never more, never fewer."""
+
+    def test_affected_scenarios_are_correctly_narrowed(
+        self, change_impact_fixture: _ImpactFixture
+    ) -> None:
+        graph, automation_package, workspace_dir = change_impact_fixture
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        login_impact = change_impact_for_method(extended, "LoginPage", "clickLogin")
+        assert login_impact is not None
+        assert login_impact.affected_scenario_ids == ("SCN-S1", "SCN-S2")
+        assert login_impact.affected_scenario_count == 2
+
+        logout_impact = change_impact_for_method(extended, "DashboardPage", "logout")
+        assert logout_impact is not None
+        assert logout_impact.affected_scenario_ids == ("SCN-S3",)
+        assert "SCN-S1" not in logout_impact.affected_scenario_ids
+        assert "SCN-S2" not in logout_impact.affected_scenario_ids
+
+    def test_unknown_method_returns_none(self, change_impact_fixture: _ImpactFixture) -> None:
+        graph, automation_package, workspace_dir = change_impact_fixture
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        assert change_impact_for_method(extended, "NoSuchPage", "noSuchMethod") is None
+
+    def test_query_against_unextended_graph_returns_none(
+        self, change_impact_fixture: _ImpactFixture
+    ) -> None:
+        graph, _pkg, _ws_dir = change_impact_fixture
+
+        assert change_impact_for_method(graph, "LoginPage", "clickLogin") is None
+
+    def test_full_impact_map_covers_every_method(
+        self, change_impact_fixture: _ImpactFixture
+    ) -> None:
+        graph, automation_package, workspace_dir = change_impact_fixture
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+
+        report = build_change_impact_report(extended)
+
+        assert report.graph_id == extended.graph_id
+        assert report.total_methods == 2
+        by_method = {(m.class_name, m.method_name): m for m in report.method_impacts}
+        assert by_method[("LoginPage", "clickLogin")].affected_scenario_ids == (
+            "SCN-S1",
+            "SCN-S2",
+        )
+        assert by_method[("DashboardPage", "logout")].affected_scenario_ids == ("SCN-S3",)
+
+    def test_empty_graph_yields_empty_report(self) -> None:
+        empty_graph = TraceabilityGraph(graph_id=graph_id_for("run-empty"), nodes=(), edges=())
+
+        report = build_change_impact_report(empty_graph)
+
+        assert report.total_methods == 0
+        assert report.method_impacts == ()
+
+    def test_report_structure_is_gate_ready_but_has_no_gating(self) -> None:
+        report = ChangeImpactReport(
+            graph_id="tg-000000000000",
+            total_methods=1,
+            method_impacts=(
+                MethodImpact(
+                    class_name="LoginPage",
+                    method_name="clickLogin",
+                    affected_scenario_count=1,
+                    affected_scenario_ids=("SCN-1",),
+                ),
+            ),
+        )
+        assert report.total_methods == 1
+        assert not hasattr(report, "passed")
+        assert not hasattr(report, "verdict")
+        assert not hasattr(report, "gate_status")
+
+        import requirement_intelligence.traceability_graph as package
+
+        assert not any(
+            name in package.__all__
+            for name in ("evaluate_gate", "check_threshold", "GateDecision", "GateResult")
+        )
+
+
 class TestModelInvariants:
     def test_graph_rejects_edge_to_absent_node(self) -> None:
         requirement_node = TraceabilityNode(
@@ -539,6 +848,30 @@ class TestModelInvariants:
                 unbound_steps=(),  # length 0, but count says 1
             )
 
+    def test_method_impact_rejects_mismatched_count(self) -> None:
+        with pytest.raises(ValidationError, match="must equal affected_scenario_count"):
+            MethodImpact(
+                class_name="LoginPage",
+                method_name="clickLogin",
+                affected_scenario_count=2,
+                affected_scenario_ids=("SCN-1",),  # length 1, but count says 2
+            )
+
+    def test_change_impact_report_rejects_mismatched_count(self) -> None:
+        with pytest.raises(ValidationError, match="must equal total_methods"):
+            ChangeImpactReport(
+                graph_id="tg-1",
+                total_methods=2,
+                method_impacts=(
+                    MethodImpact(
+                        class_name="LoginPage",
+                        method_name="clickLogin",
+                        affected_scenario_count=0,
+                        affected_scenario_ids=(),
+                    ),
+                ),  # length 1, but total_methods says 2
+            )
+
 
 class TestIdentityAndTraversal:
     def test_node_and_edge_ids_are_pure_functions(self) -> None:
@@ -572,6 +905,37 @@ class TestIdentityAndTraversal:
         assert reachable_from(adjacency, "req") == {"req", "scn", "step"}
         # Directed: nothing reaches back to "req" from "step".
         assert reachable_from(adjacency, "step") == {"step"}
+
+    def test_reverse_adjacency_walks_edges_backward(self) -> None:
+        edges = (
+            TraceabilityEdge(
+                edge_id="te-1",
+                edge_type=TraceabilityEdgeType.HAS_SCENARIO,
+                source_node_id="req",
+                target_node_id="scn",
+                rationale="r",
+            ),
+            TraceabilityEdge(
+                edge_id="te-2",
+                edge_type=TraceabilityEdgeType.HAS_STEP,
+                source_node_id="scn",
+                target_node_id="step",
+                rationale="r",
+            ),
+            TraceabilityEdge(
+                edge_id="te-3",
+                edge_type=TraceabilityEdgeType.CALLS_METHOD,
+                source_node_id="step",
+                target_node_id="method",
+                rationale="r",
+            ),
+        )
+        reverse_adjacency = build_reverse_directed_adjacency(edges)
+
+        # From "method", walking backward reaches every ancestor: step, scenario, requirement.
+        assert reachable_from(reverse_adjacency, "method") == {"method", "step", "scn", "req"}
+        # Directed in reverse: nothing reachable backward from "req" (it has no ancestors).
+        assert reachable_from(reverse_adjacency, "req") == {"req"}
 
 
 class TestSerialization:
@@ -622,6 +986,24 @@ class TestSerialization:
         report_md = render_binding_completeness_report(report)
         assert "escalated" in report_md
         assert "no_step_definition_need" in report_md
+
+    def test_renders_change_impact_report_without_recomputing(
+        self, change_impact_fixture: _ImpactFixture
+    ) -> None:
+        graph, automation_package, workspace_dir = change_impact_fixture
+        extended = project_change_impact(graph, automation_package, workspace_dir=workspace_dir)
+        report = build_change_impact_report(extended)
+
+        report_json = render_change_impact_json(report)
+        assert report_json["totalMethods"] == report.total_methods
+        assert report_json["graphId"] == report.graph_id
+
+        report_md = render_change_impact_report(report)
+        assert "LoginPage.clickLogin" in report_md
+        assert "SCN-S1" in report_md
+        assert "SCN-S2" in report_md
+        assert "DashboardPage.logout" in report_md
+        assert "SCN-S3" in report_md
 
 
 class TestScopeDiscipline:
