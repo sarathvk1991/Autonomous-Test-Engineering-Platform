@@ -232,6 +232,103 @@ already identified (Synthesis, below) as Nitin's own top strategic risk. Recorde
 one coherent architecture, not four isolated features — **no sequencing or design decision is made
 by this note**; that remains for each item's own future design-surfacing task.
 
+**DELTA-SCOPED-REGENERATION CLUSTER SURFACED (2026-08-13) — a design-surfacing task (build
+nothing), now possible because item #3's change-impact graph (2c) is built
+(`[[cap-change-impact-graph-built]]`), the exact dependency the synthesis section (below) already
+named for this item ("delta-scoped regeneration (depends on 2c's change-impact graph)").**
+
+*Pre-flight.* Clean tree, `main`, tip `684fa98` (method-level change-impact committed). `make lint`
+clean. `make test`: 5796 passed, unchanged. This note adds text only to this document; nothing else
+touched.
+
+**What-exists map, verified against real code, not assumed from the earlier notes above.**
+
+| Nitin's part | Status | Real evidence |
+| --- | --- | --- |
+| (1) Content-addressed caching, artifact-level | **Absent** (a real but coarser cousin exists) | `RunStateManager.should_skip` (ADR-0036, `requirement_intelligence/run_state/run_state_manager.py`) hashes whole `input_artifacts` files (`_hash_artifacts`: sha256 over sorted (path, content-sha256) pairs) keyed by `stage_id` — but `stage_id` must be one of the 19 fixed `STAGE_DEFINITIONS`; `_find` raises `ValueError` on an unknown id. **Not reusable as-is** for a per-requirement or per-generated-class cache entry — the *pattern* (`_hash_artifacts`'s own content-hash shape) is directly reusable, the *class* is architecturally closed to the fixed stage catalogue. |
+| (2) Delta-scoped regeneration | **Absent as an action; its input is now ready** | `change_impact_for_method`/`build_change_impact_report` (`requirement_intelligence/traceability_graph/change_impact.py`, built the same day) answer "which scenarios are affected by this method" — nothing yet consumes that answer to skip or scope a regeneration. |
+| (3) Deterministic/LLM split | **Absent, confirmed directly, not inferred** | Every generator checked (`LiveStepDefinitionGenerator.generate`, and its `LivePageObjectGenerator`/`LiveFeatureContentGenerator`/`LiveTestDataGenerator` siblings) is one prompt → one LLM call → the ENTIRE artifact's Java/feature/data text as output. No scaffold-deterministically/fill-with-LLM split exists anywhere in the generation package — the least-present of the four parts, as the surfacing prompt itself anticipated. |
+| (4) Model/prompt pinning | **Partial, more precisely than previously stated** | Real and strong at the *source*: `PromptRegistry` enforces unique `(prompt_id, version)` pairs, immutable after `seal()`, and `PromptDefinition.metadata.sha256` is the verified content-hash of the prompt's own text (`shared/prompts/models/prompt_definition.py`) — a genuine content-addressable prompt identity already exists. `LLMResponse.model`/`.provider` (`requirement_intelligence/llm/llm_models.py`) are captured at every call site. Model selection is explicit and readable (`GEMINI_MODEL`, `STEP_DEF_GEMINI_MODEL` env vars, `scripts/run_requirement_analysis.py`) — but the env var names a hosted model, never a content hash of its own behavior, a structural limitation caching can pin around but never fully close. **The real, verified gap:** this identity is captured but mostly discarded before it reaches a persisted artifact record — exactly the same shape of gap the token-instrumentation build (piece (c), already closed) found and fixed for token counts. Only `TestableRequirementSetProvenance` (L1, `contracts/testable_requirement.py`) actually persists `prompt_id`/`prompt_version`/`prompt_sha256`/`provider`/`model` — once per run, for the requirement set as a whole. `FeatureRecord`/`FeatureEngineeringPackage` (L2) and `AssetRecord`/`AutomationEngineeringPackage` (L3) carry **no** prompt/model provenance field at all, confirmed by reading both dataclasses in full. |
+| Source-snapshot | **Absent for raw evidence; a serviceable proxy already exists one layer downstream** | No hash of the raw ingested JIRA/SonarQube/ZAP evidence exists anywhere (`EngineeringContext`'s own model carries no content-hash field; a repository-wide search for an evidence/source-snapshot hash returns nothing). But `TestableRequirement`'s own `REQ-*`/`AC-*`/`RSK-*` ids are already sha256-derived from each requirement's own normalized content (ADR-0042) — a real, existing content-address one hop downstream of the raw evidence, usable as a practical spec-slice-and-source-snapshot proxy without waiting for a true pre-analysis evidence hash. |
+| Spec-slice (Nitin's #4) | **Not built — a separate, larger, unresolved mentor item** | Item #4's own "branch-scoped vertical slice" design (a whole branch-per-feature workflow) is unbuilt and unscoped as a concrete artifact; treating it as a hard prerequisite for caching would block this cluster indefinitely (see the sequencing recommendation below). |
+| Token instrumentation (Nitin's own "Critically") | **Built** (`TOKEN INSTRUMENTATION BUILT`, above) | The measurement instrument this whole cluster's own payoff should be judged against. |
+
+**Dependency structure, mapped against the real evidence above, not just Nitin's own stated
+ordering.**
+
+- **Pinning (4) is the foundation for caching's key — confirmed both by Nitin's own words
+  ("caching... needs pinning... to have a meaningful, invalidatable key," THE THROUGH-LINE note,
+  above) and by the code: the raw identity (`prompt_sha256`, `model`) already exists at the call
+  site, exactly parallel to how token counts already existed at the provider before the
+  instrumentation build threaded them through. Pinning's own remaining work is that same threading
+  move, not new invention.**
+- **A cache key needs pinning (4) + a slice identity + a source identity.** The slice/source
+  identity does not need to wait for spec-slice (#4, unbuilt) or a true raw-evidence hash (absent)
+  — `TestableRequirement.requirement_id`'s own content-derived `REQ-*` id (already real, already
+  content-addressed) is a serviceable first-cut key component for both roles simultaneously. This
+  is a genuine, load-bearing finding: **the caching key does not have a hard, blocking dependency
+  on either the unbuilt spec-slice item or a new raw-evidence hash** — it can start now, refined
+  later as those mature.
+- **Delta-scoped regeneration (2) depends on change-impact (built, ready) AND some notion of "what
+  changed."** Nitin's own framing (THE THROUGH-LINE, above) casts the artifact-level cache itself
+  as that staleness signal ("the cache tells you an artifact is stale; the change-impact graph
+  tells you... which downstream artifacts that staleness actually reaches") — under his own model,
+  (2) sits on top of (1), not beside it. A narrower, cheaper first slice is visible in the data,
+  though: for the literal "a page-object method's source changed" trigger (Nitin's own selector
+  example), a simple content-hash diff of the TRACKED BASELINE's page-object files — much smaller
+  than the full artifact-level LLM-output cache (1) — is enough to name "this method changed" and
+  feed `change_impact_for_method` directly, without waiting for (1)'s own, larger, re-run-efficiency
+  cache. These are two related but distinct triggers for the same underlying capability (Nitin's
+  own re-run-cost concern vs. "something in the corpus changed"), both worth naming, neither
+  designed here.
+- **The deterministic/LLM split (3) shapes scope, it does not gate the other three.** It determines
+  *how much* ever needs a cache entry (a fully-deterministic scaffold needs none — it is trivially
+  reproducible) but building (1)/(2)/(4) does not require (3) to exist first; it is a parallel-track
+  refactor of the generators themselves (each of the ~7 LLM call sites), genuinely the largest, most
+  invasive of the four parts, and — per the surfacing prompt's own expectation — the least-present
+  today.
+
+**The first build, recommended, in order:**
+
+1. **Thread the already-captured pinning identity into L2/L3 artifact records** (`FeatureRecord`,
+   `AssetRecord`) the same additive way `TestableRequirementSetProvenance` already does for L1, and
+   the same shape the token-instrumentation build already proved out for token counts ("capture was
+   already present... but discarded by every caller"). Small, precedented, no new derivation logic
+   — the data already exists at the call site (`LLMResponse.model`, `PromptDefinition.metadata.
+   sha256`); this only stops discarding it.
+2. **Build the artifact-level cache itself**, keyed on `(requirement_id/REQ-* content hash,
+   prompt_sha256, model)` — buildable immediately after (1), using the existing `REQ-*` content
+   address as the slice/source-snapshot proxy rather than waiting on spec-slice (#4) or a new raw-
+   evidence hash. Reuses `_hash_artifacts`'s own content-hash pattern; does not reuse
+   `RunStateManager` itself (architecturally closed to the fixed stage catalogue, above) — a new,
+   small, sibling store.
+3. **Build delta-scoped regeneration on top**, consuming both the new cache (staleness) and the
+   already-built change-impact graph (blast radius) — Nitin's own combined model, now fully
+   unblocked (both of its own named inputs exist).
+4. **Sequence the deterministic/LLM split (3) independently, in parallel or after** — the largest,
+   most invasive part, and the one that narrows what (1)/(2) even need to cover over time; not a
+   blocker for 1-3.
+
+**Measurability, not just architecture.** The token instrumentation (already built) is this
+cluster's own scorecard: a live run's `token_usage.json` today (the `run-20260812T064317663150Z-
+a20b0cc2` measurement, above) is the pre-cluster baseline; the same live run repeated after each of
+the four build steps above would show the savings directly, call-type by call-type — recommended as
+the verification method for whichever of these steps is eventually built, not designed here.
+
+**Clarify-with-mentor nuance, flagged.** Nitin's own four-part framing and his "cache tells you
+stale, change-impact tells you the reach" model are his own words, cited directly above. The
+specific sequencing recommendation (pin-then-cache-then-regen, with the deterministic/LLM split run
+in parallel, and the `REQ-*` id as an interim spec-slice/source-snapshot proxy) is this note's own
+reading of the real code and dependency shape, not something he weighed in on — the same caveat
+already flagged for the traceability and change-impact extend-vs-separate calls, above.
+
+**Nothing built by this note.** No cache, no delta-regen logic, no pinning field added to any
+artifact record, no deterministic/LLM refactor. This surfaces the what-exists map (corrected in two
+places against the earlier, coarser notes above: pinning is more partial-but-precise than "unbuilt,"
+and the caching key's spec-slice/source-snapshot dependency is softer than it first appears), the
+dependency structure, and a recommended build order; building any of it remains a future, separate
+task.
+
 ---
 
 ### Item 2 — Skills-first, agents-next (token minimization)
