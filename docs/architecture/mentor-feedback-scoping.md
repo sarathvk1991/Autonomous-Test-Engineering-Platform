@@ -705,6 +705,166 @@ binding hop was governed *within* ADR-0048's existing text before this build, no
 this entry is the additive record of the build, mirroring how "CAPABILITY ADR WRITTEN" above records
 the ADR without retro-editing it.
 
+**CHANGE-IMPACT GRAPH DESIGN SURFACED (2026-08-13) — a design-surfacing task (build nothing),
+resolving Nitin's second-prioritized graph (change-impact: "code/pages → elements → steps →
+scenarios... a selector change should let you identify the 8 affected tests, not rerun hundreds")
+against the real substrate, correcting one stale finding from the 2026-08-12 note above.**
+
+*Pre-flight.* Clean tree, `main`, tip `caceba2` (the Engineering Constitution's governance loop
+closed). `make lint` clean. `make test`: 5780 passed, unchanged. This note adds text only to this
+document; nothing else touched.
+
+**The pattern reused.** `requirement_intelligence/traceability_graph/` (built above) is the
+template: frozen, camelCase, reference-not-copy `TraceabilityNode`/`TraceabilityEdge`/
+`TraceabilityGraph` models (`models.py`) with a governed `StrEnum` node/edge vocabulary; SHA-256
+deterministic identity (`identity.py`); a type-agnostic directed-adjacency BFS traversal
+(`traversal.py`, forward-only today — `build_directed_adjacency`/`reachable_from`); a deterministic
+projector re-parsing real, already-produced artifacts directly, never a synthetic stand-in
+(`projection.py`); a report-only completeness layer with no gate, no threshold
+(`completeness.py`). Change-impact reuses every one of these exactly, as an **extension of this
+same package**, not a new sibling — see Architecture, below.
+
+**Correcting the 2026-08-12 finding: locator/element data is not "genuinely absent" — it is
+real, but incomplete for this purpose.** The prior note above ("element/selector-level mapping is
+NOT captured anywhere — no structured locator model exists anywhere in the generation pipeline")
+was accurate *as of that date* but is now stale: `automation_engineering/cp4/extraction.py`
+(governed by ADR-0044 D6, built after that note) deterministically extracts exactly this —
+`Cp4Locator(class_name, field_name, strategy, value)` — from generated page-object Java, both the
+platform's own `private final By field = By.id(...)`/`.xpath`/`.cssSelector`/... convention and
+the `@FindBy(...)` annotation shape, via the same `javalang` technique
+`page_object_reference_derivation.py` already uses. **What CP4 does NOT do, confirmed by reading
+its own gate** (`automation_engineering/cp4/gate.py`): all four of its criteria
+(`locator_uniqueness`, `duplicate_locators`, `dynamic_xpath`, `well_formedness`) reason about
+locator *fields* only — uniqueness and fragility of the (strategy, value) pair itself — never
+which *method(s)* on the page object reference a given field. The genuinely missing piece is
+narrower than previously stated: not "locator data," but **the field → method usage link**
+(walking each method's own body for references to a declared locator field, the same
+`javalang`-statement-walk CP4's own extraction and `page_object_reference_derivation.py`'s own
+call-site derivation already use — a small, precedented addition, not a new kind of problem).
+**A second, separate caveat, unrelated to the data model:** CP4 itself is currently wired
+vacuously in the live runner — `automation_engineering/stage/runner.py:507`:
+`cp4_result: Cp4Result = evaluate_cp4(())`, because page-object generation is not live-wired by
+default (the same root cause `[[cap-page-object-live-wiring-decision]]` already recorded) — so
+today CP4's real extraction code runs only over real generated page objects when the script-harness
+path is used, not in an ordinary live run.
+
+**The buildable-now (method-level) chain, verified link by link, all real, all already built:**
+- STEP → SCENARIO (reverse direction). The traceability graph's own `STEP` node id
+  (`f"{scn_id}::step-{ordinal:03d}"`, `projection.py`) already embeds its owning scenario — each
+  `STEP` node has exactly one `HAS_STEP` edge into it, from exactly one `SCENARIO` node (steps are
+  not deduplicated across scenarios in this graph's own model). Only `traversal.py`'s own
+  adjacency builder is forward-only; a reverse-adjacency variant (swap `source`/`target` when
+  building the map) is a small, type-agnostic, purely additive function — the same shape as the
+  existing one, not a new algorithm.
+- STEP → STEP-DEFINITION. Already built and already joined: `completeness.py::
+  evaluate_binding_completeness` matches a `STEP` node's own `label` (raw Gherkin text) against
+  `AutomationEngineeringPackage`'s `need_kind == "step_definition"` records, giving the bound
+  step-definition's `class_name` (when not escalated).
+- STEP-DEFINITION → PAGE-OBJECT METHOD(S). Already built, real, tested:
+  `automation_engineering/generation/page_object_reference_derivation.py::
+  derive_page_object_requests(java_source)` deterministically parses a **generated** step-def's own
+  Java source (on disk in the run's workspace) and returns exactly which page-object class and
+  method(s) (with resolved parameter/return-type shape) that step-def's body calls. This function
+  is not persisted as an artifact today (`AssetRecord`, `automation_engineering/stage/models.py`,
+  carries no page-object-call-site field — confirmed by its own docstring: "no page-object/utility
+  `AssetRecord` is ever produced here") — but it needs no new derivation logic, only a new call
+  site: a change-impact projector re-parses the same on-disk generated `.java` files
+  `derive_page_object_requests` already knows how to read, exactly mirroring how
+  `project_traceability_graph` itself re-parses `.feature` files from disk rather than reading a
+  summary artifact.
+- **Net: PAGE-OBJECT METHOD → (reverse) STEP-DEFINITION → (existing join) STEP → (new reverse
+  adjacency) SCENARIO is buildable now, by composing three already-existing, already-tested,
+  deterministic functions plus one small, type-agnostic reverse-traversal helper. No LLM, no new
+  heuristic, no open research question.**
+
+**The blocked (element-level) chain — one real, bounded prerequisite, not an open-ended gap.**
+Nitin's own headline example is element-level: a locator's *value* changes (a selector, not a
+method signature) and the question is which tests that specific field touches. That needs exactly
+one new function: `field_name → {method_name, ...}` — which method bodies reference a given
+locator field, via the identical `javalang` method-body walk CP4's own extraction and
+`page_object_reference_derivation.py`'s own call-site derivation already use twice over. Once that
+one link exists, element-level change-impact is: locator field change → (new link) → affected
+method(s) → (existing, reversed) affected step-definition(s) → (existing) affected `STEP`
+node(s) → (new reverse adjacency) affected `SCENARIO`(s) — the exact "8 affected tests" shape,
+composed entirely from precedented, already-proven extraction techniques.
+
+**The value question: is method-level alone worth building, before element-level exists?**
+Answered directly. Method-level change-impact answers a coarser question than Nitin's own example
+— "if this page-object *method*'s behavior/signature changes, which scenarios are affected,"
+not "if this exact selector changes" — but a locator-value-only edit (no method signature change)
+that has no linked change-impact data at all would, absent any granularity, force treating the
+*whole class* as changed, and every method on it (and therefore every scenario calling any of
+them) as potentially affected — already a real narrowing from "rerun the whole suite" down to "the
+scenarios touching this one page object," even before method- or element-level precision exists.
+Method-level narrows that further, to "the scenarios touching the specific method(s) that
+changed." Each granularity tier is a strict refinement of the one before it (class → method →
+element), so building method-level now creates no rework when element-level is added later — the
+element-level link only makes an existing method-level edge more precise, it does not replace the
+graph shape. **Verdict: method-level is a real, substantial, immediately buildable delta-regen
+increment, reusing ~90% already-built machinery — worth building now, not gated on element-level.**
+This is also consistent with today's own token-distribution data (Item 1's re-run-cost note,
+above): generation cost is not concentrated in one stage, so a change-impact graph that lets
+regeneration skip *any* untouched scenario — even at method granularity — is real leverage, not a
+marginal one.
+
+**Architecture: an extension of `traceability_graph/`, not a new sibling service** — differing
+from how *traceability itself* related to `knowledge_graph/` (D2's frozen-service-boundary CASE B,
+above). No equivalent boundary conflict exists here: change-impact would add exactly one new node
+type (`PAGE_OBJECT_METHOD`) and one new edge type (e.g. `CALLS_METHOD`, `STEP → PAGE_OBJECT_METHOD`)
+onto the *same* `TraceabilityGraph` model, projected by the *same* package, reading the *same*
+class of Runtime Truth artifacts (`traceability_graph/` already established its own D2 placement —
+Runtime Truth consumption, not ADR-0021's strict Historical-Truth-only Layer 2 shape — extending it
+does not newly cross that boundary, it is already on this side of it) — plus a new, report-only
+`evaluate_change_impact(graph, changed_method) -> ChangeImpactReport`-shaped query, mirroring
+`evaluate_completeness`'s/`evaluate_binding_completeness`'s own report-only posture exactly (no
+gate, no threshold). The element-level link (above) would be a further, additive edge annotation
+on the same `PAGE_OBJECT_METHOD` node (or a sibling `LOCATOR` node/edge pair), not a redesign.
+
+**Governance verdict: already in ADR-0048's own named scope — no new ADR, no amendment,
+confirmed by re-reading its actual text, not assumed.** ADR-0048 §D4 ("The minimal slice, and the
+named deferred hops") names, verbatim: *"**Change-impact graph** (code/pages → elements → steps →
+scenarios) — a distinct capability the scoping doc's own design-surfacing task separately scoped;
+method-level linkage is buildable from the same page-object call-site data above, but
+element/selector-level mapping... has no structured source anywhere yet."* This is the identical
+governance shape the step-definition-binding hop already used successfully (D5's own "governed
+*within* ADR-0048's existing text... not amended by it"): change-impact — both the method-level
+slice and its element-level follow-on — is already named, deferred future scope of this same,
+Accepted ADR. Building it (a future task, not this one) requires no status change to ADR-0048 and
+no new ADR; it would be recorded the same additive way the binding hop was. **One nuance worth
+flagging honestly:** D4's own heading calls every deferred item a "hop," but individually labels
+two of the four "hop" (page-object, execution-result) and two "graph" (change-impact, state/flow)
+— an inconsistency in ADR-0048's own text, not a substantive ambiguity about scope; both readings
+place change-impact inside ADR-0048's already-governed deferred set.
+
+**Options + recommendation.**
+- **Method-level now** — buildable today (chain verified above), real delta-regen value, reuses
+  the traceability pattern as an extension, already in ADR-0048's named scope. **Recommended.**
+- **Element-level as a named follow-on** — needs exactly one new, small, precedented extraction
+  (field → method usage, the same `javalang` technique used twice already in this codebase); not
+  blocked on anything else once that one function exists. Named explicitly, not silently deferred,
+  mirroring D4's own already-deferred framing.
+- **Defer everything until element-level exists** — considered and rejected: method-level's own
+  value does not gate on element-level (Value question, above), and delaying it would leave the
+  real, already-buildable delta-regen win unbuilt for no architectural reason.
+
+**The delta-regen dependency, named, not designed.** Change-impact is the direct input Item 1's
+own re-run/token-cost cluster (`[[cap-mentor-clarification-prep]]`'s delta-scoped regeneration
+answer, and Nitin's own "regenerate only what changed" framing) needs to know *what a change
+actually reaches* — this note is a prerequisite for that later work, not that work itself; no
+caching, pinning, or regeneration logic is designed or built here.
+
+**Clarify-with-mentor nuance, flagged.** Nitin confirmed change-impact as his second-prioritized
+graph type and gave the selector-level example himself, but did not weigh in on the specific
+method-vs-element sequencing or the extend-vs-sibling architecture question this note resolves —
+those are this note's own reading of the real code, the same caveat already flagged for
+traceability's own extend-vs-separate call, above.
+
+**Nothing built by this note.** No new node/edge type, no new projector, no new reverse-traversal
+function, no ADR, no register entry, no capability-matrix row. This surfaces the buildable-now vs.
+blocked scope, corrects the stale "no locator data exists" finding against the real CP4 code, and
+recommends method-level change-impact as the next build (a future, separate task) reusing
+`traceability_graph/`'s own pattern as an extension.
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)
