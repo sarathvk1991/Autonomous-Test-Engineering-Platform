@@ -1,6 +1,6 @@
 # ADR-0026 — Organizational Knowledge Architecture & Learning Constitution
 
-- **Status:** Proposed
+- **Status:** Accepted (ratified by ADR-0049 — Engineering Constitution)
 - **Date:** 2026-07-16
 - **Supersedes:** nothing. **Amends:** nothing. **Elevates:** the lifecycle tier ADR-0025 §Stage 9 named "Aggregated Knowledge" (owned, once built, by Organizational Memory / CAP-085) and "Learned Knowledge" (owned, once built, by Learning Framework / CAP-086) — both named there in one table row each — into a full constitutional document, exactly as ADR-0024 elevated Historical Truth from ADR-0021 §Stage 3's one paragraph, and ADR-0025 elevated Derived Knowledge from the same section. **Continued by:** ADR-0028 (Learning Constitution) — this ADR defines **Organizational Knowledge** and freezes Learning's earliest principles (§Stage 11); ADR-0028 gives **Learning** its own full constitutional treatment, the next tier up the same lifecycle this ADR's own §Stage 4 already named. This is a citation-only relationship: no rule in this ADR is modified by ADR-0028's existence.
 - **Governing design:** none — this ADR *is* the governing design, exactly as ADR-0020, ADR-0021, ADR-0024, and ADR-0025 introduce no proposal document because none of them is subsystem architecture.

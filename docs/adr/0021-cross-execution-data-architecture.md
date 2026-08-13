@@ -1,6 +1,6 @@
 # ADR-0021 — Cross-Execution Data Architecture & Historical Intelligence Constitution
 
-- **Status:** Proposed
+- **Status:** Accepted (ratified by ADR-0049 — Engineering Constitution)
 - **Date:** 2026-07-15
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR *is* the governing design, exactly as ADR-0020 introduces no proposal document because it is not subsystem architecture.

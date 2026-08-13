@@ -1,6 +1,6 @@
 # ADR-0025 — Derived Knowledge Architecture & Layer 2 Constitution
 
-- **Status:** Proposed
+- **Status:** Accepted (ratified by ADR-0049 — Engineering Constitution)
 - **Date:** 2026-07-16
 - **Supersedes:** nothing. **Amends:** nothing. **Elevates:** the Derived Knowledge definition ADR-0021 §Stage 3 introduced in one short paragraph, into a full constitutional document — mirroring how ADR-0024 elevated Historical Truth from the same section of the same ADR. Every principle ADR-0022 and ADR-0023 each independently restated about `ContinuousImprovementResult` and `KnowledgeGraphResult` being Derived Knowledge is generalized here, once, as the platform-wide constitution every third and later Layer 2 capability inherits by citation. **Continued by:** ADR-0026 (Organizational Knowledge Architecture & Learning Constitution) — this ADR defines **Derived Knowledge**; ADR-0026 defines **Organizational Knowledge**, the next tier up the same lifecycle §Stage 9 below names "Aggregated Knowledge" / "Learned Knowledge." This is a citation-only relationship: no rule in this ADR is modified by ADR-0026's existence.
 - **Governing design:** none — this ADR *is* the governing design, exactly as ADR-0020, ADR-0021, and ADR-0024 introduce no proposal document because none of them is subsystem architecture.

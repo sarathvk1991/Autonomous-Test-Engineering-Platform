@@ -1,6 +1,6 @@
 # ADR-0028 — Learning Constitution
 
-- **Status:** Proposed
+- **Status:** Accepted (ratified by ADR-0049 — Engineering Constitution)
 - **Date:** 2026-07-16
 - **Supersedes:** nothing. **Amends:** nothing. **Elevates:** ADR-0026 §Stage 11's "Learning principles" (three short paragraphs: Learning consumes Organizational Knowledge, Learning does not consume Runtime Truth directly, Learning does not mutate Organizational Knowledge) into a full constitutional document — exactly as ADR-0024 elevated Historical Truth from ADR-0021 §Stage 3's one paragraph, ADR-0025 elevated Derived Knowledge from that same section, and ADR-0026 itself elevated Organizational Knowledge from ADR-0025 §Stage 9's one table row ("Aggregated Knowledge"). This ADR is that identical act of elevation performed once more, for the tier directly above Organizational Knowledge.
 - **Governing design:** none — this ADR *is* the governing design, exactly as ADR-0020, ADR-0021, ADR-0024, ADR-0025, and ADR-0026 introduce no proposal document because none of them is subsystem architecture.

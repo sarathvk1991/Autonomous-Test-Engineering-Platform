@@ -1,6 +1,6 @@
 # ADR-0024 — Historical Dataset & Historical Truth Constitution
 
-- **Status:** Proposed
+- **Status:** Accepted (ratified by ADR-0049 — Engineering Constitution)
 - **Date:** 2026-07-16
 - **Supersedes:** nothing. **Amends:** nothing. **Elevates:** the Historical Dataset Resolution Principle, previously discovered and independently frozen as ADR-0022 Recommendation 10 (Continuous Improvement) and reaffirmed in equivalent form by ADR-0023 §D10/§D11 (Knowledge Graph), into a single, platform-wide, constitutional rule every future Layer 2+ capability inherits without rediscovering it.
 - **Governing design:** none — this ADR *is* the governing design, exactly as ADR-0020 and ADR-0021 introduce no proposal document because neither is subsystem architecture.

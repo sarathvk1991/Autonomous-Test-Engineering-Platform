@@ -43,6 +43,49 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Engineering Constitution (ADR-0049) ACCEPTED — Track-A constitutional authority
+  established, and the constitutional-tier lineage ratified (2026-08-13).** Answers
+  mentor item #5 — Nitin's "centralized constitution" ask, raised in both feedback
+  rounds — with the structurally-forced answer the mentor scoping doc's own
+  design-surfacing note named "Option B": `docs/standards/STD-000-platform-constitution.md`
+  §6/§7.1 confirms it occupies the Standards tier and is "never inherited, as an
+  authority dependency, by Architecture or Governance," so promoting it could not make it
+  citable as authority by a gate's own governing ADR; only a new Track-A ADR could take
+  over the constitutional-principles role ADR-0020 vacated when ADR-0031 fully superseded
+  it. **Ratifies ADR-0021, ADR-0024, ADR-0025, ADR-0026, ADR-0028** — each still
+  `Status: Proposed` despite the four live, Accepted capabilities built directly on them
+  (ADR-0022 Continuous Improvement, ADR-0023 Knowledge Graph, ADR-0027 Organizational
+  Memory, ADR-0029 Learning Framework) — closing a genuine governance-consistency gap:
+  live capabilities standing on an unratified constitutional foundation. States twelve
+  normative Articles, each grounded in a real, already-enforced ADR/gate/code invariant
+  verified directly, not an invented aspiration — e.g. Article VIII cites
+  `suite_quality_governance/cp7/rating_gate.py`'s real `FAIL > WARN > PASS` composition
+  (ADR-0012 §8/ADR-0047 D3/D5); Article XI cites `automation_engineering/reuse/
+  engine.py::DEFAULT_CONFIDENCE_THRESHOLD = 0.75` (ADR-0044 D3). **Not a capability — no
+  CAP number, no `platform-capability-matrix.md` row, §8's capability-addition process
+  does not apply**, mirroring the zero-row precedent every prior governance/constitutional
+  ADR already set (ADR-0020, ADR-0031, ADR-0038 — none has a capability-matrix row
+  either).
+  **Loop closure (2026-08-13):** the ratification was propagated onto the five lineage
+  ADRs' own header Status lines (`Proposed` → `Accepted (ratified by ADR-0049 —
+  Engineering Constitution)`), mirroring ADR-0031's own precedent of editing ADR-0020's
+  Status line in the same change that superseded it — status-line only; no lineage ADR's
+  body text was touched (confirmed by diff: one line changed per file). **Layer-numbering
+  honesty note:** the ratified lineage calls itself "Layer 2 — Continuous Learning" under
+  ADR-0020's own (Superseded) catalogue; ADR-0031's current Authoritative Layer Model
+  redesignates those same four capabilities as Layer 1 sub-capabilities — ADR-0049
+  ratifies the lineage's substantive constitutional content (the Truth Hierarchy, the
+  Historical Dataset Resolution Principle, the Derived/Organizational/Learned Knowledge
+  definitions), not its superseded layer label. **Nitin-nuance unconfirmed:** the specific
+  citation-shape/authority-shape question this ADR resolves (documentation-mapping vs.
+  runtime citation; a new ADR vs. an STD-000 promotion) was never itself put to him — only
+  the underlying "centralized constitution" ask was, in both his feedback rounds;
+  ADR-0049 is revisable if his own picture differs. One mentor throughout (Nitin).
+  Deferred, explicit future work: runtime/output gate citation
+  (`CP1CriterionMetadata.documentation_reference` remains reserved, unpopulated) and a
+  periodic reuse-catalog hygiene mechanism (considered as a thirteenth Article candidate,
+  dropped for not yet being a real, enforced invariant).
+
 - **Traceability Graph (CAP-088, ADR-0048) BUILT and FROZEN — the minimal `requirement → scenario →
   step` completeness mechanism, report-only, not wired (2026-08-12).** Answers mentor item #3 —
   Nitin's own "house of cards" completeness concern, restated across both rounds of his feedback —
