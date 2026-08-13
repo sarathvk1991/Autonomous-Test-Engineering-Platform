@@ -360,6 +360,7 @@ def generate_feature_file(
         scenarios=tuple(scenario_assignments),
         acceptance_criteria_coverage=ac_coverage,
         lint_result=lint_result,
+        generation_identity=getattr(content_generator, "last_identity", None),
     )
 
 

@@ -37,6 +37,7 @@ from automation_engineering.generation.test_data_generator import (
     StubTestDataGenerator,
     TestDataGenerationContext,
 )
+from automation_engineering.prompts.composition import build_prompt_registry
 from contracts.test_data_specification import TestDataFieldSpec, TestDataSpecification
 from contracts.testable_requirement import PolarityHint
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
@@ -303,3 +304,38 @@ class TestLlmBoundaryErrorHandling:
         result = generator.generate(_context())
 
         assert result == java
+
+
+class TestGenerationIdentityCapture:
+    """The re-run/delta-scoped-regeneration cluster's own pinning foundation
+    (2026-08-13) -- purely additive (mirrors `LiveStepDefinitionGenerator`'s
+    own `last_identity` discipline)."""
+
+    def test_no_identity_before_any_call(self) -> None:
+        generator = LiveTestDataGenerator(FakeProvider())
+
+        assert generator.last_identity is None
+
+    def test_successful_call_captures_prompt_and_model_identity(self) -> None:
+        provider = FakeProvider()
+        generator = LiveTestDataGenerator(provider)
+        expected_definition = build_prompt_registry().get("generate_test_data", "1.0.0")
+
+        generator.generate(_context())
+
+        identity = generator.last_identity
+        assert identity is not None
+        assert identity.model == "fake-model"
+        assert identity.provider == str(ProviderType.GEMINI)
+        assert identity.prompt_id == expected_definition.metadata.prompt_id
+        assert identity.prompt_version == expected_definition.metadata.version
+        assert identity.prompt_sha256 == expected_definition.metadata.sha256
+
+    def test_a_failed_call_leaves_identity_unset(self) -> None:
+        provider = FakeProvider(raises=ValueError("boom"))
+        generator = LiveTestDataGenerator(provider)
+
+        with pytest.raises(LiveGenerationError):
+            generator.generate(_context())
+
+        assert generator.last_identity is None

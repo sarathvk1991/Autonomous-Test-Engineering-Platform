@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from feature_engineering.gherkin_lint.models import LintResult
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +56,13 @@ class GeneratedFeature:
     #: for a `GeneratedFeature` that was actually returned — a dirty result
     #: is raised as a FeatureGenerationError, never returned successfully.
     lint_result: LintResult
+    #: The prompt/model identity that produced `content` (additive, re-run/
+    #: delta-scoped-regeneration cluster's pinning foundation) -- threaded
+    #: from the content generator's own `last_identity` by
+    #: `generate_feature_file`, never re-derived. `None` for a rebuilt
+    #: (reused, no LLM call) feature -- see
+    #: `feature_engineering.remediation.loop.rebuild_generated_feature`.
+    generation_identity: GenerationIdentity | None = None
 
     @property
     def fully_covered(self) -> bool:

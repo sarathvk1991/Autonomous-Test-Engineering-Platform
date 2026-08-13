@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
+
 #: This package's own contract version -- bumped on a shape change to
 #: `FeatureRecord`/`FeatureEngineeringPackage`, independent of
 #: `contracts.testable_requirement.CONTRACT_VERSION` (the input contract) and
@@ -45,6 +47,18 @@ class FeatureRecord:
     `feature_engineering.generation.errors`). This differs from a
     lint-dirty escalation, which always has assembled content and is always
     written to the workspace for human review (ADR-0043 D5's HITL framing).
+
+    `generation_identity` (additive, the re-run/delta-scoped-regeneration
+    cluster's own pinning foundation -- `docs/architecture/
+    mentor-feedback-scoping.md` item #1's re-run item) is the prompt/model
+    identity that produced this record's own content, threaded from the
+    content generator's/remediator's own already-captured
+    `LLMResponse`/`PromptDefinition` identity (never re-derived). Populated
+    only when an LLM call actually produced this record's content -- a
+    reused (workspace-skip) record or one whose generation never reached an
+    LLM call (a pre-assembly contract violation, or a transport failure)
+    carries `None`. Purely additive persistence: not consumed by any cache,
+    gate, or skip logic anywhere in this module.
     """
 
     requirement_id: str
@@ -57,6 +71,7 @@ class FeatureRecord:
     remediated: bool
     escalated: bool
     escalation_reason: str | None = None
+    generation_identity: GenerationIdentity | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -70,6 +85,11 @@ class FeatureRecord:
             "remediated": self.remediated,
             "escalated": self.escalated,
             "escalationReason": self.escalation_reason,
+            "generationIdentity": (
+                self.generation_identity.model_dump(mode="json", by_alias=True)
+                if self.generation_identity is not None
+                else None
+            ),
         }
 
     @classmethod
@@ -87,6 +107,11 @@ class FeatureRecord:
             escalation_reason=(
                 str(data["escalationReason"])
                 if data.get("escalationReason") is not None
+                else None
+            ),
+            generation_identity=(
+                GenerationIdentity.model_validate(data["generationIdentity"])
+                if data.get("generationIdentity") is not None
                 else None
             ),
         )

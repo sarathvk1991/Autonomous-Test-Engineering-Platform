@@ -200,6 +200,7 @@ def generate_test_data_class(
         java_source=java_source,
         target_package=target_package,
         class_name=class_name,
+        generation_identity=getattr(generator, "last_identity", None),
     )
 
 

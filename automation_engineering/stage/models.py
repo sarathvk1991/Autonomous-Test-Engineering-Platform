@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
+
 #: This package's own contract version -- independent of
 #: `feature_engineering.stage.models.CONTRACT_VERSION` (the Validated
 #: Feature Package's own, separate contract) and
@@ -60,6 +62,19 @@ class AssetRecord:
     type signature does not accept a ``GeneratedTestDataClass``); ``None``
     for ``"bound"`` (nothing to promote) and for ``"escalated"`` (nothing
     was generated to promote either).
+
+    ``generation_identity`` (additive, the re-run/delta-scoped-regeneration
+    cluster's own pinning foundation -- `docs/architecture/
+    mentor-feedback-scoping.md` item #1's re-run item) is the prompt/model
+    identity that produced this record's own generated content, threaded
+    from the generator's own already-captured `LLMResponse`/`PromptDefinition`
+    identity (never re-derived). Populated only for an ``outcome ==
+    "generated"`` record -- the same "identity exists only where an LLM call
+    actually happened" scoping ``workspace_path`` already uses -- ``None``
+    for ``"bound"`` (no LLM call, reused from the catalog) and
+    ``"escalated"`` (no successful generation). Purely additive persistence:
+    it is not consumed by any cache, gate, or skip logic anywhere in this
+    module.
     """
 
     need_text: str
@@ -74,6 +89,7 @@ class AssetRecord:
     promotion_status: str | None = None
     promotion_detail: str | None = None
     promoted_path: str | None = None
+    generation_identity: GenerationIdentity | None = None
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -89,6 +105,11 @@ class AssetRecord:
             "promotionStatus": self.promotion_status,
             "promotionDetail": self.promotion_detail,
             "promotedPath": self.promoted_path,
+            "generationIdentity": (
+                self.generation_identity.model_dump(mode="json", by_alias=True)
+                if self.generation_identity is not None
+                else None
+            ),
         }
 
     @classmethod
@@ -121,6 +142,11 @@ class AssetRecord:
             ),
             promoted_path=(
                 str(data["promotedPath"]) if data.get("promotedPath") is not None else None
+            ),
+            generation_identity=(
+                GenerationIdentity.model_validate(data["generationIdentity"])
+                if data.get("generationIdentity") is not None
+                else None
             ),
         )
 

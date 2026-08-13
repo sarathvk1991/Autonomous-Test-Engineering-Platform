@@ -329,6 +329,78 @@ and the caching key's spec-slice/source-snapshot dependency is softer than it fi
 dependency structure, and a recommended build order; building any of it remains a future, separate
 task.
 
+**PINNING FOUNDATION BUILT (2026-08-13) — the first recommended build step above, built exactly as
+scoped: purely additive persistence, mirroring the token-instrumentation build's own precedent
+("identity already captured at the call site, discarded before persistence — thread it, don't
+re-derive it").** New module `requirement_intelligence/llm/generation_identity.py`:
+`GenerationIdentity` (`prompt_id`/`prompt_version`/`prompt_sha256`/`provider`/`model`), mirroring
+`TestableRequirementSetProvenance`'s own field shape exactly, generalized from "once per run" (L1)
+to "once per generated artifact" (L2/L3). All six L2/L3 generators
+(`LiveStepDefinitionGenerator`/`LivePageObjectGenerator`/`LiveUtilityGenerator`/
+`LiveTestDataGenerator`/`LiveFeatureContentGenerator`/`LiveFeatureRemediator`) gained a
+`last_identity` property, set at the exact point each already calls
+`self._usage_recorder.record(...)` — from the SAME already-captured `LLMResponse.model`/`.provider`
+and `PromptDefinition.metadata` the platform already had, never re-derived. Threaded outward through
+four outcome dataclasses (`GeneratedStepDefinition`, `GeneratedTestDataClass`, `GeneratedFeature`,
+`RemediationResult`) via `getattr(generator, "last_identity", None)` at each orchestrator/assembler
+call site (`orchestrate_step_definition`, `generate_test_data_class`, `generate_feature_file`,
+`run_cp2_remediation`) — duck-typed and optional, so `StubStepDefinitionGenerator`/
+`StubFeatureContentGenerator`/every other stub (no `last_identity` attribute) degrades to `None`,
+never an `AttributeError`. Finally threaded onto `AssetRecord`/`FeatureRecord` (both gained an
+additive `generation_identity: GenerationIdentity | None = None` field, `to_json`/`from_json`
+updated) at every construction site that corresponds to an outcome an LLM call actually produced —
+the SAME "identity exists only where a real generation happened" scoping `workspace_path` already
+uses; a `"bound"`/reused or `"escalated"` record carries `None`, by design, not omission.
+
+**A real bug found and fixed by this build's own tests, not merely a clean pass.** The runner-level
+threading test (`AssetRecord.generation_identity` surviving the FULL stage, not just the
+orchestrator) initially FAILED: `automation_engineering/stage/runner.py::_with_promotion` — the
+helper that reconstructs an `AssetRecord` after promotion, adding `promotion_status`/
+`promoted_path` — explicitly listed every field of the record it was rebuilding EXCEPT
+`generation_identity`, silently resetting it to `None` for every promoted asset. Fixed by adding
+the one missing line (`generation_identity=record.generation_identity`). This is exactly the class
+of bug an additive-field build risks — a reconstruction site that lists fields explicitly rather
+than copying the object wholesale — and exactly why the runner-level (not just generator-level)
+proof mattered.
+
+**Proof, deterministic, no live LLM call anywhere.** Generator-level: all six generators gained a
+`TestGenerationIdentityCapture` test class (mirrors each generator's own `TestTokenUsageRecording`
+class where one exists) proving identity is `None` before any call, populated correctly after a
+successful call (via each file's own hand-written `FakeProvider`), and left unset after a failed
+call. Orchestrator-level: `orchestrate_step_definition`/`generate_test_data_class` proven against a
+minimal hand-written `_IdentityCapturingGenerator` double (exposing only `.generate`/
+`.last_identity`) — the generated outcome carries the double's own identity; the pre-existing stub
+generator (no `last_identity` attribute) yields `None`, not a crash. `generate_feature_file`/
+`run_cp2_remediation` proven the same way against the real `LiveFeatureContentGenerator`/
+`LiveFeatureRemediator`. Runner-level (the bug-catching layer): a full `run_automation_engineering_
+stage` call with an identity-capturing step-def generator proves every resulting `AssetRecord`
+(including PROMOTED ones, after the fix) carries the generator's own identity. Additive both ways,
+proven not assumed: `make test` — **5832 passed** (5796 + 36 new: `TestGenerationIdentityCapture`/
+`TestGenerationIdentityThreading` classes across the six generator test files plus the orchestrator/
+test-data-orchestrator files, one runner-level test class, and a new
+`requirement_intelligence/tests/unit/test_generation_identity.py`) — every pre-existing test in
+every touched file passes byte-for-byte unchanged, proving no generation behavior changed (the
+generated Java/feature text is identical; only the new metadata is now persisted alongside it).
+`make lint`: clean. `mypy`: whole-repo error count unchanged (432, pre-existing baseline); zero new
+errors in any touched file.
+
+**Cache-ready, confirmed against Nitin's own key, not assumed.** His key: spec-slice + prompt-version
++ model-version + source-snapshot. This build supplies exactly the prompt-version
+(`prompt_id`/`prompt_version`/`prompt_sha256`) and model-version (`provider`/`model`) components —
+deliberately not spec-slice or source-snapshot, which belong to the requirement/artifact this
+identity is attached to, not to the identity object itself (the design-surfacing note's own finding:
+`TestableRequirement`'s `REQ-*` content-hash already serves as an interim proxy for both, no new
+work needed here for that piece).
+
+**Scope held exactly as recommended.** Identity persisted only — no cache, no cache key assembly, no
+delta-scoped regeneration, no deterministic/LLM split, no invalidation logic, no live-wiring beyond
+what already threads `usage_recorder` through today's live paths (this build's own six generators
+gain identity capture symmetrically with where they already gain token-usage capture — including
+`LivePageObjectGenerator`/`LiveUtilityGenerator`, not live-constructed by default, exactly mirroring
+the token-instrumentation build's own choice to instrument all seven call sites uniformly regardless
+of live-wiring status). This build unblocks the next recommended step (the artifact-level cache
+itself); it does not build it.
+
 ---
 
 ### Item 2 — Skills-first, agents-next (token minimization)

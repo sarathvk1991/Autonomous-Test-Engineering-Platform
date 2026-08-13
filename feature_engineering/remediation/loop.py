@@ -459,6 +459,7 @@ def run_cp2_remediation(
                 attempts=tuple(attempts),
                 final_content=remediated,
                 final_cp2_result=cp2_result,
+                generation_identity=getattr(remediator, "last_identity", None),
             )
 
     return RemediationResult(
@@ -468,6 +469,7 @@ def run_cp2_remediation(
         attempts=tuple(attempts),
         final_content=current_content,
         final_cp2_result=attempts[-1].cp2_result,
+        generation_identity=getattr(remediator, "last_identity", None),
         escalation_reason=f"exhausted {MAX_LLM_REMEDIATION_ATTEMPTS} LLM remediation attempts",
     )
 

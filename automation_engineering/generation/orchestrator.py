@@ -263,6 +263,7 @@ def orchestrate_step_definition(
             target_package=target_package,
             page_object_outcome=page_object_outcome,
             utility_outcome=utility_outcome,
+            generation_identity=getattr(generator, "last_identity", None),
         )
 
     raise AssertionError(f"unreachable: unknown ReuseDecision variant {decision!r}")

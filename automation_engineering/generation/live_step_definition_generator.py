@@ -74,6 +74,7 @@ from automation_engineering.generation.step_definition_generator import (
     StepDefinitionGenerationContext,
 )
 from automation_engineering.prompts.composition import build_prompt_registry
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 from requirement_intelligence.llm.llm_models import LLMRequest
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.llm.token_usage import TokenUsageTracker
@@ -153,6 +154,18 @@ class LiveStepDefinitionGenerator:
         self._template = parse_governed_template(definition.content)
         self._temperature = temperature
         self._usage_recorder = usage_recorder
+        self._last_identity: GenerationIdentity | None = None
+
+    @property
+    def last_identity(self) -> GenerationIdentity | None:
+        """The prompt/model identity of the most recent successful
+        :meth:`generate` call — ``None`` until the first call completes.
+        Purely additive observability (mirrors ``usage_recorder``'s own
+        optional-collaborator discipline, but as a always-captured instance
+        property rather than an injected recorder, since identity is
+        per-call, not summed): a caller that never reads this sees no
+        behavior change."""
+        return self._last_identity
 
     def generate(self, context: StepDefinitionGenerationContext) -> str:
         """Return generated Java step-definition source for ``context``.
@@ -187,6 +200,13 @@ class LiveStepDefinitionGenerator:
 
         if self._usage_recorder is not None:
             self._usage_recorder.record(CALL_TYPE, response.usage)
+        self._last_identity = GenerationIdentity(
+            prompt_id=self._definition.metadata.prompt_id,
+            prompt_version=self._definition.metadata.version,
+            prompt_sha256=self._definition.metadata.sha256,
+            provider=str(response.provider),
+            model=response.model,
+        )
 
         if response.execution_status != ExecutionStatus.COMPLETED:
             raise LiveGenerationError(

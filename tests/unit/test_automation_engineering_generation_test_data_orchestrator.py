@@ -43,6 +43,7 @@ from automation_engineering.generation.test_data_orchestrator import (
 )
 from contracts.test_data_specification import TestDataFieldSpec, TestDataSpecification
 from contracts.testable_requirement import PolarityHint
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 
 pytestmark = pytest.mark.unit
 
@@ -308,3 +309,47 @@ class TestNoLiveLlmInvolvementInOrchestration:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 assert "llm_factory" not in node.module
                 assert "embeddings" not in node.module
+
+
+class _IdentityCapturingGenerator:
+    """A minimal hand-written double exposing exactly the `.generate`/
+    `.last_identity` shape `LiveTestDataGenerator` exposes -- see
+    `test_automation_engineering_generation_orchestrator.py`'s own identical
+    double for the step-definition seam."""
+
+    def __init__(self, java_source: str, identity: GenerationIdentity) -> None:
+        self._java_source = java_source
+        self.last_identity = identity
+
+    def generate(self, context: object) -> str:
+        return self._java_source
+
+
+class TestGenerationIdentityThreading:
+    """The re-run/delta-scoped-regeneration cluster's own pinning foundation
+    (2026-08-13) -- purely additive: `StubTestDataGenerator` (every other
+    test in this file) has no `last_identity` attribute, degrading to `None`
+    via `getattr`, never an `AttributeError`."""
+
+    def test_generated_outcome_carries_the_generators_own_identity(self) -> None:
+        spec = _specification()
+        identity = GenerationIdentity(
+            prompt_id="generate_test_data",
+            prompt_version="1.0.0",
+            prompt_sha256="0" * 64,
+            provider="gemini",
+            model="fake-model",
+        )
+        generator = _IdentityCapturingGenerator(_COMPLIANT_JAVA, identity)
+
+        outcome = generate_test_data_class(spec, generator)
+
+        assert outcome.generation_identity == identity
+
+    def test_stub_generator_with_no_last_identity_attribute_yields_none(self) -> None:
+        spec = _specification()
+        generator = StubTestDataGenerator({spec.requirement_id: _COMPLIANT_JAVA})
+
+        outcome = generate_test_data_class(spec, generator)
+
+        assert outcome.generation_identity is None

@@ -387,6 +387,7 @@ def run_automation_engineering_stage(
                     class_name=class_name,
                     target_package=outcome.target_package,
                     workspace_path=written_path.relative_to(workspace_dir).as_posix(),
+                    generation_identity=outcome.generation_identity,
                 )
             )
         elif isinstance(outcome, BoundStepDefinition):
@@ -462,6 +463,7 @@ def run_automation_engineering_stage(
                 class_name=class_name,
                 target_package=td_outcome.target_package,
                 workspace_path=written_path.relative_to(workspace_dir).as_posix(),
+                generation_identity=td_outcome.generation_identity,
             )
         )
 
@@ -619,6 +621,7 @@ def _with_promotion(
         promotion_status=status,
         promotion_detail=detail,
         promoted_path=promoted_path,
+        generation_identity=record.generation_identity,
     )
 
 

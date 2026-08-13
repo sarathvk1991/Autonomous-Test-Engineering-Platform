@@ -290,6 +290,7 @@ def run_feature_engineering_stage(
                     cp2_verdict=cp2_result.overall_verdict.value,
                     remediated=False,
                     escalated=False,
+                    generation_identity=feature.generation_identity,
                 )
             )
             continue
@@ -331,6 +332,7 @@ def run_feature_engineering_stage(
                 remediated=True,
                 escalated=(result.status == RemediationStatus.ESCALATED),
                 escalation_reason=result.escalation_reason,
+                generation_identity=result.generation_identity,
             )
         )
 

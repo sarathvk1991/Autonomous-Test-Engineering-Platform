@@ -27,6 +27,7 @@ from automation_engineering.generation.step_definition_generator import (
     StepDefinitionGenerationContext,
     StubStepDefinitionGenerator,
 )
+from automation_engineering.prompts.composition import build_prompt_registry
 from automation_engineering.reuse.models import GherkinStepNeed
 from requirement_intelligence.llm.llm_exceptions import ProviderGenerationError
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
@@ -401,3 +402,53 @@ class TestTokenUsageRecording:
             generator.generate(_context())
 
         assert tracker.by_call_type() == {}
+
+
+class TestGenerationIdentityCapture:
+    """The re-run/delta-scoped-regeneration cluster's own pinning foundation
+    (2026-08-13) -- purely additive, same discipline as
+    `TestTokenUsageRecording` above: a generator no caller ever reads
+    `.last_identity` on behaves exactly as it did before this module
+    existed."""
+
+    def test_no_identity_before_any_call(self) -> None:
+        generator = LiveStepDefinitionGenerator(FakeProvider())
+
+        assert generator.last_identity is None
+
+    def test_successful_call_captures_prompt_and_model_identity(self) -> None:
+        provider = FakeProvider()
+        generator = LiveStepDefinitionGenerator(provider)
+        expected_definition = build_prompt_registry().get("generate_step_definitions", "1.1.0")
+
+        generator.generate(_context())
+
+        identity = generator.last_identity
+        assert identity is not None
+        assert identity.model == "fake-model"
+        assert identity.provider == str(ProviderType.GEMINI)
+        assert identity.prompt_id == expected_definition.metadata.prompt_id
+        assert identity.prompt_version == expected_definition.metadata.version
+        assert identity.prompt_sha256 == expected_definition.metadata.sha256
+
+    def test_identity_reflects_the_most_recent_call_only(self) -> None:
+        provider = FakeProvider()
+        generator = LiveStepDefinitionGenerator(provider)
+
+        generator.generate(_context(_need("I log in as {string}")))
+        first_identity = generator.last_identity
+        generator.generate(_context(_need("I log out")))
+        second_identity = generator.last_identity
+
+        assert first_identity is not None
+        assert second_identity is not None
+        assert first_identity == second_identity  # same fake provider/prompt both calls
+
+    def test_a_failed_call_leaves_identity_unset(self) -> None:
+        provider = FakeProvider(raises=ValueError("boom"))
+        generator = LiveStepDefinitionGenerator(provider)
+
+        with pytest.raises(LiveGenerationError):
+            generator.generate(_context())
+
+        assert generator.last_identity is None

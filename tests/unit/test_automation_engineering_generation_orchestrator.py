@@ -53,6 +53,7 @@ from automation_engineering.generation.step_definition_generator import (
 )
 from automation_engineering.reuse.matcher import StubSemanticMatcher
 from automation_engineering.reuse.models import EscalationCheck, GherkinStepNeed, MatchCandidate
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 
 pytestmark = pytest.mark.unit
 
@@ -646,6 +647,72 @@ class TestDeterminism:
         )
 
         assert first == second
+
+
+class _IdentityCapturingGenerator:
+    """A minimal hand-written double exposing exactly the `.generate`/
+    `.last_identity` shape `LiveStepDefinitionGenerator` exposes -- proves
+    `orchestrate_step_definition` reads `last_identity` via `getattr`
+    (duck-typed, optional) without needing the full live-provider stack."""
+
+    def __init__(self, java_source: str, identity: GenerationIdentity) -> None:
+        self._java_source = java_source
+        self.last_identity = identity
+
+    def generate(self, context: object) -> str:
+        return self._java_source
+
+
+def _identity(model: str = "fake-model") -> GenerationIdentity:
+    return GenerationIdentity(
+        prompt_id="generate_step_definitions",
+        prompt_version="1.1.0",
+        prompt_sha256="0" * 64,
+        provider="gemini",
+        model=model,
+    )
+
+
+class TestGenerationIdentityThreading:
+    """The re-run/delta-scoped-regeneration cluster's own pinning foundation
+    (2026-08-13) -- purely additive: a generator with no `last_identity`
+    attribute (`StubStepDefinitionGenerator`, every pre-existing test in this
+    file) behaves exactly as before, proven implicitly by every test above
+    still passing unchanged."""
+
+    def test_generated_outcome_carries_the_generators_own_identity(self) -> None:
+        need = _need("I log out")
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({need.text: ()})
+        identity = _identity()
+        generator = _IdentityCapturingGenerator(
+            "package com.automation.steps;\n\n"
+            "public class LogoutSteps {\n"
+            "    public void iLogOut() {}\n"
+            "}\n",
+            identity,
+        )
+
+        outcome = orchestrate_step_definition(need, catalog, matcher, generator)
+
+        assert isinstance(outcome, GeneratedStepDefinition)
+        assert outcome.generation_identity == identity
+
+    def test_stub_generator_with_no_last_identity_attribute_yields_none(self) -> None:
+        """`StubStepDefinitionGenerator` never sets `last_identity` -- the
+        `getattr(..., None)` threading degrades to `None`, never an
+        `AttributeError`."""
+        need = _need("I log out")
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({need.text: ()})
+        generator = StubStepDefinitionGenerator(
+            {need.text: "package com.automation.steps;\npublic class LogoutSteps {}\n"}
+        )
+
+        outcome = orchestrate_step_definition(need, catalog, matcher, generator)
+
+        assert isinstance(outcome, GeneratedStepDefinition)
+        assert outcome.generation_identity is None
 
 
 class TestNoLiveLlmInvolvementInOrchestration:

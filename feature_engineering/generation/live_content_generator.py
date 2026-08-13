@@ -44,6 +44,7 @@ from uuid import uuid4
 from contracts.testable_requirement import TestableRequirement
 from feature_engineering.generation.errors import TransportFailureError
 from feature_engineering.prompts.composition import build_prompt_registry
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 from requirement_intelligence.llm.llm_models import LLMRequest
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from requirement_intelligence.llm.token_usage import TokenUsageTracker
@@ -119,6 +120,15 @@ class LiveFeatureContentGenerator:
         self._definition = registry.get(_PROMPT_ID, _PROMPT_VERSION)
         self._temperature = temperature
         self._usage_recorder = usage_recorder
+        self._last_identity: GenerationIdentity | None = None
+
+    @property
+    def last_identity(self) -> GenerationIdentity | None:
+        """The prompt/model identity of the most recent successful
+        :meth:`generate` call — ``None`` until the first call completes.
+        Purely additive (mirrors ``LiveStepDefinitionGenerator.last_identity``'s
+        own discipline)."""
+        return self._last_identity
 
     def generate(self, requirement: TestableRequirement) -> str:
         """Return raw scenario/background content for *requirement*.
@@ -154,6 +164,13 @@ class LiveFeatureContentGenerator:
 
         if self._usage_recorder is not None:
             self._usage_recorder.record(CALL_TYPE, response.usage)
+        self._last_identity = GenerationIdentity(
+            prompt_id=self._definition.metadata.prompt_id,
+            prompt_version=self._definition.metadata.version,
+            prompt_sha256=self._definition.metadata.sha256,
+            provider=str(response.provider),
+            model=response.model,
+        )
 
         if response.execution_status != ExecutionStatus.COMPLETED:
             raise LiveGenerationError(

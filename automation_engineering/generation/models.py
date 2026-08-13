@@ -54,6 +54,7 @@ from dataclasses import dataclass
 from automation_engineering.catalog.models import CatalogAsset, JavaParameter
 from automation_engineering.reuse.models import Escalation, GherkinStepNeed
 from contracts.test_data_specification import TestDataSpecification
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 
 # ---------------------------------------------------------------------------
 # Page-object need
@@ -189,6 +190,11 @@ class GeneratedStepDefinition:
     target_package: str
     page_object_outcome: GeneratedPageObject | BoundPageObjectMethod | None = None
     utility_outcome: GeneratedUtility | BoundUtilityMethod | None = None
+    #: The prompt/model identity that produced ``java_source`` (additive,
+    #: re-run/delta-scoped-regeneration cluster's pinning foundation) --
+    #: threaded from the generator's own ``last_identity`` by
+    #: :func:`.orchestrator.orchestrate_step_definition`, never re-derived.
+    generation_identity: GenerationIdentity | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,6 +424,12 @@ class GeneratedTestDataClass:
     java_source: str
     target_package: str
     class_name: str
+    #: The prompt/model identity that produced ``java_source`` (additive,
+    #: re-run/delta-scoped-regeneration cluster's pinning foundation) --
+    #: threaded from the generator's own ``last_identity`` by
+    #: :func:`.test_data_orchestrator.generate_test_data_class`, never
+    #: re-derived.
+    generation_identity: GenerationIdentity | None = None
 
 
 __all__ = [

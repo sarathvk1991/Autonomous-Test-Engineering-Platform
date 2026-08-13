@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from feature_engineering.cp2.models import CP2Result
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 
 #: ADR-0043 D5: "Two rules are non-remediable: no-empty-file,
 #: no-files-without-scenarios... A violation of either means generation
@@ -92,6 +93,12 @@ class RemediationResult:
     final_content: str
     final_cp2_result: CP2Result
     escalation_reason: str | None = None
+    #: The prompt/model identity of the LAST Tier-2 (LLM) remediation
+    #: attempt (additive, re-run/delta-scoped-regeneration cluster's pinning
+    #: foundation) -- threaded from the remediator's own `last_identity` by
+    #: `run_cp2_remediation`, never re-derived. `None` when no Tier-2 attempt
+    #: ever ran (Tier-1-only pass, or a non-remediable escalation).
+    generation_identity: GenerationIdentity | None = None
 
     @property
     def llm_attempt_count(self) -> int:

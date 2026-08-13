@@ -30,6 +30,7 @@ from feature_engineering.generation import (
     StubFeatureContentGenerator,
     generate_feature_file,
 )
+from feature_engineering.prompts.composition import build_prompt_registry
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
 from shared.enums.base import ExecutionStatus, ProviderType
@@ -283,3 +284,63 @@ class TestSeamCoexistenceWithTheCore:
         result = generate_feature_file(req, stub, features_root=tmp_path)
 
         assert result.lint_result.is_clean
+
+
+class TestGenerationIdentityCapture:
+    """The re-run/delta-scoped-regeneration cluster's own pinning foundation
+    (2026-08-13) -- purely additive (mirrors `LiveStepDefinitionGenerator`'s
+    own `last_identity` discipline)."""
+
+    def test_no_identity_before_any_call(self) -> None:
+        generator = LiveFeatureContentGenerator(FakeProvider())
+
+        assert generator.last_identity is None
+
+    def test_successful_call_captures_prompt_and_model_identity(self) -> None:
+        req = _requirement()
+        provider = FakeProvider()
+        generator = LiveFeatureContentGenerator(provider)
+        expected_definition = build_prompt_registry().get("generate_feature", "1.1.0")
+
+        generator.generate(req)
+
+        identity = generator.last_identity
+        assert identity is not None
+        assert identity.model == "fake-model"
+        assert identity.provider == str(ProviderType.GEMINI)
+        assert identity.prompt_id == expected_definition.metadata.prompt_id
+        assert identity.prompt_version == expected_definition.metadata.version
+        assert identity.prompt_sha256 == expected_definition.metadata.sha256
+
+    def test_a_failed_call_leaves_identity_unset(self) -> None:
+        req = _requirement()
+        provider = FakeProvider(raises=ValueError("boom"))
+        generator = LiveFeatureContentGenerator(provider)
+
+        with pytest.raises(LiveGenerationError):
+            generator.generate(req)
+
+        assert generator.last_identity is None
+
+    def test_generate_feature_file_threads_identity_onto_generated_feature(
+        self, tmp_path: Path
+    ) -> None:
+        """The orchestrator-level thread (`assembler.generate_feature_file`)
+        carries the SAME identity `LiveFeatureContentGenerator.last_identity`
+        captured onto its own `GeneratedFeature.generation_identity` --
+        never re-derived."""
+        req = _requirement()
+        raw_content = (
+            f"@{req.acceptance_criteria[0].criterion_id} @SCN-PENDING\n"
+            "Scenario: A generated scenario\n"
+            "  Given a precondition\n"
+            "  When an action occurs\n"
+            "  Then an outcome holds\n"
+        )
+        provider = FakeProvider(text=raw_content)
+        generator = LiveFeatureContentGenerator(provider)
+
+        result = generate_feature_file(req, generator, features_root=tmp_path)
+
+        assert result.generation_identity is not None
+        assert result.generation_identity == generator.last_identity

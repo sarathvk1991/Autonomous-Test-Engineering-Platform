@@ -28,6 +28,7 @@ from contracts.testable_requirement import (
 from feature_engineering.generation import FeatureGenerationError, StubFeatureContentGenerator
 from feature_engineering.generation.assembler import generate_feature_file
 from feature_engineering.gherkin_lint.models import Violation
+from feature_engineering.prompts.composition import build_prompt_registry
 from feature_engineering.remediation import (
     LiveFeatureRemediator,
     LiveRemediationError,
@@ -320,3 +321,78 @@ class TestNoLlmFactoryElsewhere:
                     assert "llm_factory" not in node.module, (
                         f"{py_file}: imports from {node.module}"
                     )
+
+
+class TestGenerationIdentityCapture:
+    """The re-run/delta-scoped-regeneration cluster's own pinning foundation
+    (2026-08-13) -- purely additive (mirrors `LiveStepDefinitionGenerator`'s
+    own `last_identity` discipline)."""
+
+    def test_no_identity_before_any_call(self) -> None:
+        remediator = LiveFeatureRemediator(FakeProvider())
+
+        assert remediator.last_identity is None
+
+    def test_successful_call_captures_prompt_and_model_identity(self) -> None:
+        provider = FakeProvider()
+        remediator = LiveFeatureRemediator(provider)
+        expected_definition = build_prompt_registry().get("fix_gherkin_lint", "1.0.0")
+
+        remediator.remediate("Feature: x\n", _VIOLATIONS)
+
+        identity = remediator.last_identity
+        assert identity is not None
+        assert identity.model == "fake-model"
+        assert identity.provider == str(ProviderType.GEMINI)
+        assert identity.prompt_id == expected_definition.metadata.prompt_id
+        assert identity.prompt_version == expected_definition.metadata.version
+        assert identity.prompt_sha256 == expected_definition.metadata.sha256
+
+    def test_a_failed_call_leaves_identity_unset(self) -> None:
+        provider = FakeProvider(raises=ValueError("boom"))
+        remediator = LiveFeatureRemediator(provider)
+
+        with pytest.raises(LiveRemediationError):
+            remediator.remediate("Feature: x\n", _VIOLATIONS)
+
+        assert remediator.last_identity is None
+
+    def test_run_cp2_remediation_threads_identity_onto_its_result(self) -> None:
+        """The D5-loop-level thread (`loop.run_cp2_remediation`) carries the
+        SAME identity `LiveFeatureRemediator.last_identity` captured onto
+        `RemediationResult.generation_identity` -- never re-derived."""
+        req = _requirement()
+        (ac,) = req.acceptance_criteria
+        raw = (
+            f"@smoke @{ac.criterion_id} @SCN-PENDING\n"
+            "Scenario: Duplicate name\n"
+            "  Given a\n"
+            "  When b\n"
+            "  Then c\n"
+            "\n"
+            f"@regression @{ac.criterion_id} @SCN-PENDING\n"
+            "Scenario: Duplicate name\n"
+            "  Given d\n"
+            "  When e\n"
+            "  Then f\n"
+        )
+        with pytest.raises(FeatureGenerationError) as excinfo:
+            generate_feature_file(
+                req,
+                StubFeatureContentGenerator({req.requirement_id: raw}),
+                features_root=Path("/tmp/unused"),
+            )
+        dirty = excinfo.value.content
+        assert dirty is not None
+        head, _sep, tail = dirty.rpartition("Scenario: Duplicate name")
+        fixed = head + "Scenario: Renamed second scenario" + tail
+        provider = FakeProvider(text=f"---FEATURE---\n{fixed}---CHANGES---\n")
+        remediator = LiveFeatureRemediator(provider)
+
+        result = run_cp2_remediation(
+            req, dirty, req_tag=f"@{req.requirement_id}", remediator=remediator
+        )
+
+        assert result.status == RemediationStatus.PASSED
+        assert result.generation_identity is not None
+        assert result.generation_identity == remediator.last_identity

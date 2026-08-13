@@ -67,6 +67,7 @@ from feature_engineering.stage.test_data_spec import (
     test_data_specifications_to_json,
 )
 from feature_engineering.stage.workspace import materialize_workspace
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 from requirement_intelligence.run_state.atomic_write import atomic_write_json
 from requirement_intelligence.run_state.models import StageRecord
 from requirement_intelligence.run_state.run_state_manager import RunStateManager
@@ -361,6 +362,81 @@ class TestEndToEndChain:
         first = _run()
         second = _run()
         assert first == second
+
+
+# ---------------------------------------------------------------------------
+# The re-run/delta-scoped-regeneration cluster's own pinning foundation
+# (2026-08-13) -- generation identity threaded all the way onto AssetRecord
+# ---------------------------------------------------------------------------
+
+
+class _IdentityCapturingStepGenerator:
+    """A minimal hand-written double exposing exactly the `.generate`/
+    `.last_identity` shape `LiveStepDefinitionGenerator` exposes -- see
+    `test_automation_engineering_generation_orchestrator.py`'s own identical
+    double."""
+
+    def __init__(self, canned: dict[str, str], identity: GenerationIdentity) -> None:
+        self._canned = canned
+        self.last_identity = identity
+
+    def generate(self, context: object) -> str:
+        return self._canned[context.need.text]  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+class TestGenerationIdentityThreadedOntoAssetRecord:
+    """Purely additive: `StubStepDefinitionGenerator` (every other test in
+    this file) has no `last_identity` attribute, degrading to `None` via
+    `getattr` -- proven implicitly by `TestEndToEndChain` above still
+    passing unchanged."""
+
+    def test_generated_asset_records_carry_the_generators_own_identity(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _LOGIN_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+        matcher = StubSemanticMatcher(
+            {
+                "I am on the login page": (),
+                'I log in as "bob"': (),
+                "I see the dashboard": (),
+            }
+        )
+        identity = GenerationIdentity(
+            prompt_id="generate_step_definitions",
+            prompt_version="1.1.0",
+            prompt_sha256="0" * 64,
+            provider="gemini",
+            model="fake-model",
+        )
+        step_gen = _IdentityCapturingStepGenerator(
+            {
+                "I am on the login page": _clean_java("LoginPageSteps", "iAmOnTheLoginPage"),
+                'I log in as "bob"': _clean_java("LoginActionSteps", "iLogInAsBob"),
+                "I see the dashboard": _clean_java("DashboardSteps", "iSeeTheDashboard"),
+            },
+            identity,
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        assert result.package.records
+        for record in result.package.records:
+            assert record.outcome == "generated"
+            assert record.generation_identity == identity
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ from automation_engineering.generation.page_object_generator import (
     PageObjectGenerationContext,
     StubPageObjectGenerator,
 )
+from automation_engineering.prompts.composition import build_prompt_registry
 from automation_engineering.reuse.models import GherkinStepNeed
 from requirement_intelligence.llm.llm_models import LLMRequest, LLMResponse, LLMUsage
 from requirement_intelligence.llm.providers.base_provider import LLMProvider
@@ -897,3 +898,38 @@ class TestLiveGeneratorConveysDerivedCallSiteParameters:
         generator.generate(_context(method_name=_DEFAULT_METHOD_NAME, parameters=()))
 
         assert provider.requests[0].metadata["prompt_version"] == "1.3.0"
+
+
+class TestGenerationIdentityCapture:
+    """The re-run/delta-scoped-regeneration cluster's own pinning foundation
+    (2026-08-13) -- purely additive (mirrors `LiveStepDefinitionGenerator`'s
+    own `last_identity` discipline)."""
+
+    def test_no_identity_before_any_call(self) -> None:
+        generator = LivePageObjectGenerator(FakeProvider())
+
+        assert generator.last_identity is None
+
+    def test_successful_call_captures_prompt_and_model_identity(self) -> None:
+        provider = FakeProvider()
+        generator = LivePageObjectGenerator(provider)
+        expected_definition = build_prompt_registry().get("generate_page_objects", "1.3.0")
+
+        generator.generate(_context(method_name=_DEFAULT_METHOD_NAME, parameters=()))
+
+        identity = generator.last_identity
+        assert identity is not None
+        assert identity.model == "fake-model"
+        assert identity.provider == str(ProviderType.GEMINI)
+        assert identity.prompt_id == expected_definition.metadata.prompt_id
+        assert identity.prompt_version == expected_definition.metadata.version
+        assert identity.prompt_sha256 == expected_definition.metadata.sha256
+
+    def test_a_failed_call_leaves_identity_unset(self) -> None:
+        provider = FakeProvider(raises=ValueError("boom"))
+        generator = LivePageObjectGenerator(provider)
+
+        with pytest.raises(LiveGenerationError):
+            generator.generate(_context(method_name=_DEFAULT_METHOD_NAME, parameters=()))
+
+        assert generator.last_identity is None
