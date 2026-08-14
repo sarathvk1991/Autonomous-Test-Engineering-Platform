@@ -152,11 +152,63 @@ class TestTokenUsageTracker:
         assert list(tracker.by_call_type().keys()) == ["third", "first", "second"]
 
 
+class TestCacheHitRecording:
+    """ADR-0050 D3's "Gap 2" closure: a cache hit is *zero-cost-verified*,
+    a distinct fact from both a measured and an unmeasured LLM call."""
+
+    def test_cache_hit_increments_cache_hit_count_only(self) -> None:
+        tracker = TokenUsageTracker()
+        tracker.record_cache_hit("step_definition_generation")
+
+        totals = tracker.by_call_type()["step_definition_generation"]
+        assert totals.cache_hit_count == 1
+        assert totals.call_count == 0
+        assert totals.unmeasured_call_count == 0
+        assert totals.total_tokens == 0
+
+    def test_cache_hit_is_distinct_from_unmeasured(self) -> None:
+        """The exact scorecard confusion ADR-0050 D3 named: recording a hit
+        via `record(call_type, None)` would inflate `unmeasured_call_count`
+        -- an incompleteness signal -- rather than showing a verified
+        saving. This proves the two buckets never conflate."""
+        tracker = TokenUsageTracker()
+        tracker.record("step_definition_generation", None)
+        tracker.record_cache_hit("step_definition_generation")
+
+        totals = tracker.by_call_type()["step_definition_generation"]
+        assert totals.unmeasured_call_count == 1
+        assert totals.cache_hit_count == 1
+
+    def test_multiple_hits_accumulate(self) -> None:
+        tracker = TokenUsageTracker()
+        tracker.record_cache_hit("step_definition_generation")
+        tracker.record_cache_hit("step_definition_generation")
+        tracker.record_cache_hit("step_definition_generation")
+
+        assert tracker.by_call_type()["step_definition_generation"].cache_hit_count == 3
+
+    def test_hits_and_measured_calls_coexist_in_the_same_call_type(self) -> None:
+        """The measured saving a re-run should show: a first run's real
+        call, then a second run's hit for the same call type."""
+        tracker = TokenUsageTracker()
+        tracker.record(
+            "step_definition_generation",
+            LLMUsage(prompt_tokens=100, completion_tokens=50, total_tokens=150),
+        )
+        tracker.record_cache_hit("step_definition_generation")
+
+        totals = tracker.by_call_type()["step_definition_generation"]
+        assert totals.call_count == 1
+        assert totals.total_tokens == 150
+        assert totals.cache_hit_count == 1
+
+
 class TestTokenUsageTotals:
     def test_plus_sums_every_field(self) -> None:
         a = TokenUsageTotals(
             call_count=1,
             unmeasured_call_count=0,
+            cache_hit_count=1,
             prompt_tokens=10,
             completion_tokens=5,
             total_tokens=15,
@@ -164,6 +216,7 @@ class TestTokenUsageTotals:
         b = TokenUsageTotals(
             call_count=2,
             unmeasured_call_count=1,
+            cache_hit_count=2,
             prompt_tokens=20,
             completion_tokens=10,
             total_tokens=30,
@@ -171,6 +224,7 @@ class TestTokenUsageTotals:
         summed = a.plus(b)
         assert summed.call_count == 3
         assert summed.unmeasured_call_count == 1
+        assert summed.cache_hit_count == 3
         assert summed.prompt_tokens == 30
         assert summed.completion_tokens == 15
         assert summed.total_tokens == 45
@@ -179,6 +233,7 @@ class TestTokenUsageTotals:
         totals = TokenUsageTotals()
         assert totals.call_count == 0
         assert totals.unmeasured_call_count == 0
+        assert totals.cache_hit_count == 0
         assert totals.prompt_tokens == 0
         assert totals.completion_tokens == 0
         assert totals.total_tokens == 0

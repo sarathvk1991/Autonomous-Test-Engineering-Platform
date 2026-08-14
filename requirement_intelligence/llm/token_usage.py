@@ -31,10 +31,20 @@ class TokenUsageTotals(Schema):
     contract -- see ``GeminiProvider._extract_usage``'s own docstring) --
     tracked so a run with unmeasured calls is visibly incomplete rather than
     silently under-counted as zero-cost.
+
+    ``cache_hit_count`` counts calls the artifact-generation cache satisfied
+    without an LLM call at all (ADR-0050 D3's "Gap 2" -- a cache hit is
+    *zero-cost-verified*, a fundamentally different fact than "unmeasured": an
+    unmeasured call still cost real, unknown tokens; a cache hit provably cost
+    none. Recording a hit as ``unmeasured_call_count`` would make the very
+    saving this bucket exists to show look like a measurement gap instead --
+    the opposite of the intended signal. A hit therefore never increments
+    ``call_count`` either: it is not an LLM call this run made.
     """
 
     call_count: int = 0
     unmeasured_call_count: int = 0
+    cache_hit_count: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -50,6 +60,7 @@ class TokenUsageTotals(Schema):
         return TokenUsageTotals(
             call_count=self.call_count + other.call_count,
             unmeasured_call_count=self.unmeasured_call_count + other.unmeasured_call_count,
+            cache_hit_count=self.cache_hit_count + other.cache_hit_count,
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,
             total_tokens=self.total_tokens + other.total_tokens,
@@ -60,12 +71,12 @@ class TokenUsageTracker:
     """Accumulates :class:`LLMUsage` per named call type across one run.
 
     Deterministic and side-effect-free beyond its own internal state --
-    :meth:`record` is the only mutator, never raises, and performs no I/O.
-    Constructed once per run by whichever entry point (the CLI's
-    ``handle_analyze``, or a test) wants a token-by-stage breakdown, then
-    passed as an optional collaborator to the generator/service classes
-    that make LLM calls; a collaborator never given a tracker behaves
-    exactly as it did before this module existed.
+    :meth:`record`/:meth:`record_cache_hit` are the only mutators, neither
+    ever raises, and neither performs I/O. Constructed once per run by
+    whichever entry point (the CLI's ``handle_analyze``, or a test) wants a
+    token-by-stage breakdown, then passed as an optional collaborator to the
+    generator/service classes that make LLM calls; a collaborator never
+    given a tracker behaves exactly as it did before this module existed.
     """
 
     def __init__(self) -> None:
@@ -88,6 +99,16 @@ class TokenUsageTracker:
                 completion_tokens=usage.completion_tokens or 0,
                 total_tokens=usage.total_tokens or 0,
             )
+        self._totals_by_call_type[call_type] = current.plus(increment)
+
+    def record_cache_hit(self, call_type: str) -> None:
+        """Attribute one artifact-generation-cache hit to ``call_type``
+        (ADR-0050 D3's "Gap 2") -- the LLM call this hit skipped cost zero
+        new tokens, verified, not merely unmeasured. Does not increment
+        ``call_count``: a cache hit is not an LLM call this run made.
+        """
+        current = self._totals_by_call_type.get(call_type, TokenUsageTotals())
+        increment = TokenUsageTotals(cache_hit_count=1)
         self._totals_by_call_type[call_type] = current.plus(increment)
 
     def by_call_type(self) -> dict[str, TokenUsageTotals]:

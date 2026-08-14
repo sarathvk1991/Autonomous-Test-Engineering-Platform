@@ -615,6 +615,59 @@ a recommended first build; building any of it remains a future, separate task.
 
 Gate: `make lint` clean; `make test` 5832 unchanged. Tree modified only in this document.
 
+**ARTIFACT-LEVEL CACHE ADR + FIRST INCREMENT BUILT (2026-08-14) — ADR-first, then the first build
+step, both same-day, in that order (not the traceability graph's own scores-first inversion).**
+
+`docs/adr/0050-artifact-level-generation-cache.md` was written BEFORE any code, recording the
+corrected payload-hash key (the surfacing's own centerpiece finding, above) plus the store,
+interception, hit-consumption, and correctness decisions, Status `Proposed`. The same day, the
+first increment its own D5 named was built directly against it: `requirement_intelligence/llm/
+generation_cache.py` (`compute_cache_key`, `GenerationCacheEntry`, `GenerationCacheStore`) and
+`automation_engineering/generation/caching_step_definition_generator.py`
+(`CachingStepDefinitionGenerator`), wrapping `LiveStepDefinitionGenerator` only. Both D3 gaps
+closed: `resolve_step_definition_identity`/`build_step_definition_payload`
+(`live_step_definition_generator.py`, Gap 1 — pre-call identity, plus the single shared payload
+definition that closes D1's own "serialization drift" residual risk) and
+`TokenUsageTotals.cache_hit_count`/`TokenUsageTracker.record_cache_hit` (`token_usage.py`, Gap 2 —
+the zero-cost-verified bucket, distinct from `unmeasured_call_count`).
+
+**Proven two ways.** Deterministically (33 new tests: a payload field a naive `REQ-*`/id-only key
+would have missed changes the corrected key with `need.text` held fixed; a HIT skips the wrapped
+generator and returns the identical artifact; a changed input MISSES, never stales; a HIT replays
+the STORED identity across independent decorator/provider instances sharing only the on-disk
+store; a HIT records the new cache-hit bucket, never `unmeasured`; every pre-existing
+`LiveStepDefinitionGenerator` test still passes unchanged, proving the `_build_prompt` extraction
+is behavior-preserving; a genuine identity mismatch on a MISS raises rather than silently caching
+under the wrong key). And live: a standalone, uncommitted harness (mirroring `CAP-088`'s own
+first-measurement precedent) ran 3 realistic step-definition contexts against the real Gemini API
+twice — pass 1: 3 real calls, 7003 total tokens; pass 2 (fresh decorator + fresh provider instance,
+same on-disk cache): 0 new calls, 0 new tokens, 3 hits, byte-identical artifacts.
+`gemini-3.5-flash` (the platform default for this generator) returned transient `503` "high
+demand" at measurement time, confirmed model-specific by direct probe (`gemini-2.5-flash` and the
+platform's `GEMINI_MODEL` default both succeeded immediately) — the measurement ran on
+`gemini-2.5-flash` instead, a harness-only substitution; the cache key already includes `model`,
+so this has no bearing on the mechanism's own correctness.
+
+**ADR-0050 updated same-day, additively** (not a silent rewrite): Status `Proposed` → `Accepted`
+for this first increment's own scope, an "Implementation Note" section recording exactly what was
+built/proven, and the Consequences/Governance closing lines updated to match — mirroring how
+ADR-0044/ADR-0046/ADR-0047 each carry their own additive amendment notes rather than being
+re-authored. Accepted status is scoped explicitly to `LiveStepDefinitionGenerator` alone; the
+other four generators, the remediator, delta-scoped regeneration, and the deterministic/LLM split
+remain untouched, exactly as D5 sequenced.
+
+**Scope held.** Only the step-def generator wrapped. `scripts/run_requirement_analysis.py` still
+constructs `LiveStepDefinitionGenerator` directly, unwrapped — not live-wired, per D5. Governance
+follow-ons (a `CAP-089` matrix row, now recommended `Accepted`/`Implementation` rather than the
+ADR's original `Proposed`/`Architecture` framing, plus a register entry) remain flagged, not
+performed, mirroring ADR-0048's own deferred-entry pattern.
+
+Gate: `make lint` clean; `make test` 5865 passed (5832 + 33 new, itemized above); `mypy`: zero new
+errors in any touched or new file (whole-repo count fluctuates 432→434 on the unmodified baseline
+tree itself, confirmed by direct `git stash` comparison — not attributable to this build). Tree:
+3 new modules, 1 new ADR (already committed), 3 modified files (`live_step_definition_generator.py`,
+`token_usage.py`, `test_token_usage.py`), 1 new test file plus one new test module.
+
 ---
 
 ### Item 2 — Skills-first, agents-next (token minimization)

@@ -1,6 +1,6 @@
 # ADR-0050 — Artifact-Level Generation Cache
 
-- **Status:** Proposed
+- **Status:** Accepted (first increment, 2026-08-14 -- see "Implementation Note," below).
 - **Date:** 2026-08-14
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR *is* the governing design. It records the decisions
@@ -19,12 +19,25 @@
   precedent for a new, standalone capability ADR written for a focused mechanism rather than a
   whole layer, and source of `change_impact_for_method`/`build_change_impact_report`, this
   cache's own downstream consumer once delta-scoped regeneration is built).
-- **Runtime status: Not applicable.** This is a pure decision ADR — **no code is written by this
-  milestone.** No store module exists, no decorator class exists, no `PlatformContext` change
-  exists, no generator construction site is touched, no test is added, no version constant
-  changes, and no existing pipeline stage is touched. Every design named below is a **documented,
-  dormant decision**, not an implementation. A future, separate build milestone implements
-  exactly this design without redeciding it.
+- **Runtime status: Built and tested (first increment only — D5's own scope).**
+  `requirement_intelligence/llm/generation_cache.py` (`compute_cache_key`, `GenerationCacheEntry`,
+  `GenerationCacheStore`) and `automation_engineering/generation/
+  caching_step_definition_generator.py` (`CachingStepDefinitionGenerator`) exist, implementing D1–D4
+  exactly as decided below, wrapping `LiveStepDefinitionGenerator` only — the other four generators
+  and the remediator remain unwrapped, per D5. Both build-time gaps D3 named are closed:
+  `automation_engineering/generation/live_step_definition_generator.py` gained
+  `resolve_step_definition_identity` (Gap 1, pre-call identity) and `build_step_definition_payload`
+  (the single shared payload definition, closing the "serialization drift" residual risk named in
+  D1); `requirement_intelligence/llm/token_usage.py` gained `TokenUsageTotals.cache_hit_count` and
+  `TokenUsageTracker.record_cache_hit` (Gap 2, the zero-cost-verified bucket). Proven by 33 new
+  deterministic unit tests (`requirement_intelligence/tests/unit/test_generation_cache.py`,
+  `tests/unit/test_automation_engineering_generation_caching_step_definition_generator.py`, plus
+  additive `TestCacheHitRecording`/`TokenUsageTotals` cases) AND by one real, live measured run
+  (Implementation Note, below) — not merely unit-tested in isolation. **Not wired into any live
+  pipeline.** `scripts/run_requirement_analysis.py` still constructs `LiveStepDefinitionGenerator`
+  directly, unwrapped; no `PlatformContext` composition-root method exists for this cache and none
+  is added here — a future, separate milestone would wire it live, mirroring how ADR-0048's own
+  Traceability Graph stayed unwired after being built and measured.
 
 ## Problem
 
@@ -260,19 +273,69 @@ recommended as a target even after the five-generator wrap, absent new evidence.
 
 ---
 
+## Implementation Note (2026-08-14) — D5's first increment, built and measured
+
+The first increment D5 names (store + key + one decorator, wrapping
+`LiveStepDefinitionGenerator`, measured) was built the same day this ADR was written, closing both
+D3 gaps in the process. This note records what was actually verified — decisions above stay
+decisions; this is the separate record of what now backs them.
+
+**Correctness, proven deterministically, no live LLM call involved:**
+- A payload field a naive `REQ-*`/id-only key would have missed (`page_object_interface`,
+  `customqa_constraints`) changes the corrected key even with the step's own `need.text` held
+  fixed — the exact defect shape D1 found, proven not to recur.
+- A second `generate()` call with an unchanged context HITS and skips the wrapped generator
+  entirely (the inner provider's call count stays at 1, not 2).
+- A changed input (page-object interface, a customqa constraint, or the step text itself) MISSES
+  and regenerates — never a stale hit.
+- A HIT replays the STORED `GenerationIdentity`, not a fresh one, and does so across two
+  independent decorator/provider instances sharing only the on-disk store — proving cross-instance,
+  not merely intra-object, reuse.
+- A HIT records `TokenUsageTotals.cache_hit_count`, never `unmeasured_call_count` — the two
+  buckets proven distinct.
+- Every pre-existing `LiveStepDefinitionGenerator` test (`tests/unit/
+  test_automation_engineering_generation_step_definition_generator.py`) passes unchanged after
+  `build_step_definition_payload` was extracted from `_build_prompt` — the refactor is
+  behavior-preserving, not merely believed to be.
+- A MISS whose real, post-call identity does not match the caller-supplied pre-call identity raises
+  (`GenerationCacheIdentityMismatchError`) rather than silently caching under the wrong key.
+
+**The measured saving — one real, live run, not simulated.** A standalone, uncommitted harness
+script (mirroring `CAP-088`'s own first-measurement precedent: real code, not committed pipeline
+wiring) ran three realistic `StepDefinitionGenerationContext`s against the real, live Gemini API
+twice: once against a fresh on-disk cache (every call a genuine LLM call), once against the SAME
+on-disk cache from brand-new decorator and provider instances (a fresh process's own cold start,
+proxied). Pass 1: 3 real LLM calls, 7003 total tokens. Pass 2: 0 new LLM calls, 0 new tokens, 3
+cache hits, byte-identical artifacts to pass 1. `gemini-3.5-flash` (the platform's own
+step-definition-generation default) returned transient `503 UNAVAILABLE` ("high demand") from
+Google at measurement time — confirmed, by direct probe, to be model-specific, not an API-key or
+connectivity problem (`gemini-2.5-flash` and the platform's `GEMINI_MODEL` default both succeeded
+immediately) — so the measurement ran against `gemini-2.5-flash` instead, a harness-only
+substitution with no bearing on the cache mechanism itself, which is model-agnostic by
+construction (D1's key includes `model` as one of its own components precisely so a model swap is
+a correctly-computed miss, never a silent hit).
+
+**Scope held exactly as D5 decided.** Only `LiveStepDefinitionGenerator` is wrapped. The other four
+generators, the remediator, delta-scoped regeneration, and the deterministic/LLM split are all
+untouched by this increment — extending to them is the next, separate step D5 already named, not
+performed here.
+
 ## Consequences
 
-- **Enables**, once built: cross-run artifact reuse for the five wrapped generators, with a
-  measurable token saving shown by the existing token-usage scorecard, and the staleness signal
-  delta-scoped regeneration will consume next.
+- **Enables, proven for the first increment, extends to the rest by the same pattern:**
+  cross-run artifact reuse, with a measurable token saving now actually shown by the token-usage
+  scorecard (Implementation Note, above) for `LiveStepDefinitionGenerator`; the same store/key/
+  decorator pattern applies unchanged to the remaining four generators (future work); and the
+  staleness signal delta-scoped regeneration will consume next.
 - **Corrects a real design defect before it shipped.** The prior surfacing note's own recommended
   key would have produced silent stale hits on ordinary narrative/acceptance-criterion edits (D1).
   This ADR's key is the one any future build must implement — the corrected key is now the
   governed decision, not the prior note's.
-- **Two build-time gaps are named, not closed.** Pre-call identity exposure (D3, Gap 1) and the
-  token-scorecard cache-hit bucket (D3, Gap 2) are both small, additive, and required before the
-  first build can honestly claim to work — a future implementation milestone closes them, this ADR
-  does not.
+- **Both named build-time gaps are closed (Implementation Note, above).** Pre-call identity
+  exposure (D3, Gap 1 — `resolve_step_definition_identity`) and the token-scorecard cache-hit bucket
+  (D3, Gap 2 — `TokenUsageTotals.cache_hit_count`) are both built, additive, and proven by test —
+  no longer open for the step-def generator this increment wraps. Extending either closure to the
+  remaining four generators (Gap 1's `resolve_*_identity` equivalent per Protocol) is future work.
 - **Dependencies, satisfied or explicitly not required:** pinning (`GenerationIdentity`) is built
   and sufficient for D1's identity component; `_hash_artifacts`'s pattern and `atomic_write.py` are
   built and reusable for D2; the token-usage scorecard is built and is D5's measurement instrument.
@@ -281,16 +344,19 @@ recommended as a target even after the five-generator wrap, absent new evidence.
   its own matrix/register follow-ons as separate actions): (1) a
   `docs/governance/platform-capability-matrix.md` entry for **CAP-089** — Artifact-Level
   Generation Cache — confirmed the next unused id after `CAP-088` (Traceability Graph) in the
-  open-ended `CAP-060…` block (§3.1), status `Proposed`/`Architecture`, mirroring `CAP-087`'s own
-  row shape for a Proposed, code-free ADR; (2) a
+  open-ended `CAP-060…` block (§3.1); status `Accepted`/`Implementation` (updated from this ADR's
+  original `Proposed`/`Architecture` framing, above, now that the first increment is built and
+  measured — Implementation Note), mirroring `CAP-088`'s own row shape for a built-and-measured,
+  not-yet-wired capability rather than `CAP-087`'s pure-paper-freeze shape; (2) a
   `docs/architecture/architecture-baseline-v2.md` register entry recording this ADR, mirroring how
   ADR-0048's own entry was added in a later, separate task. Neither changes this ADR's Decision
   text if performed later.
-- **Becomes Accepted** once a future implementation milestone builds the store, the key, and the
-  first decorator (D5) directly against this design, closes the two named gaps (D3), and measures
-  the first real token saving — mirroring exactly how ADR-0030 states its own Proposed-to-Accepted
-  path ("once a future capability is built directly against it without deviation"). Until then this
-  ADR is a governed plan, not a certified capability.
+- **Became Accepted the same day** (Implementation Note, above): the store, the key, and the first
+  decorator (D5) were built directly against this design, both named gaps (D3) were closed, and the
+  first real token saving was measured — the exact Proposed-to-Accepted path this ADR named in
+  advance, mirroring ADR-0030's own convention. Accepted status covers this first increment's own
+  scope only (`LiveStepDefinitionGenerator`); the remaining four generators and the remediator stay
+  future, separate work (D5), not implicitly authorized by this status change.
 - **Relationship to the mentor cluster.** This is the second of Nitin's (one mentor) four-part
   re-run cluster to receive its own decision record — pinning was built without a dedicated ADR
   (additive infra, precedented shape); this cache, a new store/key/interception mechanism, is not.
@@ -306,14 +372,16 @@ recommended as a target even after the five-generator wrap, absent new evidence.
 - **Does not own:** `GenerationIdentity`, any live generator, any orchestrator, `RunStateManager`,
   `TokenUsageTracker`'s existing measured/unmeasured buckets (extended, not owned, by D3's Gap 2),
   or delta-scoped regeneration (a future, separate capability that consumes this one once built).
-- **Runtime position (not built):** generator construction site → `Caching<X>Generator` (new) →
-  key (D1) → store (D2) lookup → HIT: stored artifact + stored identity, LLM call skipped; MISS:
-  wrapped live generator called, result stored → identical downstream flow either way (D3/D4). No
-  `PlatformContext` method, no pipeline stage, no Execution Package artifact exists for this
-  capability today.
+- **Runtime position (built for the first increment; not live-wired):** generator construction
+  site → `CachingStepDefinitionGenerator` → key (D1) → store (D2) lookup → HIT: stored artifact +
+  stored identity, LLM call skipped; MISS: wrapped `LiveStepDefinitionGenerator` called, result
+  stored → identical downstream flow either way (D3/D4, proven — Implementation Note). This chain
+  exists and is tested for step-definition generation only; the equivalent `Caching<X>Generator`
+  for the other four Protocols does not exist yet. No `PlatformContext` method, no pipeline stage,
+  no Execution Package artifact exists for this capability today — `scripts/
+  run_requirement_analysis.py` does not construct `CachingStepDefinitionGenerator`.
 - **Governance:** recommended `CAP-089` (not yet entered — Consequences) for the Requirement
-  Intelligence Platform. This ADR is **Proposed** — a decision record for a capability that is
-  designed, not built, tested, or measured; it does not clear the bar ADR-0048 cleared (built,
-  tested, measured once against real data) and makes no such claim. It matches the bar ADR-0030
-  cleared for its own milestone: architecture frozen, zero runtime behavior, explicit path to
-  Accepted.
+  Intelligence Platform. This ADR is **Accepted** for its first increment (Implementation Note,
+  above) — it now clears the same bar ADR-0048 cleared (built, tested, measured once against real
+  data), for the scope D5 defined (one generator). It does not claim the full five-generator wrap is
+  built, tested, or measured — that remains future, separate work, exactly as D5 sequenced it.
