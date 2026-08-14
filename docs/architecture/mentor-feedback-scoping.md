@@ -788,6 +788,156 @@ the identical `**dict[str, str]` keyword-unpacking pattern already carried at tw
 not a new class of type error. Tree: 2 new modules, 1 modified file
 (`live_test_data_generator.py`), 1 new test file, this ADR amended further.
 
+**DELTA-SCOPED REGENERATION — THE CRUX SURFACED (2026-08-14, same day) — a design-surfacing task,
+nothing built.** Item 3 in the recommended build order above ("build delta-scoped regeneration on
+top, consuming both the new cache (staleness) and the already-built change-impact graph (blast
+radius)") is now attemptable — both its own named inputs exist: the artifact cache (three
+generators, above) and `change_impact_for_method`/`build_change_impact_report`
+(`requirement_intelligence/traceability_graph/change_impact.py`, built earlier). Before building
+anything, the real question Nitin's own model poses ("the cache tells you an artifact is stale; the
+change-impact graph tells you... which downstream artifacts that staleness actually reaches") needs
+an honest answer: does the cache already deliver "regenerate only what changed," or is there a real
+gap change-impact fills?
+
+*Pre-flight.* Clean tree, `main`, tip `8b47323` (test-data cache committed). `make lint` clean.
+`make test`: 5891 passed, unchanged. This note adds text only; nothing else touched.
+
+**What the cache already delivers, confirmed by re-reading all three wrapped generators' own
+payloads.** Each `Caching<X>Generator`'s key is `compute_cache_key(identity, payload)`, and
+`payload` is EXACTLY the generator's own `build_*_payload` — its real, direct determining input,
+per ADR-0050 D1. So on a re-run: requirement R's `narrative` changes → `build_feature_content_payload`
+changes → R's feature-content MISSES and regenerates; every OTHER requirement's feature-content
+payload is byte-identical → HIT, reused, zero tokens. The same holds for test-data (a `fields`/
+`required_variants` change) and step-def (a `need.text`/`customqa_constraints` change). **This IS
+"only regenerate what changed" at the direct-input level — already proven, not merely designed**:
+all three Implementation Notes above show exactly this (a changed field → MISS; unchanged → HIT;
+never a stale hit on a real edit).
+
+**The transitive-dependency trace — walking each generator's real dependency chain, not assuming
+one.**
+
+- **Feature-content has no generation-time dependency on anything downstream.** Its payload
+  (`title`/`narrative`/`component`/`acceptance_criteria`) is read straight off `TestableRequirement`
+  — Layer 1's own emission. Feature-content generation is the SOURCE of scenarios, not a consumer of
+  anything Layer 2/3 produces. No transitive gap is possible here — there is nothing upstream of it
+  in the generation DAG for the cache to miss.
+- **Test-data depends on the SAME Layer-1/2 fields feature-content does, never on generated feature
+  TEXT.** `TestDataSpecification` (`contracts/test_data_specification.py`) is derived from
+  `AcceptanceCriterion.data_fields`/`.polarity_hints` directly (`feature_engineering.stage.
+  test_data_spec`), never from the assembled `.feature` file's own prose. If only an AC's
+  `statement` (narrative wording) changes — not its `data_fields`/`polarity_hints` — feature-content
+  MISSES (statement is in its payload) while test-data correctly HITS (statement is not in test-data's
+  own dependency set at all). **Not a gap** — a narrower, correct dependency, not a stale hit.
+- **Step-def is where a real gap lives.** `StepDefinitionGenerationContext.page_object_interface`/
+  `.utility_interface` are, verbatim, "bare hint fields (a fully-qualified class name the generated
+  code MAY reference)" (`step_definition_generator.py`'s own docstring) — NOT the page-object's/
+  utility's actual method signature, parameter shape, or generated body. `build_step_definition_
+  payload` hashes only that bare class-name string. So: if a page-object class (say `LoginPage`)
+  gets a NEW or RENAMED method added in a later run — a real, already-built platform behavior, not
+  hypothetical: `orchestrate_page_object_class` (`page_object_orchestrator.py`) explicitly BATCHES
+  every NO_MATCH method-need for the SAME class into one generation call, and `derive_page_object_
+  class_name` derives the class name from the step's own action text, a stable semantic domain (e.g.
+  "log in" → `LoginPage`) that stays constant across runs even as new steps needing new methods on
+  that same page accumulate — a step-def's cache key (`need.text` + `page_object_interface=
+  "LoginPage"` + `customqa_constraints`) is COMPLETELY UNCHANGED by that page-object edit. **A cache
+  HIT reuses a step-def that calls a method whose current shape the cache never observed.** This is
+  the EXACT trigger Nitin's own clarification names as his selector example ("a page-object method's
+  source changed," THE THROUGH-LINE / NITIN'S CLARIFICATION notes, above) — not a scenario invented
+  for this note. `utility_interface` carries the identical bare-hint shape, so the same gap applies
+  symmetrically to utility bindings.
+
+**Does this cross ADR-0050 D4's own bar ("a cache that returns a wrong artifact is worse than no
+cache")? No — checked, not assumed.** A stale step-def calling a page-object method that no longer
+exists (or whose signature changed) does not silently produce a passing artifact — it fails to
+compile. `suite_quality_governance/cp5/compile_check.py` (`LiveCompileChecker`, real `mvn
+test-compile`, no `test` phase — compiles, never runs) is ALREADY built and live-wired into stage 16
+(`scripts/run_requirement_analysis.py`, behind the existing `--with-suite-quality-governance` flag,
+confirmed at the CLI construction site: `compile_checker=LiveCompileChecker()`). A staleness of this
+kind is a DETECTABLE, loud compile failure downstream — not a silent wrong artifact. D4's bar is not
+crossed; the failure mode is "wasted effort discovered at CP5," not "a wrong artifact shipped
+undetected."
+
+**Is this gap live TODAY?** Not yet, and for a specific, checkable reason: `LivePageObjectGenerator`/
+`LiveUtilityGenerator` are the two generators this cluster has NOT wrapped (the two remaining, per
+ADR-0050 D5) — page-object/utility generation is not itself cached, so there is no FROZEN prior
+page-object artifact for a step-def's cache entry to go stale against yet; every run regenerates
+page objects fresh regardless. The risk becomes live the moment page-object/utility generation ARE
+cached — the natural next step in this same cluster.
+
+**THE VERDICT: mixed, precisely bounded.** (a) For all three currently-wrapped generators' own
+DIRECT inputs, the cache already delivers accurate, measured, correct delta-scoped regeneration —
+confirmed, not designed. (b) There is exactly ONE real transitive gap, narrow and named: step-def
+(and, symmetrically, the not-yet-built utility caching) depends on page-object/utility SHAPE via a
+bare class-name hint the cache key cannot see past. It is not silent (CP5 catches it) and not yet
+live (page-object/utility aren't cached).
+
+**THE OPTIONS.**
+
+1. **A change-impact-driven invalidation pipeline** (what Nitin's own words most directly suggest):
+   consume `build_change_impact_report`'s method → affected-scenario map to force-miss the affected
+   step-def cache entries whenever a page-object method's own generation changes. Rejected as the
+   RECOMMENDED fix, for a structural reason, not a taste preference: `project_change_impact`'s own
+   `STEP → PAGE_OBJECT_METHOD` edges are built POST-HOC, by parsing ALREADY-GENERATED step-def Java
+   source (`derive_page_object_requests` over `workspace_dir / record.workspace_path`) — the graph
+   cannot exist until AFTER a run has already generated the Java it describes. A PRE-generation
+   cache-hit/miss decision needs to know the dependency BEFORE calling the generator; the
+   change-impact graph, as built, is definitionally too late to consult at that decision point in
+   the SAME run, and consulting a PRIOR run's graph introduces its own staleness question (was that
+   prior graph itself still accurate?). Its real, proven value is as a POST-HOC, HUMAN-facing
+   reporting/impact-analysis tool ("I am about to hand-edit `LoginPage.enterUsername`, show me every
+   scenario that reaches it") — genuinely useful on its own terms, already scoped that way by its own
+   module docstring ("this module never gates and never regenerates anything").
+2. **Widen the step-def (and future utility) payload itself — recommended.** Fold the transitive
+   dependency into D1's own key-construction discipline directly, the same way D1 already treats
+   `prompt_sha256`/`model` as first-class key components rather than bolting on a second
+   invalidation mechanism: when page-object/utility generation get their own artifact cache (the
+   natural next two increments), change `page_object_interface`/`utility_interface` from a bare class
+   name to a value that also captures the underlying page-object/utility artifact's own identity
+   (its own cache key, or a content-hash of its generated source) — so a page-object regeneration
+   that changes shape under the same class name PRODUCES a different step-def payload, and D1's
+   existing machinery (unmodified) does the rest. No new invalidation pipeline, no graph traversal at
+   cache-decision time, no second mechanism to keep in sync with the first — this is D1's own
+   "serialization drift... a code-review-time discipline for future context-field additions" residual
+   risk (already named in the ADR), applied to exactly the field this note identifies.
+3. **No build at all, right now — the actual recommendation.** The gap is real but currently
+   dormant (page-object/utility uncached), non-silent (CP5), and narrow (one field, two generators).
+   Building either option 1 or 2 today would be built against a dependency (page-object/utility
+   caching) that does not exist yet — premature. The right trigger for option 2 is "when page-object/
+   utility caching is built," not now.
+
+**Connecting to the token payoff, honestly.** The cache's own token savings are ALREADY measured and
+delivered (three real runs, above) — that is Nitin's primary "save token-maxxing costs" goal,
+substantially met without any further build. A change-impact-driven regen mechanism's INCREMENTAL
+value beyond the cache is confined to the one narrow transitive case above — and even there, option 2
+(a payload-widening fix, folded into the existing key) captures the same correctness benefit more
+cheaply than a graph-traversal-driven invalidation pipeline would, when the time comes. The
+INCREMENTAL value of building change-impact-driven regeneration specifically, as its own mechanism,
+is therefore assessed as LOW today and likely LOW even later (option 2 pre-empts most of its would-be
+value). Change-impact's OWN value is real and unrelated to this verdict — impact-analysis reporting
+for humans, unaffected either way.
+
+**RECOMMENDATION.** No delta-scoped-regeneration build now. Document that content-addressed,
+per-artifact caching (built, three generators) IS delta-scoped regeneration at the level Nitin's own
+"only regenerate what changed" goal targets for direct inputs — a good outcome, not a gap. Flag the
+one real transitive gap (step-def/utility ↔ page-object/utility, bare-class-name hint) as a NAMED,
+DEFERRED follow-on, to be closed by widening the dependent generators' payload (option 2) at the
+SAME time page-object/utility generation get their own artifact cache — not before, not as a
+separate change-impact-driven pipeline. Change-impact graph's scope stays exactly what it already
+is: a post-hoc, human-facing query/reporting tool, not a regeneration driver.
+
+**Clarify-with-mentor nuance, flagged.** Nitin's own words ("the cache tells you an artifact is
+stale; the change-impact graph tells you... which downstream artifacts that staleness actually
+reaches") and his own selector example ("a page-object method's source changed") are cited directly
+above and are the literal grounding for the one real gap this note finds. The specific verdict that
+this gap is narrow/dormant/non-silent, and that a payload-widening fix beats a change-impact-driven
+pipeline, is this note's own reading of the real code — not something Nitin weighed in on directly,
+the same caveat flagged for every prior design-surfacing note in this item.
+
+**Nothing built by this note.** No cache-invalidation logic, no payload widening, no change to
+`change_impact.py`'s own scope. `make lint`/`make test` unchanged (5891, confirmed above). Recorded
+here per the surfacing task's own instruction; CAP-089's matrix/register follow-ons remain flagged,
+unperformed, unchanged from the third increment's own note.
+
 ---
 
 ### Item 2 — Skills-first, agents-next (token minimization)
