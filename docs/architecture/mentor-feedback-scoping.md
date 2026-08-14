@@ -724,6 +724,70 @@ new instance, and it is the identical `**dict[str, str]` keyword-unpacking patte
 of type error, the same accepted pattern repeated at a second call site. Tree: 2 new modules, 1
 modified file (`live_content_generator.py`), 1 new test file, this ADR amended further.
 
+**ARTIFACT-LEVEL CACHE — THIRD INCREMENT BUILT (2026-08-14, same day) — `LiveTestDataGenerator`,
+the other co-dominant sink.** `test_data_generation` (21,387 tokens / 43.4% of the same 20-call
+distribution sample, above) was wrapped the same day — the third repeat of the identical pattern,
+the cleanest transfer of the three: `LiveTestDataGenerator` lives in the SAME package as
+`LiveStepDefinitionGenerator` (`automation_engineering.generation`), uses the same governed
+system/user template contract, and shares the same `TransportFailureError` hierarchy, so this
+increment's identity-mismatch error is REUSED from the step-def caching module rather than defined
+a third time. Pre-flight confirmed no wrinkles: `_build_prompt` already built a deterministic
+`json.dumps(..., sort_keys=True)` payload before its LLM call; identity is knowable pre-call the
+same way; the `TestDataGenerator` Protocol wraps with zero downstream changes; `test_data_generation`
+was already a registered call type, so `record_cache_hit` needed no change.
+
+Built: `automation_engineering/generation/caching_test_data_generator.py`
+(`CachingTestDataGenerator`), reusing `generation_cache.py`'s store/key AND
+`caching_step_definition_generator.py`'s `GenerationCacheIdentityMismatchError` unmodified;
+`live_test_data_generator.py` gained `resolve_test_data_identity`/`build_test_data_payload`.
+
+**Proven two ways**, mirroring both prior increments. Deterministically (13 new tests): a `fields`
+change with `requirement_id` held fixed MISSES (this generator's own version of the naive-key
+defect); a HIT skips the wrapped generator and returns the identical artifact; a changed
+`customqa_constraints`/`class_name` MISSES; a HIT replays the STORED identity across independent
+instances sharing only the on-disk store; a HIT records the cache-hit bucket under
+`test_data_generation`, never `unmeasured`; a MISS is byte-identical to an unwrapped
+`LiveTestDataGenerator` call; a genuine identity mismatch on a MISS raises. And live: the same
+standalone, uncommitted harness pattern ran 3 realistic `TestDataGenerationContext`s (checkout
+credentials, shipping-address postal code, search-filter category) against the real Gemini API
+twice — pass 1: 3 real calls, 3402 total tokens (3065 prompt + 337 completion); pass 2 (fresh
+decorator + fresh provider instance, same on-disk cache): 0 new calls, 0 new tokens, 3 hits,
+byte-identical artifacts. No model substitution was needed — the platform's own `GEMINI_MODEL`
+default (`gemini-3.1-flash-lite`) succeeded on every call on the first attempt, as it did for
+feature-content.
+
+**The ~89% correction, stated precisely (the artifacts win over any looser paraphrase).**
+Feature-content (45.4%) and test-data (43.4%) together already accounted for ~89% of that one
+measured run's own token total BY THEMSELVES — `step_definition_generation` recorded ZERO tokens in
+that specific run (30 of 60 step-def needs were reuse hits, the other 30 escalated before reaching
+the generator; a real, already-documented finding above, nothing to do with this cache). This
+increment caches BOTH of that run's dominant call types, alongside step-def (first increment, whose
+own savings depend on a colder catalog in some future run). `page_object_generation`/
+`utility_generation` remain both uncached AND absent from this same distribution entirely (not
+live-constructed in `handle_analyze` at measurement time) — their real share is unmeasured, not
+small.
+
+**ADR-0050 updated same-day, additively, a third time**: a third Implementation Note added; header
+Runtime status, Consequences, and Ownership/governance lines updated to name all three wrapped
+generators and to state the ~89%/zero-step-def finding precisely rather than the looser "three
+biggest sinks" phrasing an earlier draft of this note briefly used and this same session corrected
+before it left the ADR. Accepted status now covers `LiveStepDefinitionGenerator`,
+`LiveFeatureContentGenerator`, AND `LiveTestDataGenerator`; `LivePageObjectGenerator`/
+`LiveUtilityGenerator`, the remediator, delta-scoped regeneration, and the deterministic/LLM split
+remain untouched, exactly as D5 sequenced.
+
+**Scope held.** Only the test-data generator added to the wrapped set this pass.
+`scripts/run_requirement_analysis.py` still constructs `LiveTestDataGenerator` directly, unwrapped —
+not live-wired, per D5. Governance follow-ons (`CAP-089` matrix row, register entry) remain flagged,
+not performed, unchanged from the first two increments' own notes.
+
+Gate: `make lint` clean; `make test` 5891 passed (5878 + 13 new, itemized above); `mypy`: whole-repo
+count 435 (confirmed baseline before this change) → 436 with this change — exactly one new instance,
+the identical `**dict[str, str]` keyword-unpacking pattern already carried at two prior call sites
+(step-def's own test, feature-content's own test) — a third occurrence of the same accepted pattern,
+not a new class of type error. Tree: 2 new modules, 1 modified file
+(`live_test_data_generator.py`), 1 new test file, this ADR amended further.
+
 ---
 
 ### Item 2 — Skills-first, agents-next (token minimization)

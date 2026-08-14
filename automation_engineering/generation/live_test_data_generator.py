@@ -185,27 +185,81 @@ class LiveTestDataGenerator:
         the single ``{artifact_context}`` placeholder -- only the fields
         ``generate_test_data`` v1.0.0's own INPUT CONTRACT names.
         """
-        specification = context.specification
-        input_payload = {
-            "requirement_id": specification.requirement_id,
-            "target_class_name": context.class_name,
-            "target_package": context.target_package,
-            "fields": [
-                {
-                    "field_name": field.field_name,
-                    # `Schema.model_config` sets `use_enum_values=True`, so
-                    # `field.required_variants` already holds plain strings
-                    # (e.g. "positive"), not `PolarityHint` members -- `str`
-                    # itself is sortable directly, no `.value` unwrap needed.
-                    "required_variants": sorted(field.required_variants),
-                }
-                for field in specification.fields
-            ],
-            "customqa_constraints": list(context.customqa_constraints),
-        }
+        input_payload = build_test_data_payload(context)
         artifact_context = json.dumps(input_payload, indent=2, sort_keys=True)
         user_prompt = self._template.render_user_prompt(artifact_context)
         return f"{self._template.system_prompt}{_SECTION_SEPARATOR}{user_prompt}"
 
 
-__all__ = ["LiveGenerationError", "LiveTestDataGenerator"]
+def build_test_data_payload(context: TestDataGenerationContext) -> dict[str, object]:
+    """The exact, deterministic payload :meth:`LiveTestDataGenerator.
+    _build_prompt` serializes into the LLM call -- extracted to a public,
+    standalone function so there is exactly ONE definition of "what
+    determines this generator's output," used both to render the prompt and,
+    by :mod:`automation_engineering.generation.
+    caching_test_data_generator`, to compute the artifact-generation cache
+    key (ADR-0050 D1). Keeping this in one place is the guarantee against the
+    "serialization drift" residual risk ADR-0050 D1 named: the prompt and the
+    cache key cannot diverge from each other if they are built from the
+    identical dict.
+    """
+    specification = context.specification
+    return {
+        "requirement_id": specification.requirement_id,
+        "target_class_name": context.class_name,
+        "target_package": context.target_package,
+        "fields": [
+            {
+                "field_name": field.field_name,
+                # `Schema.model_config` sets `use_enum_values=True`, so
+                # `field.required_variants` already holds plain strings
+                # (e.g. "positive"), not `PolarityHint` members -- `str`
+                # itself is sortable directly, no `.value` unwrap needed.
+                "required_variants": sorted(field.required_variants),
+            }
+            for field in specification.fields
+        ],
+        "customqa_constraints": list(context.customqa_constraints),
+    }
+
+
+def resolve_test_data_identity(
+    *,
+    provider: str,
+    model: str,
+    prompt_registry: PromptRegistry | None = None,
+) -> GenerationIdentity:
+    """The ``generate_test_data`` v1.0.0 :class:`GenerationIdentity`,
+    resolved WITHOUT calling the LLM (ADR-0050 D3's "Gap 1" -- the pre-call
+    identity a caching decorator needs to compute a key BEFORE deciding
+    hit-or-miss).
+
+    Mirrors :func:`~automation_engineering.generation.
+    live_step_definition_generator.resolve_step_definition_identity` exactly:
+    ``prompt_id``/``prompt_version``/``prompt_sha256`` are read straight off
+    the registry -- the same, already-sealed source
+    :class:`LiveTestDataGenerator` itself reads in ``__init__``, never
+    re-derived. ``provider``/``model`` are supplied by the SAME caller that
+    already chose them when constructing the live provider -- not invented
+    here. A caller that supplies a value not matching what the provider will
+    actually echo back produces a caching decorator that raises on its first
+    MISS (the decorator's own identity-mismatch safety check), never a
+    silent wrong cache entry.
+    """
+    registry = prompt_registry if prompt_registry is not None else build_prompt_registry()
+    definition = registry.get(_PROMPT_ID, _PROMPT_VERSION)
+    return GenerationIdentity(
+        prompt_id=definition.metadata.prompt_id,
+        prompt_version=definition.metadata.version,
+        prompt_sha256=definition.metadata.sha256,
+        provider=provider,
+        model=model,
+    )
+
+
+__all__ = [
+    "LiveGenerationError",
+    "LiveTestDataGenerator",
+    "build_test_data_payload",
+    "resolve_test_data_identity",
+]
