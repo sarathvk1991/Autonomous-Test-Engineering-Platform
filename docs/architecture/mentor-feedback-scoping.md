@@ -668,6 +668,62 @@ tree itself, confirmed by direct `git stash` comparison — not attributable to 
 3 new modules, 1 new ADR (already committed), 3 modified files (`live_step_definition_generator.py`,
 `token_usage.py`, `test_token_usage.py`), 1 new test file plus one new test module.
 
+**ARTIFACT-LEVEL CACHE — SECOND INCREMENT BUILT (2026-08-14, same day) — `LiveFeatureContentGenerator`,
+the distribution's biggest sink.** ADR-0050 D5 named extension to the remaining four generators as
+future work, one at a time, measured; this is that next step, on
+`LiveFeatureContentGenerator` (`feature_content_generation`, 22,383 tokens / 45.4% of the 20-call
+distribution sample, above — the largest single call type, ahead of `test_data_generation` at
+43.4%). Pre-flight confirmed the step-def pattern transfers DIRECTLY, no wrinkles: the generator
+already builds a deterministic `json.dumps(..., sort_keys=True)` payload immediately before its LLM
+call (the same shape D1 already named for this generator); its identity is knowable pre-call the
+same way; its Protocol boundary (`FeatureContentGenerator.generate(requirement) -> str`) wraps with
+zero downstream changes; and the cache-hit token bucket needed no change at all — Gap 2's own build
+was already call-type-parameterized, not step-def-specific.
+
+Built: `feature_engineering/generation/caching_feature_content_generator.py`
+(`CachingFeatureContentGenerator`), reusing `generation_cache.py`'s store/key unmodified;
+`live_content_generator.py` gained `resolve_feature_content_identity`/`build_feature_content_payload`
+(the same Gap 1/serialization-drift closure, this generator's own version). The one adaptation:
+`GenerationCacheIdentityMismatchError` is a new class here (not a shared import) because
+`feature_engineering.generation.errors.TransportFailureError` and
+`automation_engineering.errors.TransportFailureError` are distinct per-package hierarchies.
+
+**Proven two ways**, mirroring the first increment exactly. Deterministically (13 new tests): a
+`narrative`/acceptance-criterion-`statement` change with `title` held fixed MISSES (this
+generator's own version of the naive-key defect D1 found); a HIT skips the wrapped generator and
+returns the identical artifact; a changed input MISSES, never stales; a HIT replays the STORED
+identity across independent instances sharing only the on-disk store; a HIT records the cache-hit
+bucket under `feature_content_generation`, never `unmeasured`; a MISS is byte-identical to an
+unwrapped `LiveFeatureContentGenerator` call; a genuine identity mismatch on a MISS raises rather
+than silently caching under the wrong key. And live: the same standalone, uncommitted harness
+pattern ran 3 realistic `TestableRequirement`s (password reset, shipping-address update,
+search-filter) against the real Gemini API twice — pass 1: 3 real calls, 3702 total tokens (3195
+prompt + 507 completion); pass 2 (fresh decorator + fresh provider instance, same on-disk cache): 0
+new calls, 0 new tokens, 3 hits, byte-identical artifacts. No model substitution was needed this
+time — the platform's own `GEMINI_MODEL` default (`gemini-3.1-flash-lite`) succeeded on every call
+on the first attempt.
+
+**ADR-0050 updated same-day, additively, again**: both Implementation Notes now coexist (step-def's
+own, unchanged; a new one for feature-content); the header Runtime status, Consequences, and
+Ownership/governance closing lines all updated to name both wrapped generators rather than one.
+Accepted status now covers `LiveStepDefinitionGenerator` AND `LiveFeatureContentGenerator`
+specifically; the remaining three generators, the remediator, delta-scoped regeneration, and the
+deterministic/LLM split remain untouched, exactly as D5 sequenced.
+
+**Scope held.** Only the feature-content generator added to the wrapped set this pass.
+`scripts/run_requirement_analysis.py` still constructs `LiveFeatureContentGenerator` directly,
+unwrapped — not live-wired, per D5. `test_data_generation`, the other near-equal sink, is flagged
+as the natural next candidate, not performed here. Governance follow-ons (`CAP-089` matrix row,
+register entry) remain flagged, not performed, unchanged from the first increment's own note.
+
+Gate: `make lint` clean; `make test` 5878 passed (5865 + 13 new, itemized above); `mypy`: whole-repo
+count 434 (unmodified baseline, confirmed by `git stash -u`) → 435 with this change — exactly one
+new instance, and it is the identical `**dict[str, str]` keyword-unpacking pattern
+`resolve_step_definition_identity`'s own test call site already carries in the first increment
+(confirmed: that call site independently reproduces the same error in isolation) — not a new class
+of type error, the same accepted pattern repeated at a second call site. Tree: 2 new modules, 1
+modified file (`live_content_generator.py`), 1 new test file, this ADR amended further.
+
 ---
 
 ### Item 2 — Skills-first, agents-next (token minimization)

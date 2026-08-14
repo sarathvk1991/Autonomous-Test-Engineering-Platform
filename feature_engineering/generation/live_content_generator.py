@@ -188,34 +188,85 @@ class LiveFeatureContentGenerator:
         return generated_text
 
     def _build_prompt(self, requirement: TestableRequirement) -> str:
-        """Render the governed template plus the structured requirement input.
-
-        Only the fields ``generate_feature`` v1.1.0's own INPUT CONTRACT
-        names -- ``title``, ``narrative``, ``acceptance_criteria`` (each with
-        its already-minted ``ac_id``, ``statement``, ``polarity_hints``), and
-        ``component`` -- are serialized. ``risks`` is deliberately omitted:
-        the governed prompt's INPUT CONTRACT does not name it, and
-        ``TestableRequirement.risks`` is always empty in ``contract_version``
-        1.0.0 (ADR-0042's own additive correction note; run-level risk data
-        lives on ``TestableRequirementSet``, not per-requirement) -- there is
-        no honest signal here to serialize.
-        """
-        input_payload = {
-            "title": requirement.title,
-            "narrative": requirement.narrative,
-            "component": requirement.component,
-            "acceptance_criteria": [
-                {
-                    "ac_id": ac.criterion_id,
-                    "statement": ac.statement,
-                    "polarity_hints": list(ac.polarity_hints),
-                }
-                for ac in requirement.acceptance_criteria
-            ],
-        }
+        """Render the governed template plus the structured requirement input."""
+        input_payload = build_feature_content_payload(requirement)
         input_block = json.dumps(input_payload, indent=2, sort_keys=True)
         template = self._definition.content.rstrip("\n")
         return f"{template}\n\nINPUT:\n{input_block}"
 
 
-__all__ = ["LiveFeatureContentGenerator", "LiveGenerationError"]
+def build_feature_content_payload(requirement: TestableRequirement) -> dict[str, object]:
+    """The exact, deterministic payload :meth:`LiveFeatureContentGenerator.
+    _build_prompt` serializes into the LLM call -- extracted to a public,
+    standalone function so there is exactly ONE definition of "what
+    determines this generator's output," used both to render the prompt and,
+    by :mod:`feature_engineering.generation.caching_feature_content_generator`,
+    to compute the artifact-generation cache key (ADR-0050 D1). Keeping this
+    in one place is the guarantee against the "serialization drift" residual
+    risk ADR-0050 D1 named: the prompt and the cache key cannot diverge from
+    each other if they are built from the identical dict.
+
+    Only the fields ``generate_feature`` v1.1.0's own INPUT CONTRACT names --
+    ``title``, ``narrative``, ``acceptance_criteria`` (each with its
+    already-minted ``ac_id``, ``statement``, ``polarity_hints``), and
+    ``component`` -- are serialized. ``risks`` is deliberately omitted: the
+    governed prompt's INPUT CONTRACT does not name it, and
+    ``TestableRequirement.risks`` is always empty in ``contract_version``
+    1.0.0 (ADR-0042's own additive correction note; run-level risk data lives
+    on ``TestableRequirementSet``, not per-requirement) -- there is no honest
+    signal here to serialize.
+    """
+    return {
+        "title": requirement.title,
+        "narrative": requirement.narrative,
+        "component": requirement.component,
+        "acceptance_criteria": [
+            {
+                "ac_id": ac.criterion_id,
+                "statement": ac.statement,
+                "polarity_hints": list(ac.polarity_hints),
+            }
+            for ac in requirement.acceptance_criteria
+        ],
+    }
+
+
+def resolve_feature_content_identity(
+    *,
+    provider: str,
+    model: str,
+    prompt_registry: PromptRegistry | None = None,
+) -> GenerationIdentity:
+    """The ``generate_feature`` v1.1.0 :class:`GenerationIdentity`, resolved
+    WITHOUT calling the LLM (ADR-0050 D3's "Gap 1" -- the pre-call identity a
+    caching decorator needs to compute a key BEFORE deciding hit-or-miss).
+
+    Mirrors :func:`~automation_engineering.generation.
+    live_step_definition_generator.resolve_step_definition_identity` exactly:
+    ``prompt_id``/``prompt_version``/``prompt_sha256`` are read straight off
+    the registry -- the same, already-sealed source
+    :class:`LiveFeatureContentGenerator` itself reads in ``__init__``, never
+    re-derived. ``provider``/``model`` are supplied by the SAME caller that
+    already chose them when constructing the live provider -- not invented
+    here. A caller that supplies a value not matching what the provider will
+    actually echo back produces a caching decorator that raises on its first
+    MISS (the decorator's own identity-mismatch safety check), never a
+    silent wrong cache entry.
+    """
+    registry = prompt_registry if prompt_registry is not None else build_prompt_registry()
+    definition = registry.get(_PROMPT_ID, _PROMPT_VERSION)
+    return GenerationIdentity(
+        prompt_id=definition.metadata.prompt_id,
+        prompt_version=definition.metadata.version,
+        prompt_sha256=definition.metadata.sha256,
+        provider=provider,
+        model=model,
+    )
+
+
+__all__ = [
+    "LiveFeatureContentGenerator",
+    "LiveGenerationError",
+    "build_feature_content_payload",
+    "resolve_feature_content_identity",
+]
