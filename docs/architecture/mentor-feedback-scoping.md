@@ -401,6 +401,220 @@ the token-instrumentation build's own choice to instrument all seven call sites 
 of live-wiring status). This build unblocks the next recommended step (the artifact-level cache
 itself); it does not build it.
 
+**ARTIFACT-LEVEL CACHE DESIGN SURFACED (2026-08-14) — the second recommended build step above, a
+design-surfacing task (build nothing), now possible because pinning
+(`PINNING FOUNDATION BUILT`, above) supplies prompt-version + model-version on every L2/L3
+outcome.**
+
+*Pre-flight.* Clean tree, `main`, tip `506b552` (pinning foundation committed). `make lint` clean.
+`make test`: 5832 passed, unchanged. This note adds text only to this document; nothing else
+touched.
+
+**Available key components, confirmed against real code, not the prior note's summary.**
+`GenerationIdentity` (`prompt_id`/`prompt_version`/`prompt_sha256`/`provider`/`model`) is real on
+every `AssetRecord`/`FeatureRecord` an LLM call produced. All five fields are, in fact, knowable
+*before* the LLM call, not only after: `prompt_sha256` comes from the registry at generator
+construction (`self._definition.metadata.sha256`, set in `__init__`); `model`/`provider` are
+already fixed at provider construction (`GeminiProvider.__init__` sets `self._model_name` once and
+echoes it verbatim into every `LLMResponse.model`, confirmed by reading `gemini_provider.py:366,
+450` — the response never reports a model the provider wasn't already going to use). Today,
+`last_identity` is populated only *after* a call returns, because it reads the identity off the
+*response*, not off the generator's own already-fixed construction-time state — a small, real gap
+for a cache that must decide hit/miss *before* calling (Lookup point, below), not a hard blocker.
+
+**Pipeline call path, traced per LLM-driven generator — where the call is made, what determines
+the output, where a cache could intercept.**
+
+| Generator | Input type | `_build_prompt` serializes | LLM call site | Intercept point |
+| --- | --- | --- | --- | --- |
+| `LiveStepDefinitionGenerator` | `StepDefinitionGenerationContext` | step text, step_type, captures, target_package, page_object_interface, utility_interface, customqa_constraints (`json.dumps(..., sort_keys=True)`) | `.generate(context)` | `StepDefinitionGenerator` Protocol boundary, called once from `orchestrate_step_definition` (`orchestrator.py:259`) |
+| `LivePageObjectGenerator` | `PageObjectGenerationContext` | class_name, need(s), return_type(s), parameters, target_package, customqa_constraints (incl. `additional_method_needs` batch) | `.generate(context)` | `PageObjectGenerator` Protocol boundary, `page_object_orchestrator.py` |
+| `LiveUtilityGenerator` | `UtilityGenerationContext` | action_text, captures, class_name, target_package, customqa_constraints | `.generate(context)` | `UtilityGenerator` Protocol boundary, `utility_orchestrator.py` |
+| `LiveTestDataGenerator` | `TestDataGenerationContext` | specification fields, target_class_name/package, customqa_constraints | `.generate(context)` | `TestDataGenerator` Protocol boundary, `generate_test_data_class` |
+| `LiveFeatureContentGenerator` | `TestableRequirement` | title, narrative, component, acceptance_criteria (ac_id/statement/polarity_hints) | `.generate(requirement)` | `FeatureContentGenerator` Protocol boundary, `generate_feature_file` |
+| `LiveFeatureRemediator` | `(content: str, violations)` | the feature text under repair + its lint violations | `.remediate(content, violations)` | different shape (repair, not first-generation) — weak caching candidate, flagged not recommended (below) |
+
+Every one of the five generation call sites (excluding the remediator) has the identical shape:
+constructor-injected provider (never selected inside the generator), one `generate`-like method,
+one `_build_prompt` that deterministically serializes a **complete, already-assembled JSON payload**
+before the call, one LLM call, one response. That JSON payload is the exact interception seam: it
+already exists, fully built, in memory, at the moment right before `self._provider.generate(request)`
+is called — nothing new needs deriving to hash it.
+
+**Output flow a hit must reproduce.** `generator.generate(...)` returns a plain `str` (Java source
+or feature text). The orchestrator wraps that string into an outcome dataclass
+(`GeneratedStepDefinition`, etc.) carrying `generation_identity=getattr(generator, "last_identity",
+None)`, which `automation_engineering/stage/runner.py` then writes to disk
+(`_write_generated_java`) and records as `AssetRecord(outcome="generated", ...,
+generation_identity=...)` — the same record shape `FeatureRecord` mirrors for L2. **A cache hit
+therefore only has to produce the same `str` the live call would have returned** — everything
+downstream (file-write, class-merge, `AssetRecord`/`FeatureRecord` construction, CP1-5 validation,
+promotion) is unchanged and already oblivious to whether the string came from a fresh call or a
+cache, exactly because those sites already consume `generator.generate(...)`/`.last_identity`
+through a Protocol/`getattr`, not a concrete class. This is confirmed, not assumed: the pinning
+build's own choice to thread `last_identity` via `getattr(generator, "last_identity", None)` —
+duck-typed, because stub generators don't have it — is the same shape a caching decorator needs,
+and was already proven safe at the runner level.
+
+**(A) Store shape.** On-disk, content-addressed — cross-run reuse is the entire point (an in-run
+dict cache would only save duplicate calls within one run, which the reuse-first orchestration and
+per-need dedup already mostly prevent; it would not touch Nitin's actual complaint, re-run cost
+across invocations). Recommend mirroring two already-proven platform patterns rather than inventing
+a third: `atomic_write.py`'s atomic JSON writer (durability — the same primitive `RunStateManager`
+already uses) and `_hash_artifacts`'s sha256-over-sorted-content pattern (the content-hash shape,
+not the class — `RunStateManager` itself is architecturally closed to the fixed 19-entry
+`STAGE_DEFINITIONS` catalogue, confirmed unusable as-is by the prior note). Shape: one file per
+cache entry, path derived from the key hash (`<cache_dir>/<hash[:2]>/<hash>.json`, avoiding one huge
+flat directory), storing `{generated_text, generation_identity, key_components (for diagnosis),
+created_at}`. Where `<cache_dir>` lives (a new env var/CLI flag, sibling to how run/workspace
+directories are already configured) is a small config decision, not designed here.
+
+**(B) The key — and the correctness crux.** The prior note's recommended key,
+`(REQ-* content hash, prompt_sha256, model)`, is **incomplete once checked against the actual
+`_build_prompt` code**, in two distinct ways:
+
+1. **For L2 (`LiveFeatureContentGenerator`), `REQ-*` under-covers its own generator's input.**
+   `generate_requirement_id` (`contracts/id_generation.py`) hashes only `normalize(title) +
+   source_external_ids` — but `_build_prompt` serializes `title`, `narrative`, `component`, *and*
+   `acceptance_criteria` (`ac_id`, `statement`, `polarity_hints`) into the actual prompt.
+   `generate_acceptance_criterion_id` is ordinal-based (`AC-<REQ short>-NN`), not content-hashed
+   either — so an edited `narrative`, `component`, or acceptance-criterion `statement`, with the
+   `title` unchanged, changes the generator's real output but **leaves `REQ-*` identical**. A cache
+   keyed on `REQ-*` would return a stale hit here — silently, with no signal anything was wrong.
+2. **For all four L3 generators, `REQ-*` is not even applicable.** Their inputs are
+   `StepDefinitionGenerationContext`/`PageObjectGenerationContext`/`UtilityGenerationContext`/
+   `TestDataGenerationContext` — step-need text, captures, target package, interface names,
+   `customqa` constraints, specifications — none of which carries or derives from a `REQ-*` id at
+   all (confirmed by reading all four context dataclasses; no field references it).
+
+**The corrected key:** hash the generator's **own already-assembled input payload** — the exact
+JSON string each `_build_prompt` already builds via `json.dumps(..., sort_keys=True)` right before
+the call — combined with `prompt_id` + `prompt_version` + `prompt_sha256` + `provider` + `model`.
+This is strictly more correct than a `REQ-*`/id-based proxy, and costs nothing new: the payload is
+already deterministically serialized in memory at the exact interception point (above), for the
+prompt itself — hashing it *is* hashing "what actually varies the output," by construction, not an
+approximation of it. `REQ-*`/`AC-*`/`method_name`/`step_text` remain valuable as a **human-readable
+label** on the cache entry (for diagnosis, or a future "invalidate everything touching REQ-1234"
+tool) — just not as the correctness-bearing hash component. **Two residual, flagged risks, not
+solved here:** (a) the key's completeness is only as good as each `_build_prompt`'s own
+serialization completeness — if a context dataclass ever grows a field a generator forgets to
+include in `input_payload`, the prompt and the cache key silently diverge together (a pre-existing
+correctness obligation these generators already carry for the LLM call itself, not a new one this
+design invents); (b) `temperature` (constant `0.0` platform-wide today, per `LLMRequest`'s own
+default) is not in `GenerationIdentity` or any context — harmless while it stays a hardcoded
+constant, but must join the key the moment it becomes configurable. Separately, and inherent to any
+LLM cache, not a defect of this design: hosted-model APIs do not guarantee bit-identical output
+across calls even at `temperature=0.0` — a perfect key guarantees "this was a genuine prior output
+for these exact inputs," never "identical to what a fresh call would produce today." The existing
+downstream gates (CP1-5, promotion) are the safety net for that residual gap, unchanged whether an
+artifact arrived via cache or a fresh call.
+
+**(C) Lookup point + hit consumption.** The five live generators (excluding the remediator) span
+**five different Protocols** with different input shapes (`StepDefinitionGenerator`,
+`PageObjectGenerator`, `UtilityGenerator`, `TestDataGenerator`, `FeatureContentGenerator`) — so
+there is no single universal wrapper class, but the *pattern* is identical across all five: one
+small `Caching<X>Generator` decorator per Protocol, each implementing that Protocol, each
+constructor-wrapping any inner generator conforming to it (mirroring exactly how
+`LiveStepDefinitionGenerator`/`StubStepDefinitionGenerator` are already peers behind the same
+seam) — and all five decorators delegate their actual key/get/put logic to **one shared, generic
+store module** (new, e.g. `requirement_intelligence/llm/generation_cache.py`), so the store/key
+logic itself is written once. This is the option-(ii) shape the surfacing prompt anticipated,
+correctly adapted to this platform's actual seam shape (per-Protocol, not per-call-site,
+and not one universal class — five Protocols really do differ). Rejected: (i) inline-per-generator
+(duplicates cache logic into the six *live*, LLM-calling classes themselves, mixing concerns those
+classes currently keep clean — each one's whole job today is "render prompt, call provider, wrap
+response"); (iii) at the orchestrator (there are 4+ distinct call sites —
+`orchestrate_step_definition`, `orchestrate_page_object_method`, `orchestrate_utility_method`,
+`generate_test_data_class`, `generate_feature_file` — wrapping there duplicates the same logic
+across all of them, the identical problem as (i) one level up).
+
+Each decorator's `generate`: compute the key from the wrapped generator's known-in-advance identity
+(prompt_id/version/sha256 from its `_definition`, model/provider from its `_provider` — today
+private; a small additive public accessor, or constructor-supplied identity prefix, closes the gap
+noted under (A) above) plus a hash of the context/requirement it was just handed → **HIT**: return
+the stored text, and set its own `last_identity` from the **stored** `GenerationIdentity` (not a
+fresh one) — this is what keeps `AssetRecord`/`FeatureRecord.generation_identity` populated exactly
+as today for a reused artifact, since every downstream site already reads `last_identity` via
+`getattr`, oblivious to cache involvement → **MISS**: delegate to the wrapped generator, store the
+result + its `last_identity` under the key, return it unchanged.
+
+**Token-scorecard integration, a real gap to flag, not solved here.** A hit must show as the
+measurable saving Nitin's own instrumentation exists to surface — but `TokenUsageTracker.record(
+call_type, usage)` today treats `usage=None` as **unmeasured** (an incomplete-run signal,
+`unmeasured_call_count`), not **zero-cost-verified**. Recording a hit as `record(call_type, None)`
+would make a cache hit look like a broken measurement, the opposite of the intended signal.
+`TokenUsageTotals` needs a small additive third bucket (e.g. `cache_hit_count`, distinct from both
+measured and unmeasured) before hits can be trusted in the scorecard — a small, precedented
+extension (same shape as the `unmeasured_call_count` field already is), not designed here.
+
+**(D) Correctness summary.** The key is sound *if and only if* it captures every input that
+determines the output: `prompt_sha256` (the template), `provider`+`model` (which model), and a hash
+of the generator's own fully-serialized context payload (the per-artifact content) — this is
+strictly stronger than the prior note's `REQ-*`-based proxy (B, above), reuses no derivation logic
+that doesn't already exist for the prompt itself, and degrades exactly as gracefully as the prompt
+construction it mirrors: if `_build_prompt` is complete, the key is complete. The two flagged
+residual risks (context-field drift between a generator's `input_payload` and its actual template
+placeholders; provider-level non-determinism even at fixed inputs) are real but bounded — the first
+is a pre-existing generator-authoring discipline, not a new one; the second is caught by the
+platform's existing downstream validation gates regardless of artifact provenance.
+
+**Blast radius.** Contained. New code only: one store module + five small decorator classes.
+Zero changes to `orchestrator.py`, `page_object_orchestrator.py`, `utility_orchestrator.py`,
+`runner.py`, or any `AssetRecord`/`FeatureRecord` construction site — all already consume
+`generator.generate(...)`/`.last_identity` through a Protocol/`getattr`, unaware of the concrete
+class. The only touch points are generator-*construction* sites (wherever `LiveStepDefinitionGenerator(
+provider, ...)` etc. is built today, e.g. the CLI's live-wiring path) — swap the live generator for
+a cache-wrapped one. This confirms, concretely, that the pinning build's duck-typed
+`getattr(generator, "last_identity", None)` choice (rather than a required interface field) was the
+right foresight for exactly this: it is what keeps this wrap low-blast-radius today.
+
+**Governance verdict.** No ADR names this. Searched every ADR for "cache"/"caching": only
+ADR-0044 mentions it, and only for the semantic-matcher's *embedding* cache (catalog-lookup
+MATCH, an unrelated, narrower, already-different concept from an LLM-generation artifact cache) —
+confirmed not overlapping scope. Nitin's re-run cluster itself is not ADR'd anywhere. An
+artifact-generation cache is a real, standalone capability — new store, new key scheme, a new
+hit-consumption contract threaded through five generator seams — the same class of decision the
+traceability graph got its own ADR for (ADR-0048). **Recommend an ADR before building**, per this
+platform's established discipline (ADR-first for a new named capability, not additive infra riding
+inside an existing frozen layer).
+
+**First build, recommended.** The store + key + **one** decorator, on **one** generator — not the
+full five-generator wrap. Recommend `LiveStepDefinitionGenerator` specifically: highest recent
+iteration/re-run volume among the six (the live-regen defect-fixing line of work —
+`[[cap-page-object-live-regen-findings]]`, `[[cap-step-def-non-lite-model-scoping]]`,
+`[[cap-classname-collision-fix]]` — has repeatedly re-run step-def generation over the same corpus),
+and it already has the most measurement infrastructure built around it. Measure via the existing
+token-usage scorecard: run the same live corpus twice — the first run populates the cache, the
+second should show `step_definition_generation`'s call-type totals collapse toward the new
+`cache_hit_count` bucket rather than fresh `prompt_tokens`/`completion_tokens` — proving the saving
+before extending to the other four generators, mirroring the same scores-first, prove-then-extend
+discipline the mentor-clarification items themselves recommend.
+
+**Remediator excluded from this design.** `LiveFeatureRemediator.remediate(content, violations)` is
+a repair operation, not first-generation — its input already encodes a prior attempt's own failure,
+live remediation is independently known to be rare (`[[cap-live-feature-remediator]]`: "live model
+rarely fails CP2 naturally"), and re-running the identical `(content, violations)` pair twice is a
+much rarer event than re-running the same generation twice across corpus re-runs. Weak ROI; not
+recommended as a caching target even after the five-generator wrap, unless evidence changes.
+
+**Dependencies, explicit.** Spec-slice (Nitin's #4, branch-scoped vertical slices) remains
+genuinely deferred and is **not** a blocker — this design does not use `REQ-*` as the
+source-snapshot proxy at all (the corrected key, B above, hashes each generator's own payload
+directly), so it needs neither #4 nor a new raw-evidence hash to start. Delta-scoped regeneration
+(item 3 of the original four-part cluster) is the next piece after this cache is built — it would
+consume this cache as its own staleness signal, exactly as Nitin's own model casts it ("the cache
+tells you an artifact is stale; the change-impact graph tells you which downstream artifacts that
+staleness actually reaches"), with `change_impact_for_method`/`build_change_impact_report`
+(`[[cap-change-impact-graph-built]]`) already built and ready as its other input.
+
+**Nothing built by this note.** No store, no key module, no decorator, no ADR, no wiring change, no
+`TokenUsageTracker` extension. This surfaces the store shape, the corrected key (with the
+`REQ-*`-incompleteness finding as its own load-bearing correction to the prior note), the lookup
+point, hit consumption (with the token-scorecard gap flagged), blast radius, governance verdict, and
+a recommended first build; building any of it remains a future, separate task.
+
+Gate: `make lint` clean; `make test` 5832 unchanged. Tree modified only in this document.
+
 ---
 
 ### Item 2 — Skills-first, agents-next (token minimization)
