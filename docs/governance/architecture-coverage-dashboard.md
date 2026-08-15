@@ -107,6 +107,7 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-072 | Prompt Canonical Models | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-073 | Prompt Governance Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-088 | Traceability Graph | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
+| CAP-089 | Artifact-Level Generation Cache | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ | In Progress |
 
 > **CAP-070 Productization** verifies the completed architecture end-to-end against the
 > golden **Release Regression Baseline** (`docs/productization/golden-baseline.md`). Its
@@ -132,22 +133,42 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 > boundary — mirroring CAP-087's own still-open placement. **Status: Implemented,
 > measured, not wired.**
 
+> **CAP-089 Artifact-Level Generation Cache** skips a redundant LLM call by keying
+> each generated artifact on the exact deterministic payload its own generator
+> already serializes before calling the provider, combined with its
+> `GenerationIdentity` (governed by **ADR-0050, Accepted for this scope only**).
+> Its `Framework` stage is satisfied (✓): the shared store/key module
+> (`generation_cache.py`) is real, reusable, behaviour-free infrastructure the
+> per-generator decorators plug into. `Canonical Models` is satisfied (✓,
+> `GenerationCacheEntry`). **`Implementation` is partial (◑) — this is the honest
+> center of this row:** three of the five target generators are wrapped, tested,
+> and measured on real live calls (`CachingStepDefinitionGenerator`,
+> `CachingFeatureContentGenerator`, `CachingTestDataGenerator`); `LivePageObjectGenerator`
+> and `LiveUtilityGenerator` remain unwrapped, and `LiveFeatureRemediator` is
+> explicitly excluded by design (ADR-0050 D5), not merely not-yet-reached. `Testing`
+> is satisfied (✓) for the portion built — 59 new unit tests, all passing, plus
+> three independent real-live-call measurements. `Frozen` is **`✗`**: nothing about
+> this capability is declared immutable. **Not wired into any execution pipeline** —
+> no `PlatformContext` composition-root method, no golden-baseline entry. **Status:
+> Implemented and measured for 3 of 5 target generators; 2 generators and the
+> remediator remain out of scope; not wired.**
+
 ## 5. Overall coverage summary
 
-Objective counts across all **43** capabilities (no percentages estimated). For
+Objective counts across all **44** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 43 | 0 | 0 | — (CAP-060 governed by ADR-0011/0012; CAP-070 governed by the Productization Governance Contract; CAP-071 governed by ADR-0014; CAP-088 governed by ADR-0048). |
-| **Framework** | 43 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 43 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 36 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049. |
-| **Testing** | 36 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 2 | 37 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031, CAP-070 (governance contract frozen; dataset independently versioned). CAP-088 joins the `✗` outstanding set (not frozen). |
+| **Architecture** | 44 | 0 | 0 | — (CAP-060 governed by ADR-0011/0012; CAP-070 governed by the Productization Governance Contract; CAP-071 governed by ADR-0014; CAP-088 governed by ADR-0048; CAP-089 governed by ADR-0050). |
+| **Framework** | 44 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 44 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 36 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-089 (3 of 5 target generators). |
+| **Testing** | 37 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 2 | 38 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031, CAP-070 (governance contract frozen; dataset independently versioned). CAP-088 and CAP-089 join the `✗` outstanding set (neither frozen). |
 
-**Implementation Readiness distribution** (40 total): **Ready 33** · **In Progress
-3** (CAP-044, CAP-046, CAP-049) · **Blocked 0** · **Planned 4** (CAP-045,
+**Implementation Readiness distribution** (41 total): **Ready 33** · **In Progress
+4** (CAP-044, CAP-046, CAP-049, CAP-089) · **Blocked 0** · **Planned 4** (CAP-045,
 CAP-047, CAP-048, CAP-050).
 
 ## 6. Remaining architecture work

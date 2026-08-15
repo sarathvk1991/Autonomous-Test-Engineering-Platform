@@ -43,6 +43,81 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Artifact-Level Generation Cache (CAP-089, ADR-0050) BUILT for 3 of 5 target
+  generators — cross-run token-cost caching, not wired (2026-08-14).** Answers part
+  of Nitin's own four-part re-run/delta-scoped-regeneration cluster — content-addressed
+  caching, his own words: key each artifact on spec-slice/source-snapshot +
+  prompt-version + model-version, reuse anything whose inputs haven't changed, skip
+  regeneration, save tokens. **The real, checked-against-code finding (ADR-0050 D1,
+  the centerpiece):** a prior surfacing note's own recommended key — `REQ-*` content
+  hash + prompt/model version — is **silently incomplete**. `generate_requirement_id`
+  hashes only `normalize(title) + source_external_ids`, but `LiveFeatureContentGenerator`
+  also serializes `narrative` and each acceptance criterion's `statement` into its
+  prompt — an edited narrative with `title` unchanged would produce a stale hit,
+  silently. `REQ-*` also does not apply at all to the four L3 generators (none of
+  their contexts carry a `REQ-*`-derived field). **The corrected key** hashes the
+  exact `input_payload_json` each generator's own `_build_prompt` already builds via
+  `json.dumps(..., sort_keys=True)` immediately before its LLM call, combined with
+  `GenerationIdentity`'s five fields (`prompt_id`/`prompt_version`/`prompt_sha256`/
+  `provider`/`model`) — complete by construction, not by argument, since it *is* what
+  determines the generator's output. ADR-first, not scores-first: the design (D1–D5)
+  was recorded and Proposed before any of it was built, correcting the prior
+  surfacing note's own unexamined recommendation before it could ship a cache that
+  returns wrong artifacts under ordinary edits.
+  **Built and measured the same day, twice extended:** `requirement_intelligence/llm/
+  generation_cache.py` (`compute_cache_key`, `GenerationCacheEntry`,
+  `GenerationCacheStore` — one shared store/key module, reused unmodified by every
+  increment) plus three `Caching<X>Generator` decorators, each proven by dedicated
+  unit tests and one real, live Gemini API measurement (not simulated): first
+  increment, `CachingStepDefinitionGenerator` (`automation_engineering/generation/`,
+  33 tests; 3 real calls, 7003 tokens → re-run: 0 new calls, 0 new tokens, 3 hits,
+  byte-identical artifacts); second, `CachingFeatureContentGenerator`
+  (`feature_engineering/generation/`, 13 tests; 3702 → 0 tokens — the distribution's
+  single biggest sink, 45.4% of the 20-call sample in `docs/architecture/
+  mentor-feedback-scoping.md`); third, `CachingTestDataGenerator`
+  (`automation_engineering/generation/`, 13 tests; 3402 → 0 tokens — the other
+  near-equal sink, 43.4%). **Feature-content and test-data together already account
+  for ~89% of that one measured run's own token total** — the corrected figure:
+  `step_definition_generation` itself recorded *zero* tokens in that specific run (30
+  of 60 step-def needs were reuse hits, the other 30 escalated before reaching the
+  generator, nothing to do with this cache), so the ~89% is feature-content +
+  test-data only, never a three-way split. Both named build-time gaps (D3) closed for
+  all three generators: pre-call identity exposure (`resolve_*_identity`/
+  `build_*_payload`, added to each live generator) and the token-scorecard cache-hit
+  bucket (`TokenUsageTotals.cache_hit_count`, generator-agnostic, built once, reused
+  by all three unmodified). **Scope held exactly as D5 sequenced it — this is a
+  partial build, not the full five-generator capability ADR-0050 designs:**
+  `LivePageObjectGenerator` and `LiveUtilityGenerator` remain unwrapped (both also
+  absent from the one real distribution measured to date, so their real token share
+  is unmeasured, not small-by-measurement); `LiveFeatureRemediator` is explicitly
+  excluded (D5 — repairs a prior attempt rather than first-generation, independently
+  rare). **Not wired into any live pipeline** — `scripts/run_requirement_analysis.py`
+  still constructs all three unwrapped live generators directly; no `PlatformContext`
+  composition-root method exists. **The delta-scoped-regeneration finding, surfaced
+  the same day (`Surface delta-scoped regeneration`, 2026-08-14):** this cache
+  already *is* delta-regen for an artifact's own direct inputs — an unchanged payload
+  hits, a changed one misses and regenerates, exactly the staleness signal
+  delta-scoped regeneration would otherwise have to invent. The remaining gap is
+  transitive: a dependency's output changing without the artifact's own direct
+  payload changing (e.g. a page-object's shape changing without the step-def's own
+  bare-class-name hint changing) — closed by widening what a generator's payload
+  captures later, not by a new change-impact-driven pipeline; the Change-Impact Graph
+  (ADR-0048's own named scope, `change_impact_for_method`/`build_change_impact_report`)
+  is this gap's real future consumer. `make lint`: clean; `make test`: 5891, unchanged
+  (new tests only). **This entry itself closes the ADR-0050 governance loop it
+  flagged as recommended follow-ons** — the two recordings ADR-0050's own
+  Consequences named (a `docs/governance/platform-capability-matrix.md` `CAP-089`
+  row, §5.12; this register entry) are both now recorded, additively, alongside the
+  ADR; no existing row, item, or ADR body was retro-edited to produce either.
+  **Owner:** `requirement_intelligence/llm/generation_cache.py`,
+  `automation_engineering/generation/`, `feature_engineering/generation/`.
+  **Trigger for the next task:** extend the same store/key/decorator pattern to
+  `LivePageObjectGenerator`/`LiveUtilityGenerator`; runtime integration (a
+  `PlatformContext` composition-root method, mirroring CAP-088's own still-open
+  trigger); delta-scoped regeneration itself, once the Change-Impact Graph's
+  transitive reach is ready to consume this cache's staleness signal. One mentor
+  throughout (Nitin).
+
 - **Engineering Constitution (ADR-0049) ACCEPTED — Track-A constitutional authority
   established, and the constitutional-tier lineage ratified (2026-08-13).** Answers
   mentor item #5 — Nitin's "centralized constitution" ask, raised in both feedback

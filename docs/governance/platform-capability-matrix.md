@@ -332,6 +332,20 @@ not applicable.
 | -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
 | CAP-088 | Traceability Graph | Project a deterministic `requirement → scenario → step` graph from real Layer 1/Layer 2 artifacts and report corpus completeness — which requirements lack a full test chain, and why — report-only, no gating | `n/a` (no version constant — minimal-slice build, no version-axis ceremony) | Not Recorded (no `PLATFORM_VERSION`-linked constant; not wired into the golden baseline) | Implementation | `TestableRequirementSet` (ADR-0034/ADR-0042), `FeatureEngineeringPackage` (ADR-0043); reuses the ADR-0023 Knowledge Graph *pattern* only, never its runtime service | Runtime integration (a `PlatformContext` composition root + live pipeline wiring) or one of the deferred hops (page-object, change-impact) — none yet designed, per ADR-0048 Consequences | Implementation Complete | Accepted — built, tested, measured; not wired | Governed by **ADR-0048 (Accepted)**; recommended id `CAP-088`, confirmed as the next unused id in the open-ended `CAP-060…` block (§3.1) — not yet entered anywhere else. **Placement in the platform's layer model is explicitly left open** (ADR-0048 D2): this capability consumes Runtime Truth directly (`TestableRequirementSet`, `FeatureEngineeringPackage`), not Historical Truth, so it does not satisfy ADR-0021's strict Layer-2 boundary despite reusing ADR-0023's architectural pattern — mirrors `CAP-087`'s own still-open placement (ADR-0042 Decision 7) rather than asserting a "Layer 2" fit the constitution does not actually support. `requirement_intelligence/traceability_graph/` (7 modules: models, identity, projection, traversal, completeness, serialization, `__init__`), 15 unit tests (`tests/unit/test_traceability_graph.py`), all passing, fixture-based, no LLM calls; a containment test proves no import of `knowledge_graph/` anywhere in the package. **Not wired into any execution pipeline** — no `PlatformContext` method, no golden-baseline entry, no Execution Package artifact. First real measurement (2026-08-12, against a real live run's own `testable_requirement_set.json`/`feature_engineering_package.json`, not fixtures, not a synthetic provider): 100% requirement→scenario→step coverage (20 requirements, 20 scenarios, 67 steps). Cross-referenced against the same run's CP3 report: only ~49–50% of those identical 67 steps have a step-definition binding — a distinct, deeper completeness layer this capability's own minimal slice does not reach. `CompletenessReport` is gate-ready (structured counts/coverage/reasons) but no gating logic exists anywhere in this package. |
 
+### 5.12 Artifact-Level Generation Cache
+
+**Lifecycle**
+
+| ID | Capability | Architecture | Framework | Canonical Models | Implementation | Testing | Frozen |
+| -- | ---------- | :----------: | :-------: | :--------------: | :------------: | :-----: | :----: |
+| CAP-089 | Artifact-Level Generation Cache | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ |
+
+**Governance**
+
+| ID | Capability | Purpose | Current Version | Introduced In | Owner | Dependencies | Next Planned Milestone | Maturity | Status | Notes |
+| -- | ---------- | ------- | --------------- | ------------- | ----- | ------------ | ---------------------- | -------- | ------ | ----- |
+| CAP-089 | Artifact-Level Generation Cache | Skip a redundant LLM call by keying each generated artifact on the exact deterministic payload its own generator serializes before calling the provider, combined with its `GenerationIdentity` — a hit replays the stored artifact and identity; a miss generates, then stores, exactly as today | `n/a` (no version constant — the shared store/key module, `generation_cache.py`, carries none) | Not Recorded (no `PLATFORM_VERSION`-linked constant; not wired into the golden baseline) | Implementation | `GenerationIdentity` (`requirement_intelligence/llm/generation_identity.py`, pinning); ADR-0044 (the four L3 generator Protocols this cache wraps or targets); ADR-0043 (`FeatureContentGenerator`, the fifth); ADR-0036's `_hash_artifacts` content-hash *pattern* (reused; its `RunStateManager` class is not, D2); ADR-0048 Traceability Graph (sibling precedent; its `change_impact_for_method`/`build_change_impact_report` is this cache's own downstream consumer once delta-scoped regeneration is built) | Extend the same store/key/decorator pattern to the two remaining generators, `LivePageObjectGenerator` and `LiveUtilityGenerator`; then runtime integration (a `PlatformContext` composition-root method — none exists for any of the three built decorators either) | Implementation In Progress | Accepted for 3 of 5 target generators — built, tested, measured; not wired | Governed by **ADR-0050 (Accepted for this scope only)**; recommended id `CAP-089`, confirmed as the next unused id in the open-ended `CAP-060…` block (§3.1) — not yet entered anywhere else. **This is a partial build, not the full five-generator capability ADR-0050 designs.** Introduces a new subsystem wrapping five LLM-driven generation seams (`LiveStepDefinitionGenerator`, `LivePageObjectGenerator`, `LiveUtilityGenerator`, `LiveTestDataGenerator`, `LiveFeatureContentGenerator`); `LiveFeatureRemediator` is explicitly excluded (D5 — repairs a prior attempt rather than performing first-generation, independently rare). **The key (D1, the centerpiece):** `sha256(prompt_id + prompt_version + prompt_sha256 + provider + model + input_payload_json)`, where `input_payload_json` is the exact string each generator's own `_build_prompt` already serializes immediately before its LLM call — corrected from the prior surfacing note's own `REQ-*`-based recommendation, checked against the real code and found to under-cover ordinary narrative/acceptance-criterion edits and to not apply at all to the four L3 generators. **The store (D2):** on-disk, content-addressed, reusing `_hash_artifacts`'s pattern and `atomic_write.py`, a new sibling module — not `RunStateManager` itself (closed to its fixed 19-entry stage catalogue). **Interception (D3):** one `Caching<X>Generator` decorator per Protocol, sharing one store module; a hit replays the *stored* `GenerationIdentity`, never a freshly-constructed one. **Three of the five target generators are built, each proven by dedicated unit tests and one real, live-measured run (no simulation):** `CachingStepDefinitionGenerator` (`automation_engineering/generation/`, 33 tests, 7003→0 tokens across 3 real calls on re-run); `CachingFeatureContentGenerator` (`feature_engineering/generation/`, 13 tests, 3702→0 tokens — the distribution's single biggest sink, 45.4% of the 20-call sample in `docs/architecture/mentor-feedback-scoping.md`); `CachingTestDataGenerator` (`automation_engineering/generation/`, 13 tests, 3402→0 tokens — the other near-equal sink, 43.4%). **Together, feature-content and test-data alone already account for ~89% of that one measured run's own token total** (`step_definition_generation` itself recorded *zero* tokens in that specific run — 30 of 60 step-def needs were reuse hits, the other 30 escalated before reaching the generator — a fact about that run's own catalog state, not a claim about this cache). `LivePageObjectGenerator` and `LiveUtilityGenerator` remain unwrapped — both also absent from the one real distribution measured to date (not live-constructed in `handle_analyze` at measurement time), so their real token share is unmeasured, not small-by-measurement. **Not wired into any live pipeline** — `scripts/run_requirement_analysis.py` still constructs all three unwrapped live generators directly; no `PlatformContext` composition-root method exists. **Relationship to delta-scoped regeneration** (the mentor cluster's own next item, `docs/architecture/mentor-feedback-scoping.md`): this cache already tells a caller an artifact is stale-or-not for its own direct inputs — it *is* delta-regen for that scope; the remaining gap is the transitive case (a dependency's output changing without the artifact's own direct payload changing), which needs the Change-Impact Graph (ADR-0048), not a new cache mechanism. One mentor throughout (Nitin). |
+
 ## 6. Overall Platform Health
 
 Objective counts, derived directly from the repository (no estimation):
@@ -420,6 +434,35 @@ this capability's placement in the platform's layer model is itself still **open
 (it consumes Runtime Truth directly, so it does not satisfy ADR-0021's strict
 Layer-2 boundary) — the runtime-integration milestone above does not presuppose an
 answer to that open question.
+
+**Artifact-Level Generation Cache (CAP-089)** is **built, tested, and measured for
+three of its five target generators** (`LiveStepDefinitionGenerator`,
+`LiveFeatureContentGenerator`, `LiveTestDataGenerator` — Accepted for this scope,
+governed by ADR-0050) — but it is **not wired** into any execution pipeline, and two
+of the five generators its own design names remain unwrapped. Remaining work, each
+with a named trigger (ADR-0050 D5 / Consequences; no dates):
+
+1. **Extend to the remaining two generators** — `LivePageObjectGenerator` and
+   `LiveUtilityGenerator` — repeating the same store/key/decorator pattern (D5); both
+   were absent from the one real token-distribution measured to date, so their real
+   share is unmeasured, not small-by-measurement.
+2. **Runtime integration** — a `PlatformContext` composition-root method and live
+   pipeline wiring for all wrapped generators; `scripts/run_requirement_analysis.py`
+   still constructs each live generator unwrapped.
+3. **Delta-scoped regeneration** (the mentor cluster's own next item) — consumes
+   this cache as its own staleness signal for direct inputs, and the Change-Impact
+   Graph (`change_impact_for_method`/`build_change_impact_report`, ADR-0048's own
+   named scope) as its blast-radius input for the transitive case this cache's key
+   does not cover.
+4. **Serialization-drift discipline** (D1's own named residual risk) — a
+   code-review-time obligation for future context-field additions to each wrapped
+   generator's own payload, not a design gap ADR-0050 can close structurally.
+5. **`LiveFeatureRemediator`** — explicitly excluded (D5): repairs a prior attempt
+   rather than performing first-generation, independently rare; not a target even
+   after the five-generator wrap, absent new evidence.
+
+None of these require a redesign of the built capability when taken up — each
+extends the same store/key/decorator pattern (ADR-0050 D1–D3).
 
 > The roadmap lists only work with an existing architectural mandate. Downstream
 > layers named in the Architecture Overview (Feature/Test Generation, Execution,
