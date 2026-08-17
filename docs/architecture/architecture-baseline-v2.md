@@ -43,6 +43,85 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Generation Quality Eval Harness (CAP-090, ADR-0051) BUILT for Layer 1, 1 of 7
+  target generators — deterministic property checks, `LiveStepDefinitionGenerator`
+  only, not wired (2026-08-17).** Answers Nitin's own eval-harness ask, his final
+  clarification: treat every skill/agent as a software component with a curated
+  eval set (expected outputs or rubrics), a score tracked over time, so a model/
+  prompt/framework change causing silent quality drift is caught in CI before
+  adoption — his own example, a model swap silently missing allergy validation or
+  insurance eligibility. **The reframe (ADR-0051 D1, the centerpiece):** the real,
+  measured `gemini-2.5-flash` 76%-defect-rate regression this arc found (wrong
+  Cucumber import package, a markdown code fence, a fabricated duplicate
+  page-object class) is exactly the defect class `suite_quality_governance/cp5/`'s
+  own `compile_check`/`near_duplicate_sweep` already detect, live, deterministically
+  — the actual gap was never detection capability, only that detection ran once,
+  manually, ad hoc, after a model swap had already shipped, not as a curated,
+  versioned, regression-gated eval run automatically before adoption. This harness
+  is standing *discipline* around detection the platform mostly already had, not a
+  new detection mechanism. **The defect-shape taxonomy (D3):** structural defects
+  (the real ones above) → deterministic property checks, this build's own scope;
+  coverage omissions (a required step never generated) → the traceability graph's
+  `BindingCompletenessReport` (CAP-088), consumed read-only, never extended;
+  silently-wrong-logic (present but implements the wrong rule) → a rubric/LLM-judge
+  layer, explicitly deferred, its own open questions (which judge, how pinned,
+  whose rubric, calibration, cost) named in ADR-0051 D5, not answered. ADR-first,
+  not scores-first: the design (D1–D5) was recorded and Proposed before any of it
+  was built, mirroring ADR-0050's own precedent, explicitly not the traceability
+  graph's build-then-ADR inversion.
+  **Built and tested the same day the ADR was written:** a new top-level package,
+  `eval_harness/` (`models.py`, `step_definition_properties.py`,
+  `step_definition_eval_set.py`, `scoring.py`, `coverage.py`, `baseline_store.py`,
+  `runner.py`) — a curated 3-case eval set seeded from the real, currently-tracked
+  `test-suite-baseline/.../LoginSteps.java` corpus (the same corpus the real
+  `gemini-2.5-flash` measurement regenerated and found 76% defective); three
+  deterministic property checks (`check_valid_cucumber_import`,
+  `check_no_markdown_fence`, `check_no_fabricated_page_object_class`), each proven
+  to FAIL on a fixture reproducing its own real defect shape and PASS on the real,
+  unmodified clean text; scoring keyed by `GenerationIdentity`
+  (prompt_id/version/sha256/provider/model — the same identity built for the
+  artifact cache, ADR-0050, reused here as its second consumer), arithmetic
+  enforced by a `model_validator`; a regression gate (`EvalBaselineStore`/
+  `check_regression`, reusing `atomic_write.py`'s durable-write pattern, ADR-0050's
+  own precedent) proven **relative to a stored baseline, never an absolute
+  threshold** — a 25% baseline compared against a 25% candidate PASSES, and a 100%
+  baseline compared against a 75% candidate REGRESSES, either assertion reversed
+  under any single absolute cutoff, the exact "pass-bias meaning-check" trap this
+  design avoids. **Proven end to end** (`StubStepDefinitionGenerator`, captured/
+  fixture Java text, zero live LLM calls anywhere in the 34 new tests): a clean
+  generator's first run against the curated set has no prior baseline
+  (`ESTABLISHED_BASELINE`, not a pass or a fail) and is explicitly recorded as one;
+  a second generator standing in for a worse model (the real wrong-import defect
+  reintroduced into every case) is caught (`REGRESSED`) relative to that recorded
+  baseline; re-running the same clean generator stays `PASSED`. The coverage check
+  (`check_step_covered`) is built and tested but not part of the default per-case
+  check set — it consumes `BindingCompletenessReport` read-only (proven, by its own
+  test, never to re-derive binding completeness itself), composable once a real
+  corpus run's own traceability graph exists, which the curated, isolated eval-set
+  cases do not have by default. **Scope held exactly as ADR-0051 D5 sequenced it —
+  this is a partial build, not the full seven-generator, two-layer capability
+  ADR-0051 designs:** six generators/skills remain out of scope
+  (`LivePageObjectGenerator`, `LiveUtilityGenerator`, `LiveTestDataGenerator`,
+  `LiveFeatureContentGenerator`, `LiveFeatureRemediator`,
+  `RequirementAnalysisService`), and the entire rubric/LLM-judge layer (Layer 2) is
+  unstarted design, not merely unbuilt code. **Not CI-wired, not live-wired** — no
+  `PlatformContext` composition-root method, no CI job exists; the live-vs-cached
+  LLM-in-CI question (ADR-0051 D2) stays exactly as open as the ADR named it — this
+  build resolved only the eval *logic*, deterministically, on captured artifacts.
+  `make lint`: clean; `make test`: 5925, unchanged (new tests only); `mypy`:
+  whole-repo error count unchanged (436) — `eval_harness/` itself is zero-error
+  under `mypy strict`. **This entry itself closes the ADR-0051 governance loop it
+  flagged as recommended follow-ons** — the two recordings ADR-0051's own
+  Consequences named (a `docs/governance/platform-capability-matrix.md` `CAP-090`
+  row, §5.13; this register entry) are both now recorded, additively, alongside the
+  ADR; no existing row, item, or ADR body was retro-edited to produce either.
+  **Owner:** `eval_harness/`. **Trigger for the next task:** extend the same
+  curated-eval-set/property-check pattern to the remaining six generators/skills,
+  one at a time, measured (mirroring CAP-089's own proven extension sequence);
+  resolve the live-vs-cached LLM-in-CI question, then CI/runtime integration; the
+  rubric/LLM-judge layer (Layer 2) as its own separate, later design task. One
+  mentor throughout (Nitin).
+
 - **Artifact-Level Generation Cache (CAP-089, ADR-0050) BUILT for 3 of 5 target
   generators — cross-run token-cost caching, not wired (2026-08-14).** Answers part
   of Nitin's own four-part re-run/delta-scoped-regeneration cluster — content-addressed

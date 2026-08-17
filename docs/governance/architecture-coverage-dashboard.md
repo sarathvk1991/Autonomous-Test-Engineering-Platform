@@ -108,6 +108,7 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 | CAP-073 | Prompt Governance Framework | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-088 | Traceability Graph | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | Ready |
 | CAP-089 | Artifact-Level Generation Cache | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ | In Progress |
+| CAP-090 | Generation Quality Eval Harness | ✓ | ✓ | ✓ | ◑ | ✓ | ✗ | In Progress |
 
 > **CAP-070 Productization** verifies the completed architecture end-to-end against the
 > golden **Release Regression Baseline** (`docs/productization/golden-baseline.md`). Its
@@ -153,23 +154,48 @@ Legend: `✓` satisfied (complete or not applicable) · `◑` partial · `✗` o
 > Implemented and measured for 3 of 5 target generators; 2 generators and the
 > remediator remain out of scope; not wired.**
 
+> **CAP-090 Generation Quality Eval Harness** curates a per-generator eval set and
+> grades it with deterministic property checks, gated by REGRESSION against a
+> stored baseline rather than an absolute threshold (governed by **ADR-0051,
+> Accepted for this scope only**). Its `Framework` stage is satisfied (✓): the
+> shared, generator-agnostic mechanism (`models.py`, `scoring.py`,
+> `baseline_store.py`, `runner.py`) is real, reusable infrastructure a future
+> generator's own eval set plugs into. `Canonical Models` is satisfied (✓,
+> `EvalScore`/`PropertyCheckResult`/`RegressionGateResult`). **`Implementation` is
+> partial (◑) — this is the honest center of this row:** one of the seven target
+> generators/skills (`LiveStepDefinitionGenerator`) has a curated eval set and
+> deterministic property checks built; `LivePageObjectGenerator`,
+> `LiveUtilityGenerator`, `LiveTestDataGenerator`, `LiveFeatureContentGenerator`,
+> `LiveFeatureRemediator`, and `RequirementAnalysisService` remain out of scope, and
+> the entire rubric/LLM-judge layer (Layer 2, for silently-wrong-logic) is
+> unstarted **design**, not merely unbuilt code. `Testing` is satisfied (✓) for the
+> portion built — 34 new unit tests, all passing, entirely deterministic (no live
+> LLM call anywhere in the suite; the property checks are proven against fixtures
+> reproducing the real `gemini-2.5-flash` defect shapes this arc measured). `Frozen`
+> is **`✗`**: nothing about this capability is declared immutable. **Not wired into
+> any CI job or execution pipeline** — no `PlatformContext` composition-root
+> method, no CI gate exists; the live-vs-cached LLM-in-CI question (ADR-0051 D2)
+> remains open. **Status: Implemented and tested for 1 of 7 target generators
+> (Layer 1 only); 6 generators/skills and the entire judge layer remain out of
+> scope; not wired.**
+
 ## 5. Overall coverage summary
 
-Objective counts across all **44** capabilities (no percentages estimated). For
+Objective counts across all **45** capabilities (no percentages estimated). For
 each stage: satisfied `✓` / partial `◑` / outstanding `✗`.
 
 | Stage | `✓` satisfied | `◑` partial | `✗` outstanding | Outstanding capabilities |
 | ----- | :-----------: | :---------: | :-------------: | ------------------------ |
-| **Architecture** | 44 | 0 | 0 | — (CAP-060 governed by ADR-0011/0012; CAP-070 governed by the Productization Governance Contract; CAP-071 governed by ADR-0014; CAP-088 governed by ADR-0048; CAP-089 governed by ADR-0050). |
-| **Framework** | 44 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Canonical Models** | 44 | 0 | 0 | — (includes not-applicable as satisfied). |
-| **Implementation** | 36 | 4 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-089 (3 of 5 target generators). |
-| **Testing** | 37 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
-| **Frozen** | 4 | 2 | 38 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031, CAP-070 (governance contract frozen; dataset independently versioned). CAP-088 and CAP-089 join the `✗` outstanding set (neither frozen). |
+| **Architecture** | 45 | 0 | 0 | — (CAP-060 governed by ADR-0011/0012; CAP-070 governed by the Productization Governance Contract; CAP-071 governed by ADR-0014; CAP-088 governed by ADR-0048; CAP-089 governed by ADR-0050; CAP-090 governed by ADR-0051). |
+| **Framework** | 45 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Canonical Models** | 45 | 0 | 0 | — (includes not-applicable as satisfied). |
+| **Implementation** | 36 | 5 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-044, CAP-046, CAP-049, CAP-089 (3 of 5 target generators), CAP-090 (1 of 7 target generators). |
+| **Testing** | 38 | 3 | 4 | `✗`: CAP-045, CAP-047, CAP-048, CAP-050. Partial: CAP-021, CAP-022, CAP-023. |
+| **Frozen** | 4 | 2 | 39 | `✓`: CAP-030, CAP-032, CAP-040, CAP-042. Partial: CAP-031, CAP-070 (governance contract frozen; dataset independently versioned). CAP-088, CAP-089, and CAP-090 join the `✗` outstanding set (none frozen). |
 
-**Implementation Readiness distribution** (41 total): **Ready 33** · **In Progress
-4** (CAP-044, CAP-046, CAP-049, CAP-089) · **Blocked 0** · **Planned 4** (CAP-045,
-CAP-047, CAP-048, CAP-050).
+**Implementation Readiness distribution** (42 total): **Ready 33** · **In Progress
+5** (CAP-044, CAP-046, CAP-049, CAP-089, CAP-090) · **Blocked 0** · **Planned 4**
+(CAP-045, CAP-047, CAP-048, CAP-050).
 
 ## 6. Remaining architecture work
 
