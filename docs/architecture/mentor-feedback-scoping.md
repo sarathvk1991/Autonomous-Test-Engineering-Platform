@@ -2383,13 +2383,16 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
     over Runtime Truth — do not extend `KnowledgeGraphService.build` itself (frozen to Historical
     Truth only). The existing asset/catalog KG (ADR-0023) is unaffected. Nothing built.
 2d. **Nitin's eval-harness build item (added 2026-08-12) — design-surfacing DONE (2026-08-17), see
-    "EVAL HARNESS DESIGN SURFACED" under Item 1, above.** Curated eval sets per generator/skill,
-    a tracked score, a CI drift gate; additive to the existing golden-baseline structural-regression
-    harness, not a replacement for it (confirmed: CAP-070's own frozen ownership boundary excludes
+    "EVAL HARNESS DESIGN SURFACED" under Item 1, above; ADR WRITTEN (2026-08-17), ADR-0051
+    (Proposed), Layer 1 (deterministic property checks) only — the judge layer named as deferred
+    future scope, not designed.** Curated eval sets per generator/skill, a tracked score, a CI
+    drift gate; additive to the existing golden-baseline structural-regression harness, not a
+    replacement for it (confirmed: CAP-070's own frozen ownership boundary excludes
     prompt/generation quality). Recommended: property/assertion checks first (deterministic,
     CI-stable, already-precedented via CP5, and confirmed to catch the real `gemini-2.5-flash`
     defect this arc found), rubric/LLM-judge layered on later for semantic-only gaps. First-build
-    scope: `LiveStepDefinitionGenerator`. New capability, ADR-first. Nothing built.
+    scope: `LiveStepDefinitionGenerator`. New capability (recommended `CAP-090`), ADR-first.
+    Nothing built — ADR only, zero code.
 2e. **Nitin's re-run/token-cost build item (added 2026-08-12)** — start with token-consumption
     instrumentation by stage and run (his own "Critically"-flagged, cheapest, no-architecture-change
     first step); artifact-level caching, delta-scoped regeneration (depends on 2c's change-impact

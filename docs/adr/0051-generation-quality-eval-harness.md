@@ -1,0 +1,309 @@
+# ADR-0051 — Generation Quality Eval Harness (Layer 1: Deterministic Property Checks)
+
+- **Status:** Proposed
+- **Date:** 2026-08-17
+- **Supersedes:** nothing. **Amends:** nothing.
+- **Governing design:** none — this ADR *is* the governing design. It records the decisions
+  reached by a design-surfacing task (`docs/architecture/mentor-feedback-scoping.md`, Item 1's
+  eval-harness sub-item, "EVAL HARNESS DESIGN SURFACED," 2026-08-17) rather than a preceding
+  `docs/proposals/*.md` document — the surfacing note itself served that role, read in full before
+  this ADR was written. This ADR is written **before** any code, fixture, or CI wiring exists —
+  ADR-first, matching this platform's standing discipline (ADR-0050's own precedent), explicitly
+  **not** the traceability graph's build-then-ADR inversion (ADR-0048 D5, itself named as
+  governance debt it closed after the fact).
+- **Depends on:** `requirement_intelligence/llm/generation_identity.py` (`GenerationIdentity` —
+  the prompt/model identity this ADR's eval-score key reuses verbatim; additive infra, not itself
+  ADR'd); ADR-0044 (Layer 3 Automation Engineering Architecture Freeze — governs the four L3
+  generator Protocols this harness's first layer targets); ADR-0043 (Layer 2 Feature Engineering
+  Architecture Freeze — governs `FeatureContentGenerator`, a future eval-set target); ADR-0048
+  (Traceability Graph — `CompletenessReport`, consumed by this harness's coverage-shaped property
+  checks, D3, never extended); ADR-0050 (Artifact-Level Generation Cache — sibling precedent for a
+  new, focused, ADR-first capability, and the module this harness's own scorecard store shape
+  mirrors, D2).
+- **Runtime status: Not built.** This ADR records decisions for a future build (Layer 1 —
+  deterministic property checks, one generator). No package, fixture, score store, property-check
+  function, CI job, or governance registration exists yet. Mirrors ADR-0016's own original
+  Proposed, design-only status before its later runtime activation.
+
+## Problem
+
+Nitin's mentor feedback (one mentor throughout) asked for an eval harness: treat every skill/agent
+as a software component with its own curated eval set (expected outputs or rubrics), a score
+tracked over time, so that a change to a model, prompt, or framework that causes silent quality
+drift is caught in CI before it is adopted — not discovered later, by accident, in production. His
+own example, healthcare-specific: a model swap that silently starts missing allergy validation or
+insurance-eligibility rules should be caught by CI, not by a person noticing downstream. He is
+explicit that this is additive to, not a replacement for, structural regression testing — this
+platform already has that half (`tests/productization/test_golden_baseline.py`, CAP-070).
+
+The design-surfacing task this ADR follows read the real evidence, rather than assuming a gap
+exists where none does. **The reframe, and this ADR's centerpiece:** the platform already
+*detects* the shape of defect that actually occurred this arc. The real, measured
+`gemini-2.5-flash` 76%-defect-rate regression (`docs/architecture/mentor-feedback-scoping.md`,
+Item 1, citing the live-regen corpus) consisted of three defects — a wrong Cucumber import
+package, a markdown code fence violating an explicit no-markdown contract, and a fabricated
+duplicate page-object class — every one of which is deterministically checkable, and largely
+already caught, live, by `suite_quality_governance/cp5/` (`compile_check.py`'s
+`LiveCompileChecker`, a real `mvn clean test-compile`; `near_duplicate_sweep.py`). **The gap was
+never detection capability.** The gap was that this detection ran exactly once, manually, ad hoc,
+by a human reading a live-regen transcript after the model swap had already shipped — not as a
+curated, versioned, CI-gated eval set with a score tracked over time, run automatically the moment
+`STEP_DEF_GEMINI_MODEL` changed, before that change was adopted. CP5 gates whether one *run's*
+generated suite coheres; nothing scores whether one *generator*, at a given prompt/model identity,
+still produces the quality it did before — across changes, over time. That distinction is the gap
+this ADR closes the first layer of.
+
+Two prerequisites now exist that did not exist when Nitin's clarification was first recorded:
+`GenerationIdentity` (pinning, built) supplies the exact per-component key an eval score needs to
+be comparable across model/prompt versions; and the traceability graph (CAP-088, built) supplies a
+deterministic coverage signal this harness's property-check layer can consume rather than
+re-derive. Building an eval harness on top of them, unexamined, without first separating what is
+genuinely new (curated, scored, CI-gated *discipline*) from what already exists (deterministic
+*detection*, via CP5) would risk duplicating CP5 under a new name, or reaching immediately for an
+LLM-judge where a cheaper, more stable mechanism already proves sufficient for the one real defect
+on record. This ADR exists to record that separation, and the resulting scope, before any of it is
+built.
+
+## Decision
+
+Introduce a new, governed subsystem, **the Generation Quality Eval Harness**
+(`eval_harness/`), scoring individual LLM-driven generators — Nitin's "skills/agents," concretely
+the seven Protocol-bound generation call sites across L1–L3 — against curated eval sets, on a
+tracked score, gating CI. Five decisions, each detailed below:
+
+1. **The reframe** — the eval harness is standing *discipline* around detection this platform
+   mostly already has (CP5-class deterministic checks), not a new detection mechanism; it curates,
+   versions, scores, and CI-gates what today runs once, manually, ad hoc (D1, the centerpiece).
+2. **Layer 1: deterministic property/assertion checks**, scored per generator, keyed by
+   `GenerationIdentity`, CI-gated on regression — the only layer this ADR decides to build (D2).
+3. **The defect-shape taxonomy** — which layer catches what, and why the boundaries are drawn
+   where they are: structural defects → Layer 1 (this ADR); coverage omissions → the existing
+   traceability graph, consumed not extended; silently-wrong-logic → a rubric/judge layer,
+   explicitly deferred, not designed here (D3).
+4. **Relationship to existing subsystems** — a new capability alongside CP5, the golden-baseline
+   harness (CAP-070), and the traceability graph (CAP-088), not a duplicate or extension of any of
+   them (D4).
+5. **Scope and sequence** — one generator's eval set, Layer 1 only, measured, before any
+   extension; the judge layer is named as deferred future scope, not designed (D5).
+
+---
+
+## D1 — The reframe (the centerpiece decision)
+
+**Nitin's ask, restated precisely:** curated eval sets, expected outputs or rubrics, a score
+tracked over time, CI catches drift before adoption. **What the surfacing found, checked against
+real code and a real historical defect, not assumed:** the detection half of this ask is
+substantially already built. `suite_quality_governance/cp5/compile_check.py`'s `LiveCompileChecker`
+runs a real `mvn clean test-compile` against the generated suite; `cohesion.py`'s
+`no_ambiguous_glue`, `near_duplicate_sweep.py`, and `orphaned_glue.py` are further deterministic
+structural checks, all live-wired into stage 16 today. The real `gemini-2.5-flash` regression this
+arc measured (`docs/architecture/mentor-feedback-scoping.md`, Item 1) — wrong import package,
+markdown fencing, a fabricated duplicate class — is exactly the class of defect a compile check and
+a duplicate-class sweep already catch. Re-running that same corpus through this platform's own
+existing CP5 machinery today would have failed it, loudly, deterministically, before a human ever
+had to read the generated Java by hand.
+
+**What is genuinely missing is not a checker — it is a standing, curated, scored, CI-wired
+*harness* around checkers this platform already runs at the wrong scope and cadence.** CP5 answers
+"does this run's generated suite, as a whole, cohere" — evaluated once, after a full corpus
+generation, gating promotion of that run's own output. It does not answer "has
+`LiveStepDefinitionGenerator`'s output quality, specifically, changed since the last time I trusted
+it" — a question that needs a *curated, representative, small* set of generation cases (not a full
+corpus), a *score* comparable across `GenerationIdentity` values (not a single pass/fail for one
+run), and a place in CI that runs *before* a model or prompt change is adopted (not after a full
+live regeneration has already been paid for). This ADR's Layer 1 is precisely that missing
+scaffolding, built to reuse CP5-class checks as its grading mechanism wherever they already exist,
+rather than re-implementing detection this platform has already proven.
+
+**Why this reframing matters, concretely, for scope:** it means this ADR does not need to invent
+new defect-detection logic for the one real defect class on record — it needs to *curate* a small
+eval set of generation contexts, *wrap* CP5-class and generator-specific property checks as scored
+assertions, *key* the resulting score by `GenerationIdentity`, and *gate* CI on a regression. Each
+of those four is genuinely new; none of them requires a new way of recognizing a bad step-definition
+that CP5 does not already recognize.
+
+## D2 — Layer 1: the deterministic property-check design (the only layer this ADR builds)
+
+**Curated eval set.** Per generator, a small (10–20 case), versioned, hand-labeled fixture of real
+generation contexts — not full expected output text (rejected, D2 below explains why), but the
+generator's real input context paired with the set of named properties that context's output must
+satisfy. Seeded from real, already-produced, human-verified material this arc already generated —
+the 33-step-def/32-page-object live-regen corpus
+(`docs/architecture/mentor-feedback-scoping.md`'s own citations of the live-regen findings) — not
+invented from scratch. Versioned independently per generator, the same shape the golden dataset
+(`GOLDEN_DATASET_VERSION`) already establishes for structural regression, so the eval set can grow
+additively without an ADR amendment for ordinary curation.
+
+**Why not expected-output text (rejected as the primary mechanism).** ADR-0050 D1's own residual
+risk, already documented by this platform about itself: hosted-model APIs do not guarantee
+bit-identical output across calls even at `temperature=0.0`. An exact golden-text comparison would
+false-fail on every regrade with zero real regression — the opposite of CI-stable. Approximate
+similarity matching pushes the same instability down one level (what threshold, scored how) without
+reliably catching the real defects on record, which were small, discrete, structural faults a
+similarity score could easily average away as "close enough."
+
+**Grading: deterministic property/assertion checks, not a judge.** Each check is a pure function
+over `(generated_text, context)` returning pass/fail plus a reason — no LLM call, no run-level
+state, no similarity threshold. For `LiveStepDefinitionGenerator`, the first target (D5): a valid
+Cucumber import package, no markdown code fence (mirroring the no-markdown contract the prompt
+already states), no fabricated/duplicate class declared inline where an external reference was
+expected, and a reference only to page-object/utility methods actually declared in the target
+interface supplied to the generator. Each of these is either a direct reuse of an existing CP5-class
+check (compile, near-duplicate) or a small, new, equally deterministic string/AST check of the same
+shape — no new category of mechanism, per D1.
+
+**Scoring and key.** A run of the eval set against one generator at one `GenerationIdentity`
+(`prompt_id`/`prompt_version`/`prompt_sha256`/`provider`/`model`) produces a pass/fail per case and
+an aggregate pass rate, persisted as an eval-run record keyed by `(generator_id, GenerationIdentity,
+eval_set_version)`. Store shape mirrors ADR-0050 D2's own precedent (`atomic_write.py`'s durable
+writer; an append-only per-generator history, not a content-addressed cache — the store here exists
+to keep history for comparison, the opposite goal of the cache's dedup-and-discard shape, so the
+pattern is reused, the store is not).
+
+**CI gate.** Regression-relative, not an absolute score threshold: a candidate `GenerationIdentity`
+(a prompt or model change under review) is compared against the last-recorded baseline score for the
+generator's current production identity; any case that newly fails, or an aggregate pass-rate drop,
+fails CI. An absolute threshold is deliberately rejected — this document's own "pass-bias
+meaning-check" caution (Item 1, above) already flags the risk of a numeric bar quietly meaning less
+than it appears to; a regression comparison against a known-good baseline avoids inventing a new
+magic number.
+
+**Open, unresolved design question, named, not answered here.** Whether CI executes a real, live LLM
+call against each eval case on every run (cost/quota-bound — `[[cap-compile-gap-closed]]`'s own
+measured finding that `gemini-2.5-flash`'s free tier caps at 20 requests/day is a real, already-
+observed constraint on exactly this idea) or replays a pinned, cached response set (reusing the
+generation cache itself, ADR-0050, as the harness's own input-replay mechanism) determines whether
+this gate runs on every PR or on a scheduled/gated cadence. Left to the implementation milestone, not
+decided here.
+
+## D3 — The defect-shape taxonomy: what Layer 1 catches, what is deferred, and why
+
+| Defect shape | Example | Catching mechanism | Status |
+| --- | --- | --- | --- |
+| **Structural** — the artifact is malformed relative to a checkable, nameable rule | Wrong import package, markdown fence, fabricated duplicate class (the real `gemini-2.5-flash` defects) | Deterministic property/assertion checks, largely reusing CP5-class checks | **Layer 1 — this ADR, decided and scoped for build** |
+| **Coverage omission** — a required thing (an AC, a scenario) has no corresponding generated artifact at all | An acceptance criterion with no generated step covering it | The traceability graph's `CompletenessReport` (CAP-088, ADR-0048) | **Consumed, not extended.** Layer 1's property-check runner queries `CompletenessReport` as one more deterministic check; no new coverage-computation logic is built by this ADR. |
+| **Silently-wrong-logic** — the artifact is structurally clean and nominally covers the right thing, but implements it incorrectly | A generated step that validates the wrong field, or a model that silently drops an allergy-validation rule the AC still nominally covers | No deterministic check can see this without a rubric of "correct" | **Deferred — a future Layer 2 (rubric/LLM-judge), not designed by this ADR (D5).** |
+
+Nitin's own motivating example (a model silently missing allergy validation or insurance
+eligibility) does not map cleanly onto one row. If the omission manifests as a coverage gap — the
+governing acceptance criterion ends up with no generated scenario or step at all — row 2 already
+catches it deterministically, today, via CAP-088, with no new logic. If instead the criterion is
+nominally covered but the generated logic implements it incorrectly, only row 3 — deferred — could
+catch it. This ADR does not overclaim: Layer 1 covers the real historical defect (row 1) and the
+coverage-shaped half of the hypothetical one (row 2, by composition, not new work); it does not
+close row 3.
+
+## D4 — Relationship to existing subsystems: new capability, not a duplicate
+
+- **`suite_quality_governance/cp5/` (CP5).** Gates whether one run's *entire generated suite*
+  coheres (compiles, no ambiguous glue, no near-duplicates), evaluated once per run, as a promotion
+  gate. This harness scores whether one *generator*, at one identity, still produces the quality it
+  used to, across changes, over time — a different axis (per-component drift vs. per-run
+  cohesion), not a duplicate. Layer 1 reuses CP5's *check logic* as grading material wherever
+  directly applicable; it does not reimplement or replace CP5's own run-gating role.
+- **The golden-baseline structural harness (CAP-070, `docs/productization/golden-baseline.md`).**
+  Its own document states its boundary explicitly: *"It deliberately does not validate prompt
+  quality: the LLM response is a fixed, deterministic stub."* Its §12 ownership table freezes it to
+  architecture/determinism verification, explicitly excluding prompt/generation quality — extending
+  it to grade real generated output would violate its own frozen governance contract (§13), not
+  merely be inconvenient. This harness is CAP-070's quality-grading peer, not its replacement or
+  extension.
+- **The traceability graph (CAP-088, ADR-0048).** Consumed for coverage-shaped property checks
+  (D3, row 2), read-only, through its existing `CompletenessReport` output. No change to
+  `traceability_graph/`'s own scope, models, or pipeline is made or proposed by this ADR.
+
+## D5 — Scope and sequence: one generator, Layer 1 only, measured before extending; the judge layer deferred
+
+**First build** (a future, separate milestone; not this ADR): the curated eval set (D2) + the
+property-check runner (D2) + the score store (D2) + CI wiring, targeting
+**`LiveStepDefinitionGenerator`** only — the same generator ADR-0050's own first cache increment
+picked (highest recent iteration/defect volume this arc, and the most measurement infrastructure
+already wrapped around it: `GenerationIdentity`, token-usage recording, and
+`CachingStepDefinitionGenerator` all already instrument this exact class), and, concretely, the
+literal generator where the real, traced `gemini-2.5-flash` defect occurred. Measured, scores-first
+within this ADR-first capability, the same discipline ADR-0050 D5 established: build against the
+curated set, confirm the score correctly regresses on a reintroduction of the known defect (a
+negative-control check), before extending to any other generator.
+
+**Explicitly excluded from this ADR's decided scope, named as deferred future work, each with its
+own trigger, not designed here:**
+
+- **The remaining six generators' eval sets** (`LivePageObjectGenerator`, `LiveUtilityGenerator`,
+  `LiveTestDataGenerator`, `LiveFeatureContentGenerator`, `LiveFeatureRemediator`,
+  `RequirementAnalysisService`). Same pattern, applied once step-def's own build proves the
+  mechanism — an extension, not a redesign, mirroring exactly how ADR-0050's cache extended from one
+  generator to three by repeating its own pattern.
+- **The rubric/LLM-judge layer (Layer 2), for silently-wrong-logic (D3, row 3).** Named as future
+  scope, not designed here — it is speculative relative to what this ADR can decide with confidence
+  today. Open questions, named, not resolved: which model serves as judge, and how is *its own*
+  version pinned (the same `GenerationIdentity`-shaped discipline this ADR relies on for Layer 1
+  would need to apply recursively to the judge, or the judge becomes a second, unpinned source of the
+  exact silent-drift risk this whole harness exists to catch); what is the rubric, and who authors
+  and maintains it; what is the judge's own false-positive/false-negative rate, and how would that be
+  calibrated without another eval harness one level up; and what is the cost model for a second LLM
+  call per graded artifact, at what cadence. None of these are decided by this ADR. Layer 2 is
+  recorded as a real, additive, later capability — not rejected, not designed, not scheduled.
+- **Rubric grading generally**, including human-scored rubrics (not CI-automatable by construction;
+  useful for periodic audit, not a CI gate).
+
+## Consequences
+
+- **Enables, once the first build lands:** a curated, versioned, CI-gated quality score for
+  `LiveStepDefinitionGenerator`, keyed by `GenerationIdentity`, that would have caught the real
+  `gemini-2.5-flash` regression automatically, before adoption — the concrete instance of Nitin's own
+  ask this ADR is scoped to satisfy first.
+- **Deliberately does not enable, by this ADR's own decision, not oversight:** detection of
+  silently-wrong-logic (D3, row 3) — no rubric or judge exists after this ADR's first build; grading
+  for any generator other than step-def; a live CI decision on the cadence question named in D2.
+- **Corrects a possible over-scoping before it shipped.** Absent this ADR's own reframe (D1), a
+  first build could easily have reached straight for an LLM-judge — the "standard modern approach"
+  — to satisfy Nitin's ask, at real cost and with a real second-drift-source risk, for a defect class
+  (D3, row 1) that a compile check and a duplicate-class sweep this platform already runs would have
+  caught for free. The reframe is the reason Layer 1 is deterministic-first, not judge-first.
+- **Dependencies, satisfied or explicitly not required:** `GenerationIdentity` (pinning) is built and
+  sufficient as the eval-score key; CAP-088's `CompletenessReport` is built and sufficient for
+  coverage-shaped checks (D3, row 2); CP5's own check logic is built and directly reusable for the
+  structural checks (D3, row 1). No new upstream capability is required to begin the first build.
+- **Connects to #8 (per-stage LLM assignment, mentor Item 8).** This harness is the literal mechanism
+  that would let a future #8 model/provider swap be *gated*, not merely *permitted* — #8 remains the
+  cheapest item on the mentor list to build engineering-wise, but today nothing would catch a bad
+  swap before it ships; this ADR's first build is what closes that, for the one generator it covers.
+- **Connects to pinning (`GenerationIdentity`).** A version bump — a new `prompt_version`, a new
+  `model` — is exactly the event that should trigger a fresh eval run against the new identity before
+  it becomes the production default, fulfilling Item 1's own earlier re-run-token-cost note that
+  pinning "lets an eval-harness trigger target exactly what changed."
+- **Governance follow-ons, recommended, not performed here** (mirroring exactly how ADR-0048 and
+  ADR-0050 each named their own matrix/register follow-ons as separate actions): (1) a
+  `docs/governance/platform-capability-matrix.md` entry for **CAP-090** — Generation Quality Eval
+  Harness — the next unused id after `CAP-089` (Artifact-Level Generation Cache) in the open-ended
+  `CAP-060…` block (§3.1); status `Proposed`/`Architecture`, mirroring `CAP-087`'s own pure-paper-
+  freeze row shape (a decision recorded, nothing built yet) rather than `CAP-088`/`CAP-089`'s
+  built-and-measured shape; (2) a `docs/architecture/architecture-baseline-v2.md` register entry
+  recording this ADR, mirroring how ADR-0048's own entry was added in a later, separate task.
+  Neither is performed by this ADR, and neither changes this ADR's Decision text if performed later.
+- **Relationship to the mentor item.** This is the design record for the last major unbuilt item on
+  Nitin's (one mentor) list. The specific reframe (discipline, not new detection), the Layer 1/Layer
+  2 split, and the step-def-first sequencing are this ADR's own reading of the real code and the real
+  historical defect — not something Nitin weighed in on directly, the same caveat the surfacing note
+  itself already flagged for every design-surfacing note in this arc.
+
+## Ownership, runtime position, governance
+
+- **Owns:** the eval harness's curated-set shape (D2), the deterministic property-check grading
+  mechanism (D2), the score/key/store design (D2), the defect-shape taxonomy and layer boundaries
+  (D3), its relationship to CP5/CAP-070/CAP-088 (D4), and the build sequence including the deferred
+  judge layer (D5) — decisions only.
+- **Does not own:** `GenerationIdentity`, any live generator, `CompletenessReport`/the traceability
+  graph, any CP5 check (reused, not owned), the golden-baseline harness, or the judge/rubric layer
+  itself (named as future scope, not designed).
+- **Runtime position (not built):** generator identity + curated eval-set case → property-check
+  runner (D2) → pass/fail per check → aggregate score, keyed by `GenerationIdentity` → persisted
+  eval-run record → CI comparison against the last baseline for that generator's production
+  identity → pass or regression-fail. This chain does not exist yet for any generator.
+- **Governance:** recommended `CAP-090` (not yet entered — Consequences) for the Requirement
+  Intelligence Platform. This ADR is **Proposed** — a decided plan, zero code, matching ADR-0050's
+  own original pre-Accepted status before its same-day implementation, and ADR-0016's own original
+  Proposed status before its later runtime activation. It does not claim any eval set, check, store,
+  or CI job is built, tested, or measured — that is exactly the state a future, separate build
+  milestone would change, mirroring D5's own named sequence (step-def's Layer 1 first, measured,
+  before any extension; the judge layer strictly later, and strictly separately decided).
