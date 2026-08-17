@@ -389,6 +389,82 @@ ADR does not populate it. A future, additive milestone may wire
 output — small, layered on top of whichever of this D4's mapping already applies; it does
 not change the mapping itself, and it is not authorized or scoped by this ADR.
 
+**RUNTIME CITATION VALUE INVESTIGATED (2026-08-17) — confirmed: the deferral was
+correct, no consumer exists, DO NOT build. A surface-then-build-if-warranted task (build
+nothing unless a real consumer exists), not a build task.** One mentor throughout
+(Nitin) — this closes the deferral this D4 itself named as open future work.
+
+*Pre-flight.* Clean tree, `main`, tip `17afca0` (CAP-090 closure committed). `make lint`
+clean. `make test`: 5925 passed, unchanged. This note adds text only to this document;
+nothing else touched.
+
+**The value question, checked against real code, not assumed.** Would anything actually
+*consume* a populated `documentation_reference`? Three findings, together dispositive:
+
+1. **The full chain to make it visible does not exist, and populating one field would
+   not close it.** `documentation_reference` lives on `CP1CriterionMetadata` — the
+   criterion's static *definition* — not on `CP1Finding`, the object
+   `cp1_report_builder.py` actually reads to render `cp1_report.md`
+   (`requirement_intelligence/execution_package/cp1_report_builder.py:108-123`: the
+   finding table prints `criterion_id`/`criterion_version`/`location`/`message`/
+   `recommendation`/`evidence`/`correlation_id`/`created_at` — no citation field, because
+   `CP1Finding` carries none). Populating `CP1CriterionMetadata.documentation_reference`
+   alone would change nothing a human or downstream tool ever sees; a real "runtime
+   citation" would need a second field added to `CP1Finding` and a third change to the
+   report builder — three changes, not one field populated, none of them free.
+2. **Doc-level citation is already more complete than this D4's own text credits.** Not
+   only does every gate's module docstring cite its governing ADR (D4's own finding) —
+   the Engineering Readiness Criteria Catalog itself already states, per criterion:
+   `CP1-0001 | EngineeringInputAvailabilityCriterion | ... | Implemented — governed by
+   ADR-0013 (Accepted); cp1/criteria/engineering_input_availability.py`
+   (`docs/architecture/engineering-readiness-criteria-catalog.md` §11). A human reading a
+   `cp1_report.md` already has everything needed to find a finding's governing Article:
+   the `criterion_id` the report already prints, looked up once in the catalog. Runtime
+   citation would save exactly one lookup for a human reader — not close a real gap.
+3. **This platform already tried "populate the citation field" elsewhere, and it stayed
+   an authoring-only discipline — direct, not hypothetical, evidence.**
+   `LearningRule.documentation_reference` (`requirement_intelligence/learning/rules/
+   learning_rule.py`) and `PromotionRule.documentation_reference`
+   (`requirement_intelligence/organizational_memory/rules/promotion_rule.py`) are, unlike
+   CP1's Reserved field, **active, required** (`Field(..., min_length=1)`) — every one of
+   the ~50 rules across `learning_rule_builder.py`/`promotion_rule_builder.py` supplies
+   one (e.g. `documentation_reference="ADR-0029 D18"`). This is the SAME mechanism D4
+   proposes for CP1, already built, already populated, already enforced at construction
+   time. **A repository-wide search for any read of it beyond the builders that set it
+   and the tests that assert it was set returns nothing** — no report, no finding, no
+   downstream consumer anywhere reads it. It is real, working, enforced authoring
+   discipline (every rule author must cite a source) that has never needed a runtime
+   reader to deliver its value. This is the strongest evidence available that the
+   pattern D4 deferred for CP1 delivers its actual value at the doc/construction level,
+   not the runtime level — proven by a live, already-shipped sibling mechanism, not
+   argued from CP1 alone.
+4. **The one plausible future consumer does not exist, and its own shape is unresolved.**
+   Layer 7 (Governance Dashboard) — the kind of place a machine-readable citation would
+   plausibly first matter — is confirmed unbuilt (`requirement_intelligence/run_state/
+   stages.py`, stage 19, `layer="L7"`, `governing_citation="none yet, structurally
+   different (ADR-0036 D5)"`), and ADR-0036 §D5 itself leaves L7's own shape an open
+   question (a per-run stage vs. a cross-run service). Populating a citation field for a
+   dashboard whose own architecture does not exist yet is exactly the ceremony this
+   investigation was scoped to avoid building.
+
+**THE VERDICT: (b) — no consumer, doc-level citation is sufficient, the deferral was
+correct. Confirmed, not merely re-asserted; DO NOT build.** The constitution's own
+intent (Article — "every gate cites its authority") is fully satisfied for the audience
+that exists today (a human engineer reading code, a report, or the catalog); a
+machine-readable runtime citation has no reader to serve until an automated consumer is
+actually built. The condition that would warrant reopening this: a real, concrete
+consumer — most plausibly Layer 7, once its own architecture resolves and is being
+built, or any other automated tool that would read a finding's citation to do something
+(route it, filter it, score it) — not merely "make the field non-empty because it
+exists." Absent that, populating it is ceremony: a field nobody reads, exactly the
+outcome this ADR's own D4 language ("explicit future work... not scoped or authorized")
+already anticipated might never become worth doing, now confirmed rather than assumed.
+
+**Nothing built by this note.** No field populated, no `CP1Finding` change, no report
+builder change. `make lint`/`make test` unchanged (5925, confirmed above). This is the
+honest completion of D4's own deferral — closed by confirming it was correct, not by
+building the thing it deferred.
+
 ---
 
 ## Consequences
@@ -425,9 +501,12 @@ not change the mapping itself, and it is not authorized or scoped by this ADR.
     recommended, mirroring how ADR-0048 flagged its own `CAP-088` matrix row and register
     entry as follow-ons rather than performing them in the same change; not performed
     here.
-  - Runtime/output gate citation (`CP1CriterionMetadata.documentation_reference`
+  - ~~Runtime/output gate citation (`CP1CriterionMetadata.documentation_reference`
     population) — explicit future work, additive, not scoped or authorized by this ADR
-    (D4).
+    (D4).~~ **Investigated and CONFIRMED CORRECTLY DEFERRED (2026-08-17), see D4's own
+    "RUNTIME CITATION VALUE INVESTIGATED" note, above — not a build item unless a real
+    consumer (most plausibly Layer 7, unbuilt) emerges.** No longer merely deferred by
+    omission; the deferral is now an evidenced decision.
   - A periodic reuse-catalog hygiene mechanism — considered as a thirteenth Article
     candidate and dropped for not yet being a real, enforced invariant (D3); remains an
     open future item per the mentor scoping doc's own Item 1 finding, not created here.
