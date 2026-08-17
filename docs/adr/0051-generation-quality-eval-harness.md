@@ -1,6 +1,7 @@
 # ADR-0051 — Generation Quality Eval Harness (Layer 1: Deterministic Property Checks)
 
-- **Status:** Proposed
+- **Status:** Accepted (Layer 1, `LiveStepDefinitionGenerator` only — see "Implementation Note,"
+  below; the remaining six generators and the judge layer, D5, remain future, separate work).
 - **Date:** 2026-08-17
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR *is* the governing design. It records the decisions
@@ -20,10 +21,15 @@
   checks, D3, never extended); ADR-0050 (Artifact-Level Generation Cache — sibling precedent for a
   new, focused, ADR-first capability, and the module this harness's own scorecard store shape
   mirrors, D2).
-- **Runtime status: Not built.** This ADR records decisions for a future build (Layer 1 —
-  deterministic property checks, one generator). No package, fixture, score store, property-check
-  function, CI job, or governance registration exists yet. Mirrors ADR-0016's own original
-  Proposed, design-only status before its later runtime activation.
+- **Runtime status: Built and tested (Layer 1, one generator only — see "Implementation Note,"
+  below).** `eval_harness/` exists: the curated eval set, the three deterministic property checks,
+  the scoring/aggregation, the CAP-088 coverage consumption, and the regression-gated baseline
+  store — all for `LiveStepDefinitionGenerator` only. **Not CI-wired and not live-wired.** No CI
+  job, no `PlatformContext` composition-root method, and no live LLM call anywhere in this
+  package's own test suite — every proof runs against `StubStepDefinitionGenerator` seeded with
+  captured/fixture Java text (D2's own "live-vs-cached" open question is left exactly as open as
+  this ADR named it; this build resolves only the eval *logic*, deterministically). The remaining
+  six generators and the judge layer (D5) are untouched.
 
 ## Problem
 
@@ -246,15 +252,100 @@ own trigger, not designed here:**
 - **Rubric grading generally**, including human-scored rubrics (not CI-automatable by construction;
   useful for periodic audit, not a CI gate).
 
+---
+
+## Implementation Note (2026-08-17) — D5's first increment: `LiveStepDefinitionGenerator`, built and tested
+
+The first build D5 names (curated eval set + deterministic property checks + scoring + the
+regression-gated baseline store, one generator, measured) was built the same day this ADR was
+written. This note records what was actually verified — the decisions above stay decisions; this
+is the separate record of what now backs them.
+
+**Built:** a new top-level package, `eval_harness/` (`models.py`, `step_definition_properties.py`,
+`step_definition_eval_set.py`, `scoring.py`, `coverage.py`, `baseline_store.py`, `runner.py`), for
+`LiveStepDefinitionGenerator` only.
+
+- **The curated eval set (D2).** `STEP_DEFINITION_EVAL_SET` (`step_definition_eval_set.py`),
+  independently versioned (`STEP_DEFINITION_EVAL_SET_VERSION`, mirroring `GOLDEN_DATASET_VERSION`'s
+  own convention) — three cases seeded directly from the real, currently-tracked, currently-
+  compiling `test-suite-baseline/src/test/java/com/automation/steps/LoginSteps.java` (the same
+  corpus `[[cap-compile-gap-closed]]`'s real `gemini-2.5-flash` measurement regenerated and found
+  76% defective), plus one case with no page-object interface expected, to exercise the
+  `NOT_APPLICABLE` path deliberately, not by accident.
+- **The deterministic property checks (D2/D3, composed not invented).** `step_definition_
+  properties.py`: `check_valid_cucumber_import`, `check_no_markdown_fence`, `check_no_fabricated_
+  page_object_class` — one check per real defect shape (`[[cap-compile-gap-closed]]`'s wrong-import,
+  markdown-fence, and fabricated-duplicate-class findings, respectively). Each returns `PASSED`,
+  `FAILED`, or `NOT_APPLICABLE` (never a vacuous pass when nothing is checkable).
+- **Scoring, keyed by `GenerationIdentity` (D2).** `scoring.py`'s `score_case`/`score_eval_set`;
+  `models.py`'s `EvalScore` carries `total_checks_applicable`/`total_checks_passed`/`pass_rate`,
+  each enforced consistent with its own `case_results` by a `model_validator` (mirroring
+  `BindingCompletenessReport._counts_are_consistent`'s own discipline) — a score can never claim an
+  arithmetic it did not actually compute.
+- **The coverage-shaped check, consumed not extended (D3/D4).** `coverage.py`'s
+  `check_step_covered` — a single dictionary lookup against an already-computed CAP-088
+  `BindingCompletenessReport.unbound_steps`; proven, by its own test, never to re-derive binding
+  completeness itself. Optional, composable, not part of the default check set (the curated,
+  isolated eval cases have no real traceability graph to consult by default — D3's own scoping).
+- **The regression gate, relative not absolute (D2, the pass-bias-trap avoidance).**
+  `baseline_store.py`'s `EvalBaselineStore`/`check_regression` — reuses
+  `requirement_intelligence.run_state.atomic_write` verbatim (ADR-0050 D2's own precedent), one
+  current baseline `EvalScore` per `generator_id`, explicitly recorded, never auto-promoted. Three
+  outcomes: `ESTABLISHED_BASELINE` (no prior baseline — this run IS the measurement), `REGRESSED`
+  (candidate pass rate below the baseline's), `PASSED` (stable or improved) — no absolute score
+  threshold anywhere in this module.
+- **The runner (D5).** `runner.py`'s `run_step_definition_eval` — takes any `StepDefinitionGenerator`
+  (Protocol-typed, agnostic to live/stub/cached) plus a caller-supplied `GenerationIdentity`, runs
+  the curated set through it, scores the result.
+
+**Proven two ways, both deterministic, no live LLM call anywhere in this package's own test
+suite (34 new tests):**
+
+1. **Each property check catches its own real defect shape and passes the real clean corpus text**
+   (`test_eval_harness_step_definition_properties.py`) — `check_valid_cucumber_import` against a
+   mutation reproducing the real `io.cucumber.java.When` (missing `.en.`) defect; `check_no_
+   markdown_fence` against a fenced wrapper; `check_no_fabricated_page_object_class` against an
+   inline duplicate `LoginPage` class replacing the real import — all three FAIL on their own
+   defect and PASS on the real, unmodified `LoginSteps.java` text.
+2. **The full arc — scores-first baseline establishment, then regression detection — end to end**
+   (`test_eval_harness_runner.py`), driven entirely by `StubStepDefinitionGenerator` seeded with
+   captured/fixture Java text: a clean generator's first run against the curated set has no prior
+   baseline (`ESTABLISHED_BASELINE`, not a pass or a fail) and is explicitly recorded as one; a
+   second generator standing in for a worse model (the real defect-1 shape reintroduced into every
+   case, `_worse_model_java_by_step_text`) is caught (`REGRESSED`) relative to that recorded
+   baseline; re-running the same clean generator does not regress (`PASSED`). The regression gate's
+   own relativity, not an absolute bar, is proven directly
+   (`test_eval_harness_baseline_store.py::TestCheckRegressionIsRelativeNotAbsolute`): a 25%
+   baseline compared against a 25% candidate PASSES, and a 100% baseline compared against a 75%
+   candidate REGRESSES — either assertion would be reversed under an absolute-threshold gate
+   calibrated at any single cutoff, which is exactly the pass-bias-trap D2 named as the reason to
+   reject one.
+
+**Scope held exactly as D5 decided.** Only `LiveStepDefinitionGenerator`'s Layer 1 is built. The
+remaining six generators' eval sets, the judge layer (D5), rubric grading, and any CI/live wiring
+are all untouched by this increment — extending to them, or wiring this into CI, is the next,
+separate step D5 already named, not performed here.
+
+Gate: `make lint` clean; `make test` 5925 passed (5891 + 34 new, itemized above); `mypy`:
+whole-repo error count unchanged (436, confirmed by `git stash -u` before/after) — the new package
+(`eval_harness/`) is itself zero-error under `mypy strict`; the one transient new-code error
+surfaced mid-build (a missing return-type annotation on a test helper) was fixed before this count,
+not carried forward. Tree: 8 new files under `eval_harness/`, 5 new test files, this ADR amended
+further.
+
+---
+
 ## Consequences
 
-- **Enables, once the first build lands:** a curated, versioned, CI-gated quality score for
-  `LiveStepDefinitionGenerator`, keyed by `GenerationIdentity`, that would have caught the real
-  `gemini-2.5-flash` regression automatically, before adoption — the concrete instance of Nitin's own
-  ask this ADR is scoped to satisfy first.
+- **Enables, proven for the first increment (Implementation Note, above):** a curated, versioned,
+  regression-gated quality score for `LiveStepDefinitionGenerator`, keyed by `GenerationIdentity`,
+  proven — by a fixture standing in for the real defect shape, not merely argued — to catch the
+  real `gemini-2.5-flash`-class regression before adoption. Not yet CI-wired: the score exists and
+  is provably correct; nothing runs it automatically on a real pull request or model change yet.
 - **Deliberately does not enable, by this ADR's own decision, not oversight:** detection of
-  silently-wrong-logic (D3, row 3) — no rubric or judge exists after this ADR's first build; grading
-  for any generator other than step-def; a live CI decision on the cadence question named in D2.
+  silently-wrong-logic (D3, row 3) — no rubric or judge exists after this increment; grading for
+  any generator other than step-def; a live CI decision on the cadence question named in D2 (still
+  open, not resolved by the Implementation Note).
 - **Corrects a possible over-scoping before it shipped.** Absent this ADR's own reframe (D1), a
   first build could easily have reached straight for an LLM-judge — the "standard modern approach"
   — to satisfy Nitin's ask, at real cost and with a real second-drift-source risk, for a defect class
@@ -276,11 +367,21 @@ own trigger, not designed here:**
   ADR-0050 each named their own matrix/register follow-ons as separate actions): (1) a
   `docs/governance/platform-capability-matrix.md` entry for **CAP-090** — Generation Quality Eval
   Harness — the next unused id after `CAP-089` (Artifact-Level Generation Cache) in the open-ended
-  `CAP-060…` block (§3.1); status `Proposed`/`Architecture`, mirroring `CAP-087`'s own pure-paper-
-  freeze row shape (a decision recorded, nothing built yet) rather than `CAP-088`/`CAP-089`'s
-  built-and-measured shape; (2) a `docs/architecture/architecture-baseline-v2.md` register entry
-  recording this ADR, mirroring how ADR-0048's own entry was added in a later, separate task.
-  Neither is performed by this ADR, and neither changes this ADR's Decision text if performed later.
+  `CAP-060…` block (§3.1); status `Accepted`/`Implementation` (updated from this ADR's original
+  `Proposed`/`Architecture` framing, above, now that the first increment is built and tested —
+  Implementation Note), mirroring `CAP-088`/`CAP-089`'s own row shape for a built-and-tested,
+  not-yet-wired capability rather than `CAP-087`'s pure-paper-freeze shape; (2) a
+  `docs/architecture/architecture-baseline-v2.md` register entry recording this ADR, mirroring how
+  ADR-0048's own entry was added in a later, separate task. Neither is performed by this ADR, and
+  neither changes this ADR's Decision text if performed later.
+- **Became Accepted the same day** (Implementation Note, above): the curated eval set, the three
+  deterministic property checks, scoring, the CAP-088 coverage consumption, and the regression-
+  gated baseline store (D2–D5) were built directly against this design, and the regression gate was
+  proven — deterministically, via a fixture reproducing the real defect shape, not a live model
+  swap — to catch it. The exact Proposed-to-Accepted path this ADR named in advance, mirroring
+  ADR-0050's own convention. Accepted status covers this one increment's own scope only
+  (`LiveStepDefinitionGenerator`, Layer 1); the remaining six generators, the judge layer, and any
+  CI/live wiring stay future, separate work (D5), not implicitly authorized by this status change.
 - **Relationship to the mentor item.** This is the design record for the last major unbuilt item on
   Nitin's (one mentor) list. The specific reframe (discipline, not new detection), the Layer 1/Layer
   2 split, and the step-def-first sequencing are this ADR's own reading of the real code and the real
@@ -296,14 +397,17 @@ own trigger, not designed here:**
 - **Does not own:** `GenerationIdentity`, any live generator, `CompletenessReport`/the traceability
   graph, any CP5 check (reused, not owned), the golden-baseline harness, or the judge/rubric layer
   itself (named as future scope, not designed).
-- **Runtime position (not built):** generator identity + curated eval-set case → property-check
-  runner (D2) → pass/fail per check → aggregate score, keyed by `GenerationIdentity` → persisted
-  eval-run record → CI comparison against the last baseline for that generator's production
-  identity → pass or regression-fail. This chain does not exist yet for any generator.
+- **Runtime position (built for the first increment; not CI-wired, not live-wired):** generator +
+  caller-supplied identity + curated eval-set case → `run_step_definition_eval` (`runner.py`) →
+  property-check results per case (`step_definition_properties.py`) → aggregate `EvalScore`, keyed
+  by `GenerationIdentity` (`scoring.py`) → `check_regression` against `EvalBaselineStore`'s current
+  baseline (`baseline_store.py`) → `ESTABLISHED_BASELINE` / `PASSED` / `REGRESSED`. This chain
+  exists and is tested for `LiveStepDefinitionGenerator` only (proven against
+  `StubStepDefinitionGenerator`, never a live LLM call, in this package's own test suite) — no CI
+  job invokes it, and no `PlatformContext` composition-root method exists for it.
 - **Governance:** recommended `CAP-090` (not yet entered — Consequences) for the Requirement
-  Intelligence Platform. This ADR is **Proposed** — a decided plan, zero code, matching ADR-0050's
-  own original pre-Accepted status before its same-day implementation, and ADR-0016's own original
-  Proposed status before its later runtime activation. It does not claim any eval set, check, store,
-  or CI job is built, tested, or measured — that is exactly the state a future, separate build
-  milestone would change, mirroring D5's own named sequence (step-def's Layer 1 first, measured,
-  before any extension; the judge layer strictly later, and strictly separately decided).
+  Intelligence Platform. This ADR is **Accepted** for its first increment (Implementation Note,
+  above) — it now clears the same bar ADR-0050 cleared (built, tested, and proven against the real
+  defect shape it targets), for the scope D5 defined. It does not claim any of the other six
+  generators' eval sets, the judge layer, or CI/live wiring are built — that remains future,
+  separate work, exactly as D5 sequenced it.

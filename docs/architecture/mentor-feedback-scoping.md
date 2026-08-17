@@ -2383,16 +2383,23 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
     over Runtime Truth — do not extend `KnowledgeGraphService.build` itself (frozen to Historical
     Truth only). The existing asset/catalog KG (ADR-0023) is unaffected. Nothing built.
 2d. **Nitin's eval-harness build item (added 2026-08-12) — design-surfacing DONE (2026-08-17), see
-    "EVAL HARNESS DESIGN SURFACED" under Item 1, above; ADR WRITTEN (2026-08-17), ADR-0051
-    (Proposed), Layer 1 (deterministic property checks) only — the judge layer named as deferred
-    future scope, not designed.** Curated eval sets per generator/skill, a tracked score, a CI
-    drift gate; additive to the existing golden-baseline structural-regression harness, not a
-    replacement for it (confirmed: CAP-070's own frozen ownership boundary excludes
-    prompt/generation quality). Recommended: property/assertion checks first (deterministic,
-    CI-stable, already-precedented via CP5, and confirmed to catch the real `gemini-2.5-flash`
-    defect this arc found), rubric/LLM-judge layered on later for semantic-only gaps. First-build
-    scope: `LiveStepDefinitionGenerator`. New capability (recommended `CAP-090`), ADR-first.
-    Nothing built — ADR only, zero code.
+    "EVAL HARNESS DESIGN SURFACED" under Item 1, above; ADR-0051 WRITTEN (2026-08-17), then Layer 1
+    BUILT the same day (ADR-0051 now Accepted for `LiveStepDefinitionGenerator` only — see
+    ADR-0051's own Implementation Note).** Curated eval sets per generator/skill, a tracked score,
+    a regression gate; additive to the existing golden-baseline structural-regression harness, not
+    a replacement for it (confirmed: CAP-070's own frozen ownership boundary excludes
+    prompt/generation quality). Built: `eval_harness/` — a curated eval set seeded from the real
+    tracked-baseline corpus, three deterministic property checks composed from CP5's own check
+    class (one per real `gemini-2.5-flash` defect shape — wrong Cucumber import, markdown fence,
+    fabricated duplicate class), scored per generator keyed by `GenerationIdentity`, gated by
+    REGRESSION against a stored baseline (never an absolute threshold — proven relative, not
+    absolute, by dedicated tests). Proven, deterministically (34 new tests, no live LLM call): each
+    check catches its own real defect shape on a fixture reproducing it; the full arc (baseline
+    established on a clean run, a worse-model-standing-in generator caught as a regression) works
+    end to end via `StubStepDefinitionGenerator`. The judge layer (silently-wrong-logic) remains
+    deferred, not designed, per ADR-0051 D5. CAP-090 (recommended) matrix/register entries remain
+    flagged, not performed. Not CI-wired, not live-wired — the "live vs. cached LLM in CI" question
+    ADR-0051 D2 flagged stays open, deliberately not resolved by this build.
 2e. **Nitin's re-run/token-cost build item (added 2026-08-12)** — start with token-consumption
     instrumentation by stage and run (his own "Critically"-flagged, cheapest, no-architecture-change
     first step); artifact-level caching, delta-scoped regeneration (depends on 2c's change-impact
