@@ -938,6 +938,201 @@ the same caveat flagged for every prior design-surfacing note in this item.
 here per the surfacing task's own instruction; CAP-089's matrix/register follow-ons remain flagged,
 unperformed, unchanged from the third increment's own note.
 
+**EVAL HARNESS DESIGN SURFACED (2026-08-17) — the last major unbuilt Item-1 sub-item, a
+design-surfacing task (build nothing).** Nitin's own model, restated precisely from his
+clarification above: treat every skill/agent as a software component with a curated eval set
+(expected outputs or rubrics), a score tracked over time, so a model/prompt/framework change that
+causes silent quality drift is caught in CI before adoption — not discovered later. His own
+example: a model swap that silently starts missing allergy validation or insurance-eligibility
+rules should be caught by CI, not by a person noticing downstream. He is explicit both mechanisms
+are needed together: structural regression (shape/consistency — already built) plus quality
+grading (new).
+
+*Pre-flight.* Clean tree, `main`, tip `a64e3d6` (CAP-089 closure committed). `make lint` clean.
+`make test`: 5891 passed, unchanged. This note adds text only to this document; nothing else
+touched.
+
+**What already exists (1) — the golden-baseline structural harness, read directly, not
+assumed.** `tests/productization/test_golden_baseline.py` / `docs/productization/golden-baseline.md`
+(CAP-070) is a **release regression baseline**: one hand-authored dataset (9 source artifacts, all
+`component="authentication"`) driven through the full pipeline against a **fixed, hand-written
+stub LLM response** (`GoldenStubProvider`, `GOLDEN_LLM_RESPONSE_TEXT` — no real model call, ever).
+It checks: every governed subsystem executes in the governed order; every governed artifact is
+produced; manifest checksums/byte-counts/cross-references agree with disk; Validation and CP1
+evaluate as expected; and two runs on the same input produce byte-identical findings/verdicts
+(excluding provenance). Its own document is explicit about its own boundary, quoted verbatim: *"It
+deliberately does not validate prompt quality: the LLM response is a fixed, deterministic stub, so
+this baseline asserts nothing about how good a real model's answer would be"* (golden-baseline.md
+§Overview). §12's own ownership table scopes it to *"verification of the completed architecture"*
+and lists Normalization/Analysis/Connectors/Prompt Engineering as things it **consumes, never
+judges**. This is a real, live, 70-test harness — but by its own governance contract it structurally
+cannot be the seam Nitin is asking for; it never calls a real model and never grades a real
+generated artifact. Quality-grading is additive to this, not a duplicate or an extension of it — a
+different subject entirely (LLM output quality vs. pipeline shape/determinism), confirmed by
+reading its own frozen ownership boundary, not inferred.
+
+**What already exists (2) — the generators ARE the "skills/agents."** Item #2's own finding
+(above) already established there is no agent/tool-loop architecture on this platform — every LLM
+call is a single-shot, Protocol-bound generator class. That finding is the mapping Nitin's model
+needs: a "skill/agent," here, is one **generator + its governed prompt**. Seven real call sites
+exist across three layers: L1 `RequirementAnalysisService` (one call/run); L2
+`LiveFeatureContentGenerator` + `LiveFeatureRemediator`; L3 `LiveStepDefinitionGenerator` /
+`LivePageObjectGenerator` / `LiveUtilityGenerator` / `LiveTestDataGenerator`. Each already carries
+a governed, versioned, content-hashed prompt identity (`PromptRegistry`, ADR-0014,
+`(prompt_id, version)` unique and sealed, `PromptDefinition.metadata.sha256`) and, since the
+pinning build (`[[cap-pinning-foundation-built]]`), a per-call `GenerationIdentity`
+(`prompt_id`/`version`/`sha256`/`provider`/`model`) captured at every L2/L3 outcome. **This is
+precisely the per-component identity a per-component eval score needs to key against** — it
+already exists, built for caching, directly reusable here as the eval harness's own scoring key.
+Each of the seven call sites is a candidate eval-set owner.
+
+**What already exists (3) — seed data, checked, not assumed usable.**
+`tests/productization/fixtures/golden_dataset.py` is **not** usable as eval-set seed material as-is:
+it is one hand-built input paired with one hand-built, fixed stub *response* — by construction
+there is no real generation to grade, and its own two planned siblings (`Golden Validation FAIL`,
+`Golden CP1 FAIL`, both unimplemented) are aimed at exercising Validation/CP1 failure paths, not
+grading quality either. Curation is **not** starting from zero, though: this arc's own ad hoc
+live-regen work already produced genuine, human-verified expected-outcome data —
+`[[cap-page-object-live-regen-findings]]` (32/32 generated, 3 defects hand-diagnosed and named) and
+`[[cap-compile-gap-closed]]` (17 `gemini-2.5-flash` generations, each hand-classified clean/defective
+with a named defect type) are exactly the shape of curated, labeled examples Nitin's ask requires —
+just recorded as prose in a memory file and a scoping-doc note, never packaged as a structured,
+re-runnable fixture. Real curation raw material exists; it needs packaging, not invention from
+scratch.
+
+**THE HARD QUESTION — how to grade generation quality stably enough for CI.**
+
+- **Expected-outputs (golden text).** Rejected as the primary mechanism, for a reason this
+  platform has already documented about itself, not a generic LLM caveat: ADR-0050 D2's own
+  residual-risk note states plainly that *"hosted-model APIs do not guarantee bit-identical output
+  across calls even at temperature=0.0."* An exact-match golden artifact would false-fail on every
+  regrade with zero real regression — the opposite of CI-stable. Approximate/similarity matching
+  pushes the problem down a level (what threshold? scored by what?) without actually detecting the
+  real historical defects below, which were small, discrete textual faults (a wrong import token, a
+  fenced block) that a similarity score could easily average away as "close enough."
+- **Rubrics scored by a human.** Not CI-automatable by definition — useful for periodic audit
+  (mirrors the "pass-bias meaning-check" recommendation already made elsewhere in this document),
+  not for gating a model swap before adoption.
+- **LLM-judge.** The standard modern answer for holistic/semantic quality (e.g., "does this
+  generated step correctly implement the intended business rule," which no syntax check can see).
+  Real problems, honestly stated: cost (a second LLM call per graded artifact, minimum), and a
+  second model that itself needs pinning/versioning and its own reliability calibration — the exact
+  silent-drift risk this whole harness exists to catch, now recursively applied to the judge. Not
+  rejected, but not the first layer: it needs the deterministic layer's own discipline (identity
+  pinning, a tracked baseline score) applied to itself before it can be trusted as a CI gate.
+- **Property/assertion checks.** Deterministic, checkable without a judge, and — the load-bearing
+  finding below — **this platform already has a live, proven instance of exactly this pattern**:
+  `suite_quality_governance/cp5/` (`compile_check.py`'s `LiveCompileChecker`, real `mvn
+  test-compile`; `cohesion.py`'s `no_ambiguous_glue`; `orphaned_glue.py`; `near_duplicate_sweep.py`)
+  is a deterministic, CI-stable, no-judge-required property-check suite, already live-wired into
+  stage 16 — just scoped at the whole-suite level (does the generated corpus cohere), not curated
+  per-generator as a versioned, scored eval set compared across model/prompt versions over time.
+  Cheap, stable, but bounded: it only catches properties someone thought to name in advance, never
+  holistic "is this good."
+
+**THE GEMINI-2.5-FLASH DEFECT AS THE TEST CASE — traced against real data, not hypothesized.**
+`[[cap-compile-gap-closed]]` recorded the actual defect breakdown across 17 real
+`gemini-2.5-flash` step-definition generations (76% defective): wrong Cucumber import package
+(`io.cucumber.java.When` vs. the correct `io.cucumber.java.en.When`, 8/17); a markdown code fence
+despite an explicit no-markdown prompt contract (2/17); an inline/duplicate page-object class
+fabricated in the same file instead of referencing the external one (3–4/17). **All three are
+deterministically checkable, with zero judge call, and largely already caught by mechanisms this
+platform already runs**: the wrong-import defect is exactly what `mvn clean test-compile`
+(CP5's `compile_check.py`, already live) fails on; the fabricated-duplicate-class defect is a
+structural check `near_duplicate_sweep.py` is already adjacent to; the markdown-fence defect is a
+literal string check with no existing analog for L3 Java text (L1's `ResponseNormalizer` enforces
+the equivalent contract for JSON, not yet mirrored for generated Java) but is trivial to add. **The
+property/assertion layer would have caught this real defect automatically — not the rubric layer,
+not an LLM-judge.** The actual gap was never detection capability; `mvn clean test-compile` already
+existed and already would have failed. The gap was that this detection ran **once, manually, ad
+hoc, discovered by a human reading a live-regen transcript after the fact** — not as a curated,
+versioned eval set with a tracked score, run automatically in CI the moment `STEP_DEF_GEMINI_MODEL`
+changed, before that change shipped. That is the actual, narrow, honest shape of Nitin's ask
+against this platform's own history: not "build a detector," but "curate, wire, and score what
+already exists so it runs before adoption, not after."
+
+**A necessary caveat, not overclaimed.** Nitin's own motivating example — a model silently missing
+an allergy-validation or insurance-eligibility rule — is a *different* defect shape than the real
+one traced above: not a syntax fault, but a semantic omission where the generated artifact is
+syntactically clean and still wrong. Two sub-cases exist, with different answers: if the omission
+shows up as a **coverage gap** (an acceptance criterion with no corresponding generated
+scenario/step at all), that is a deterministic, judge-free property check — and this platform
+already has the exact mechanism for it, unused for this purpose: the traceability graph
+(`[[cap-traceability-graph-minimal-build]]`, `CompletenessReport`, CAP-088) already answers
+"does every requirement/AC have a corresponding scenario/step," and could feed the property-check
+layer directly, no new coverage logic required. If instead the criterion IS covered but the
+generated logic **implements it incorrectly** (present, but wrong), no deterministic check can see
+that without a rubric of what "correct" means — genuine rubric/judge territory. The honest
+conclusion: property checks are more load-bearing here than they first appear (they cover both the
+real historical defect and the coverage-shaped half of the hypothetical one), but they do not
+close the whole gap.
+
+**THE RECOMMENDED APPROACH — layered, deterministic-first.** Build the property/assertion layer
+first: a curated eval set per generator (not one golden case — a small, labeled corpus of real
+generation contexts, seeded from the already-produced `[[cap-page-object-live-regen-findings]]` /
+`[[cap-compile-gap-closed]]` corpora, each paired with named, checkable properties, not full
+expected text), scored as a pass-rate over deterministic assertions, persisted keyed on the
+generator's own `GenerationIdentity` (prompt_id/version/sha256/provider/model — the same identity
+the cache already threads, a second consumer of the same mechanism, not a new one). This is
+CI-stable by construction: no LLM-judge variance, no false alarms from hosted-model
+non-determinism at the property level (a correct import statement is correct regardless of exact
+wording), cheap relative to a judge (several checks are static analysis; the compile check is
+already run today). Rubric/LLM-judge grading is real, additive, later work for the semantic-only
+half the caveat above names — deferred, not rejected, and only after the deterministic layer's own
+identity-pinning discipline is proven, so the judge itself doesn't become a second source of the
+exact silent-drift problem being solved.
+
+**FIRST-BUILD SCOPE, recommended, not performed.** One generator:
+`LiveStepDefinitionGenerator` — the same generator ADR-0050's own first-increment reasoning
+already picked (highest recent iteration/defect volume this arc, most measurement infrastructure
+already wrapped around it: `GenerationIdentity`, token-usage recording, and the existing
+`CachingStepDefinitionGenerator` all already instrument this exact class), and, concretely, the
+literal generator where the real, traced defect above occurred. Mechanism: a curated fixture (10–20
+real `StepDefinitionGenerationContext` examples, drawn from the already-produced corpus, hand-
+labeled clean/defective) + a small `Cp5`-style property-check runner (reusing the
+`compile_check`/`near_duplicate_sweep`/`orphaned_glue` pattern, adding "correct Cucumber import
+package," "no markdown fence," "no fabricated BasePage/page-object helper reference") + a score
+(pass-rate, persisted per `GenerationIdentity`) comparable across model/prompt versions over time.
+**Open, unresolved design question, flagged not answered here:** whether CI makes a real, live LLM
+call per run (cost/quota-bound — `[[cap-compile-gap-closed]]`'s own finding that
+`gemini-2.5-flash`'s free tier caps at 20 requests/day is a real, already-measured constraint on
+this exact idea) or replays a pinned, cached response set (reusing the generation cache itself,
+ADR-0050) — this determines whether the harness runs on every PR or on a scheduled/gated cadence,
+and is not resolved by this note.
+
+**GOVERNANCE.** A new capability, not an extension of CAP-070: different subject (LLM output
+quality vs. pipeline architecture/determinism), and CAP-070's own frozen ownership boundary (§12,
+above) explicitly excludes prompt/generation quality from its scope — extending it would violate
+its own governance contract freeze (§13), not merely be inconvenient. Recommend **ADR-first**,
+per this arc's own corrected lesson: ADR-0050 (artifact cache) was written before any code and is
+cited elsewhere in this document as the right order, in explicit contrast to the traceability
+graph's own build-then-ADR inversion (`[[cap-traceability-graph-adr]]`), later named as debt.
+Likely lands as its own capability (next available CAP number after CAP-089), sibling to CAP-088
+(traceability graph) and CAP-089 (artifact cache) — both similarly new-subsystem-plus-own-ADR
+precedents from this same arc.
+
+**DEPENDENCIES, explicit.** **#8 (per-stage LLM assignment)** — the eval harness is the literal
+mechanism that would let a future #8 model/provider swap be gated rather than merely permitted;
+Nitin's own words tie them together directly ("a model, prompt, or framework change... caught in
+CI before it is adopted"). #8 remains the cheapest item on this list to build engineering-wise, but
+today nothing would catch a bad swap before it ships — the eval harness is what closes that.
+**Pinning/caching (`[[cap-pinning-foundation-built]]`, ADR-0050)** — the eval harness's own scoring
+key reuses `GenerationIdentity` verbatim, a second consumer of an identity built for caching; this
+also fulfills Item 1's own earlier re-run-token-cost note that pinning "lets an eval-harness
+trigger target exactly what changed," now traceable to a concrete mechanism rather than a forward
+reference. **Traceability graph (CAP-088)** — the property-check layer's coverage-shaped checks
+(the caveat above) consume `CompletenessReport` directly, no new logic.
+
+**Nothing built by this note.** No eval set, no property-check runner, no score store, no ADR, no
+CI wiring, no fixture. This surfaces what exists (structural harness, generators-as-skills mapping,
+seed-data assessment), the grading-option tradeoffs, the traced verdict on the real
+`gemini-2.5-flash` defect (property checks would have caught it; the gap was curation/CI-wiring,
+not detection), the recommended layered approach, a first-build scope, the governance verdict
+(new capability, ADR-first), and the #8/pinning/traceability-graph dependencies; building any of it
+remains a future, separate task.
+
+Gate: `make lint` clean; `make test` 5891 unchanged. Tree modified only in this document.
+
 ---
 
 ### Item 2 — Skills-first, agents-next (token minimization)
@@ -2187,9 +2382,14 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
     (typed nodes/edges, deterministic pipeline) in a new sibling service with its own entry point
     over Runtime Truth — do not extend `KnowledgeGraphService.build` itself (frozen to Historical
     Truth only). The existing asset/catalog KG (ADR-0023) is unaffected. Nothing built.
-2d. **Nitin's eval-harness build item (added 2026-08-12)** — curated eval sets per generator/skill,
+2d. **Nitin's eval-harness build item (added 2026-08-12) — design-surfacing DONE (2026-08-17), see
+    "EVAL HARNESS DESIGN SURFACED" under Item 1, above.** Curated eval sets per generator/skill,
     a tracked score, a CI drift gate; additive to the existing golden-baseline structural-regression
-    harness, not a replacement for it (Item 1's own note, above).
+    harness, not a replacement for it (confirmed: CAP-070's own frozen ownership boundary excludes
+    prompt/generation quality). Recommended: property/assertion checks first (deterministic,
+    CI-stable, already-precedented via CP5, and confirmed to catch the real `gemini-2.5-flash`
+    defect this arc found), rubric/LLM-judge layered on later for semantic-only gaps. First-build
+    scope: `LiveStepDefinitionGenerator`. New capability, ADR-first. Nothing built.
 2e. **Nitin's re-run/token-cost build item (added 2026-08-12)** — start with token-consumption
     instrumentation by stage and run (his own "Critically"-flagged, cheapest, no-architecture-change
     first step); artifact-level caching, delta-scoped regeneration (depends on 2c's change-impact
