@@ -359,3 +359,17 @@ Review only. No LLD, code, ADR, or register file was edited or created by this t
 this findings document itself. `make lint` and `make test` (5736 passed) were re-confirmed green
 before this document was written and were not re-run after (no code changed). Anything beyond
 scope is listed in §7 and was not reviewed in depth.
+
+---
+
+## 11. Addendum (2026-08-20) — the §2/§8/§9 L1 recommendation is now done
+
+`docs/proposals/layer-1-requirement-intelligence-lld.md` has been created — an as-built,
+from-code Layer 1 LLD, per this review's own §2/§8/§9 recommendation and its "create-with-#3"
+timing lean (mentor item #3, corpus-level requirement completeness, resolved as the traceability
+graph build, CAP-088/ADR-0048, which landed before this document was written). It is a from-code
+description, not a transcription-plus-Reviewer's-note of the deck, per this review's own stated
+reasoning: the deck's staleness was too pervasive for a faithful transcription to be a useful
+record. `docs/proposals/README.md`'s L1 row has been updated to mark the PPTX superseded by the
+new markdown, matching L2/L3's own disposition. Nothing else in this review's findings changed;
+§2, §8, and §9 remain accurate as the historical record of why this document was recommended.
