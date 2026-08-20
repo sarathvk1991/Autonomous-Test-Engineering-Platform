@@ -369,7 +369,7 @@ class LivePageObjectGenerator:
             *(need.method_name for need in context.additional_method_needs),
         )
 
-        prompt = self._build_prompt(context, expected_method_names)
+        prompt = self._build_prompt(context)
         generated_text = self._execute(prompt, class_name=context.class_name)
 
         missing = [
@@ -384,52 +384,14 @@ class LivePageObjectGenerator:
             )
         return generated_text
 
-    def _build_prompt(
-        self, context: PageObjectGenerationContext, expected_method_names: tuple[str, ...]
-    ) -> str:
+    def _build_prompt(self, context: PageObjectGenerationContext) -> str:
         """Render v1.2.0's own governed template -- a ``methods`` list, one
         entry per requested method (primary first, then every entry in
         ``context.additional_method_needs``, in order), each carrying its
         own caller-chosen ``method_name``. A single-method call renders a
         length-one ``methods`` list -- the same template, the same
         verbatim-naming instruction, no special-casing."""
-        method_needs = (
-            context.need,
-            *(need.need for need in context.additional_method_needs),
-        )
-        expected_return_types = (
-            context.return_type,
-            *(need.return_type for need in context.additional_method_needs),
-        )
-        expected_parameters = (
-            context.parameters,
-            *(need.parameters for need in context.additional_method_needs),
-        )
-        methods_payload = [
-            {
-                "method_name": method_name,
-                "action_text": need.text,
-                "captures": (
-                    _capture_payload_from_parameters(parameters)
-                    if parameters is not None
-                    else _capture_payload(need.captures)
-                ),
-                "return_type": return_type,
-            }
-            for method_name, need, return_type, parameters in zip(
-                expected_method_names,
-                method_needs,
-                expected_return_types,
-                expected_parameters,
-                strict=True,
-            )
-        ]
-        input_payload: dict[str, object] = {
-            "class_name": context.class_name,
-            "target_package": context.target_package,
-            "customqa_constraints": list(context.customqa_constraints),
-            "methods": methods_payload,
-        }
+        input_payload = build_page_object_payload(context)
         artifact_context = json.dumps(input_payload, indent=2, sort_keys=True)
         user_prompt = self._template.render_user_prompt(artifact_context)
         return f"{self._template.system_prompt}{_SECTION_SEPARATOR}{user_prompt}"
@@ -478,4 +440,110 @@ class LivePageObjectGenerator:
         return generated_text
 
 
-__all__ = ["LiveGenerationError", "LivePageObjectGenerator"]
+def build_page_object_payload(context: PageObjectGenerationContext) -> dict[str, object]:
+    """The exact, deterministic payload :meth:`LivePageObjectGenerator.
+    _build_prompt` serializes into the LLM call -- extracted to a public,
+    standalone function so there is exactly ONE definition of "what
+    determines this generator's output," the same discipline
+    :func:`~automation_engineering.generation.live_step_definition_generator.
+    build_step_definition_payload` already established for step definitions
+    (used both to render the prompt and, by
+    :mod:`automation_engineering.generation.caching_page_object_generator`,
+    to compute the artifact-generation cache key, ADR-0050 D1). A pure
+    function of ``context`` alone (never ``self``) -- a caching decorator
+    that never constructs a live generator can still compute this payload
+    from a ``context`` it already has.
+
+    Recomputes ``expected_method_names`` (primary ``context.method_name``
+    plus every ``context.additional_method_needs``' own ``method_name``,
+    in order) independently of :meth:`LivePageObjectGenerator.generate`'s
+    own copy -- a trivial, deterministic tuple-build, not the ``method_name
+    is None`` validation :meth:`generate` performs before ever reaching
+    this function; a caller (e.g. a caching decorator) that skips that
+    validation still gets a deterministic payload back, and any actual
+    generation attempt on it still raises exactly as it always did.
+    """
+    expected_method_names = (
+        context.method_name,
+        *(need.method_name for need in context.additional_method_needs),
+    )
+    method_needs = (
+        context.need,
+        *(need.need for need in context.additional_method_needs),
+    )
+    expected_return_types = (
+        context.return_type,
+        *(need.return_type for need in context.additional_method_needs),
+    )
+    expected_parameters = (
+        context.parameters,
+        *(need.parameters for need in context.additional_method_needs),
+    )
+    methods_payload = [
+        {
+            "method_name": method_name,
+            "action_text": need.text,
+            "captures": (
+                _capture_payload_from_parameters(parameters)
+                if parameters is not None
+                else _capture_payload(need.captures)
+            ),
+            "return_type": return_type,
+        }
+        for method_name, need, return_type, parameters in zip(
+            expected_method_names,
+            method_needs,
+            expected_return_types,
+            expected_parameters,
+            strict=True,
+        )
+    ]
+    return {
+        "class_name": context.class_name,
+        "target_package": context.target_package,
+        "customqa_constraints": list(context.customqa_constraints),
+        "methods": methods_payload,
+    }
+
+
+def resolve_page_object_identity(
+    *,
+    provider: str,
+    model: str,
+    prompt_registry: PromptRegistry | None = None,
+) -> GenerationIdentity:
+    """The ``generate_page_objects`` v1.3.0 :class:`GenerationIdentity`,
+    resolved WITHOUT calling the LLM (ADR-0050 D3's "Gap 1" -- the pre-call
+    identity a caching decorator needs to compute a key BEFORE deciding
+    hit-or-miss). Mirrors
+    :func:`~automation_engineering.generation.live_step_definition_generator.
+    resolve_step_definition_identity` exactly, scoped to this generator's own
+    prompt id/version.
+
+    ``prompt_id``/``prompt_version``/``prompt_sha256`` are read straight off
+    the registry -- the same, already-sealed source
+    :class:`LivePageObjectGenerator` itself reads in ``__init__``, never
+    re-derived. ``provider``/``model`` are supplied by the SAME caller that
+    already chose them when constructing the live provider -- not invented
+    here; a caller that supplies a value the provider will not actually echo
+    back produces a caching decorator that raises on its first MISS (the
+    decorator's own identity-mismatch safety check), never a silent wrong
+    cache entry.
+    """
+    registry = prompt_registry if prompt_registry is not None else build_prompt_registry()
+    definition = registry.get(_PROMPT_ID, _PROMPT_VERSION)
+    return GenerationIdentity(
+        prompt_id=definition.metadata.prompt_id,
+        prompt_version=definition.metadata.version,
+        prompt_sha256=definition.metadata.sha256,
+        provider=provider,
+        model=model,
+    )
+
+
+__all__ = [
+    "LiveGenerationError",
+    "LivePageObjectGenerator",
+    "build_page_object_payload",
+    "resolve_page_object_identity",
+]

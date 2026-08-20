@@ -1,6 +1,7 @@
 # ADR-0050 — Artifact-Level Generation Cache
 
-- **Status:** Accepted (first three increments, 2026-08-14 -- see "Implementation Note," below).
+- **Status:** Accepted (first three increments, 2026-08-14; fourth increment, 2026-08-20 -- see
+  "Implementation Note," below).
 - **Date:** 2026-08-14
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR *is* the governing design. It records the decisions
@@ -19,45 +20,44 @@
   precedent for a new, standalone capability ADR written for a focused mechanism rather than a
   whole layer, and source of `change_impact_for_method`/`build_change_impact_report`, this
   cache's own downstream consumer once delta-scoped regeneration is built).
-- **Runtime status: Built and tested (first three increments only — D5's own scope, extended
-  twice).** `requirement_intelligence/llm/generation_cache.py` (`compute_cache_key`,
-  `GenerationCacheEntry`, `GenerationCacheStore`) is the one shared store/key module all three
-  increments reuse, unmodified. `automation_engineering/generation/
+- **Runtime status: Built and tested (four of D5's five named generators — three increments
+  2026-08-14, a fourth 2026-08-20).** `requirement_intelligence/llm/generation_cache.py`
+  (`compute_cache_key`, `GenerationCacheEntry`, `GenerationCacheStore`) is the one shared store/key
+  module all four increments reuse, unmodified. `automation_engineering/generation/
   caching_step_definition_generator.py` (`CachingStepDefinitionGenerator`, wrapping
   `LiveStepDefinitionGenerator`), `feature_engineering/generation/
   caching_feature_content_generator.py` (`CachingFeatureContentGenerator`, wrapping
-  `LiveFeatureContentGenerator` — 45.4% of the measured distribution) and `automation_engineering/
+  `LiveFeatureContentGenerator` — 45.4% of the measured distribution), `automation_engineering/
   generation/caching_test_data_generator.py` (`CachingTestDataGenerator`, wrapping
-  `LiveTestDataGenerator` — the other near-equal sink, 43.4%) all exist, implementing D1–D4 exactly
-  as decided below — the remaining two generators (`LivePageObjectGenerator`, `LiveUtilityGenerator`)
-  and the remediator remain unwrapped, per D5. With this increment, both of the two co-dominant call
-  types in the one real distribution measured to date (`feature_content_generation` 45.4%,
-  `test_data_generation` 43.4%, together ~89% of that run's own tokens — `step_definition_generation`
-  itself recorded zero tokens in that specific run, absorbed entirely by reuse/pre-generation
-  escalation; `docs/architecture/mentor-feedback-scoping.md`) are cached, alongside step-def from the
-  first increment. Both build-time gaps D3
-  named are closed for all three generators: `automation_engineering/generation/
+  `LiveTestDataGenerator` — the other near-equal sink, 43.4%), and `automation_engineering/
+  generation/caching_page_object_generator.py` (`CachingPageObjectGenerator`, wrapping
+  `LivePageObjectGenerator` — absent from the one measured distribution, real share unmeasured, see
+  the fourth Implementation Note) all exist, implementing D1–D4 exactly as decided below — the one
+  remaining generator (`LiveUtilityGenerator`) and the remediator remain unwrapped, per D5. Both
+  build-time gaps D3 named are closed for all four generators: `automation_engineering/generation/
   live_step_definition_generator.py` gained `resolve_step_definition_identity`/
   `build_step_definition_payload`; `feature_engineering/generation/live_content_generator.py` gained
   `resolve_feature_content_identity`/`build_feature_content_payload`; `automation_engineering/
   generation/live_test_data_generator.py` gained `resolve_test_data_identity`/
-  `build_test_data_payload` (Gap 1, pre-call identity, and the single shared payload definition
-  closing the "serialization drift" residual risk named in D1, each generator's own version);
-  `requirement_intelligence/llm/token_usage.py`'s `TokenUsageTotals.cache_hit_count`/
-  `TokenUsageTracker.record_cache_hit` (Gap 2, the zero-cost-verified bucket) is generator-agnostic
-  and required no change for either the second or third generator to reuse. The third increment's
-  `GenerationCacheIdentityMismatchError` is REUSED, not redefined a third time — it imports the
-  step-def module's own class, since both share `automation_engineering.errors.TransportFailureError`
-  (unlike feature-content, which needed its own class for `feature_engineering`'s distinct
-  hierarchy). Proven by 33 (step-def) + 13 (feature-content) + 13 (test-data) new deterministic unit
-  tests (`requirement_intelligence/tests/unit/test_generation_cache.py`, `tests/unit/
+  `build_test_data_payload`; `automation_engineering/generation/live_page_object_generator.py`
+  gained `resolve_page_object_identity`/`build_page_object_payload` (Gap 1, pre-call identity, and
+  the single shared payload definition closing the "serialization drift" residual risk named in D1,
+  each generator's own version); `requirement_intelligence/llm/token_usage.py`'s
+  `TokenUsageTotals.cache_hit_count`/`TokenUsageTracker.record_cache_hit` (Gap 2, the
+  zero-cost-verified bucket) is generator-agnostic and required no change for the second, third, or
+  fourth generator to reuse. Proven by 33 (step-def) + 13 (feature-content) + 13 (test-data) + 19
+  (page-object) new deterministic unit tests (`requirement_intelligence/tests/unit/
+  test_generation_cache.py`, `tests/unit/
   test_automation_engineering_generation_caching_step_definition_generator.py`, `tests/unit/
   test_feature_engineering_generation_caching_feature_content_generator.py`, `tests/unit/
-  test_automation_engineering_generation_caching_test_data_generator.py`, plus additive
+  test_automation_engineering_generation_caching_test_data_generator.py`, `tests/unit/
+  test_automation_engineering_generation_caching_page_object_generator.py`, plus additive
   `TestCacheHitRecording`/`TokenUsageTotals` cases) AND by three real, live measured runs
-  (Implementation Notes, below) — not merely unit-tested in isolation. **Not wired into any live
-  pipeline.** `scripts/run_requirement_analysis.py` still constructs `LiveStepDefinitionGenerator`,
-  `LiveFeatureContentGenerator`, and `LiveTestDataGenerator` directly, unwrapped; no
+  (Implementation Notes, below — the fourth increment is proven deterministically only, no live
+  measurement yet, since page-object generation is not activated in the live CLI at all). **Not
+  wired into any live pipeline.** `scripts/run_requirement_analysis.py` still constructs
+  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, and `LiveTestDataGenerator` directly,
+  unwrapped (and does not construct a live page-object generator/matcher pair at all yet); no
   `PlatformContext` composition-root method exists for this cache and none is added here — a
   future, separate milestone would wire it live, mirroring how ADR-0048's own Traceability Graph
   stayed unwired after being built and measured.
@@ -462,22 +462,98 @@ wrapped set (alongside step-def and feature-content, first two increments).
 regeneration and the deterministic/LLM split remain untouched — all still D5's own named future
 work, not performed here.
 
+## Implementation Note (2026-08-20) — the fourth increment: `LivePageObjectGenerator`, built, NOT yet measured live
+
+The page-object live-wiring arc (stage 15's own co-generation chain, the live page-object
+`SemanticMatcher`, and the `GenerationIdentity`-threading fix that immediately preceded this
+increment) unblocked exactly what D5 named as future work for this generator: page-object
+generation now carries a real `GenerationIdentity` on both `GeneratedPageObject` and
+`CoGeneratedStepDefinition`, so it is cache-keyable the same way the first three generators already
+were. The same pattern transferred directly a fourth time: `_build_prompt`'s own inline
+`input_payload` dict (`class_name`/`target_package`/`customqa_constraints`/`methods` — the D1
+payload this generator's own INPUT CONTRACT already names) was extracted, unmodified in content,
+into a public `build_page_object_payload(context)`, mirroring `build_step_definition_payload`'s own
+extraction exactly; `resolve_page_object_identity` mirrors `resolve_step_definition_identity`
+verbatim; `CachingPageObjectGenerator` reuses `generation_cache.py`'s store/key unmodified and
+defines its own `GenerationCacheIdentityMismatchError` (a separate class, for the same
+`TransportFailureError`-subclass reason `caching_test_data_generator.py` gives for reusing rather
+than redefining where the hierarchy already matches — here it does not need to, since a fresh
+subclass costs nothing and keeps this module self-contained).
+
+**The one genuinely new wrinkle this generator has that the prior three did not: a SECOND reuse
+mechanism, upstream of the cache.** Page-object generation is reuse-first at the ASSET level too
+(`automation_engineering.reuse.engine.decide_reuse`, called from `page_object_orchestrator.py`
+BEFORE any generation decision) — a semantic-plus-structural match can BIND a need to an existing
+tracked `PageObjectAsset` with no generation call at all. This is answered, not merely asserted: the
+orchestrator's own NoMatch-then-generate control flow was read directly (pre-flight) and found to
+already isolate the two mechanisms structurally — `decide_reuse` runs first and only a `NoMatch`
+ever reaches `generator.generate(context)`, the exact point this cache wraps. Proven by test, not
+just by reading the code: a `TrustedReuse` bind against a real `PageObjectAsset` with the specific
+method needed never touches the wrapped `CachingPageObjectGenerator.generate` at all — zero LLM
+calls, `last_identity` stays `None`, nothing written to the store — while a sibling `NoMatch` need in
+the same test reaches the cache normally. Bind answers "does an existing ASSET already satisfy this
+need" (asset-level, upstream); this cache answers "did we already GENERATE this exact thing before"
+(call-level, at the generation seam) — orthogonal by construction, not by convention.
+
+Built: `automation_engineering/generation/caching_page_object_generator.py`
+(`CachingPageObjectGenerator`); `live_page_object_generator.py` gained
+`resolve_page_object_identity`/`build_page_object_payload` (additive — `_build_prompt` now calls the
+extracted function instead of building the dict inline; behavior-identical, proven by the 53
+pre-existing `LivePageObjectGenerator` tests passing unmodified).
+
+**Correctness, proven deterministically, no live LLM call involved** (19 new tests, `tests/unit/
+test_automation_engineering_generation_caching_page_object_generator.py`, mirroring the step-def
+suite's own test-class shape plus the bind/cache-composition section above): a changed
+`method_name`/`class_name`/`return_type`/`additional_method_needs` (the "class + method needs +
+signatures" payload, D1's own generalized language) with everything else held fixed MISSES; two
+independently-constructed, content-identical contexts HIT regardless of object identity; a HIT
+returns the byte-identical artifact a fresh generation would; a HIT replays the STORED identity
+across independent instances sharing only the on-disk store; a HIT records the cache-hit bucket
+under `page_object_generation`, never `unmeasured`; a MISS is byte-identical to an unwrapped
+`LivePageObjectGenerator` call; a genuine identity mismatch on a MISS raises rather than silently
+caching under the wrong key; a two-pass, three-artifact proof shows pass 2 (fresh decorator/provider
+instance, same on-disk store) makes zero generation calls and returns byte-identical output to pass
+1 — the same deterministic shape the prior three increments' own live measurements exhibited.
+
+**No live measurement this increment — an honest, deliberate gap, not an oversight.** The prior
+Implementation Note (above) already recorded that `page_object_generation` was ABSENT from the one
+measured live distribution entirely ("not live-constructed in `handle_analyze` at measurement
+time... their real share is unmeasured, not small-by-measurement") — that gap is UNCHANGED by this
+increment, because `scripts/run_requirement_analysis.py`'s own stage-15 call site still does not
+supply a `page_object_matcher`/`page_object_generator` at all (the live-wiring ADR's own note on
+this: activating page-object generation live is a separate, deliberate decision, not yet made). The
+cache is READY — correct, tested, wired to wrap whichever `LivePageObjectGenerator` instance a
+future caller constructs — but has nothing live to measure until that separate activation happens.
+This is the identical "cache built ahead of the traffic that will exercise it" posture D5 itself
+anticipated, made explicit rather than left implicit.
+
+**Scope held exactly as this increment intended.** Only `LivePageObjectGenerator` is added to the
+wrapped set (alongside step-def, feature-content, and test-data — the first three increments). The
+matcher/bind reuse path, the generation chain's own logic, and `GenerationIdentity`'s shape are all
+untouched. `LiveUtilityGenerator` and the remediator remain unwrapped — utility caching is the fifth
+and last of D5's originally named four remaining generators, still future work.
+
 ## Consequences
 
 - **Enables, proven for the first increment, extends to the rest by the same pattern:**
-  cross-run artifact reuse, with a measurable token saving now actually shown by the token-usage
-  scorecard (Implementation Note, above) for `LiveStepDefinitionGenerator`; the same store/key/
-  decorator pattern applies unchanged to the remaining four generators (future work); and the
-  staleness signal delta-scoped regeneration will consume next.
+  cross-run artifact reuse, with a measurable token saving actually shown by the token-usage
+  scorecard (Implementation Notes, above) for `LiveStepDefinitionGenerator`,
+  `LiveFeatureContentGenerator`, and `LiveTestDataGenerator`; the identical pattern now also wraps
+  `LivePageObjectGenerator` (fourth Implementation Note, above), correctness proven deterministically
+  though not yet measured live (that generator is not yet activated in the live CLI at all); the same
+  store/key/decorator pattern applies unchanged to the one remaining generator, `LiveUtilityGenerator`
+  (future work); and the staleness signal delta-scoped regeneration will consume next.
 - **Corrects a real design defect before it shipped.** The prior surfacing note's own recommended
   key would have produced silent stale hits on ordinary narrative/acceptance-criterion edits (D1).
   This ADR's key is the one any future build must implement — the corrected key is now the
   governed decision, not the prior note's.
-- **Both named build-time gaps are closed (Implementation Note, above).** Pre-call identity
-  exposure (D3, Gap 1 — `resolve_step_definition_identity`) and the token-scorecard cache-hit bucket
-  (D3, Gap 2 — `TokenUsageTotals.cache_hit_count`) are both built, additive, and proven by test —
-  no longer open for the step-def generator this increment wraps. Extending either closure to the
-  remaining four generators (Gap 1's `resolve_*_identity` equivalent per Protocol) is future work.
+- **Both named build-time gaps are closed (Implementation Notes, above), now for four of the five
+  named generators.** Pre-call identity exposure (D3, Gap 1 — a `resolve_*_identity` function per
+  generator: `resolve_step_definition_identity`, `resolve_feature_content_identity`,
+  `resolve_test_data_identity`, `resolve_page_object_identity`) and the token-scorecard cache-hit
+  bucket (D3, Gap 2 — `TokenUsageTotals.cache_hit_count`) are both built, additive, and proven by
+  test for step-definition, feature-content, test-data, and page-object generation. Extending either
+  closure to the one remaining generator (utility) is future work.
 - **Dependencies, satisfied or explicitly not required:** pinning (`GenerationIdentity`) is built
   and sufficient for D1's identity component; `_hash_artifacts`'s pattern and `atomic_write.py` are
   built and reusable for D2; the token-usage scorecard is built and is D5's measurement instrument.
@@ -500,9 +576,14 @@ work, not performed here.
   wrapping one of the distribution's two co-dominant sinks) and a third
   (`CachingTestDataGenerator`, wrapping the other) were added the same day, each repeating the same
   pattern and the same measured-saving proof (second and third Implementation Notes, above).
-  Accepted status covers these three increments' own scope only (`LiveStepDefinitionGenerator`,
-  `LiveFeatureContentGenerator`, `LiveTestDataGenerator`); the remaining two generators and the
-  remediator stay future, separate work (D5), not implicitly authorized by this status change.
+  A fourth decorator (`CachingPageObjectGenerator`) was added on 2026-08-20, once the page-object
+  live-wiring arc closed the `GenerationIdentity` prerequisite this generator was missing —
+  correctness proven the same deterministic way, live measurement deferred (fourth Implementation
+  Note, above) since that generator is not yet activated in the live CLI. Accepted status covers
+  these four increments' own scope only (`LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`,
+  `LiveTestDataGenerator`, `LivePageObjectGenerator`); the one remaining generator
+  (`LiveUtilityGenerator`) and the remediator stay future, separate work (D5), not implicitly
+  authorized by this status change.
 - **Relationship to the mentor cluster.** This is the second of Nitin's (one mentor) four-part
   re-run cluster to receive its own decision record — pinning was built without a dedicated ADR
   (additive infra, precedented shape); this cache, a new store/key/interception mechanism, is not.
@@ -518,23 +599,23 @@ work, not performed here.
 - **Does not own:** `GenerationIdentity`, any live generator, any orchestrator, `RunStateManager`,
   `TokenUsageTracker`'s existing measured/unmeasured buckets (extended, not owned, by D3's Gap 2),
   or delta-scoped regeneration (a future, separate capability that consumes this one once built).
-- **Runtime position (built for the first three increments; not live-wired):** generator
+- **Runtime position (built for four of five generators; not live-wired):** generator
   construction site → `Caching<X>Generator` → key (D1) → store (D2) lookup → HIT: stored artifact +
   stored identity, LLM call skipped; MISS: wrapped live generator called, result stored → identical
-  downstream flow either way (D3/D4, proven — all three Implementation Notes). This chain exists and
+  downstream flow either way (D3/D4, proven — all four Implementation Notes). This chain exists and
   is tested for step-definition generation (`CachingStepDefinitionGenerator`), feature-content
-  generation (`CachingFeatureContentGenerator`), and test-data generation
-  (`CachingTestDataGenerator`) only; the equivalent `Caching<X>Generator` for the remaining two
-  Protocols (`PageObjectGenerator`, `UtilityGenerator`) does not exist yet. No `PlatformContext`
-  method, no pipeline stage, no Execution Package artifact exists for this capability today —
+  generation (`CachingFeatureContentGenerator`), test-data generation (`CachingTestDataGenerator`),
+  and page-object generation (`CachingPageObjectGenerator`); the equivalent `Caching<X>Generator` for
+  the one remaining Protocol (`UtilityGenerator`) does not exist yet. No `PlatformContext` method, no
+  pipeline stage, no Execution Package artifact exists for this capability today —
   `scripts/run_requirement_analysis.py` constructs none of `CachingStepDefinitionGenerator`,
-  `CachingFeatureContentGenerator`, or `CachingTestDataGenerator`.
+  `CachingFeatureContentGenerator`, `CachingTestDataGenerator`, or `CachingPageObjectGenerator`.
 - **Governance:** recommended `CAP-089` (not yet entered — Consequences) for the Requirement
-  Intelligence Platform. This ADR is **Accepted** for its first three increments (all three
-  Implementation Notes, above) — it now clears the same bar ADR-0048 cleared (built, tested, measured
-  against real data), for the scope D5 defined, extended twice (three of five generators). It does
-  not claim the full five-generator wrap is built, tested, or measured — that remains future,
-  separate work, exactly as D5 sequenced it. `LivePageObjectGenerator`/`LiveUtilityGenerator` remain
-  the two uncached generators — both also absent from the one real distribution measured to date
-  (not live-constructed in `handle_analyze`), so their real token share is unmeasured, not the
-  distribution's own small remainder.
+  Intelligence Platform. This ADR is **Accepted** for its first four increments (all four
+  Implementation Notes, above) — it now clears the same bar ADR-0048 cleared (built, tested, and, for
+  three of the four, measured against real data — the fourth, page-object, proven deterministically
+  only), for the scope D5 defined, extended a third time (four of five generators). It does not claim
+  the full five-generator wrap is built, tested, or measured — that remains future, separate work,
+  exactly as D5 sequenced it. `LiveUtilityGenerator` remains the one uncached generator, also absent
+  from the one real distribution measured to date (not live-constructed in `handle_analyze`), so its
+  real token share is unmeasured, not the distribution's own small remainder.

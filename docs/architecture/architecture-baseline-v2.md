@@ -43,6 +43,53 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Artifact-Level Generation Cache (CAP-089, ADR-0050) EXTENDED to a fourth generator,
+  `LivePageObjectGenerator` — 4 of 5 target generators, still not wired (2026-08-20, same day as
+  the `GenerationIdentity` co-generation fix and the live page-object `SemanticMatcher` that
+  unblocked it).** Closes exactly the prerequisite the page-object live-wiring arc named: page-object
+  generation now carries a real `GenerationIdentity` (both `GeneratedPageObject` and
+  `CoGeneratedStepDefinition`), so it is cache-keyable the same way the first three generators
+  already were. The identical pattern transferred a fourth time: `_build_prompt`'s own inline
+  payload dict (`class_name`/`target_package`/`customqa_constraints`/`methods`) was extracted,
+  content-unmodified, into a public `build_page_object_payload(context)`, mirroring
+  `build_step_definition_payload`'s own extraction exactly; `resolve_page_object_identity` mirrors
+  `resolve_step_definition_identity` verbatim; `CachingPageObjectGenerator` reuses
+  `generation_cache.py`'s store/key unmodified. **The one genuinely new wrinkle this generator has
+  that the first three didn't: a SECOND, upstream reuse mechanism (asset-level BIND via
+  `automation_engineering.reuse.engine.decide_reuse`, before any generation decision) — proven,
+  not merely asserted, to be orthogonal to this cache: a `TrustedReuse` bind against a real
+  `PageObjectAsset` never touches the wrapped generator's own `generate` at all (zero LLM calls,
+  `last_identity` stays `None`, nothing written to the store), while a sibling `NoMatch` need in the
+  same test reaches the cache normally.** Built: `automation_engineering/generation/
+  caching_page_object_generator.py` (`CachingPageObjectGenerator`); `live_page_object_generator.py`
+  gained `resolve_page_object_identity`/`build_page_object_payload` (additive — the 53 pre-existing
+  `LivePageObjectGenerator` tests pass unmodified, proving the extraction is behavior-preserving).
+  **Correctness proven deterministically (19 new tests, `tests/unit/
+  test_automation_engineering_generation_caching_page_object_generator.py`, mirroring the step-def
+  suite's own test-class shape plus the bind/cache-composition section):** a changed
+  `method_name`/`class_name`/`return_type`/`additional_method_needs` MISSES; identical, separately-
+  constructed contexts HIT; a HIT replays the stored identity and records the cache-hit bucket under
+  `page_object_generation`; a MISS is byte-identical to an unwrapped `LivePageObjectGenerator` call;
+  an identity mismatch on a MISS raises; a two-pass, three-artifact proof shows pass 2 makes zero
+  generation calls and returns byte-identical output to pass 1. **No live measurement this
+  increment — honest, not an oversight:** `page_object_generation` was already recorded (third
+  Implementation Note, ADR-0050) as absent from the one measured live distribution entirely, and
+  that remains true — `scripts/run_requirement_analysis.py`'s own stage-15 call site still does not
+  supply a `page_object_matcher`/`page_object_generator` at all (a separate, deliberate activation
+  decision, not made here). The cache is ready and wired to wrap whichever `LivePageObjectGenerator`
+  instance a future caller constructs; there is simply no live traffic yet to measure a saving
+  against. `make lint`: clean; `make test`: 6025 (6006 + 19 new); `mypy`: whole-repo error count
+  unchanged (436) — the two new/changed source files are themselves zero-error under `mypy strict`.
+  Recorded additively in ADR-0050 (a fourth, dated Implementation Note plus additive
+  Consequences/Ownership/Status updates — no body rewrites), the `CAP-089` matrix row (§5.12,
+  `docs/governance/platform-capability-matrix.md`), and this register entry. **Owner:**
+  `requirement_intelligence/llm/generation_cache.py`, `automation_engineering/generation/`.
+  **Trigger for the next task:** extend the same store/key/decorator pattern to the one remaining
+  generator, `LiveUtilityGenerator`; separately, decide and (if warranted) execute page-object
+  generation's own live CLI activation (a distinct decision from this cache's own build, per the
+  live-wiring arc's own note), which is also the prerequisite for ever measuring this increment's
+  real token saving. One mentor throughout (Nitin).
+
 - **Generation Quality Eval Harness (CAP-090, ADR-0051) EXTENDED to a third generator,
   `LiveTestDataGenerator` — 3 of 7 target generators, still not wired (2026-08-20, same day as
   the feature-content increment below).** Completes eval coverage of all three of ADR-0050's
