@@ -2028,6 +2028,13 @@ code touched. This note surfaces the (a)/(b)/(c) decision with its blast radius 
 recommendation; writing the constitution (or the ADR-0038 amendment, or the thin index) remains a
 future, separate task once the approach is confirmed.
 
+**Nitin confirmation (2026-08-20) — the clarify-with-mentor nuance above is now CONFIRMED, not
+pending.** Asked directly, Nitin confirmed both halves: the citation reading is (i) doc-level
+mapping, not (ii) runtime citation; the authority shape is reconcile the existing
+0020/0021/0024–0026/0028/STD-000 lineage (what ADR-0049 built, Option B, ratifying rather than
+orphaning it), not a clean-slate replacement. Both match what was already written to. Additive
+confirmation only — the (a)/(b)/(c) analysis above is not re-opened.
+
 ---
 
 ### Item 6 — Human-controlled gate after failure analysis (no unbounded auto-remediate)

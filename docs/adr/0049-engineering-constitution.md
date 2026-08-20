@@ -98,6 +98,14 @@ structurally-forced Option B answer; if Nitin's own picture of "every gate cites
 article" differs from the doc-mapping reading adopted here, this ADR is adjustable, not
 final by mentor confirmation.
 
+**Nitin confirmation (2026-08-20).** Asked directly, Nitin confirmed both nuances this
+ADR was written without: (1) citation-shape — the doc-level mapping (i) built here is
+his intent; runtime citation (ii) was never wanted, not merely undecided; (2)
+authority-shape — this ADR's own act (a new Track-A ADR that ratifies and reconciles the
+existing 0020/0021/0024–0026/0028/STD-000 lineage, per D2) matches his intent; he means
+reconcile the existing governance, not replace it with a clean-slate document. Full
+record below (Consequences, and D4's own runtime-citation note).
+
 ## Decision
 
 1. **Establish** the Engineering Constitution (this ADR) as the platform's single,
@@ -465,6 +473,13 @@ builder change. `make lint`/`make test` unchanged (5925, confirmed above). This 
 honest completion of D4's own deferral — closed by confirming it was correct, not by
 building the thing it deferred.
 
+**Nitin confirmation (2026-08-20) — the deferral is now doubly confirmed.** The
+investigation above established runtime citation had **no consumer**; asked directly,
+Nitin separately confirmed doc-level citation (reading (i)) was **his actual intent** —
+runtime citation (ii) was never what "every gate cites its article" meant to him. The
+deferral now rests on two independent grounds, not one: nothing to consume it, and
+nothing asking for it. Still nothing built by this note; additive text only.
+
 ---
 
 ## Consequences
@@ -510,13 +525,17 @@ building the thing it deferred.
   - A periodic reuse-catalog hygiene mechanism — considered as a thirteenth Article
     candidate and dropped for not yet being a real, enforced invariant (D3); remains an
     open future item per the mentor scoping doc's own Item 1 finding, not created here.
-- **The Nitin nuance is unconfirmed, stated plainly.** The specific citation-shape
+- ~~The Nitin nuance is unconfirmed, stated plainly.~~ The specific citation-shape
   question this ADR resolves (documentation-mapping vs. runtime citation; a new Track-A
   ADR vs. an STD-000 promotion) was never itself put to Nitin — only the underlying
   "centralized constitution" ask was. This ADR is written to the structurally-forced
   Option B answer the scoping note derived from HB-001/ADR-0038's own rules, not to a
-  mentor-confirmed design. If Nitin's own picture differs once asked, this ADR is
-  revisable — it is not presented here as mentor-confirmed.
+  mentor-confirmed design. **CONFIRMED (2026-08-20).** Asked directly, Nitin confirmed
+  both nuances: doc-level citation (not runtime) is his intent, and this ADR's
+  reconcile-the-existing-lineage act (D2's ratification, not a clean-slate replacement)
+  matches his intent for authority-shape. No longer merely revisable-if-asked — the
+  design this ADR was already written to is now mentor-confirmed, not just
+  structurally-forced.
 - **One mentor.** Every reference to mentor feedback in this ADR is to Nitin; no other
   mentor's feedback informs this document.
 
@@ -559,8 +578,9 @@ building the thing it deferred.
    re-superseded; the five lineage ADRs' bodies untouched; STD-000 drawn on, not
    promoted or amended; no gate, code, or test touched.
 6. **Is the mentor attribution accurate?** Yes — one mentor (Nitin); the specific
-   citation-shape nuance this ADR resolves is flagged unconfirmed by him, not presented
-   as his own design.
+   citation-shape nuance this ADR resolves was originally flagged unconfirmed by him, not
+   presented as his own design — **confirmed by him directly as of 2026-08-20** (see
+   Consequences), along with the authority-shape (reconcile, not replace) nuance.
 
 ---
 

@@ -230,11 +230,14 @@ This is the single page a reader consults to answer "what is locked, and what is
   redesignates those same four capabilities as Layer 1 sub-capabilities — ADR-0049
   ratifies the lineage's substantive constitutional content (the Truth Hierarchy, the
   Historical Dataset Resolution Principle, the Derived/Organizational/Learned Knowledge
-  definitions), not its superseded layer label. **Nitin-nuance unconfirmed:** the specific
-  citation-shape/authority-shape question this ADR resolves (documentation-mapping vs.
-  runtime citation; a new ADR vs. an STD-000 promotion) was never itself put to him — only
-  the underlying "centralized constitution" ask was, in both his feedback rounds;
-  ADR-0049 is revisable if his own picture differs. One mentor throughout (Nitin).
+  definitions), not its superseded layer label. **Nitin-nuance CONFIRMED (2026-08-20):**
+  the specific citation-shape/authority-shape question this ADR resolves
+  (documentation-mapping vs. runtime citation; a new ADR vs. an STD-000 promotion) was
+  never itself put to him at write time — only the underlying "centralized constitution"
+  ask was, in both his feedback rounds. Asked directly, Nitin has since confirmed both:
+  doc-level citation (not runtime) was his intent, and ADR-0049's reconcile-the-lineage
+  act (D2's ratification, not a clean-slate replacement) matches his intent. One mentor
+  throughout (Nitin).
   Deferred, explicit future work: runtime/output gate citation
   (`CP1CriterionMetadata.documentation_reference` remains reserved, unpopulated) and a
   periodic reuse-catalog hygiene mechanism (considered as a thirteenth Article candidate,
