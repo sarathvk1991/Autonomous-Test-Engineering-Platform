@@ -2404,9 +2404,30 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
     check catches its own real defect shape on a fixture reproducing it; the full arc (baseline
     established on a clean run, a worse-model-standing-in generator caught as a regression) works
     end to end via `StubStepDefinitionGenerator`. The judge layer (silently-wrong-logic) remains
-    deferred, not designed, per ADR-0051 D5. CAP-090 (recommended) matrix/register entries remain
-    flagged, not performed. Not CI-wired, not live-wired — the "live vs. cached LLM in CI" question
-    ADR-0051 D2 flagged stays open, deliberately not resolved by this build.
+    deferred, not designed, per ADR-0051 D5. CAP-090 (recommended) matrix/register entries were
+    subsequently entered the same day (§5.13 / `architecture-baseline-v2.md` §3), closing that
+    follow-on — this note's own "remain flagged" wording is a point-in-time snapshot, superseded by
+    that same-day closure, not retro-edited here. Not CI-wired, not live-wired — the "live vs.
+    cached LLM in CI" question ADR-0051 D2 flagged stays open, deliberately not resolved by this
+    build.
+2e. **Second generator extended (2026-08-20) — `LiveFeatureContentGenerator`, ADR-0051's own D5
+    "extend to other generators" next step.** Same proven Layer 1 pattern repeated, with
+    feature-content's OWN defect shapes established first, not copied from step-def's: six
+    deterministic checks composed from `feature_engineering.generation.assembler.
+    generate_feature_file`'s own already-real tag-contract validation (five) plus the governed
+    `generate_feature` prompt's own no-markdown-fence clause (one) — grounded in the real,
+    already-enforced CONTRACT, since (unlike step-def) no known real historical feature-content
+    defect exists on record (the live E2E run scored 15/15 clean, 0 escalations). A seventh real
+    `assembler.py` block (tagged-`Background:`) was investigated and deliberately not ported,
+    verified empirically that it is structurally unreachable (a tag before `Background:` is always
+    a hard Gherkin parse error, already caught by the Gherkin-structure check). `models.py`,
+    `scoring.py`'s `score_eval_set`, and `baseline_store.py` reused verbatim, unchanged — proving
+    D2's generator-agnostic design directly. Proven end to end (32 new tests, no live LLM call):
+    baseline established, a worse-model stand-in (a stray `@REQ-*` tag, the prompt's single most
+    explicitly forbidden defect shape) caught as REGRESSED, a clean re-run PASSED. CAP-090 now
+    covers 2 of 7 target generators (matrix §5.13, ADR-0051, `architecture-baseline-v2.md` §3 all
+    updated additively the same day). Five generators/skills and the judge layer remain future,
+    separate work. One mentor throughout (Nitin).
 2e. **Nitin's re-run/token-cost build item (added 2026-08-12)** — start with token-consumption
     instrumentation by stage and run (his own "Critically"-flagged, cheapest, no-architecture-change
     first step); artifact-level caching, delta-scoped regeneration (depends on 2c's change-impact

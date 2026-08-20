@@ -43,6 +43,63 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Generation Quality Eval Harness (CAP-090, ADR-0051) EXTENDED to a second generator,
+  `LiveFeatureContentGenerator` — 2 of 7 target generators, still not wired (2026-08-20).**
+  Answers ADR-0051 D5's own named next step: apply the proven Layer 1 pattern (curated eval
+  set + deterministic property checks + `GenerationIdentity`-keyed scoring + a relative
+  regression gate) to a second generator, one at a time, measured — mirroring exactly how
+  CAP-089's own cache extended from one generator to three. **Feature-content's OWN defect
+  shapes, established first, not copied from step-def's:** feature-content generates raw
+  Gherkin text (not Java), governed by a different, already-real, already-enforced contract
+  — `feature_engineering.generation.assembler.generate_feature_file` already validates six
+  checkable properties against the generator's raw output, live, before assembly, raising
+  `FeatureGenerationError` on violation. Unlike step-def, there is no known real historical
+  feature-content defect on record — the live E2E corpus run scored 15/15 clean, 0
+  escalations (`[[cap-stage14-live-cli-wiring]]`) — so these checks are grounded in the real
+  CONTRACT, not a real historical INCIDENT. **A seventh real `assembler.py` block
+  investigated and deliberately NOT ported, verified not assumed:** a tag placed immediately
+  before `Background:` is a hard Gherkin PARSE ERROR under the real Cucumber grammar
+  (confirmed empirically against `parse_source_text`), never a valid-but-tagged AST node —
+  that defect shape is already fully subsumed by `check_valid_gherkin_structure`; a separate
+  tagged-Background check would report a `FAILED` outcome no real input could ever trigger.
+  **Built and tested (32 new tests, no live LLM call anywhere in the suite):**
+  `eval_harness/feature_content_eval_set.py` (a curated 3-case set seeded from three real,
+  currently-tracked requirements in `output/latest/testable_requirement_set.json` — the same
+  corpus the real, live-regenerated `.feature` files under
+  `output/executions/run-20260812T064317663150Z-a20b0cc2/.../features/` were generated from);
+  `feature_content_properties.py` (six deterministic checks — `check_no_req_tag`,
+  `check_no_markdown_fence`, `check_valid_gherkin_structure`, `check_scn_pending_tag_count`,
+  `check_ac_tag_presence`, `check_no_unknown_ac_tag` — each proven to FAIL on a fixture
+  reproducing its own real defect shape and PASS on real, reconstructed clean text);
+  `feature_content_coverage.py` (`check_requirement_covered`, consuming CAP-088's
+  `CompletenessReport.untested_requirements` read-only, optional, not in the default set —
+  the same posture as step-def's own `check_step_covered`); `feature_content_runner.py`
+  (`run_feature_content_eval`). **`models.py`, `scoring.py`'s `score_eval_set`, and
+  `baseline_store.py` reused verbatim, unchanged** — proving D2's generator-agnostic design
+  directly, not merely claiming it. **Proven end to end**
+  (`StubFeatureContentGenerator`, reconstructed real text, zero live LLM calls): a clean
+  generator's first run has no prior baseline (`ESTABLISHED_BASELINE`) and is explicitly
+  recorded as one; a generator standing in for a worse model (a stray `@REQ-*` tag — the
+  governed prompt's single most explicitly, unconditionally forbidden defect shape —
+  reintroduced into every case, since no real historical defect exists to replay) is caught
+  (`REGRESSED`) relative to that baseline; re-running the same clean generator stays
+  `PASSED`. **Scope held exactly as ADR-0051 D5 sequenced it:** five generators/skills
+  remain out of scope (`LivePageObjectGenerator`, `LiveUtilityGenerator`,
+  `LiveTestDataGenerator`, `LiveFeatureRemediator`, `RequirementAnalysisService`), and the
+  entire rubric/LLM-judge layer (Layer 2) is unstarted design. **Not CI-wired, not
+  live-wired** — no `PlatformContext` composition-root method, no CI job exists; the
+  live-vs-cached LLM-in-CI question (ADR-0051 D2) stays exactly as open as the ADR named it.
+  `make lint`: clean; `make test`: 5957 (5925 + 32 new); `mypy`: whole-repo error count
+  unchanged (436) — the seven new/changed files are themselves zero-error under `mypy
+  strict`. Recorded additively in ADR-0051 (a second, dated Implementation Note plus
+  additive Consequences/Ownership updates — no body rewrites), the `CAP-090` matrix row
+  (§5.13), and this register entry — mirroring the first increment's own governance-loop
+  pattern. **Owner:** `eval_harness/`. **Trigger for the next task:** extend the same
+  pattern to the remaining five generators/skills, one at a time, measured, each deriving
+  its own checks from its own real, already-enforced detection mechanism; resolve the
+  live-vs-cached LLM-in-CI question; then CI/runtime integration; the judge layer as its
+  own separate, later design task. One mentor throughout (Nitin).
+
 - **Generation Quality Eval Harness (CAP-090, ADR-0051) BUILT for Layer 1, 1 of 7
   target generators — deterministic property checks, `LiveStepDefinitionGenerator`
   only, not wired (2026-08-17).** Answers Nitin's own eval-harness ask, his final

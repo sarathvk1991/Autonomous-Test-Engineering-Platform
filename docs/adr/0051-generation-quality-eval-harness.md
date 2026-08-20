@@ -1,7 +1,9 @@
 # ADR-0051 — Generation Quality Eval Harness (Layer 1: Deterministic Property Checks)
 
-- **Status:** Accepted (Layer 1, `LiveStepDefinitionGenerator` only — see "Implementation Note,"
-  below; the remaining six generators and the judge layer, D5, remain future, separate work).
+- **Status:** Accepted (Layer 1, two of seven target generators —
+  `LiveStepDefinitionGenerator` and `LiveFeatureContentGenerator` — see the "Implementation Note"
+  sections, below; the remaining five generators and the judge layer, D5, remain future, separate
+  work).
 - **Date:** 2026-08-17
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR *is* the governing design. It records the decisions
@@ -21,15 +23,16 @@
   checks, D3, never extended); ADR-0050 (Artifact-Level Generation Cache — sibling precedent for a
   new, focused, ADR-first capability, and the module this harness's own scorecard store shape
   mirrors, D2).
-- **Runtime status: Built and tested (Layer 1, one generator only — see "Implementation Note,"
-  below).** `eval_harness/` exists: the curated eval set, the three deterministic property checks,
-  the scoring/aggregation, the CAP-088 coverage consumption, and the regression-gated baseline
-  store — all for `LiveStepDefinitionGenerator` only. **Not CI-wired and not live-wired.** No CI
-  job, no `PlatformContext` composition-root method, and no live LLM call anywhere in this
-  package's own test suite — every proof runs against `StubStepDefinitionGenerator` seeded with
-  captured/fixture Java text (D2's own "live-vs-cached" open question is left exactly as open as
+- **Runtime status: Built and tested (Layer 1, two of seven target generators — see the
+  "Implementation Note" sections, below).** `eval_harness/` exists: a curated eval set,
+  deterministic property checks, scoring/aggregation, CAP-088 coverage consumption, and a
+  regression-gated baseline store — for `LiveStepDefinitionGenerator` (first increment) and
+  `LiveFeatureContentGenerator` (second increment, 2026-08-20). **Not CI-wired and not
+  live-wired.** No CI job, no `PlatformContext` composition-root method, and no live LLM call
+  anywhere in this package's own test suite — every proof runs against a Stub generator seeded
+  with captured/fixture text (D2's own "live-vs-cached" open question is left exactly as open as
   this ADR named it; this build resolves only the eval *logic*, deterministically). The remaining
-  six generators and the judge layer (D5) are untouched.
+  five generators and the judge layer (D5) are untouched.
 
 ## Problem
 
@@ -335,6 +338,105 @@ further.
 
 ---
 
+## Implementation Note (2026-08-20) — D5's second increment: `LiveFeatureContentGenerator`, built and tested
+
+Extends D5's own named next step ("apply the same pattern... once step-def's own build proves the
+mechanism") to the second target generator — the one D5 itself named as the biggest measured
+token sink (45.4% of one real distribution, `[[cap-artifact-cache-second-increment-built]]`) and
+already cache-wrapped (`CachingFeatureContentGenerator`, ADR-0050). One mentor throughout (Nitin).
+
+**Pre-flight.** Clean tree, `main`, tip `40d7942` (the ADR-0049 stale-line fix). `make lint`/`make
+test` clean, 5925 unchanged.
+
+**Feature-content's OWN defect shapes established first — not copied from step-def's.**
+Feature-content generates raw Gherkin scenario/background text (`LiveFeatureContentGenerator`),
+not Java, governed by a different, already-real contract:
+`feature_engineering.generation.assembler.generate_feature_file` already deterministically
+validates the generator's raw output against six real properties, live, today, before assembly is
+ever attempted — raising `FeatureGenerationError` the instant one is violated. Unlike step-def,
+there is **no known real historical feature-content defect on record**: the live E2E corpus run
+scored 15/15 features clean, 0 escalations (`[[cap-stage14-live-cli-wiring]]`) — these checks are
+grounded in the real, already-enforced CONTRACT (`assembler.py` + the governed `generate_feature`
+v1.1.0 prompt's own explicit OUTPUT CONTRACT clause forbidding a markdown fence), not a real
+historical INCIDENT the way step-def's three checks were.
+
+**One real `assembler.py` validation block investigated and deliberately NOT ported, verified not
+assumed.** `assembler.py` also raises when a `Background:` block carries tags. Checked directly
+against the real parser (`feature_engineering.gherkin_lint.source.parse_source_text`): a tag
+placed immediately before `Background:` is a hard Gherkin **parse error** under the real Cucumber
+grammar this platform's own lint port uses — never a valid-but-tagged AST node. That defect shape
+is therefore already fully subsumed by `check_valid_gherkin_structure`; porting a separate
+tagged-Background check would report a `FAILED` outcome no real input could ever trigger. Left out
+on that verified basis, not merely skipped for scope.
+
+**Built:** `eval_harness/feature_content_eval_set.py`, `feature_content_properties.py`,
+`feature_content_coverage.py`, `feature_content_runner.py` — reusing `models.py`, `scoring.py`'s
+`score_eval_set`, and `baseline_store.py` verbatim, generator-agnostic exactly as D2 designed them
+(no changes to any of the three).
+
+- **The curated eval set (D2).** `FEATURE_CONTENT_EVAL_SET` (independently versioned,
+  `FEATURE_CONTENT_EVAL_SET_VERSION`) — three cases seeded from three real, currently-tracked
+  requirements in `output/latest/testable_requirement_set.json`, the same 20-requirement corpus
+  the real, live-regenerated `.feature` files under
+  `output/executions/run-20260812T064317663150Z-a20b0cc2/.../features/` were generated from. Every
+  real requirement in this corpus carries exactly one acceptance criterion and no
+  common-to-every-scenario steps — a real, honest fact about the corpus, not a simplification made
+  here.
+- **Six deterministic property checks (D2/D3, composed not invented).**
+  `feature_content_properties.py`: `check_no_req_tag`, `check_no_markdown_fence`,
+  `check_valid_gherkin_structure`, `check_scn_pending_tag_count`, `check_ac_tag_presence`,
+  `check_no_unknown_ac_tag` — each a direct, decomposed port of one real `generate_feature_file`
+  validation block (five) or the governed prompt's own no-markdown-fence clause (one). Each
+  returns `PASSED`, `FAILED`, or `NOT_APPLICABLE`.
+- **Scoring, keyed by `GenerationIdentity` (D2).** Reuses `eval_harness.scoring.score_eval_set`
+  verbatim — no new scoring logic; `feature_content_runner.py` builds each case's `CaseResult`
+  directly from `run_property_checks`, the same one-line composition `scoring.score_case` performs
+  for step-def, against a different check set and context type (`TestableRequirement`, not
+  `StepDefinitionGenerationContext`).
+- **The coverage-shaped check, consumed not extended (D3/D4).**
+  `feature_content_coverage.py`'s `check_requirement_covered` — a single dictionary lookup against
+  an already-computed CAP-088 `CompletenessReport.untested_requirements`; the same graph
+  `check_step_covered` (step-def) consumes, one node level up (REQUIREMENT, not STEP). Optional,
+  composable, not part of the default check set — identical reasoning to step-def's own coverage
+  check.
+- **The regression gate, reused verbatim (D2).** `EvalBaselineStore`/`check_regression` — no
+  changes; `generator_id="feature_content_generation"` (`LiveFeatureContentGenerator.CALL_TYPE`)
+  stores to its own separate file, no collision with step-def's baseline.
+- **The runner (D5).** `feature_content_runner.py`'s `run_feature_content_eval` — takes any
+  `FeatureContentGenerator` (Protocol-typed, agnostic to live/stub/cached) plus a caller-supplied
+  `GenerationIdentity`, mirroring `run_step_definition_eval`'s own shape exactly.
+
+**Proven two ways, both deterministic, no live LLM call anywhere in this package's own test suite
+(32 new tests):**
+
+1. **Each property check catches its own real defect shape and passes the real, reconstructed
+   clean corpus text** (`test_eval_harness_feature_content_properties.py`) — the "clean" fixtures
+   are reconstructed directly from the real, live-regenerated assembled `.feature` files (tags
+   un-hoisted, the real minted `@SCN-*` id replaced with the one true `@SCN-PENDING` placeholder,
+   the Feature:/comment lines stripped) — the raw shape the generator itself would have returned.
+   All six checks FAIL on a fixture reproducing their own real defect shape and PASS on the clean
+   text; `check_valid_gherkin_structure` is also proven to catch the verified-unreachable
+   tagged-Background shape directly, since it is what actually fires for that input.
+2. **The full arc — scores-first baseline establishment, then regression detection — end to end**
+   (`test_eval_harness_feature_content_runner.py`), driven by `StubFeatureContentGenerator` seeded
+   with the reconstructed clean text: a clean generator's first run has no prior baseline
+   (`ESTABLISHED_BASELINE`) and is explicitly recorded as one; a generator standing in for a worse
+   model (a stray `@REQ-*` tag — the prompt's single most explicitly, unconditionally forbidden
+   defect shape — reintroduced into every case, since no real historical feature-content defect
+   exists to replay) is caught (`REGRESSED`) relative to that baseline; re-running the same clean
+   generator does not regress (`PASSED`).
+
+**Scope held exactly as D5 decided.** Two of seven target generators (`LiveStepDefinitionGenerator`,
+`LiveFeatureContentGenerator`) are built. The remaining five generators' eval sets, the judge layer
+(D5), rubric grading, and any CI/live wiring are all untouched by this increment.
+
+Gate: `make lint` clean; `make test` 5957 passed (5925 + 32 new, itemized above); `mypy`:
+whole-repo error count unchanged (436, confirmed) — the seven new/changed files are themselves
+zero-error under `mypy strict`. Tree: 4 new files under `eval_harness/`, 3 new test files, this ADR
+amended further.
+
+---
+
 ## Consequences
 
 - **Enables, proven for the first increment (Implementation Note, above):** a curated, versioned,
@@ -387,6 +489,14 @@ further.
   2 split, and the step-def-first sequencing are this ADR's own reading of the real code and the real
   historical defect — not something Nitin weighed in on directly, the same caveat the surfacing note
   itself already flagged for every design-surfacing note in this arc.
+- **Extended to a second generator, additively (2026-08-20 Implementation Note, above).**
+  `LiveFeatureContentGenerator`'s Layer 1 is now also built, tested, and Accepted for its own
+  scope — proving D5's own "same pattern, applied once step-def's own build proves the mechanism"
+  claim directly: `models.py`, `scoring.py`'s `score_eval_set`, and `baseline_store.py` all reused
+  verbatim, unchanged, exactly as D2 designed them to be generator-agnostic. Feature-content's own
+  checks are grounded in a different real mechanism (`assembler.py`'s tag-contract validation, not
+  CP5) — proof the reframe (D1) generalizes across artifact types, not just within one. Five
+  generators and the judge layer remain future, separate work.
 
 ## Ownership, runtime position, governance
 
@@ -397,17 +507,20 @@ further.
 - **Does not own:** `GenerationIdentity`, any live generator, `CompletenessReport`/the traceability
   graph, any CP5 check (reused, not owned), the golden-baseline harness, or the judge/rubric layer
   itself (named as future scope, not designed).
-- **Runtime position (built for the first increment; not CI-wired, not live-wired):** generator +
-  caller-supplied identity + curated eval-set case → `run_step_definition_eval` (`runner.py`) →
-  property-check results per case (`step_definition_properties.py`) → aggregate `EvalScore`, keyed
-  by `GenerationIdentity` (`scoring.py`) → `check_regression` against `EvalBaselineStore`'s current
-  baseline (`baseline_store.py`) → `ESTABLISHED_BASELINE` / `PASSED` / `REGRESSED`. This chain
-  exists and is tested for `LiveStepDefinitionGenerator` only (proven against
-  `StubStepDefinitionGenerator`, never a live LLM call, in this package's own test suite) — no CI
-  job invokes it, and no `PlatformContext` composition-root method exists for it.
+- **Runtime position (built for two increments; not CI-wired, not live-wired):** generator +
+  caller-supplied identity + curated eval-set case → a runner (`runner.py`'s
+  `run_step_definition_eval`, or `feature_content_runner.py`'s `run_feature_content_eval`) →
+  property-check results per case (`step_definition_properties.py`, or
+  `feature_content_properties.py`) → aggregate `EvalScore`, keyed by `GenerationIdentity`
+  (`scoring.py`, reused verbatim by both) → `check_regression` against `EvalBaselineStore`'s
+  current baseline (`baseline_store.py`, reused verbatim by both — one JSON file per
+  `generator_id`, no collision) → `ESTABLISHED_BASELINE` / `PASSED` / `REGRESSED`. This chain
+  exists and is tested for `LiveStepDefinitionGenerator` and `LiveFeatureContentGenerator` only
+  (proven against Stub generators, never a live LLM call, in this package's own test suite) — no
+  CI job invokes it, and no `PlatformContext` composition-root method exists for it.
 - **Governance:** recommended `CAP-090` (not yet entered — Consequences) for the Requirement
-  Intelligence Platform. This ADR is **Accepted** for its first increment (Implementation Note,
-  above) — it now clears the same bar ADR-0050 cleared (built, tested, and proven against the real
-  defect shape it targets), for the scope D5 defined. It does not claim any of the other six
-  generators' eval sets, the judge layer, or CI/live wiring are built — that remains future,
-  separate work, exactly as D5 sequenced it.
+  Intelligence Platform. This ADR is **Accepted** for its first two increments (Implementation
+  Notes, above) — it now clears the same bar ADR-0050 cleared (built, tested, and proven against
+  each covered generator's own real defect shapes), for the scope D5 defined. It does not claim
+  any of the other five generators' eval sets, the judge layer, or CI/live wiring are built — that
+  remains future, separate work, exactly as D5 sequenced it.
