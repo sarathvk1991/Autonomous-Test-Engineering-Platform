@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -48,6 +49,10 @@ from automation_engineering.generation.step_definition_generator import (
 from automation_engineering.generation.test_data_generator import (
     StubTestDataGenerator,
     TestDataGenerationContext,
+)
+from automation_engineering.reuse.live_page_object_matcher import (
+    LivePageObjectSemanticMatcher,
+    page_object_embedding_text,
 )
 from automation_engineering.reuse.matcher import StubSemanticMatcher
 from automation_engineering.reuse.models import GherkinStepNeed, MatchCandidate
@@ -1707,6 +1712,57 @@ public class LoginPage extends BasePage {
 }
 """
 
+_CART_FEATURE = """Feature: Cart
+
+  @SCN-202
+  Scenario: Cart summary with a fresh page object
+    Given I am on the cart summary page
+"""
+
+_STEP_JAVA_REFERENCING_A_FRESH_PAGE_OBJECT = """package com.automation.steps;
+
+import io.cucumber.java.en.Given;
+
+public class CartSummarySteps {
+    private CartSummaryPage cartSummaryPage;
+
+    @Given("I am on the cart summary page")
+    public void iAmOnTheCartSummaryPage() {
+        cartSummaryPage.open();
+    }
+}
+"""
+
+_CLEAN_GENERATED_FRESH_PAGE_OBJECT_JAVA = """package com.automation.pages;
+
+import com.automation.base.BasePage;
+import org.openqa.selenium.WebDriver;
+
+public class CartSummaryPage extends BasePage {
+
+    public CartSummaryPage(WebDriver driver) {
+        super(driver);
+    }
+
+    public void open() {
+        driver.get("/cart/summary");
+    }
+}
+"""
+
+
+class _FakeEmbeddingProvider:
+    """Deterministic stand-in for `EmbeddingProvider` -- returns pre-authored
+    vectors keyed by input text, no network call. Same discipline
+    `test_automation_engineering_reuse_live_page_object_matcher.py`'s own
+    fake uses."""
+
+    def __init__(self, vectors_by_text: dict[str, tuple[float, ...]]) -> None:
+        self._vectors_by_text = vectors_by_text
+
+    def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+        return tuple(self._vectors_by_text[t] for t in texts)
+
 
 @pytest.mark.unit
 class TestPageObjectCoGeneration:
@@ -1904,3 +1960,85 @@ class TestPageObjectCoGeneration:
         assert result.cp4_passed is True
         promoted_names = {p.name for p in result.promoted_baseline_paths}
         assert promoted_names == {"LoginSteps.java"}
+
+    def test_end_to_end_with_the_real_live_page_object_matcher(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """The blocker the wiring flagged, closed: `LivePageObjectSemanticMatcher`
+        (not `StubSemanticMatcher`) supplied as `page_object_matcher`, driven
+        by a deterministic fake `EmbeddingProvider` (no live LLM/network) --
+        proves the reuse loop works for page objects through the REAL
+        embeddings-backed matcher class, not just through a generic Protocol
+        stand-in. One run, two needs: one BINDS against the real tracked
+        `LoginPage.isErrorMessageDisplayed()`, the other has no plausible
+        match and GENERATES fresh."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _PAGE_OBJECT_FEATURE)
+        _write_feature(workspace_dir, "cart.feature", _CART_FEATURE)
+        package = _package(
+            (
+                _feature_record("REQ-1", "login.feature"),
+                _feature_record("REQ-2", "cart.feature"),
+            )
+        )
+
+        tracked_catalog = reconcile(fake_baseline)
+        existing_login_page = next(
+            asset
+            for asset in tracked_catalog.page_objects
+            if asset.class_name == "com.automation.pages.LoginPage"
+        )
+
+        # Every real tracked page object's own embedding text gets an
+        # orthogonal "no match" vector EXCEPT the real LoginPage, which gets
+        # the SAME vector as the bind-need's own text -- deterministic
+        # control over which need matches what, without hand-authoring 33
+        # fixture tags.
+        vectors: dict[str, tuple[float, ...]] = {}
+        for asset in tracked_catalog.page_objects:
+            text = page_object_embedding_text(asset)
+            vectors[text] = (
+                (1.0, 0.0) if asset.asset_id == existing_login_page.asset_id else (0.0, 1.0)
+            )
+        vectors["I am on the login page"] = (1.0, 0.0)
+        vectors["I am on the cart summary page"] = (0.0, -1.0)  # opposite of every catalog asset
+        provider = _FakeEmbeddingProvider(vectors)
+        page_object_matcher = LivePageObjectSemanticMatcher(provider)
+
+        matcher = StubSemanticMatcher(
+            {"I am on the login page": (), "I am on the cart summary page": ()}
+        )
+        step_gen = StubStepDefinitionGenerator(
+            {
+                "I am on the login page": _STEP_JAVA_CALLING_AN_EXISTING_TRACKED_METHOD,
+                "I am on the cart summary page": _STEP_JAVA_REFERENCING_A_FRESH_PAGE_OBJECT,
+            }
+        )
+        page_object_gen = StubPageObjectGenerator(
+            {"I am on the cart summary page": _CLEAN_GENERATED_FRESH_PAGE_OBJECT_JAVA}
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_gen,
+        )
+
+        records_by_kind = {(r.need_kind, r.class_name): r for r in result.package.records}
+        bound_record = records_by_kind[("page_object", "com.automation.pages.LoginPage")]
+        generated_record = records_by_kind[("page_object", "com.automation.pages.CartSummaryPage")]
+
+        assert bound_record.outcome == "bound"
+        assert page_object_gen.received_contexts[0].need.text == "I am on the cart summary page"
+        assert generated_record.outcome == "generated"
+        assert generated_record.promotion_status == "promoted"
+        assert result.cp4_passed is True

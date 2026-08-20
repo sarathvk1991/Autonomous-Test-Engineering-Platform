@@ -1720,18 +1720,25 @@ def handle_analyze(args: argparse.Namespace) -> int:
             # supplied here -- stage 15's own proven co-generation chain
             # (generate_step_definition_with_derived_page_objects) is wired and
             # tested (tests/unit/test_automation_engineering_stage.py::
-            # TestPageObjectCoGeneration, stub-driven), but no LIVE
-            # `SemanticMatcher` implementation exists yet that correctly matches
-            # a page-object need against `catalog.page_objects` --
-            # `LiveSemanticMatcher` only ever matches against
-            # `catalog.step_definitions` (its own module docstring: "Only step
-            # definitions are matched"), and passing it here for page objects
-            # too would either match the wrong catalog or raise (the reuse
-            # orchestration's own "cannot happen given this function's own
-            # matcher contract" guard). A real blocker, flagged rather than
-            # built around inline -- omitting both keeps this stage's live
-            # behavior exactly what it was before: page objects are not
-            # generated, CP4 evaluates vacuously.
+            # TestPageObjectCoGeneration, stub-driven). The blocker that USED to
+            # sit here -- no live `SemanticMatcher` correctly matching a
+            # page-object need against `catalog.page_objects` (`LiveSemanticMatcher`
+            # only ever matches `catalog.step_definitions`, its own docstring:
+            # "Only step definitions are matched") -- is now CLOSED:
+            # `LivePageObjectSemanticMatcher` (`automation_engineering/reuse/
+            # live_page_object_matcher.py`) mirrors it, correctly scoped, and is
+            # proven end-to-end (bind + generate) against a deterministic fake
+            # embedding provider in `tests/unit/
+            # test_automation_engineering_reuse_live_page_object_matcher.py` and
+            # `TestPageObjectCoGeneration::
+            # test_end_to_end_with_the_real_live_page_object_matcher`. Activating
+            # it here -- constructing `LivePageObjectSemanticMatcher(GeminiEmbeddingProvider())`
+            # plus a `LivePageObjectGenerator` and passing both below -- is left
+            # as a SEPARATE, deliberate decision (real cost: new embedding + LLM
+            # calls on every `--with-automation-engineering` run), not a forced
+            # consequence of the matcher now existing. Omitting both here still
+            # keeps this stage's live behavior exactly what it was before: page
+            # objects are not generated, CP4 evaluates vacuously.
             automation_engineering_result = execute_automation_engineering_stage(
                 run_state_mgr,
                 target_dir,
