@@ -282,6 +282,7 @@ from automation_engineering.generation.step_definition_generator import StepDefi
 from automation_engineering.reuse.engine import DEFAULT_CONFIDENCE_THRESHOLD
 from automation_engineering.reuse.matcher import SemanticMatcher
 from automation_engineering.reuse.models import GherkinStepNeed
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 
 #: A page-object-typed field's declared type always ends with this suffix
 #: (module docstring) -- the same guarantee
@@ -521,6 +522,17 @@ class CoGeneratedStepDefinition:
     FRESH method needed on the same class no longer goes unresolved, it
     co-generates into the SAME class via
     :func:`~.page_object_orchestrator.orchestrate_page_object_class`).
+
+    ``generation_identity`` (additive, the pinning-gap fix -- previously
+    ABSENT from this class entirely, silently dropping the step-definition's
+    own already-captured identity every time this function wrapped a
+    :class:`~.orchestrator.GeneratedStepDefinition` into a
+    :class:`CoGeneratedStepDefinition`) is that SAME underlying
+    ``GeneratedStepDefinition.generation_identity`` unchanged, threaded
+    through rather than re-derived -- the step-definition generation call
+    that produced ``java_source`` is unaffected by this class's own
+    page-object derivation/resolution that follows it, so its identity is
+    unaffected too.
     """
 
     need: GherkinStepNeed
@@ -528,6 +540,7 @@ class CoGeneratedStepDefinition:
     target_package: str
     page_object_outcomes: tuple[PageObjectMethodOutcome, ...]
     unverified_method_names: tuple[str, ...] = ()
+    generation_identity: GenerationIdentity | None = None
 
 
 def generate_step_definition_with_derived_page_objects(
@@ -619,6 +632,7 @@ def generate_step_definition_with_derived_page_objects(
         java_source=outcome.java_source,
         target_package=outcome.target_package,
         page_object_outcomes=tuple(page_object_outcomes),
+        generation_identity=outcome.generation_identity,
     )
 
 

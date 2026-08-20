@@ -271,6 +271,17 @@ class GeneratedPageObject:
     generation context); ``additional_method_needs`` is every sibling need
     the SAME class was also generated to satisfy, in the order they were
     supplied. Empty for the ordinary, still-common one-method case.
+
+    ``generation_identity`` (additive, the pinning-gap fix -- previously
+    ABSENT from this class entirely) is the prompt/model identity that
+    produced ``java_source``, threaded from the generator's own
+    ``last_identity`` (:class:`~.page_object_generator.PageObjectGenerator`
+    implementations that capture one, e.g.
+    :class:`~.live_page_object_generator.LivePageObjectGenerator`, mirroring
+    :class:`GeneratedStepDefinition.generation_identity`'s own identical
+    discipline exactly -- never re-derived, never invented, ``None`` for an
+    implementation that captures none (e.g.
+    :class:`~.page_object_generator.StubPageObjectGenerator`).
     """
 
     method_need: PageObjectMethodNeed
@@ -278,6 +289,7 @@ class GeneratedPageObject:
     target_package: str
     class_name: str
     additional_method_needs: tuple[PageObjectMethodNeed, ...] = ()
+    generation_identity: GenerationIdentity | None = None
 
 
 @dataclass(frozen=True, slots=True)

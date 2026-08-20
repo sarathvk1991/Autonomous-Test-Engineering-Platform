@@ -68,6 +68,7 @@ from automation_engineering.generation.step_definition_generator import (
 )
 from automation_engineering.reuse.matcher import StubSemanticMatcher
 from automation_engineering.reuse.models import GherkinStepNeed, MatchCandidate
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 
 pytestmark = pytest.mark.unit
 
@@ -584,6 +585,136 @@ class TestWiringGeneratesAFreshPageObjectWithTheDerivedClassName:
         received = page_object_generator.received_contexts[0]
         assert received.class_name == "LoginPage"
         assert received.target_package == DEFAULT_PAGE_OBJECT_TARGET_PACKAGE
+
+
+class _IdentityCapturingStepGenerator:
+    """Minimal double exposing exactly the `.generate`/`.last_identity`
+    shape `LiveStepDefinitionGenerator` exposes -- the same double
+    `test_automation_engineering_stage.py` and
+    `test_automation_engineering_generation_orchestrator.py` already use."""
+
+    def __init__(self, canned: dict[str, str], identity: GenerationIdentity) -> None:
+        self._canned = canned
+        self.last_identity = identity
+
+    def generate(self, context: object) -> str:
+        return self._canned[context.need.text]  # type: ignore[attr-defined]
+
+
+class _IdentityCapturingPageObjectGenerator:
+    """The page-object-generator counterpart to
+    `_IdentityCapturingStepGenerator` above."""
+
+    def __init__(self, canned: dict[str, str], identity: GenerationIdentity) -> None:
+        self._canned = canned
+        self.last_identity = identity
+
+    def generate(self, context: object) -> str:
+        return self._canned[context.need.text]  # type: ignore[attr-defined]
+
+
+class TestGenerationIdentityThreadedOntoCoGeneratedStepDefinition:
+    """The gap the stage-15 wiring flagged: `CoGeneratedStepDefinition`
+    used to have no `generation_identity` field at all, silently dropping
+    the step-definition generator's own already-captured identity every
+    time this module wrapped a `GeneratedStepDefinition` into one. Closed
+    additively -- `CoGeneratedStepDefinition.generation_identity` now
+    threads the SAME identity the underlying, unwrapped
+    `GeneratedStepDefinition` already carries."""
+
+    def test_co_generated_step_def_carries_the_step_generators_own_identity(self) -> None:
+        catalog = _catalog()
+        step_matcher = StubSemanticMatcher({_NEED.text: ()})
+        single_method_java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Given;\n\n"
+            "public class LoginSteps {\n"
+            "    private LoginPage loginPage;\n\n"
+            '    @Given("I log in as {string} with password {string}")\n'
+            "    public void iLogInAsWithPassword(String username, String password) {\n"
+            "        loginPage.enterUsername(username);\n"
+            "    }\n"
+            "}\n"
+        )
+        step_identity = GenerationIdentity(
+            prompt_id="generate_step_definitions",
+            prompt_version="1.1.0",
+            prompt_sha256="c" * 64,
+            provider="gemini",
+            model="step-def-model",
+        )
+        step_generator = _IdentityCapturingStepGenerator(
+            {_NEED.text: single_method_java}, step_identity
+        )
+        page_object_matcher = StubSemanticMatcher({_NEED.text: ()})
+        page_object_identity = GenerationIdentity(
+            prompt_id="generate_page_objects",
+            prompt_version="1.3.0",
+            prompt_sha256="d" * 64,
+            provider="gemini",
+            model="page-object-model",
+        )
+        canned_page_object = "package com.automation.pages;\npublic class LoginPage {}\n"
+        page_object_generator = _IdentityCapturingPageObjectGenerator(
+            {_NEED.text: canned_page_object}, page_object_identity
+        )
+
+        outcome = generate_step_definition_with_derived_page_objects(
+            _NEED,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_generator,
+        )
+
+        assert isinstance(outcome, CoGeneratedStepDefinition)
+        # The step-def's own identity -- distinct from the page object's.
+        assert outcome.generation_identity == step_identity
+        generated_page_object = outcome.page_object_outcomes[0]
+        assert isinstance(generated_page_object, GeneratedPageObject)
+        assert generated_page_object.generation_identity == page_object_identity
+        assert outcome.generation_identity != generated_page_object.generation_identity
+
+    def test_plain_generated_step_def_unaffected_when_no_page_object_is_referenced(self) -> None:
+        """No page-object request is derived at all -- the function returns
+        the underlying `GeneratedStepDefinition` UNCHANGED (module
+        docstring), so its own `generation_identity` was never at risk;
+        proven explicitly rather than only implied."""
+        need = GherkinStepNeed(text="the result is correct", step_type="Then")
+        catalog = _catalog()
+        step_matcher = StubSemanticMatcher({need.text: ()})
+        java = (
+            "package com.automation.steps;\n\n"
+            "import io.cucumber.java.en.Then;\n"
+            "import org.junit.jupiter.api.Assertions;\n\n"
+            "public class AssertSteps {\n"
+            '    @Then("the result is correct")\n'
+            "    public void theResultIsCorrect() {\n"
+            "        Assertions.assertTrue(true);\n"
+            "    }\n"
+            "}\n"
+        )
+        identity = GenerationIdentity(
+            prompt_id="generate_step_definitions",
+            prompt_version="1.1.0",
+            prompt_sha256="e" * 64,
+            provider="gemini",
+            model="step-def-model",
+        )
+        step_generator = _IdentityCapturingStepGenerator({need.text: java}, identity)
+
+        outcome = generate_step_definition_with_derived_page_objects(
+            need,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_matcher=StubSemanticMatcher({}),
+            page_object_generator=StubPageObjectGenerator({}),
+        )
+
+        assert isinstance(outcome, GeneratedStepDefinition)
+        assert outcome.generation_identity == identity
 
 
 class TestWiringCarriesTheDerivedReturnTypeThroughToGeneration:

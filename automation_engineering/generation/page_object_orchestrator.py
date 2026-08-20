@@ -259,6 +259,7 @@ def orchestrate_page_object_method(
             java_source=java_source,
             target_package=target_package,
             class_name=class_name,
+            generation_identity=getattr(generator, "last_identity", None),
         )
 
     raise AssertionError(f"unreachable: unknown ReuseDecision variant {decision!r}")
@@ -401,6 +402,7 @@ def orchestrate_page_object_class(
                 target_package=target_package,
                 class_name=class_name,
                 additional_method_needs=tuple(rest),
+                generation_identity=getattr(generator, "last_identity", None),
             )
         )
 

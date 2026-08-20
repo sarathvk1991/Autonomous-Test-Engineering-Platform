@@ -450,17 +450,17 @@ def run_automation_engineering_stage(
             # references afterwards (module docstring). This keeps CP3 and
             # step-definition promotion completely untouched by this
             # wiring: they see the identical `GeneratedStepDefinition` they
-            # always did. NOTE: `CoGeneratedStepDefinition` itself carries
-            # no `generation_identity` field (the proven chain's own
-            # pre-existing shape, not altered here -- see this module's own
-            # report) -- so a co-generated step-definition's own
-            # `AssetRecord.generation_identity` is `None` even when the
-            # underlying generation call did produce one. A real, known
-            # gap, flagged rather than silently patched around.
+            # always did -- `generation_identity` included
+            # (`CoGeneratedStepDefinition.generation_identity` now threads
+            # the SAME identity its own underlying `GeneratedStepDefinition`
+            # already captured; this used to be dropped here, closed
+            # additively in `page_object_reference_derivation.py`, this
+            # module's own report).
             step_def_outcome: StepDefinitionOutcome = GeneratedStepDefinition(
                 need=outcome.need,
                 java_source=outcome.java_source,
                 target_package=outcome.target_package,
+                generation_identity=outcome.generation_identity,
             )
             for po_outcome in outcome.page_object_outcomes:
                 if isinstance(po_outcome, GeneratedPageObject):
@@ -494,6 +494,7 @@ def run_automation_engineering_stage(
                             class_name=po_class_name,
                             target_package=po_outcome.target_package,
                             workspace_path=po_written_path.relative_to(workspace_dir).as_posix(),
+                            generation_identity=po_outcome.generation_identity,
                         )
                     )
                     page_object_outcomes.append((po_outcome, len(asset_records) - 1))

@@ -72,6 +72,7 @@ from automation_engineering.reuse.models import (
     MatchCandidate,
     TrustedReuse,
 )
+from requirement_intelligence.llm.generation_identity import GenerationIdentity
 
 pytestmark = pytest.mark.unit
 
@@ -1148,3 +1149,109 @@ class TestNoLiveLlmInvolvementInOrchestration:
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     assert "llm_factory" not in node.module
                     assert "embeddings" not in node.module
+
+
+# ---------------------------------------------------------------------------
+# generation_identity threaded onto GeneratedPageObject (additive, mirrors
+# the step-def orchestrator's own `getattr(generator, "last_identity", None)`
+# discipline exactly)
+# ---------------------------------------------------------------------------
+
+
+class _IdentityCapturingPageObjectGenerator:
+    """A minimal hand-written double exposing exactly the `.generate`/
+    `.last_identity` shape `LivePageObjectGenerator` exposes."""
+
+    def __init__(self, canned: dict[str, str], identity: GenerationIdentity) -> None:
+        self._canned = canned
+        self.last_identity = identity
+
+    def generate(self, context: object) -> str:
+        return self._canned[context.need.text]  # type: ignore[attr-defined]
+
+
+class TestGenerationIdentityThreadedOntoGeneratedPageObject:
+    def test_orchestrate_page_object_method_threads_the_generators_identity(self) -> None:
+        method_need = _method_need()
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        identity = GenerationIdentity(
+            prompt_id="generate_page_objects",
+            prompt_version="1.3.0",
+            prompt_sha256="a" * 64,
+            provider="gemini",
+            model="fake-model",
+        )
+        generator = _IdentityCapturingPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}, identity
+        )
+
+        outcome = orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert isinstance(outcome, GeneratedPageObject)
+        assert outcome.generation_identity == identity
+
+    def test_orchestrate_page_object_class_batch_threads_the_generators_identity(self) -> None:
+        primary = _method_need("click the forgot password link", "clickForgotPasswordLink")
+        sibling = _method_need("click the sign up link", "clickSignUpLink")
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({primary.need.text: (), sibling.need.text: ()})
+        identity = GenerationIdentity(
+            prompt_id="generate_page_objects",
+            prompt_version="1.3.0",
+            prompt_sha256="b" * 64,
+            provider="gemini",
+            model="fake-model",
+        )
+        generator = _IdentityCapturingPageObjectGenerator(
+            {primary.need.text: "package com.automation.pages;\n"}, identity
+        )
+
+        outcomes = orchestrate_page_object_class([primary, sibling], catalog, matcher, generator)
+
+        generated = [o for o in outcomes if isinstance(o, GeneratedPageObject)]
+        assert len(generated) == 1
+        assert generated[0].generation_identity == identity
+
+    def test_stub_generator_with_no_last_identity_degrades_to_none(self) -> None:
+        """`StubPageObjectGenerator` (every other test in this file) has no
+        `last_identity` attribute -- `getattr(..., None)` degrades cleanly,
+        proven explicitly here rather than only implicitly by every other
+        test in this file still passing unchanged."""
+        method_need = _method_need()
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}
+        )
+
+        outcome = orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert isinstance(outcome, GeneratedPageObject)
+        assert outcome.generation_identity is None
+
+    def test_bound_page_object_method_carries_no_generation_identity(self) -> None:
+        """A TRUSTED_REUSE bind never calls the generator at all -- no
+        fresh identity exists to attach, and `BoundPageObjectMethod` has no
+        such field to fabricate one into (mirrors `BoundStepDefinition`'s
+        own identical absence)."""
+        method_need = _method_need(method_name="clickForgotPasswordLink")
+        asset = _page_object(
+            methods=(JavaMethod(name="clickForgotPasswordLink", parameters=(), return_type="void"),)
+        )
+        catalog = _catalog(asset)
+        matcher = StubSemanticMatcher(
+            {
+                method_need.need.text: (
+                    MatchCandidate(
+                        asset_id=asset.asset_id, confidence=0.99, content_hash=asset.content_hash
+                    ),
+                )
+            }
+        )
+        generator = StubPageObjectGenerator({})
+
+        outcome = orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert isinstance(outcome, BoundPageObjectMethod)
+        assert not hasattr(outcome, "generation_identity")

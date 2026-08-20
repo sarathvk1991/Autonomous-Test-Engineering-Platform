@@ -79,13 +79,13 @@ class AssetRecord:
     for ``"bound"`` (no LLM call, reused from the catalog) and
     ``"escalated"`` (no successful generation). Purely additive persistence:
     it is not consumed by any cache, gate, or skip logic anywhere in this
-    module. Also ``None`` for a ``"generated"`` ``"page_object"`` record
-    specifically, EVEN THOUGH an LLM call did happen -- a known, pre-existing
-    gap in the underlying generation outcome
-    (:class:`automation_engineering.generation.models.GeneratedPageObject`
-    carries no ``generation_identity`` field at all, unlike its
-    step-definition sibling), not something this record's own persistence
-    drops.
+    module. A ``"generated"`` ``"page_object"`` record carries it too
+    (:class:`automation_engineering.generation.models.GeneratedPageObject`'s
+    own ``generation_identity`` field, threaded from
+    :class:`~automation_engineering.generation.live_page_object_generator.LivePageObjectGenerator`'s
+    ``last_identity`` the same way a step-definition's is) -- this used to
+    be an always-``None`` gap for page objects specifically; closed
+    additively, the same pinning pattern applied a second time.
     """
 
     need_text: str

@@ -1764,6 +1764,22 @@ class _FakeEmbeddingProvider:
         return tuple(self._vectors_by_text[t] for t in texts)
 
 
+class _IdentityCapturingPageObjectGenerator:
+    """A minimal hand-written double exposing exactly the `.generate`/
+    `.last_identity` shape `LivePageObjectGenerator` exposes -- the
+    page-object-generator counterpart to `_IdentityCapturingStepGenerator`
+    above."""
+
+    def __init__(self, canned: dict[str, str], identity: GenerationIdentity) -> None:
+        self._canned = canned
+        self.last_identity = identity
+        self.call_count = 0
+
+    def generate(self, context: object) -> str:
+        self.call_count += 1
+        return self._canned[context.need.text]  # type: ignore[attr-defined]
+
+
 @pytest.mark.unit
 class TestPageObjectCoGeneration:
     def test_page_object_generated_and_promoted_alongside_its_step_def(
@@ -1815,6 +1831,66 @@ class TestPageObjectCoGeneration:
         assert promoted_names == {"LoginSteps.java", "LoginPage.java"}
         for path in result.promoted_baseline_paths:
             assert path.exists()
+
+    def test_co_generated_step_def_and_page_object_both_carry_their_own_identity(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """The gap the wiring flagged, closed: a CO-GENERATED step-def's own
+        `AssetRecord.generation_identity` used to be `None` even though an
+        LLM call happened (`CoGeneratedStepDefinition` dropped it); a
+        generated page object had no identity field to carry one at all.
+        Both are now populated, with their OWN distinct identity -- the
+        step-def generator's and the page-object generator's `last_identity`
+        are never confused with each other."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _PAGE_OBJECT_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        matcher = StubSemanticMatcher({"I am on the login page": ()})
+        step_identity = GenerationIdentity(
+            prompt_id="generate_step_definitions",
+            prompt_version="1.1.0",
+            prompt_sha256="1" * 64,
+            provider="gemini",
+            model="step-def-model",
+        )
+        step_gen = _IdentityCapturingStepGenerator(
+            {"I am on the login page": _STEP_JAVA_REFERENCING_A_PAGE_OBJECT}, step_identity
+        )
+        page_object_matcher = StubSemanticMatcher({"I am on the login page": ()})
+        page_object_identity = GenerationIdentity(
+            prompt_id="generate_page_objects",
+            prompt_version="1.3.0",
+            prompt_sha256="2" * 64,
+            provider="gemini",
+            model="page-object-model",
+        )
+        page_object_gen = _IdentityCapturingPageObjectGenerator(
+            {"I am on the login page": _CLEAN_GENERATED_PAGE_OBJECT_JAVA}, page_object_identity
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_gen,
+        )
+
+        records_by_kind = {(r.need_kind, r.class_name): r for r in result.package.records}
+        step_def_record = records_by_kind[("step_definition", "com.automation.steps.LoginSteps")]
+        page_object_record = records_by_kind[("page_object", "com.automation.pages.LoginPage")]
+
+        assert step_def_record.generation_identity == step_identity
+        assert page_object_record.generation_identity == page_object_identity
+        assert step_def_record.generation_identity != page_object_record.generation_identity
 
     def test_default_wiring_unchanged_when_page_object_matcher_omitted(
         self, tmp_path: Path, fake_baseline: Path, repo_root: Path
@@ -1955,6 +2031,10 @@ class TestPageObjectCoGeneration:
         assert page_object_record.outcome == "bound"
         assert page_object_record.promotion_status is None
         assert page_object_gen.received_contexts == ()
+        # A bound (reused) page object was never generated THIS run -- no
+        # fresh GenerationIdentity is fabricated for it, the same discipline
+        # a bound step-definition's own AssetRecord already follows.
+        assert page_object_record.generation_identity is None
         # Nothing was WRITTEN for the bound page object -- the tracked
         # LoginPage.java is untouched, only the step-def is new.
         assert result.cp4_passed is True
