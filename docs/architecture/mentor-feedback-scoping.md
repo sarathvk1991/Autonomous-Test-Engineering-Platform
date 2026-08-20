@@ -1908,6 +1908,84 @@ enforced as a boundary on what a generation run is allowed to touch, and how it 
 existing `TestableRequirementSet`/`.feature`/call-site-derivation chain rather than replacing it.
 **Nothing designed here — recorded only.**
 
+**SPEC-SLICE VALUE ASSESSED (2026-08-20) — the "surface-as-own-design-task" note above, resolved
+into a verdict. Largely already delivered; the genuine residual is workflow, not generation
+architecture. Nothing built.** One mentor throughout (Nitin).
+
+**Pre-flight.** Clean tree, `main`, tip `7c84096` (the judge-layer surfacing). `make lint`/`make
+test` clean, 5982 unchanged.
+
+**What the pipeline already does, checked directly, not assumed.** Generation is already
+slice-scoped, at a finer grain than Nitin's own example: `run_feature_engineering_stage` iterates
+`for requirement in requirement_set.requirements`, and `build_feature_content_payload` serializes
+only that ONE requirement's own `title`/`narrative`/`component`/`acceptance_criteria` — no
+cross-requirement data ever enters the call. Layer 3 generation is finer still — per Gherkin STEP
+NEED (`for need in unique_needs`, `automation_engineering/stage/runner.py`), each generator call
+scoped to one need's own text and interface. Nothing in this pipeline's own generation code can see
+or touch another requirement's data — not because it is forbidden, but because the payload never
+carries it. **The canonical model ("the map") exists, exactly as Nitin describes it, but is 0%
+implemented:** ADR-0030/CAP-087A froze a real canonical domain model (`SpecificationPlan`/
+`BusinessFeature`/`BusinessScenario`/etc., Gherkin as one Renderer among several) as pure
+architecture — "No code is written... nothing is wired into a pipeline" (ADR-0030's own Runtime
+status). It is not used as per-run context today because it does not run at all yet — consistent
+with, not contradicting, Nitin's own "map, not context" framing.
+
+**The decisive finding: Nitin's own STATED rationale (cheaper, reviewable, contained blast radius)
+splits into two independent values, and one of them is already fully delivered.**
+`[[cap-delta-regen-crux-surfaced]]` (this arc's own prior design-surfacing task) already answered
+the efficiency half directly: "the cache already delivers correct per-artifact delta-regen for all
+three wrapped generators' DIRECT inputs, proven by 3 real measured runs" — feature-content and
+test-data have ZERO transitive gap; step-def has exactly one small, dormant, non-urgent gap (a
+bare-class-name cache-key hint), already recommended-fixed by widening the payload, not by a
+branch/change-impact mechanism. **This is Nitin's own rationale, delivered — a re-run today
+already only regenerates what changed, corpus-wide, without any branch structure at all.** The
+change-impact graph (`[[cap-change-impact-graph-built]]`) was explicitly found NOT to be a regen
+driver — "report-only... a human-facing reporting/impact-analysis tool," confirming the blast-
+radius VALUE comes from the cache's content-addressed key, not from a graph or a declared spec
+boundary.
+
+**Each part of #4, mapped:**
+
+| Part of #4 | Status |
+| --- | --- |
+| Per-requirement/slice generation scope | **Already exists** — confirmed above, finer-grained than his own example (per-need, not just per-requirement). |
+| Blast-radius containment (regenerate only what the feature touches) | **Already delivered by the cache** (`[[cap-delta-regen-crux-surfaced]]`) — Nitin's own stated rationale, achieved by a different mechanism (content-addressed payload hashing) than the one he proposed (a declared branch-spec boundary), same result. |
+| DoD-in-branch (tests built with the feature) | **Already the shape, minus the branch container** — a requirement's `.feature` scenarios and its step-defs/page-objects/test-data are generated together, in the same run, from the same `TestableRequirement`, traceable end-to-end via the `@REQ-*`/`@AC-*`/`@SCN-*` tag chain CAP-088's own traceability graph already verifies. |
+| Page-object changes limited to the feature | **Partially blocked, but not by #4** — page-object/utility generation is not yet cache-wrapped at all (CAP-089's own 3-of-5 scope); once it is, `[[cap-delta-regen-crux-surfaced]]` already names the exact fix (payload widening), not a branch structure. |
+| Branch-as-unit + branch-spec-as-CONTRACT (an explicit, enforced boundary on what a run may touch) | **Genuinely new — and moot as an enforcement mechanism.** No git-branch concept exists anywhere in this pipeline's production code (grepped, zero hits) — promotion (`automation_engineering/promotion/mechanism.py`) `git add`s every promoted asset into ONE shared tracked-baseline working tree per run, not a per-feature branch. But "enforcement" has nothing real to prevent: the generation payloads already cannot leak across requirements BY CONSTRUCTION (above) — there is no cross-slice violation this platform's own code could commit for a spec-as-contract to guard against. |
+| Reviewability (a human reviewing one feature's own diff, not the whole run's) | **The one genuine, undelivered value** — today a promotion stages every changed asset from the whole run together; there is no mechanism to scope a review action to one requirement/feature's own changes. This is the part of #4 the cache does NOT deliver. |
+
+**The crux, answered directly.** Is this a generation-architecture change, or a workflow/CI
+practice layered on what already exists? **Workflow, not architecture — decisively.** The
+generation code is already per-slice; the cache already contains blast radius; nothing about
+"branches" requires the generator classes, the payload contracts, or the orchestration to change
+at all. A branch-per-requirement git practice (checkout a branch named after the requirement,
+run the pipeline, review that branch's own diff, merge) is fully expressible TODAY, on top of the
+existing pipeline, with zero code changes — the only genuinely missing piece is a thin
+promotion/review-tooling enhancement (e.g., partition the `git add` staging or the promotion
+report by requirement/feature so a reviewer sees one feature's own diff, not the whole run's).
+That is a small, real, additive tooling item — not a re-architecture of generation.
+
+**VERDICT: (b) largely-already-delivered.** Nitin's own stated rationale (cheaper, reviewable,
+contained blast radius) is already achieved for the efficiency half by the cache
+(`[[cap-delta-regen-crux-surfaced]]`), and the generation architecture is already slice-scoped,
+finer-grained than his own example. The one genuine residual — reviewability, a diff scoped to one
+feature at a time — is a promotion/review-tooling addition, small and workflow-shaped, not the
+branch-scoped generation re-architecture the original ask described. **Restructuring generation
+into branch-bounded units to chase a blast-radius value the cache already delivers would be
+questionable restructuring — the same shape this arc already declined once for the deterministic
+split.** Recommended, if ever prioritized: the small reviewability tooling addition, not a
+generation re-architecture. Not designed here.
+
+**Connections and Nitin's own intent.** Connects directly to the cache (ADR-0050, delivers the
+efficiency half) and to CAP-087 (the "map," frozen architecture, 0% implemented, consistent with
+his own "not per-run context" framing). Page-object live-wiring blocks one small part (already
+named, already has its own fix recommended, unrelated to branches). **Nitin's own words** name the
+outcome he wants ("cheaper, reviewable, a contained blast radius") — re-reading his rationale
+against what this platform actually measured, the efficiency outcome is already real, proven by
+three live-measured cache runs; only the reviewability outcome remains open, and it does not
+require the branch-scoped generation architecture he described to get it.
+
 ---
 
 ### Item 5 — Centralized constitution
@@ -2304,7 +2382,9 @@ alignment explicit rather than changing anything in the sequence itself.
   note, above) is branch-scoped vertical slices with the branch spec as generation-run contract,
   not the already-done Gherkin/call-site chain and not CAP-087's canonical-domain-model idea
   either. No frozen-layer conflict found (it composes with, rather than touches, the existing
-  `TestableRequirementSet`/`.feature`/call-site chain). **surface-as-own-design-task.**
+  `TestableRequirementSet`/`.feature`/call-site chain). **surface-as-own-design-task — DONE
+  (2026-08-20), see "SPEC-SLICE VALUE ASSESSED" under item #4: largely-already-delivered (the
+  cache already contains blast radius); the residual is review tooling, not architecture.**
 - **#3's Knowledge Graph sub-part (traceability + change-impact graphs)** — no longer group (b).
   Nitin's clarification (item #3's own note, above) separates four graph types; the existing
   Accepted, live KG remains confirmed as the asset/catalog graph (unchanged finding), but
@@ -2377,10 +2457,14 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
     re-architecture sizing question (item #2's own note, above) by reading the real generator/
     orchestrator structure against what a genuine skill catalog would require. No ADR conflict, no
     frozen layer — buildable whenever prioritized, size unknown until this task runs.
-2b. **#4's own dedicated design-surfacing task (added 2026-08-12)** — resolve how a branch spec is
-    represented and enforced as a boundary on what a generation run may touch, and how it composes
-    with the existing `TestableRequirementSet`/`.feature`/call-site chain (item #4's own note,
-    above). Connects to 2d below (re-run/delta-scoping) by Nitin's own framing.
+2b. **#4's own dedicated design-surfacing task — DONE (2026-08-20), see "SPEC-SLICE VALUE ASSESSED"
+    under item #4, above.** Verdict: largely-already-delivered, not a generation-architecture
+    change. Generation is already per-requirement/per-need slice-scoped, finer-grained than
+    Nitin's own example; the blast-radius/efficiency rationale he stated is already delivered by
+    the artifact cache (`[[cap-delta-regen-crux-surfaced]]`, proven by three live-measured runs);
+    the one genuine residual (reviewability — a diff scoped to one feature, not the whole run) is a
+    small promotion/review-tooling addition, workflow-shaped, not a branch-scoped generation
+    re-architecture. Nothing built.
 2c. **#3's traceability + change-impact graph design-surfacing task — DONE (2026-08-12), see
     "GRAPHS DESIGN SURFACED" under item #3, above.** Sequencing resolved: traceability first
     (highest strategic value, mostly buildable now, feeds the completeness thread directly);
