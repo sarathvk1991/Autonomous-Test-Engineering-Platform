@@ -566,6 +566,167 @@ amended further.
 
 ---
 
+## Investigation Note (2026-08-20) — the judge layer (Layer 2) value assessed, not built
+
+A surface-then-build-if-warranted task on D3/D5's own judge-layer deferral, the same discipline
+`[[cap-runtime-citation-not-built]]` applied to ADR-0049's runtime-citation deferral: establish
+whether the judge is actually worth building before designing or building any of it. **Verdict:
+NOT WORTH BUILDING NOW, as a CI gate. Did not build. The deferral was correct — confirmed by
+evidence, not merely re-asserted.** One mentor throughout (Nitin).
+
+**Pre-flight.** Clean tree, `main`, tip `4450d72` (the test-data eval increment). `make lint`
+clean, `make test`: 5982 unchanged. This note adds text only to this document; nothing else
+touched.
+
+**The judge's real, narrow residual scope, established first.** D3's own taxonomy names three
+defect shapes; two are already closed without a judge. Structural defects (row 1) are Layer 1's
+own scope, now built and proven for three generators (the Implementation Notes, above) — wrong
+imports, markdown fences, fabricated classes, SUT-binding violations, oversized methods, all
+deterministically checkable. Coverage omissions (row 2) are CAP-088's `CompletenessReport`,
+consumed read-only by two of the three built increments (`check_step_covered`/
+`check_requirement_covered`) — "does a required thing have no corresponding generated artifact at
+all" is fully answered without a judge. **What is left for a judge is exactly row 3, and only
+row 3:** an artifact that is structurally clean, references real methods, and nominally covers the
+right acceptance criterion, but implements the wrong logic underneath — a defect no deterministic
+check can see without a rubric of "correct."
+
+**(A) Does silently-wrong-logic actually occur here? Checked against every real defect corpus
+this platform has, not assumed.** No. This platform's ONLY real historical generation-quality
+incident — the `gemini-2.5-flash` 76%-defect-rate regression (`[[cap-compile-gap-closed]]`, 17
+generations) — is **100% structural**: wrong Cucumber import package (8/17), a markdown code
+fence (2/17), a fabricated duplicate page-object class (3-4/17). None of the three is
+silently-wrong-logic — every one is deterministically checkable and IS checked today by Layer 1.
+The two other generators this arc measured are also clean of any incident: feature-content's real
+live E2E corpus scored 15/15, 0 escalations; test-data's real corpus has never even exercised a
+non-empty specification. **Zero instances of the row-3 defect shape exist anywhere in this
+platform's own recorded history.** Nitin's own motivating example (a model silently missing
+allergy validation or insurance eligibility) is illustrative, not observed — a healthcare analogy,
+not a finding from this platform's actual domain (a saucedemo-style e-commerce test-automation
+corpus). This is a **theoretical**, not an **observed**, defect class here — the same honest
+distinction `[[cap-runtime-citation-not-built]]` drew for runtime citation's own "no consumer"
+finding.
+
+**(B) Is an LLM judge reliable enough to trust for a CI gate? Reasoned from this platform's own
+already-documented facts, not a generic caveat.** No, not without infrastructure this arc has not
+built and cannot build today. Three compounding problems:
+
+1. **Non-determinism compounds, it does not merely repeat.** ADR-0050 D1's own residual-risk
+   finding, already documented about this platform: "hosted-model APIs do not guarantee
+   bit-identical output across calls even at `temperature=0.0`." That is already true of the
+   GENERATOR's own output — Layer 1 was deliberately built around property checks, not golden-text
+   matching, specifically because of it (ADR-0051 D2). A judge adds a SECOND LLM call, with the
+   SAME non-determinism, now applied to SCORING rather than generating — even identical generated
+   text could receive a different judge score on a re-run, a second, independent noise source
+   stacked on the first.
+2. **A false positive is worse than no judge.** A judge that flags good output as bad erodes trust
+   in the exact mechanism this whole harness exists to be trusted — the same "pass-bias
+   meaning-check" trap D2 already named as the reason Layer 1 rejects an absolute score threshold,
+   now recurring one level up: an unreliable judge trains engineers to override or ignore it,
+   which is strictly worse than having no judge at all.
+3. **Calibration requires ground truth this platform does not have, and cannot cheaply produce.**
+   Knowing whether a judge's score correlates with real quality requires labeled examples of known-
+   good and known-bad generations. (A) already established this platform has **zero real examples**
+   of the row-3 defect the judge would exist to catch — there is nothing to calibrate against.
+   Producing that ground truth would require a human expert manually reviewing generations for
+   semantic correctness — which is exactly the "Rubrics scored by a human" category the original
+   design-surfacing note (Item 1, above) already named and rejected as "not CI-automatable by
+   definition... useful for periodic audit, not for gating a model swap." Calibration and the
+   human-rubric problem are the same unsolved problem, not two.
+
+**(C) The five open questions, worked through — not answered, but no longer merely named.**
+
+1. **Which judge?** No precedent exists on this platform for a "judge" role specifically. Self-
+   grading (same model judges its own output) risks the model's own blind spots recurring in its
+   own grading; a different/stronger model adds a second provider dependency and cost. Genuinely
+   open, not decidable from this platform's existing evidence.
+2. **How pinned?** The one question this platform's own infrastructure already answers. A judge's
+   `prompt_id`/`prompt_version`/`prompt_sha256`/`provider`/`model` would reuse `GenerationIdentity`
+   verbatim — proven reusable across three unrelated generators already (the Implementation Notes,
+   above). Pinning is cheap and solved; it is the OTHER four questions that are not.
+3. **Whose rubric?** No existing role or convention on this platform authors or maintains a
+   semantic-correctness rubric. The original Layer 2 LLD already named two LLM-judged advisory
+   checks ("Business readability," "Step reusability," `CP2AdvisorySignals`) and never built
+   either — a live, real precedent, on this exact platform, of the same category of work
+   (LLM-judged assessment of generated output) being named once and never prioritized, with no
+   recorded cost from leaving it unbuilt.
+4. **Calibration?** Unsolved, per (B)#3 above — circular with the human-rubric problem this
+   platform already declined to build for the identical reason (not CI-automatable).
+5. **Cost?** A second LLM call per graded artifact, minimum. Cheap for three generators' small
+   curated sets in isolation, but the goal Nitin named is CI-gating on every model/prompt change —
+   at that cadence, the judge inherits the SAME quota pressure `[[cap-compile-gap-closed]]` already
+   found real for generation alone (`gemini-2.5-flash`'s free tier: 20 requests/day) doubled, since
+   both the artifact call and the judge call would need it.
+
+**(D) The regression-gate problem — the deterministic mechanism does not transfer to a noisy
+judge, checked against the real, already-tested gate, not assumed.** `check_regression`
+(`baseline_store.py`) is exact and relative: `candidate.pass_rate < baseline.pass_rate` →
+`REGRESSED`. This is proven safe for Layer 1 precisely BECAUSE `pass_rate` is a deterministic
+computation — `test_re_running_the_same_good_generator_does_not_regress` (proven three times, once
+per generator) holds only because nothing in the computation varies between runs. A judge score is
+not deterministic (B, above): the identical generated text, judged twice, could score differently
+purely from judge-call variance — indistinguishable, with the CURRENT gate mechanism, from a real
+quality drop. Distinguishing real regression from judge noise would need new, undesigned machinery
+(repeated sampling, a confidence interval, a minimum-delta-to-flag threshold) — which itself needs
+the noise-floor data (B)#3 already established this platform does not have. The gate mechanism
+this arc proved does not straightforwardly generalize to a judge; a naive reuse would produce
+false `REGRESSED` verdicts on pure noise.
+
+**(E) A decisive, doc-grounded finding not named in ADR-0051's own original five questions: even
+if built, a judge could never GATE on this platform, by its own now-Accepted constitution.**
+ADR-0049 (Engineering Constitution) Article VII — "Deterministic Gates Decide": *"A release or
+pass/fail verdict is derived by a single, deterministic, policy-governed engine; an LLM-authored
+assessment is advisory only and never gates"* — grounded in ADR-0040's own control-point rule,
+already enforced live at every control point this platform has (CP1 through CP7). Wiring a judge's
+score into `check_regression`'s `PASSED`/`REGRESSED` verdict would be exactly the kind of
+LLM-authored pass/fail decision Article VII forbids. A judge on this platform can therefore only
+ever be an advisory signal — mirroring `CP2AdvisorySignals`'s own dormant, structurally-incapable-
+of-gating slot — never a CI-blocking regression gate, regardless of how well (B)-(D) above were
+ever solved. This forecloses recommendation option (a) (a CI-gating judge) architecturally, not
+merely as a matter of today's engineering maturity.
+
+**THE VERDICT.** **(b) Not worth building now — as a CI gate, or in any minimal/non-gating form
+either.** Grounds, together: (A) the defect class is unobserved, not merely rare, across every
+real corpus this arc has produced; (B) a judge's own reliability is unproven and uncalibratable
+without ground truth this platform does not have and cannot cheaply produce; (C) four of five open
+questions remain genuinely open, with no local evidence to resolve them; (D) the existing,
+already-proven regression-gate mechanism does not transfer to a noisy score without undesigned
+machinery; (E) even a working judge could never gate on this platform's own constitution — only
+ever advise. A minimal, non-gating, human-reviewed audit tool (option (c)) was also considered and
+rejected FOR NOW, not because it is architecturally impossible (Article VII permits advisory
+signals), but because nothing in (A) gives it a real defect to find, and no rubric owner exists
+(C.3) to write what it would grade against — an audit tool with nothing to audit and no one to
+maintain its rubric is ceremony, the same shape D1's own reframe already warned against reaching
+for prematurely.
+
+**The condition that would warrant reopening this, named, not scheduled** — mirroring
+`[[cap-runtime-citation-not-built]]`'s own precedent exactly: a REAL, observed instance of
+silently-wrong-logic in this platform's own generated output (not a hypothetical), which would
+simultaneously prove the defect class occurs here and hand a labeled example to begin calibration.
+Absent that, building a judge is ceremony — a second, costly, non-deterministic LLM call with no
+proof it can distinguish a real defect from noise, gated (Article VII) to advisory status even if
+it worked.
+
+**Connection to #8 (per-stage LLM assignment) and Nitin's own intent, addressed directly.** A
+judge WOULD be the mechanism that validates a future #8 model/provider swap semantically, not just
+structurally — but #8 itself remains unbuilt (ADR-0051 Consequences already name it as "the
+cheapest item on the mentor list to build engineering-wise" but not yet done), so the judge's own
+most concrete justified use case has no live consumer either — the same "no consumer" shape
+`[[cap-runtime-citation-not-built]]` found for runtime citation. **Nitin's own words, re-read
+precisely** (the original design-surfacing note, Item 1, above): "curated eval sets (expected
+outputs, OR RUBRICS)" — his ask names rubrics as one acceptable mechanism, not an LLM judge
+specifically, and his one CONCRETE example this platform ever produced (the gemini-2.5-flash
+incident) is now, in full retrospect, 100% covered by Layer 1 without any judge at all. His
+HYPOTHETICAL healthcare example splits cleanly per D3: its coverage-shaped half is already CAP-088
+territory; only its semantic-implementation half needs a judge, and that half's real-world analog
+has never once occurred on this platform. **Layer 1 + CAP-088 already satisfy the concrete,
+observed form of Nitin's ask; the judge layer would only serve the hypothetical, illustrative
+extension of it — not something he has flagged as an actual problem on this platform.**
+
+Gate: `make lint` clean; `make test` 5982 unchanged — doc-only, no code/test touched. Nothing
+built: no judge module, no rubric, no CI wiring, no new eval-harness code of any kind.
+
+---
+
 ## Consequences
 
 - **Enables, proven for the first increment (Implementation Note, above):** a curated, versioned,

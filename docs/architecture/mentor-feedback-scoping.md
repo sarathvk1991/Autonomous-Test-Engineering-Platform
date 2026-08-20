@@ -2452,6 +2452,35 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
     clean re-run PASSED; `check_no_long_method` proven to actually fire on a real 45-line method.
     CAP-090 now covers 3 of 7 target generators. Four generators/skills and the judge layer remain
     future, separate work. One mentor throughout (Nitin).
+2h. **The judge layer (eval-harness Layer 2) INVESTIGATED (2026-08-20, same day) — NOT WORTH
+    BUILDING NOW, as a CI gate or in any minimal/non-gating form either; the deferral confirmed
+    correct, not merely re-asserted.** Full analysis recorded in ADR-0051's own new "Investigation
+    Note" (2026-08-20). Summary: (A) silently-wrong-logic (the judge's only real residual scope,
+    once Layer 1 + CAP-088 are subtracted) is **unobserved** across every real corpus this arc has
+    produced — the one real historical defect (`gemini-2.5-flash`, 76% defective) is 100%
+    structural, already Layer-1-catchable; feature-content and test-data are both clean of any
+    incident. (B) an LLM judge's own reliability is unproven and uncalibratable without ground
+    truth this platform does not have — calibration requires exactly the human-scored-rubric
+    approach already rejected as not CI-automatable. (C) the five open questions worked through:
+    pinning is cheap and already solved (`GenerationIdentity` reuses verbatim); which judge, whose
+    rubric, calibration, and cost remain genuinely open, with a real, already-existing precedent on
+    this platform of the identical category (CP2's own "Business readability"/"Step reusability"
+    LLM-judged advisory checks) being named once and never built, at no recorded cost. (D) the
+    proven-safe regression gate (`check_regression`, exact/relative) does not transfer to a noisy
+    judge score without undesigned machinery. (E) a NEW, decisive finding beyond ADR-0051's own
+    original five questions: ADR-0049's Engineering Constitution, Article VII ("Deterministic Gates
+    Decide" — an LLM-authored assessment is advisory only and never gates) means a judge could
+    never GATE on this platform at all, by its own now-Accepted constitution, regardless of how
+    well (B)-(D) were ever solved — only ever advisory, mirroring `CP2AdvisorySignals`'s own
+    dormant slot. **Connection to #8/Nitin's intent:** a judge would validate a future #8
+    model-swap semantically, but #8 itself remains unbuilt (no live consumer yet, the same shape
+    `[[cap-runtime-citation-not-built]]` found for runtime citation); Nitin's own words name
+    "rubrics" as an acceptable mechanism, not an LLM judge specifically, and his one concrete,
+    real example (the gemini incident) is now fully covered by Layer 1 without any judge at all —
+    his hypothetical healthcare example splits per D3, with only its unobserved semantic-
+    implementation half needing a judge. **The trigger to reopen, named not scheduled:** a REAL
+    observed instance of silently-wrong-logic in this platform's own generated output. Nothing
+    built — surfacing only. One mentor throughout (Nitin).
 2e. **Nitin's re-run/token-cost build item (added 2026-08-12)** — start with token-consumption
     instrumentation by stage and run (his own "Critically"-flagged, cheapest, no-architecture-change
     first step); artifact-level caching, delta-scoped regeneration (depends on 2c's change-impact
