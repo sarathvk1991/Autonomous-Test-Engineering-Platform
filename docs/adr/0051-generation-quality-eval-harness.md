@@ -1,9 +1,10 @@
 # ADR-0051 — Generation Quality Eval Harness (Layer 1: Deterministic Property Checks)
 
-- **Status:** Accepted (Layer 1, two of seven target generators —
-  `LiveStepDefinitionGenerator` and `LiveFeatureContentGenerator` — see the "Implementation Note"
-  sections, below; the remaining five generators and the judge layer, D5, remain future, separate
-  work).
+- **Status:** Accepted (Layer 1, three of seven target generators —
+  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, and `LiveTestDataGenerator` — see
+  the "Implementation Note" sections, below; the remaining four generators and the judge layer,
+  D5, remain future, separate work). **All three of ADR-0050's own measured/cached token sinks
+  now have quality-drift eval coverage** (step-def, feature-content, test-data).
 - **Date:** 2026-08-17
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR *is* the governing design. It records the decisions
@@ -23,16 +24,17 @@
   checks, D3, never extended); ADR-0050 (Artifact-Level Generation Cache — sibling precedent for a
   new, focused, ADR-first capability, and the module this harness's own scorecard store shape
   mirrors, D2).
-- **Runtime status: Built and tested (Layer 1, two of seven target generators — see the
+- **Runtime status: Built and tested (Layer 1, three of seven target generators — see the
   "Implementation Note" sections, below).** `eval_harness/` exists: a curated eval set,
   deterministic property checks, scoring/aggregation, CAP-088 coverage consumption, and a
-  regression-gated baseline store — for `LiveStepDefinitionGenerator` (first increment) and
-  `LiveFeatureContentGenerator` (second increment, 2026-08-20). **Not CI-wired and not
-  live-wired.** No CI job, no `PlatformContext` composition-root method, and no live LLM call
-  anywhere in this package's own test suite — every proof runs against a Stub generator seeded
-  with captured/fixture text (D2's own "live-vs-cached" open question is left exactly as open as
-  this ADR named it; this build resolves only the eval *logic*, deterministically). The remaining
-  five generators and the judge layer (D5) are untouched.
+  regression-gated baseline store — for `LiveStepDefinitionGenerator` (first increment),
+  `LiveFeatureContentGenerator` (second increment, 2026-08-20), and `LiveTestDataGenerator` (third
+  increment, 2026-08-20). **Not CI-wired and not live-wired.** No CI job, no `PlatformContext`
+  composition-root method, and no live LLM call anywhere in this package's own test suite — every
+  proof runs against a Stub generator seeded with captured/fixture text (D2's own "live-vs-cached"
+  open question is left exactly as open as this ADR named it; this build resolves only the eval
+  *logic*, deterministically). The remaining four generators and the judge layer (D5) are
+  untouched.
 
 ## Problem
 
@@ -437,6 +439,133 @@ amended further.
 
 ---
 
+## Implementation Note (2026-08-20) — D5's third increment: `LiveTestDataGenerator`, built and tested
+
+Extends D5's own "same pattern, applied once step-def's own build proves the mechanism" claim to a
+THIRD generator — the other ~43% measured token sink (`[[cap-artifact-cache-third-increment-built]]`),
+already cache-wrapped (`CachingTestDataGenerator`, ADR-0050). **Completes eval coverage of all
+THREE of ADR-0050's own measured/cached token sinks** (step-def, feature-content, test-data). One
+mentor throughout (Nitin).
+
+**Pre-flight.** Clean tree, `main`, tip `2107cfe` (the feature-content eval increment). `make
+lint`/`make test` clean, 5957 unchanged.
+
+**Test-data's OWN defect shapes established first — a THIRD artifact type, not copied from either
+prior increment's checks.** `LiveTestDataGenerator` produces Java source (like step-def), but
+governed by a different real contract: ADR-0037 D3's SUT-binding boundary (a test-data class is
+the DATA side of the platform's SUT binding, never the environment side), not Cucumber's
+annotation grammar. **Grounding basis, checked directly, not assumed — mixed, stronger than
+feature-content's:**
+
+- **Two checks compose ALREADY-REAL, ALREADY-ENFORCED mechanisms** — the strongest grounding
+  found in this arc yet. `check_no_env_binding` ports `automation_engineering.generation.
+  test_data_orchestrator._check_no_env_binding`'s own regex verbatim: a live, ALWAYS-ON,
+  orchestration-level guard that `generate_test_data_class` runs on every generator's output
+  (stub or live) today, raising `TestDataBoundaryError` before ever returning a result — not a
+  design aspiration, a real production check. `check_no_long_method` calls CP3's real, PUBLIC
+  `evaluate_long_method` (`automation_engineering.cp3.architecture`) directly — no port needed,
+  since it is already a pure, in-memory, no-subprocess function — and `customqa:long-method`
+  applies to "ANY generated class... no class-role restriction" (that module's own docstring),
+  test-data included.
+- **Three checks are contract-grounded, no known incident** (like feature-content) —
+  `check_no_markdown_fence`, `check_class_name_matches`, `check_no_webdriver_reference`, each
+  ported from the governed `generate_test_data` v1.0.0 prompt's own explicit OUTPUT
+  CONTRACT/CONSTRAINTS text. No real historical test-data defect exists on record.
+- **A real, deeper gap found and closed, not merely a missing incident.** CP3's own
+  `direct_webdriver_action` criterion explicitly EXCLUDES test-data's package from evaluation
+  (`architecture.py`'s own comment: "page objects, utilities, test data... not evaluated by this
+  criterion at all"). `check_no_webdriver_reference` is therefore the FIRST deterministic
+  enforcement of that specific prompt constraint anywhere in this platform — not a duplicate of an
+  existing check, a genuinely new one closing a real, previously-unenforced gap.
+
+**One check considered and NOT built, reported honestly (mirrors feature-content's own
+tagged-Background finding, generalized).** "One static member per required (field_name, variant)
+pair" (the OUTPUT CONTRACT's own field-coverage requirement) was considered. Unlike the
+Background-tag case, this one is not structurally unreachable — a dropped required variant is a
+real, possible defect. Not built because **every real `TestDataSpecification` this platform has
+ever emitted carries `fields=()`** — confirmed against all 20 requirements in `output/latest/
+test_data_specifications.json`, and stated directly in the contract's own docstring
+(`contracts.test_data_specification.TestDataSpecification`: "true of every requirement this
+platform has emitted so far"). No real case exists to seed or ground it against; a synthetic-
+fields fixture would violate this arc's own "seeded from real generation contexts, not invented"
+discipline for the curated set. Named as the next check to add if Layer 2 ever emits a non-empty
+specification — not designed further here.
+
+**Built:** `eval_harness/test_data_eval_set.py`, `test_data_properties.py`, `test_data_runner.py`
+— reusing `models.py`, `scoring.py`'s `score_eval_set`, `baseline_store.py`, AND
+`feature_content_coverage.py`'s `check_requirement_covered` verbatim (the coverage-shaped check is
+reused directly across generators — not merely the scaffolding, the actual check, since both
+generators trace to the same `TestableRequirement`/`requirement_id`).
+
+- **The curated eval set (D2).** `TEST_DATA_EVAL_SET` (independently versioned,
+  `TEST_DATA_EVAL_SET_VERSION`) — three cases built from the SAME three real, currently-tracked
+  requirements feature-content's own eval set uses (`REQ-c64bb0f7`/`REQ-f90f23fa`/`REQ-92502735`),
+  each with the real, currently-tracked EMPTY `TestDataSpecification` every requirement in this
+  corpus actually has. `class_name`/`target_package`/`customqa_constraints` derived via the real
+  orchestrator's own functions (`derive_test_data_class_name`,
+  `DEFAULT_TEST_DATA_TARGET_PACKAGE`, `DEFAULT_CUSTOMQA_TEST_DATA_CONSTRAINTS`), verified to
+  produce the exact class names the real corpus's own tracked `.java` files carry
+  (`ReqC64bb0f7TestData`, etc.).
+- **Five deterministic property checks (D2/D3, composed not invented).**
+  `test_data_properties.py`: `check_no_env_binding`, `check_no_markdown_fence`,
+  `check_class_name_matches`, `check_no_webdriver_reference`, `check_no_long_method` — two direct
+  reuses of already-real mechanisms, three contract-grounded ports (above). Each returns `PASSED`,
+  `FAILED`, or `NOT_APPLICABLE`.
+- **Scoring, keyed by `GenerationIdentity` (D2).** Reuses `eval_harness.scoring.score_eval_set`
+  verbatim — the THIRD generator to do so unchanged, confirming the design is genuinely
+  generator-agnostic, not merely designed to look that way.
+- **The coverage-shaped check, reused verbatim, not re-implemented (D3/D4).** No new
+  `test_data_coverage.py` module — `feature_content_coverage.check_requirement_covered` is called
+  directly (`test_eval_harness_test_data_coverage.py` proves it), since the coverage-shaped
+  question ("does this requirement reach a full traceability chain") is identical for both
+  generators, both keyed by the same `requirement_id`. Optional, not part of the default check
+  set, same reasoning as the other two increments.
+- **The regression gate, reused verbatim (D2).** `EvalBaselineStore`/`check_regression` — no
+  changes; `generator_id="test_data_generation"` (`LiveTestDataGenerator.CALL_TYPE`) stores to its
+  own separate file, no collision with the other two generators' baselines.
+- **The runner (D5).** `test_data_runner.py`'s `run_test_data_eval` — takes any `TestDataGenerator`
+  (Protocol-typed, agnostic to live/stub/cached) plus a caller-supplied `GenerationIdentity`,
+  mirroring the other two runners' own shape exactly.
+
+**Proven three ways, all deterministic, no live LLM call anywhere in this package's own test suite
+(25 new tests):**
+
+1. **Each property check catches its own real defect shape and passes the real, currently-tracked
+   clean corpus text** (`test_eval_harness_test_data_properties.py`) — unlike feature-content, no
+   reconstruction was needed: test-data's raw generator output IS the final Java text (no assembly
+   step exists for this artifact type), so the "clean" fixture is the real, currently-tracked
+   `ReqC64bb0f7TestData.java` content, verbatim. All five checks FAIL on a fixture reproducing
+   their own real defect shape and PASS on the clean text. `check_no_long_method` is additionally
+   proven to actually FIRE on a real 45-line method — not structurally unreachable, the lesson
+   carried forward from feature-content's own tagged-Background finding.
+2. **The full arc — scores-first baseline establishment, then regression detection — end to end**
+   (`test_eval_harness_test_data_runner.py`), driven by `StubTestDataGenerator` seeded with the
+   real clean text: a clean generator's first run has no prior baseline (`ESTABLISHED_BASELINE`)
+   and is explicitly recorded as one; a generator standing in for a worse model (a
+   `ConfigReader.env(...)` call — the real, always-on orchestration guard's own SUT-binding
+   violation — reintroduced into every case, since no real historical defect exists to replay) is
+   caught (`REGRESSED`) relative to that baseline; re-running the same clean generator does not
+   regress (`PASSED`).
+3. **The coverage-shaped check's reuse is proven, not merely claimed**
+   (`test_eval_harness_test_data_coverage.py`) — the SAME `check_requirement_covered` function,
+   imported from `feature_content_coverage.py`, correctly PASSES/FAILS against test-data's own
+   `requirement_id`, no test-data-specific coverage module written.
+
+**Scope held exactly as D5 decided.** Three of seven target generators
+(`LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`) are built —
+**all three of ADR-0050's own measured/cached token sinks now have quality-drift eval**. The
+remaining four generators' eval sets (`LivePageObjectGenerator`/`LiveUtilityGenerator` — blocked
+on live-wiring, ADR-0050's own note; `LiveFeatureRemediator` — excluded per ADR-0050 D5's own
+"repairs a prior attempt... independently rare" reasoning, mirrored here; `RequirementAnalysisService`),
+the judge layer (D5), rubric grading, and any CI/live wiring are all untouched by this increment.
+
+Gate: `make lint` clean; `make test` 5982 passed (5957 + 25 new, itemized above); `mypy`:
+whole-repo error count unchanged (436, confirmed) — the six new/changed files are themselves
+zero-error under `mypy strict`. Tree: 3 new files under `eval_harness/`, 3 new test files, this ADR
+amended further.
+
+---
+
 ## Consequences
 
 - **Enables, proven for the first increment (Implementation Note, above):** a curated, versioned,
@@ -497,6 +626,19 @@ amended further.
   checks are grounded in a different real mechanism (`assembler.py`'s tag-contract validation, not
   CP5) — proof the reframe (D1) generalizes across artifact types, not just within one. Five
   generators and the judge layer remain future, separate work.
+- **Extended to a third generator, additively (2026-08-20, same day, second Implementation
+  Note).** `LiveTestDataGenerator`'s Layer 1 is now also built, tested, and Accepted for its own
+  scope — **completing eval coverage of all three of ADR-0050's own measured/cached token sinks**
+  (step-def, feature-content, test-data). The generic core (`models.py`, `scoring.py`'s
+  `score_eval_set`, `baseline_store.py`) was reused verbatim a THIRD time, unchanged — no longer a
+  claim resting on two data points. Test-data's own checks compose the strongest existing-detection
+  grounding found in this arc yet (a live, always-on orchestration guard reused directly; CP3's
+  real, public `evaluate_long_method` called directly, not ported) alongside contract-grounded
+  checks that close a real, previously-unenforced gap (CP3's own `direct_webdriver_action`
+  criterion explicitly excludes test-data's package). One check (field-variant coverage) was
+  considered and honestly not built — no real `TestDataSpecification` this platform has ever
+  emitted carries a non-empty `fields` list to ground it against. Four generators and the judge
+  layer remain future, separate work.
 
 ## Ownership, runtime position, governance
 
@@ -507,20 +649,21 @@ amended further.
 - **Does not own:** `GenerationIdentity`, any live generator, `CompletenessReport`/the traceability
   graph, any CP5 check (reused, not owned), the golden-baseline harness, or the judge/rubric layer
   itself (named as future scope, not designed).
-- **Runtime position (built for two increments; not CI-wired, not live-wired):** generator +
+- **Runtime position (built for three increments; not CI-wired, not live-wired):** generator +
   caller-supplied identity + curated eval-set case → a runner (`runner.py`'s
-  `run_step_definition_eval`, or `feature_content_runner.py`'s `run_feature_content_eval`) →
-  property-check results per case (`step_definition_properties.py`, or
-  `feature_content_properties.py`) → aggregate `EvalScore`, keyed by `GenerationIdentity`
-  (`scoring.py`, reused verbatim by both) → `check_regression` against `EvalBaselineStore`'s
-  current baseline (`baseline_store.py`, reused verbatim by both — one JSON file per
-  `generator_id`, no collision) → `ESTABLISHED_BASELINE` / `PASSED` / `REGRESSED`. This chain
-  exists and is tested for `LiveStepDefinitionGenerator` and `LiveFeatureContentGenerator` only
+  `run_step_definition_eval`, `feature_content_runner.py`'s `run_feature_content_eval`, or
+  `test_data_runner.py`'s `run_test_data_eval`) → property-check results per case
+  (`step_definition_properties.py`, `feature_content_properties.py`, or `test_data_properties.py`)
+  → aggregate `EvalScore`, keyed by `GenerationIdentity` (`scoring.py`, reused verbatim by all
+  three) → `check_regression` against `EvalBaselineStore`'s current baseline (`baseline_store.py`,
+  reused verbatim by all three — one JSON file per `generator_id`, no collision) →
+  `ESTABLISHED_BASELINE` / `PASSED` / `REGRESSED`. This chain exists and is tested for
+  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, and `LiveTestDataGenerator` only
   (proven against Stub generators, never a live LLM call, in this package's own test suite) — no
   CI job invokes it, and no `PlatformContext` composition-root method exists for it.
 - **Governance:** recommended `CAP-090` (not yet entered — Consequences) for the Requirement
-  Intelligence Platform. This ADR is **Accepted** for its first two increments (Implementation
+  Intelligence Platform. This ADR is **Accepted** for its first three increments (Implementation
   Notes, above) — it now clears the same bar ADR-0050 cleared (built, tested, and proven against
   each covered generator's own real defect shapes), for the scope D5 defined. It does not claim
-  any of the other five generators' eval sets, the judge layer, or CI/live wiring are built — that
+  any of the other four generators' eval sets, the judge layer, or CI/live wiring are built — that
   remains future, separate work, exactly as D5 sequenced it.

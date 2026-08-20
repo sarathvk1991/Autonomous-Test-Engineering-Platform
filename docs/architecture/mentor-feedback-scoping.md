@@ -2410,24 +2410,48 @@ re-run-token-cost clarifications (Item 1) likewise surface no new ADR conflict.
     that same-day closure, not retro-edited here. Not CI-wired, not live-wired — the "live vs.
     cached LLM in CI" question ADR-0051 D2 flagged stays open, deliberately not resolved by this
     build.
-2e. **Second generator extended (2026-08-20) — `LiveFeatureContentGenerator`, ADR-0051's own D5
-    "extend to other generators" next step.** Same proven Layer 1 pattern repeated, with
-    feature-content's OWN defect shapes established first, not copied from step-def's: six
-    deterministic checks composed from `feature_engineering.generation.assembler.
-    generate_feature_file`'s own already-real tag-contract validation (five) plus the governed
-    `generate_feature` prompt's own no-markdown-fence clause (one) — grounded in the real,
-    already-enforced CONTRACT, since (unlike step-def) no known real historical feature-content
-    defect exists on record (the live E2E run scored 15/15 clean, 0 escalations). A seventh real
-    `assembler.py` block (tagged-`Background:`) was investigated and deliberately not ported,
-    verified empirically that it is structurally unreachable (a tag before `Background:` is always
-    a hard Gherkin parse error, already caught by the Gherkin-structure check). `models.py`,
-    `scoring.py`'s `score_eval_set`, and `baseline_store.py` reused verbatim, unchanged — proving
-    D2's generator-agnostic design directly. Proven end to end (32 new tests, no live LLM call):
-    baseline established, a worse-model stand-in (a stray `@REQ-*` tag, the prompt's single most
-    explicitly forbidden defect shape) caught as REGRESSED, a clean re-run PASSED. CAP-090 now
-    covers 2 of 7 target generators (matrix §5.13, ADR-0051, `architecture-baseline-v2.md` §3 all
-    updated additively the same day). Five generators/skills and the judge layer remain future,
-    separate work. One mentor throughout (Nitin).
+2f. **Second generator extended (2026-08-20) — `LiveFeatureContentGenerator`, ADR-0051's own D5
+    "extend to other generators" next step.** (Relabeled 2e → 2f, additive: the original `2e` below
+    is a pre-existing, differently-numbered item — Nitin's re-run/token-cost build item — this
+    note's own label collided with it when first added; only the label moved, no content changed.)
+    Same proven Layer 1 pattern repeated, with feature-content's OWN defect shapes established
+    first, not copied from step-def's: six deterministic checks composed from
+    `feature_engineering.generation.assembler.generate_feature_file`'s own already-real
+    tag-contract validation (five) plus the governed `generate_feature` prompt's own
+    no-markdown-fence clause (one) — grounded in the real, already-enforced CONTRACT, since (unlike
+    step-def) no known real historical feature-content defect exists on record (the live E2E run
+    scored 15/15 clean, 0 escalations). A seventh real `assembler.py` block (tagged-`Background:`)
+    was investigated and deliberately not ported, verified empirically that it is structurally
+    unreachable (a tag before `Background:` is always a hard Gherkin parse error, already caught by
+    the Gherkin-structure check). `models.py`, `scoring.py`'s `score_eval_set`, and
+    `baseline_store.py` reused verbatim, unchanged — proving D2's generator-agnostic design
+    directly. Proven end to end (32 new tests, no live LLM call): baseline established, a
+    worse-model stand-in (a stray `@REQ-*` tag, the prompt's single most explicitly forbidden
+    defect shape) caught as REGRESSED, a clean re-run PASSED. CAP-090 now covers 2 of 7 target
+    generators (matrix §5.13, ADR-0051, `architecture-baseline-v2.md` §3 all updated additively the
+    same day). Five generators/skills and the judge layer remain future, separate work. One mentor
+    throughout (Nitin).
+2g. **Third generator extended (2026-08-20, same day) — `LiveTestDataGenerator` — completes eval
+    coverage of all THREE of ADR-0050's own measured/cached token sinks (step-def, feature-content,
+    test-data).** A THIRD artifact type: Java, like step-def's, but governed by ADR-0037 D3's
+    SUT-binding boundary, not Cucumber's grammar. Two checks DIRECTLY compose already-real,
+    already-enforced mechanisms — the strongest grounding found in this arc yet:
+    `check_no_env_binding` ports `test_data_orchestrator._check_no_env_binding`'s own regex
+    verbatim (a live, always-on orchestration guard, not a design aspiration);
+    `check_no_long_method` calls CP3's real, PUBLIC `evaluate_long_method` directly, no port
+    needed. Three checks are contract-grounded, no known incident (like feature-content) —
+    `check_no_markdown_fence`, `check_class_name_matches`, `check_no_webdriver_reference` — the
+    last closing a REAL, previously-unenforced gap (CP3's own `direct_webdriver_action` criterion
+    explicitly excludes test-data's package). One check (field-variant coverage) considered and
+    honestly NOT built: every real `TestDataSpecification` this platform has ever emitted carries
+    `fields=()` — no real case to ground it against. `models.py`/`scoring.py`'s
+    `score_eval_set`/`baseline_store.py` reused verbatim a THIRD time;
+    `feature_content_coverage.check_requirement_covered` reused verbatim too, no new coverage
+    module. Proven end to end (25 new tests, no live LLM call): baseline established, a worse-model
+    stand-in (`ConfigReader.env(...)`, the real guard's own violation shape) caught as REGRESSED, a
+    clean re-run PASSED; `check_no_long_method` proven to actually fire on a real 45-line method.
+    CAP-090 now covers 3 of 7 target generators. Four generators/skills and the judge layer remain
+    future, separate work. One mentor throughout (Nitin).
 2e. **Nitin's re-run/token-cost build item (added 2026-08-12)** — start with token-consumption
     instrumentation by stage and run (his own "Critically"-flagged, cheapest, no-architecture-change
     first step); artifact-level caching, delta-scoped regeneration (depends on 2c's change-impact

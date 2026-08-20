@@ -43,6 +43,64 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Generation Quality Eval Harness (CAP-090, ADR-0051) EXTENDED to a third generator,
+  `LiveTestDataGenerator` — 3 of 7 target generators, still not wired (2026-08-20, same day as
+  the feature-content increment below).** Completes eval coverage of all three of ADR-0050's
+  own measured/cached token sinks (step-def, feature-content, test-data). **Test-data's OWN
+  defect shapes, a THIRD artifact type — Java, like step-def's, but governed by ADR-0037 D3's
+  SUT-binding boundary, not Cucumber's grammar:** two checks DIRECTLY compose already-real,
+  already-enforced mechanisms — `check_no_env_binding` ports `automation_engineering.generation.
+  test_data_orchestrator._check_no_env_binding`'s own regex verbatim (a live, always-on
+  orchestration guard that raises `TestDataBoundaryError` on every generator call today, stub or
+  live); `check_no_long_method` calls CP3's real, PUBLIC `evaluate_long_method`
+  (`automation_engineering.cp3.architecture`) directly, no port needed, since `customqa:long-
+  method` applies to any generated class, test-data included. Three checks are contract-grounded,
+  no known incident (like feature-content) — `check_no_markdown_fence`, `check_class_name_matches`,
+  `check_no_webdriver_reference` — the last closing a REAL, previously-unenforced gap: CP3's own
+  `direct_webdriver_action` criterion explicitly EXCLUDES test-data's package from evaluation
+  (`automation_engineering/cp3/architecture.py`'s own comment), so this is the first deterministic
+  check of that specific prompt constraint anywhere in the platform. **One check considered and
+  honestly NOT built:** "one static member per required (field_name, variant) pair" — not
+  structurally unreachable (unlike feature-content's tagged-Background finding), but no real case
+  exists to ground it: every `TestDataSpecification` this platform has ever emitted carries
+  `fields=()` (confirmed against all 20 requirements in `output/latest/
+  test_data_specifications.json`, and stated in the contract's own docstring). **Built and tested
+  (25 new tests, no live LLM call anywhere in the suite):**
+  `eval_harness/test_data_eval_set.py`/`test_data_properties.py`/`test_data_runner.py` — a curated
+  3-case set built from the SAME three real requirements feature-content's own set uses
+  (`REQ-c64bb0f7`/`REQ-f90f23fa`/`REQ-92502735`), each with the real, currently-tracked empty
+  specification; class name/package/constraints derived via the real orchestrator's own functions,
+  verified to match the real corpus's own tracked `.java` file names exactly. Since test-data's raw
+  generator output IS the final Java text (no assembly step, unlike feature-content), the "clean"
+  fixture is the real, currently-tracked `ReqC64bb0f7TestData.java` content, verbatim, not
+  reconstructed. **`models.py`, `scoring.py`'s `score_eval_set`, and `baseline_store.py` reused
+  verbatim a THIRD time, unchanged** — no longer resting on two data points.
+  `feature_content_coverage.check_requirement_covered` reused VERBATIM too, no new coverage
+  module — the coverage-shaped question is identical across both generators, both keyed by
+  `requirement_id`. **Proven end to end** (`StubTestDataGenerator`, real clean text, zero live LLM
+  calls): a clean generator's first run has no prior baseline (`ESTABLISHED_BASELINE`) and is
+  explicitly recorded as one; a generator standing in for a worse model (a `ConfigReader.env(...)`
+  call — the real orchestration guard's own violation shape — reintroduced into every case) is
+  caught (`REGRESSED`) relative to that baseline; re-running the same clean generator stays
+  `PASSED`. `check_no_long_method` additionally proven to actually FIRE on a real 45-line method —
+  not structurally unreachable, the lesson carried forward from feature-content's own tagged-
+  Background finding. **Scope held exactly as ADR-0051 D5 sequenced it:** four generators/skills
+  remain out of scope (`LivePageObjectGenerator`, `LiveUtilityGenerator`, `LiveFeatureRemediator`,
+  `RequirementAnalysisService`), and the entire rubric/LLM-judge layer (Layer 2) is unstarted
+  design. **Not CI-wired, not live-wired** — no `PlatformContext` composition-root method, no CI
+  job exists; the live-vs-cached LLM-in-CI question (ADR-0051 D2) stays exactly as open as the
+  ADR named it. `make lint`: clean; `make test`: 5982 (5957 + 25 new); `mypy`: whole-repo error
+  count unchanged (436) — the six new/changed files are themselves zero-error under `mypy strict`.
+  Recorded additively in ADR-0051 (a third, dated Implementation Note plus additive
+  Consequences/Ownership updates — no body rewrites), the `CAP-090` matrix row (§5.13), and this
+  register entry. **Owner:** `eval_harness/`. **Trigger for the next task:** extend the same
+  pattern to the remaining four generators/skills, one at a time, measured, each deriving its own
+  checks from its own real, already-enforced detection mechanism (page-object/utility are blocked
+  on live-wiring per ADR-0050's own note; the remediator is excluded per ADR-0050 D5's own
+  reasoning, mirrored here); resolve the live-vs-cached LLM-in-CI question; then CI/runtime
+  integration; the judge layer as its own separate, later design task. One mentor throughout
+  (Nitin).
+
 - **Generation Quality Eval Harness (CAP-090, ADR-0051) EXTENDED to a second generator,
   `LiveFeatureContentGenerator` — 2 of 7 target generators, still not wired (2026-08-20).**
   Answers ADR-0051 D5's own named next step: apply the proven Layer 1 pattern (curated eval
