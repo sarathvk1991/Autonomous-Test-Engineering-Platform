@@ -40,6 +40,7 @@ from automation_engineering.catalog.scanner import reconcile
 from automation_engineering.cp3.sonar.models import SonarQualityGateResult
 from automation_engineering.cp3.sonar.stub_adapter import StubSonarQualityGateAdapter
 from automation_engineering.errors import TransportFailureError
+from automation_engineering.generation.page_object_generator import StubPageObjectGenerator
 from automation_engineering.generation.step_definition_generator import (
     StepDefinitionGenerationContext,
     StubStepDefinitionGenerator,
@@ -145,9 +146,9 @@ def _feature_record(
     )
 
 
-def _package(records: tuple[FeatureRecord, ...], *, run_id: str = "run-smoke") -> (
-    FeatureEngineeringPackage
-):
+def _package(
+    records: tuple[FeatureRecord, ...], *, run_id: str = "run-smoke"
+) -> FeatureEngineeringPackage:
     return FeatureEngineeringPackage(
         contract_version="1.0.0",
         run_id=run_id,
@@ -622,8 +623,10 @@ class TestBatchVerdictGatesPromotion:
         not_promotable = [r for r in result.package.records if r.promotion_status is not None]
         assert len(not_promotable) == 3
         assert all(r.promotion_status == "not_promotable" for r in not_promotable)
-        assert all(r.promotion_detail is not None and "cp3_failed" in r.promotion_detail
-                    for r in not_promotable)
+        assert all(
+            r.promotion_detail is not None and "cp3_failed" in r.promotion_detail
+            for r in not_promotable
+        )
 
     def test_a_run_wide_cp3_pass_promotes_every_clean_candidate(
         self, tmp_path: Path, fake_baseline: Path, repo_root: Path
@@ -661,9 +664,7 @@ class TestPerAssetPromotionAcrossEscalations:
                 # need that used to poison the WHOLE run's CP3 coverage
                 # verdict and, with it, every other candidate's promotion.
                 "I am on the login page": (
-                    MatchCandidate(
-                        asset_id="some-asset", confidence=0.72, content_hash="whatever"
-                    ),
+                    MatchCandidate(asset_id="some-asset", confidence=0.72, content_hash="whatever"),
                 ),
                 'I log in as "bob"': (),
                 "I see the dashboard": (),
@@ -730,7 +731,7 @@ class TestPerAssetPromotionAcrossEscalations:
             "public class LoginPageSteps {\n\n"
             "    private WebDriver driver;\n\n"
             "    public void iAmOnTheLoginPage() {\n"
-            "        driver.get(\"https://example.com\");\n"
+            '        driver.get("https://example.com");\n'
             "    }\n"
             "}\n"
         )
@@ -789,9 +790,7 @@ class TestEscalationSurfacing:
                 # confidence-escalation surfacing specifically, not the
                 # (separately tested) NO_MATCH/generate floor.
                 "I am on the login page": (
-                    MatchCandidate(
-                        asset_id="some-asset", confidence=0.72, content_hash="whatever"
-                    ),
+                    MatchCandidate(asset_id="some-asset", confidence=0.72, content_hash="whatever"),
                 ),
                 'I log in as "bob"': (),
                 "I see the dashboard": (),
@@ -938,9 +937,7 @@ class TestReuseLoopClosesThroughTheRealOrchestration:
         assert login_record.class_name == "com.automation.steps.LoginPageSteps"
         assert login_record.promotion_status is None  # nothing new to promote
         # Bound, so no new file was written for it into run 2's own workspace.
-        assert not any(
-            "LoginPageSteps" in str(p) for p in result_2.workspace_java_paths
-        )
+        assert not any("LoginPageSteps" in str(p) for p in result_2.workspace_java_paths)
 
 
 # ---------------------------------------------------------------------------
@@ -1124,9 +1121,7 @@ class _RaisingSemanticMatcher:
     def prime(self, needs: object, catalog: object) -> None:
         return None
 
-    def match(
-        self, need: GherkinStepNeed, catalog: AssetCatalog
-    ) -> tuple[MatchCandidate, ...]:
+    def match(self, need: GherkinStepNeed, catalog: AssetCatalog) -> tuple[MatchCandidate, ...]:
         if need.text == self._fails_for:
             raise TransportFailureError(f"simulated embedding rate-limit for {need.text!r}")
         return self._delegate.match(need, catalog)
@@ -1627,3 +1622,285 @@ class TestClassNameCollision:
         content = login_files[0].read_text(encoding="utf-8")
         assert "first" in content
         assert "second, different body" not in content
+
+
+# ---------------------------------------------------------------------------
+# Page-object co-generation (this build) -- `page_object_matcher`/
+# `page_object_generator` supplied, wiring the proven
+# `generate_step_definition_with_derived_page_objects` chain
+# (:mod:`automation_engineering.generation.page_object_reference_derivation`)
+# into this stage for the first time. Every test ABOVE this section never
+# supplies either -- proving the pre-existing, step-def-only path is
+# completely unchanged is exactly what those 28 tests already do; this
+# section proves the NEW, additive path.
+# ---------------------------------------------------------------------------
+
+_PAGE_OBJECT_FEATURE = """Feature: Login
+
+  @SCN-201
+  Scenario: Login with a page object
+    Given I am on the login page
+"""
+
+_STEP_JAVA_REFERENCING_A_PAGE_OBJECT = """package com.automation.steps;
+
+import io.cucumber.java.en.Given;
+
+public class LoginSteps {
+    private LoginPage loginPage;
+
+    @Given("I am on the login page")
+    public void iAmOnTheLoginPage() {
+        loginPage.open();
+    }
+}
+"""
+
+_CLEAN_GENERATED_PAGE_OBJECT_JAVA = """package com.automation.pages;
+
+import com.automation.base.BasePage;
+import org.openqa.selenium.WebDriver;
+
+public class LoginPage extends BasePage {
+
+    public LoginPage(WebDriver driver) {
+        super(driver);
+    }
+
+    public void open() {
+        driver.get("/login");
+    }
+}
+"""
+
+_STEP_JAVA_CALLING_AN_EXISTING_TRACKED_METHOD = """package com.automation.steps;
+
+import io.cucumber.java.en.Given;
+
+public class LoginSteps {
+    private LoginPage loginPage;
+
+    @Given("I am on the login page")
+    public void iAmOnTheLoginPage() {
+        loginPage.isErrorMessageDisplayed();
+    }
+}
+"""
+
+_DEFECTIVE_GENERATED_PAGE_OBJECT_JAVA = """package com.automation.pages;
+
+import com.automation.base.BasePage;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+
+public class LoginPage extends BasePage {
+
+    private final By usernameField = By.xpath("/html/body/div[1]/input");
+
+    public LoginPage(WebDriver driver) {
+        super(driver);
+    }
+
+    public void open() {
+        driver.get("/login");
+    }
+}
+"""
+
+
+@pytest.mark.unit
+class TestPageObjectCoGeneration:
+    def test_page_object_generated_and_promoted_alongside_its_step_def(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """The core proof: a step whose freshly generated body references a
+        page object now ALSO produces a `GeneratedPageObject` -- CP4 is no
+        longer vacuous, and the page object promotes through the SAME
+        per-candidate gate the step-definition itself already uses."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _PAGE_OBJECT_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        matcher = StubSemanticMatcher({"I am on the login page": ()})
+        step_gen = StubStepDefinitionGenerator(
+            {"I am on the login page": _STEP_JAVA_REFERENCING_A_PAGE_OBJECT}
+        )
+        page_object_matcher = StubSemanticMatcher({"I am on the login page": ()})
+        page_object_gen = StubPageObjectGenerator(
+            {"I am on the login page": _CLEAN_GENERATED_PAGE_OBJECT_JAVA}
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_gen,
+        )
+
+        records_by_kind = {(r.need_kind, r.class_name): r for r in result.package.records}
+        step_def_record = records_by_kind[("step_definition", "com.automation.steps.LoginSteps")]
+        page_object_record = records_by_kind[("page_object", "com.automation.pages.LoginPage")]
+
+        assert step_def_record.outcome == "generated"
+        assert page_object_record.outcome == "generated"
+        assert page_object_record.need_text == "I am on the login page"
+        assert result.cp4_passed is True
+        assert step_def_record.promotion_status == "promoted"
+        assert page_object_record.promotion_status == "promoted"
+        promoted_names = {p.name for p in result.promoted_baseline_paths}
+        assert promoted_names == {"LoginSteps.java", "LoginPage.java"}
+        for path in result.promoted_baseline_paths:
+            assert path.exists()
+
+    def test_default_wiring_unchanged_when_page_object_matcher_omitted(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """The live CLI's own current default (this build's own report): a
+        step-def body that DOES reference a page object, but
+        `page_object_matcher`/`page_object_generator` are both omitted --
+        behavior matches this stage exactly as it was before this build, no
+        page-object `AssetRecord`, CP4 stays vacuous."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _PAGE_OBJECT_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        matcher = StubSemanticMatcher({"I am on the login page": ()})
+        step_gen = StubStepDefinitionGenerator(
+            {"I am on the login page": _STEP_JAVA_REFERENCING_A_PAGE_OBJECT}
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+        )
+
+        assert {r.need_kind for r in result.package.records} == {"step_definition"}
+        assert result.cp4_passed is True  # vacuous PASS, unchanged
+        assert len(result.promoted_baseline_paths) == 1
+
+    def test_cp4_non_vacuous_failure_blocks_the_whole_batchs_promotion(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """CP4 non-vacuous also means non-vacuously FAILING: a real
+        absolute-XPath locator (ADR-0044 D6's own `dynamic_xpath` criterion)
+        in the freshly generated page object now fails CP4, which -- the
+        SAME whole-batch design `AssetGateOutcomes`'s own docstring already
+        documents, unchanged by this build -- blocks promotion for every
+        candidate in the run, including the step-definition, which has
+        nothing wrong with it on its own."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _PAGE_OBJECT_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        matcher = StubSemanticMatcher({"I am on the login page": ()})
+        step_gen = StubStepDefinitionGenerator(
+            {"I am on the login page": _STEP_JAVA_REFERENCING_A_PAGE_OBJECT}
+        )
+        page_object_matcher = StubSemanticMatcher({"I am on the login page": ()})
+        page_object_gen = StubPageObjectGenerator(
+            {"I am on the login page": _DEFECTIVE_GENERATED_PAGE_OBJECT_JAVA}
+        )
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_gen,
+        )
+
+        assert result.cp4_passed is False
+        records_by_kind = {(r.need_kind, r.class_name): r for r in result.package.records}
+        page_object_record = records_by_kind[("page_object", "com.automation.pages.LoginPage")]
+        step_def_record = records_by_kind[("step_definition", "com.automation.steps.LoginSteps")]
+        assert page_object_record.promotion_status == "not_promotable"
+        assert page_object_record.promotion_detail is not None
+        assert "cp4_failed" in page_object_record.promotion_detail
+        assert step_def_record.promotion_status == "not_promotable"
+        assert step_def_record.promotion_detail is not None
+        assert "cp4_failed" in step_def_record.promotion_detail
+        assert result.promoted_baseline_paths == ()
+
+    def test_bound_page_object_never_calls_the_generator(
+        self, tmp_path: Path, fake_baseline: Path, repo_root: Path
+    ) -> None:
+        """A page-object need the reuse engine trusts (TrustedReuse) binds
+        to the catalog's own existing asset instead of generating -- the
+        real, already-tracked `LoginPage` in `test-suite-baseline` (a smoke
+        page object, ADR-0044 D3/D4) proves this: bind, not regenerate."""
+        run_dir = tmp_path / "run"
+        workspace_dir = materialize_workspace(run_dir, baseline_root=fake_baseline)
+        _write_feature(workspace_dir, "login.feature", _PAGE_OBJECT_FEATURE)
+        package = _package((_feature_record("REQ-1", "login.feature"),))
+
+        tracked_catalog = reconcile(fake_baseline)
+        existing_login_page = next(
+            asset
+            for asset in tracked_catalog.page_objects
+            if asset.class_name == "com.automation.pages.LoginPage"
+        )
+
+        matcher = StubSemanticMatcher({"I am on the login page": ()})
+        step_gen = StubStepDefinitionGenerator(
+            {"I am on the login page": _STEP_JAVA_CALLING_AN_EXISTING_TRACKED_METHOD}
+        )
+        page_object_matcher = StubSemanticMatcher(
+            {
+                "I am on the login page": (
+                    MatchCandidate(
+                        asset_id=existing_login_page.asset_id,
+                        confidence=0.99,
+                        content_hash=existing_login_page.content_hash,
+                    ),
+                )
+            }
+        )
+        page_object_gen = StubPageObjectGenerator({})
+
+        result = run_automation_engineering_stage(
+            package,
+            (),
+            workspace_dir=workspace_dir,
+            matcher=matcher,
+            step_definition_generator=step_gen,
+            test_data_generator=StubTestDataGenerator({}),
+            sonar_adapter=_passing_sonar_adapter(),
+            baseline_root=fake_baseline,
+            repo_root=repo_root,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_gen,
+        )
+
+        records_by_kind = {(r.need_kind, r.class_name): r for r in result.package.records}
+        page_object_record = records_by_kind[("page_object", "com.automation.pages.LoginPage")]
+        assert page_object_record.outcome == "bound"
+        assert page_object_record.promotion_status is None
+        assert page_object_gen.received_contexts == ()
+        # Nothing was WRITTEN for the bound page object -- the tracked
+        # LoginPage.java is untouched, only the step-def is new.
+        assert result.cp4_passed is True
+        promoted_names = {p.name for p in result.promoted_baseline_paths}
+        assert promoted_names == {"LoginSteps.java"}

@@ -1716,6 +1716,22 @@ def handle_analyze(args: argparse.Namespace) -> int:
                 args.provider, _step_definition_model()
             )
             step_definition_provider.validate_connection()
+            # `page_object_matcher`/`page_object_generator` are deliberately NOT
+            # supplied here -- stage 15's own proven co-generation chain
+            # (generate_step_definition_with_derived_page_objects) is wired and
+            # tested (tests/unit/test_automation_engineering_stage.py::
+            # TestPageObjectCoGeneration, stub-driven), but no LIVE
+            # `SemanticMatcher` implementation exists yet that correctly matches
+            # a page-object need against `catalog.page_objects` --
+            # `LiveSemanticMatcher` only ever matches against
+            # `catalog.step_definitions` (its own module docstring: "Only step
+            # definitions are matched"), and passing it here for page objects
+            # too would either match the wrong catalog or raise (the reuse
+            # orchestration's own "cannot happen given this function's own
+            # matcher contract" guard). A real blocker, flagged rather than
+            # built around inline -- omitting both keeps this stage's live
+            # behavior exactly what it was before: page objects are not
+            # generated, CP4 evaluates vacuously.
             automation_engineering_result = execute_automation_engineering_stage(
                 run_state_mgr,
                 target_dir,

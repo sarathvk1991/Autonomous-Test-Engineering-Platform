@@ -22,21 +22,35 @@ The chain, in order
    ordered step needs from its real ``.feature`` text
    (:mod:`.gherkin_needs`), then dedupe to one need per unique step text
    across the whole run.
-4. Reuse-decide/generate every unique step need, one
-   (:func:`automation_engineering.generation.orchestrator.orchestrate_step_definition`)
-   call per need -- not the batch ``generate_step_definitions`` helper,
-   since 2026-08-05 (the free-tier survivability build): a per-need loop is
-   what lets a transport failure on ONE need be escalated and the loop
-   continue, rather than aborting the whole run (this module's own report,
-   FIX 2). ``matcher.prime(...)`` is called once, first, so the embeddings
-   MATCH itself still makes at most one batched call for the whole run's
-   needs (FIX 1), not one call per need despite the per-need loop.
-   ``page_object_request``/``utility_request`` are never supplied (see this
-   module's own report: no subsystem derives "which specific page-object/
-   utility method does this step need" from raw text), so every generated
-   step definition's own ``page_object_outcome``/``utility_outcome`` stays
-   ``None``, and no page-object/utility asset is ever produced by this
-   initial wiring.
+4. Reuse-decide/generate every unique step need, one call per need -- not
+   the batch ``generate_step_definitions`` helper, since 2026-08-05 (the
+   free-tier survivability build): a per-need loop is what lets a transport
+   failure on ONE need be escalated and the loop continue, rather than
+   aborting the whole run (this module's own report, FIX 2).
+   ``matcher.prime(...)`` is called once, first, so the embeddings MATCH
+   itself still makes at most one batched call for the whole run's needs
+   (FIX 1), not one call per need despite the per-need loop. When
+   ``page_object_matcher``/``page_object_generator`` are BOTH supplied
+   (additive, both default ``None`` -- this stage's report found the
+   proven co-generation chain built and tested but never actually CALLED
+   from here), each need is generated via
+   :func:`automation_engineering.generation.page_object_reference_derivation.generate_step_definition_with_derived_page_objects`
+   instead of :func:`automation_engineering.generation.orchestrator.orchestrate_step_definition`
+   directly -- deriving which page-object class/method(s) the freshly
+   generated step-definition's own body actually calls, then reuse-
+   deciding/generating each, exactly the same way step 4 already does for
+   the step-definition itself (:mod:`.page_object_reference_derivation`'s
+   own module docstring). ``utility_request`` is still never supplied --
+   utilities remain this module's own carried-forward, honestly deferred
+   scope boundary, unchanged by this addition. When ``page_object_matcher``/
+   ``page_object_generator`` are omitted (the live CLI's own current
+   default -- see this module's own report: no live ``SemanticMatcher``
+   implementation exists yet that correctly matches a page-object need
+   against ``catalog.page_objects``, only against ``catalog.step_definitions``
+   -- :mod:`automation_engineering.reuse.live_matcher`'s own docstring,
+   "Only step definitions are matched" -- building one is flagged, not
+   built, by that same report), this step's behavior is exactly what it
+   always was: no page-object asset is ever produced.
 5. Generate every test-data specification stage 14 emitted (spec-driven,
    unconditional, no reuse decision -- ADR-0044 D7), also per-specification
    rather than batched, for the same transport-isolation reason as step 4.
@@ -68,9 +82,11 @@ The chain, in order
 7. CP3 (:func:`automation_engineering.cp3.gate.evaluate_cp3`) over every
    feature's own outcomes, the Sonar adapter, and every freshly generated
    class; CP4 (:func:`automation_engineering.cp4.gate.evaluate_cp4`) over
-   every freshly generated PAGE OBJECT -- honestly empty in this wiring
-   (step 4's own scope boundary), so CP4 passes vacuously, exactly as its
-   own established "empty input" convention already allows.
+   every freshly generated PAGE OBJECT this run actually wrote (step 4's own
+   opt-in) -- non-vacuous for the first time whenever at least one was
+   produced; still evaluates vacuously (its own established "empty input"
+   convention) when step 4 produced none, including the live CLI's own
+   current default (step 4's own note).
 8. Promote every generated, non-test-data outcome
    (:func:`automation_engineering.promotion.outcomes.promote_outcome`),
    gated PER-CANDIDATE (ADR-0045 D2 additive note, 2026-08-06) against the
@@ -99,20 +115,28 @@ from automation_engineering.cp3.gate import Cp3SonarInput, evaluate_cp3
 from automation_engineering.cp3.models import Cp3CoverageInput, Cp3FeatureInput, Cp3Result
 from automation_engineering.cp3.sonar.adapter import SonarQualityGateAdapter
 from automation_engineering.cp4.gate import evaluate_cp4
-from automation_engineering.cp4.models import Cp4Result
+from automation_engineering.cp4.models import Cp4PageObjectInput, Cp4Result
 from automation_engineering.errors import TransportFailureError
 from automation_engineering.generation.class_collision import (
     UnsafeClassMergeError,
     merge_java_classes,
 )
 from automation_engineering.generation.models import (
+    BoundPageObjectMethod,
     BoundStepDefinition,
     EscalatedStepNeed,
+    GeneratedPageObject,
     GeneratedStepDefinition,
     GeneratedTestDataClass,
+    PageObjectMethodOutcome,
     StepDefinitionOutcome,
 )
 from automation_engineering.generation.orchestrator import orchestrate_step_definition
+from automation_engineering.generation.page_object_generator import PageObjectGenerator
+from automation_engineering.generation.page_object_reference_derivation import (
+    CoGeneratedStepDefinition,
+    generate_step_definition_with_derived_page_objects,
+)
 from automation_engineering.generation.step_definition_generator import StepDefinitionGenerator
 from automation_engineering.generation.test_data_generator import TestDataGenerator
 from automation_engineering.generation.test_data_orchestrator import generate_test_data_class
@@ -203,6 +227,13 @@ class _GeneratedJava:
     class_name: str
     java_source: str
     workspace_path: Path
+    #: "step_definition" | "page_object" | "test_data" -- which of this
+    #: run's own generated-class inputs (CP3's `generated_classes`, CP4's
+    #: page-object-only input) this write belongs to. Set once at write
+    #: time, carried through a collision-merge unchanged (a merge only ever
+    #: happens between two writes of the SAME kind -- two step-defs or two
+    #: page objects resolving to the same class name -- never across kinds).
+    kind: str
 
 
 def _write_generated_java(
@@ -210,6 +241,8 @@ def _write_generated_java(
     workspace_dir: Path,
     generated_java: list[_GeneratedJava],
     index_by_class_name: dict[str, int],
+    *,
+    kind: str,
 ) -> tuple[str, Path, bool]:
     """Write ``java_source`` into ``workspace_dir``'s own ``src/test/java``
     tree, at the exact path its own resolved identity implies -- the SAME
@@ -246,7 +279,9 @@ def _write_generated_java(
         target.write_text(java_source, encoding="utf-8")
         index_by_class_name[class_name] = len(generated_java)
         generated_java.append(
-            _GeneratedJava(class_name=class_name, java_source=java_source, workspace_path=target)
+            _GeneratedJava(
+                class_name=class_name, java_source=java_source, workspace_path=target, kind=kind
+            )
         )
         return class_name, target, False
 
@@ -258,6 +293,7 @@ def _write_generated_java(
             class_name=class_name,
             java_source=merged_source,
             workspace_path=existing.workspace_path,
+            kind=existing.kind,
         )
     return class_name, existing.workspace_path, True
 
@@ -274,6 +310,8 @@ def run_automation_engineering_stage(
     baseline_root: Path = DEFAULT_BASELINE_ROOT,
     sonar_project_key: str = DEFAULT_SONAR_PROJECT_KEY,
     repo_root: Path = Path("."),
+    page_object_matcher: SemanticMatcher | None = None,
+    page_object_generator: PageObjectGenerator | None = None,
 ) -> AutomationEngineeringStageResult:
     """Run stage 15 over every eligible feature record plus every test-data
     specification stage 14 produced.
@@ -286,6 +324,23 @@ def run_automation_engineering_stage(
     produces the identical set of reuse/generation/CP3/CP4/promotion
     decisions (the only nondeterministic seams are ``matcher``/the
     generators/``sonar_adapter`` themselves).
+
+    ``page_object_matcher``/``page_object_generator`` (additive, both
+    default ``None`` -- every pre-existing caller's behavior is completely
+    unchanged): when BOTH are supplied, each need is generated via
+    :func:`~automation_engineering.generation.page_object_reference_derivation.generate_step_definition_with_derived_page_objects`
+    instead of :func:`~automation_engineering.generation.orchestrator.orchestrate_step_definition`
+    directly -- deriving, then reuse-deciding/generating, whichever page
+    objects the freshly generated step-definition's own body turns out to
+    reference (module docstring, updated). When either is omitted (the
+    live CLI's own current default -- see this module's own report: no
+    live ``SemanticMatcher`` implementation exists yet that correctly
+    matches a page-object need against ``catalog.page_objects``, only
+    against ``catalog.step_definitions`` --
+    :mod:`automation_engineering.reuse.live_matcher`'s own docstring, "Only
+    step definitions are matched"), this stage's behavior is byte-for-byte
+    what it always was: no page-object asset is produced, CP4 evaluates
+    vacuously.
     """
     features_root = features_root_for(workspace_dir)
     eligible = _eligible_records(package)
@@ -339,13 +394,41 @@ def run_automation_engineering_stage(
     # SAME class is never independently promoted twice, and so promotion
     # never has to resolve a merged, multi-method candidate's identity
     # (:mod:`.promotion.identity` requires exactly one asset per candidate).
+    # Shared across step-definition AND page-object outcomes below -- a
+    # plain `id()`-keyed set, agnostic to which outcome type it is holding.
     not_independently_promotable: set[int] = set()
+    # Every page-object outcome this run resolved (Generated or Bound --
+    # never Escalated, module docstring of `.page_object_reference_
+    # derivation`'s own `generate_step_definition_with_derived_page_objects`:
+    # a page-object-side escalation diverts the WHOLE step to
+    # `EscalatedStepNeed` instead of ever reaching here), paired with the
+    # index of its own already-appended `AssetRecord` -- so the promotion
+    # loop below can update that SAME record in place without a `need_text`
+    # search (one step can derive method calls against more than one
+    # page-object class, so `need_text` alone is not unique per page-object
+    # outcome the way it is per step-definition outcome).
+    page_object_outcomes: list[tuple[PageObjectMethodOutcome, int]] = []
+    page_object_generation_enabled = (
+        page_object_matcher is not None and page_object_generator is not None
+    )
 
     for need in unique_needs:
         try:
-            outcome = orchestrate_step_definition(
-                need, tracked_catalog, matcher, step_definition_generator
-            )
+            if page_object_generation_enabled:
+                assert page_object_matcher is not None  # narrowed by the flag above
+                assert page_object_generator is not None
+                outcome = generate_step_definition_with_derived_page_objects(
+                    need,
+                    tracked_catalog,
+                    matcher,
+                    step_definition_generator,
+                    page_object_matcher,
+                    page_object_generator,
+                )
+            else:
+                outcome = orchestrate_step_definition(
+                    need, tracked_catalog, matcher, step_definition_generator
+                )
         except TransportFailureError as exc:
             asset_records.append(
                 AssetRecord(
@@ -359,10 +442,86 @@ def run_automation_engineering_stage(
             )
             continue
 
+        if isinstance(outcome, CoGeneratedStepDefinition):
+            # Unwrap to the SAME `GeneratedStepDefinition` shape the branch
+            # below already handles -- `generate_step_definition_with_
+            # derived_page_objects` never changes the step-definition's own
+            # generation outcome, only derives+resolves what its BODY
+            # references afterwards (module docstring). This keeps CP3 and
+            # step-definition promotion completely untouched by this
+            # wiring: they see the identical `GeneratedStepDefinition` they
+            # always did. NOTE: `CoGeneratedStepDefinition` itself carries
+            # no `generation_identity` field (the proven chain's own
+            # pre-existing shape, not altered here -- see this module's own
+            # report) -- so a co-generated step-definition's own
+            # `AssetRecord.generation_identity` is `None` even when the
+            # underlying generation call did produce one. A real, known
+            # gap, flagged rather than silently patched around.
+            step_def_outcome: StepDefinitionOutcome = GeneratedStepDefinition(
+                need=outcome.need,
+                java_source=outcome.java_source,
+                target_package=outcome.target_package,
+            )
+            for po_outcome in outcome.page_object_outcomes:
+                if isinstance(po_outcome, GeneratedPageObject):
+                    try:
+                        po_class_name, po_written_path, po_merged = _write_generated_java(
+                            po_outcome.java_source,
+                            workspace_dir,
+                            generated_java,
+                            generated_java_by_class_name,
+                            kind="page_object",
+                        )
+                    except UnsafeClassMergeError as exc:
+                        asset_records.append(
+                            AssetRecord(
+                                need_text=outcome.need.text,
+                                need_kind="page_object",
+                                outcome="escalated",
+                                escalated=True,
+                                escalation_check="class_name_collision",
+                                escalation_reason=str(exc),
+                            )
+                        )
+                        continue
+                    if po_merged:
+                        not_independently_promotable.add(id(po_outcome))
+                    asset_records.append(
+                        AssetRecord(
+                            need_text=outcome.need.text,
+                            need_kind="page_object",
+                            outcome="generated",
+                            class_name=po_class_name,
+                            target_package=po_outcome.target_package,
+                            workspace_path=po_written_path.relative_to(workspace_dir).as_posix(),
+                        )
+                    )
+                    page_object_outcomes.append((po_outcome, len(asset_records) - 1))
+                elif isinstance(po_outcome, BoundPageObjectMethod):
+                    asset_records.append(
+                        AssetRecord(
+                            need_text=outcome.need.text,
+                            need_kind="page_object",
+                            outcome="bound",
+                            class_name=po_outcome.asset.class_name,
+                        )
+                    )
+                    page_object_outcomes.append((po_outcome, len(asset_records) - 1))
+                else:  # pragma: no cover - see this branch's own docstring note above
+                    raise AssertionError(
+                        f"unreachable: EscalatedPageObjectMethodNeed inside "
+                        f"CoGeneratedStepDefinition.page_object_outcomes {po_outcome!r}"
+                    )
+            outcome = step_def_outcome
+
         if isinstance(outcome, GeneratedStepDefinition):
             try:
                 class_name, written_path, merged = _write_generated_java(
-                    outcome.java_source, workspace_dir, generated_java, generated_java_by_class_name
+                    outcome.java_source,
+                    workspace_dir,
+                    generated_java,
+                    generated_java_by_class_name,
+                    kind="step_definition",
                 )
             except UnsafeClassMergeError as exc:
                 asset_records.append(
@@ -441,7 +600,11 @@ def run_automation_engineering_stage(
     for td_outcome in generated_test_data:
         try:
             class_name, written_path, _merged = _write_generated_java(
-                td_outcome.java_source, workspace_dir, generated_java, generated_java_by_class_name
+                td_outcome.java_source,
+                workspace_dir,
+                generated_java,
+                generated_java_by_class_name,
+                kind="test_data",
             )
         except UnsafeClassMergeError as exc:
             asset_records.append(
@@ -502,11 +665,20 @@ def run_automation_engineering_stage(
     )
 
     # -- CP4: static locator health over every freshly generated PAGE
-    # OBJECT -- honestly empty in this wiring (module docstring, step 4):
-    # no page object is ever produced without a page_object_request, which
-    # this stage never supplies. Evaluates vacuously, the same established
-    # convention CP4 itself already documents for an empty input. ---------
-    cp4_result: Cp4Result = evaluate_cp4(())
+    # OBJECT this run actually wrote (module docstring, step 4) -- non-empty
+    # whenever `page_object_matcher`/`page_object_generator` were supplied
+    # and at least one step's own body was found to reference a page
+    # object; still evaluates vacuously (the same established "empty input"
+    # convention CP4 itself already documents) when neither was supplied,
+    # or when no step this run needed a fresh/bound page-object call. Reads
+    # `generated_java`'s own `kind` tag, not a second, parallel list -- the
+    # SAME (possibly merged) java_source CP3 and promotion also see. -------
+    cp4_page_object_inputs = tuple(
+        Cp4PageObjectInput(class_name=g.class_name, java_source=g.java_source)
+        for g in generated_java
+        if g.kind == "page_object"
+    )
+    cp4_result: Cp4Result = evaluate_cp4(cp4_page_object_inputs)
 
     # -- Promotion: every Generated step-definition outcome (never Bound --
     # nothing new to promote; never test-data -- structurally excluded from
@@ -554,6 +726,50 @@ def run_automation_engineering_stage(
             continue
         else:  # pragma: no cover - exhaustive per PromotionDecision's own union
             raise AssertionError(f"unreachable: unknown PromotionDecision {decision!r}")
+
+    # -- Promotion, page objects: the SAME per-candidate gate
+    # (`gates`, including the CP4 verdict just computed above -- no longer
+    # vacuous whenever a page object was actually generated this run) --
+    # `promote_outcome` already accepts a `PageObjectMethodOutcome`
+    # (`automation_engineering.promotion.outcomes.GeneratedOutcome`/
+    # `BoundOutcome` are typed as unions across step-definition, page-object,
+    # and utility outcomes) -- this loop is new, but the promotion decision
+    # itself is not: it reuses the exact mechanism step-definition promotion
+    # already exercises. Indexed by `page_object_outcomes`'s own paired
+    # `AssetRecord` index (module docstring, per-need loop) rather than a
+    # `need_text` search -- one step can derive calls against more than one
+    # page-object class, so `need_text` alone does not identify one record.
+    for po_outcome, record_index in page_object_outcomes:
+        if id(po_outcome) in not_independently_promotable:
+            continue
+        po_decision = promote_outcome(po_outcome, gates, tracked_catalog)
+        if po_decision is None:
+            continue
+        if isinstance(po_decision, Promoted):
+            written = apply_promotion(po_decision, baseline_root)
+            promoted_paths.append(written)
+            asset_records[record_index] = _with_promotion(
+                asset_records[record_index],
+                status="promoted",
+                detail=None,
+                promoted_path=written.relative_to(baseline_root).as_posix(),
+            )
+        elif isinstance(po_decision, NotPromotable):
+            asset_records[record_index] = _with_promotion(
+                asset_records[record_index],
+                status="not_promotable",
+                detail=f"{po_decision.reason.value}: {po_decision.detail}",
+                promoted_path=None,
+            )
+        elif isinstance(po_decision, PromotionEscalated):
+            # Cannot happen in practice -- `page_object_outcomes` never
+            # holds an `EscalatedPageObjectMethodNeed` (this branch's own
+            # per-need-loop docstring note) -- kept only for the same
+            # exhaustive-union discipline the step-definition loop above
+            # already follows.
+            continue  # pragma: no cover
+        else:  # pragma: no cover - exhaustive per PromotionDecision's own union
+            raise AssertionError(f"unreachable: unknown PromotionDecision {po_decision!r}")
 
     if promoted_paths:
         stage_promoted_assets(promoted_paths, repo_root)
@@ -691,6 +907,8 @@ def execute_automation_engineering_stage(
     baseline_root: Path = DEFAULT_BASELINE_ROOT,
     sonar_project_key: str = DEFAULT_SONAR_PROJECT_KEY,
     repo_root: Path = Path("."),
+    page_object_matcher: SemanticMatcher | None = None,
+    page_object_generator: PageObjectGenerator | None = None,
 ) -> AutomationEngineeringStageResult | None:
     """Wire stage 15 into `run_state_mgr` with the SAME
     `start_stage`/try-except/`fail_stage`/`succeed_stage` idiom stage 14's
@@ -708,6 +926,12 @@ def execute_automation_engineering_stage(
     Returns `None` both when the stage was SKIPPED and when it FAILED --
     the caller reads `run_state_mgr.state` for which, mirroring stage 14's
     own contract exactly.
+
+    ``page_object_matcher``/``page_object_generator`` are passed straight
+    through to :func:`run_automation_engineering_stage` unchanged (both
+    default ``None`` there too -- see that function's own docstring for
+    what supplying them changes, and this module's own report for why the
+    live CLI does not supply them yet).
     """
     input_artifacts = [
         run_dir / FEATURE_ENGINEERING_PACKAGE_FILENAME,
@@ -737,6 +961,8 @@ def execute_automation_engineering_stage(
             baseline_root=baseline_root,
             sonar_project_key=sonar_project_key,
             repo_root=repo_root,
+            page_object_matcher=page_object_matcher,
+            page_object_generator=page_object_generator,
         )
     except Exception as exc:  # surfaced via run_state.json, never fatal to the caller's process
         run_state_mgr.fail_stage(STAGE_ID, error=exc)

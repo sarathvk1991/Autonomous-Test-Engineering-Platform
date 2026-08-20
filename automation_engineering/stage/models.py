@@ -43,21 +43,26 @@ class AssetRecord:
     reuse/promotion outcome, as persisted in the run's Validated Automation
     Package.
 
-    ``need_kind`` is ``"step_definition"`` or ``"test_data"`` -- the two
-    asset kinds this stage's initial wiring actually derives needs for (see
-    this package's own report: page-object/utility needs have no existing
-    per-step derivation from raw Gherkin text, the same class of gap as
-    step captures, so no page-object/utility ``AssetRecord`` is ever
-    produced here -- one may only ever appear nested inside a step
-    definition's own generation via ``page_object_request``/
-    ``utility_request``, neither supplied by this wiring).
+    ``need_kind`` is ``"step_definition"``, ``"test_data"``, or
+    ``"page_object"`` -- the last produced only when
+    :func:`automation_engineering.stage.runner.run_automation_engineering_stage`
+    was called with both ``page_object_matcher``/``page_object_generator``
+    supplied (additive; see that function's own docstring, and this
+    package's own report -- utility needs still have no existing per-step
+    derivation from raw Gherkin text, so no utility ``AssetRecord`` is ever
+    produced here). A page-object ``AssetRecord``'s own ``need_text`` is
+    the ORIGINATING STEP's Gherkin text (the same need a sibling
+    ``"step_definition"`` record may also carry), not a page-object-native
+    identifier -- one step can derive calls against more than one
+    page-object class, so ``need_text`` alone does not uniquely identify a
+    page-object record the way it does a step-definition one.
 
     ``outcome`` is one of ``"generated"``/``"bound"``/``"escalated"`` (the
     reuse engine's own exhaustive vocabulary, ADR-0044 D3/D4) -- always
     ``"generated"`` for test-data (ADR-0044 D7: spec-driven, no reuse
     decision at all). ``promotion_status`` is populated only for a
-    ``"generated"`` step-definition outcome (test-data classes are
-    structurally excluded from promotion, ADR-0044 D7 --
+    ``"generated"`` step-definition or page-object outcome (test-data
+    classes are structurally excluded from promotion, ADR-0044 D7 --
     :func:`automation_engineering.promotion.outcomes.promote_outcome`'s own
     type signature does not accept a ``GeneratedTestDataClass``); ``None``
     for ``"bound"`` (nothing to promote) and for ``"escalated"`` (nothing
@@ -74,7 +79,13 @@ class AssetRecord:
     for ``"bound"`` (no LLM call, reused from the catalog) and
     ``"escalated"`` (no successful generation). Purely additive persistence:
     it is not consumed by any cache, gate, or skip logic anywhere in this
-    module.
+    module. Also ``None`` for a ``"generated"`` ``"page_object"`` record
+    specifically, EVEN THOUGH an LLM call did happen -- a known, pre-existing
+    gap in the underlying generation outcome
+    (:class:`automation_engineering.generation.models.GeneratedPageObject`
+    carries no ``generation_identity`` field at all, unlike its
+    step-definition sibling), not something this record's own persistence
+    drops.
     """
 
     need_text: str
