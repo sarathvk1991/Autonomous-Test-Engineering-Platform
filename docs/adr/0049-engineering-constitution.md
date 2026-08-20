@@ -565,8 +565,12 @@ nothing asking for it. Still nothing built by this note; additive text only.
    convention, not the older lineage's `Stage N` convention, per this ADR's own brief);
    an `Ownership, scope, and governance` close, below.
 2. **Is the ratification honest?** Yes — each lineage ADR named individually, per its
-   own real content (D2); each still shows `Proposed` in its own header until a flagged
-   follow-on edits it; no lineage ADR's body text is retro-edited.
+   own real content (D2); ~~each still shows `Proposed` in its own header until a flagged
+   follow-on edits it~~ **the flagged follow-on was performed the same day (2026-08-13):
+   all five lineage ADRs' Status lines now read `Accepted (ratified by ADR-0049 —
+   Engineering Constitution)`, verified directly against each file** (see also
+   `architecture-baseline-v2.md` §3's own record of this loop closure); no lineage ADR's
+   body text is retro-edited.
 3. **Are the Articles grounded, not invented?** Yes — each cites the ADR (and, where one
    exists, the code) that already enforces it, verified this session; enforcement
    mechanisms that are structural/conventional rather than a runtime gate are stated as
