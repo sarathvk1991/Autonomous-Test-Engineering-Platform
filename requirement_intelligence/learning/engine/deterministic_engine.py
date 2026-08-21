@@ -116,6 +116,14 @@ class DeterministicLearningEngine:
         started_at = self._clock()
         source_id = str(organizational_memory_result.result_id)
 
+        if not self._policy.capability_switches.enable_deterministic_engine:
+            return self._empty_result(
+                organizational_memory_result_id=source_id,
+                started_at=started_at,
+                completed_at=self._clock(),
+                headline="Learning is disabled by policy (enable_deterministic_engine=False).",
+            )
+
         if not self._policy.capability_switches.enable_candidate_proposal:
             return self._empty_result(
                 organizational_memory_result_id=source_id,

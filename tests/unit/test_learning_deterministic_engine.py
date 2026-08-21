@@ -673,6 +673,26 @@ class TestDeterministicEngineEndToEnd:
         assert result.candidates == ()
         assert result.summary.headline.startswith("Learning is disabled by policy")
 
+    def test_policy_disabled_deterministic_engine_short_circuits(self) -> None:
+        # The master on/off switch (mirrors continuous_improvement/knowledge_graph/
+        # recommendation's own engines): False short-circuits before the
+        # per-stage switches (e.g. enable_candidate_proposal) are ever consulted.
+        policy = LearningPolicyBuilder().build()
+        disabled = policy.model_copy(
+            update={
+                "capability_switches": policy.capability_switches.model_copy(
+                    update={"enable_deterministic_engine": False}
+                )
+            }
+        )
+        engine = DeterministicLearningEngine(policy=disabled, clock=lambda: _NOW)
+        result = engine.build(
+            _organizational_memory_result(["shared practice"] * 6, seed="om-e2e-6")
+        )
+        assert result.candidates == ()
+        assert result.summary.headline.startswith("Learning is disabled by policy")
+        assert "enable_deterministic_engine" in result.summary.headline
+
     def test_result_id_is_a_pure_function_of_the_consumed_result_id(self) -> None:
         engine = DeterministicLearningEngine(policy=default_learning_policy(), clock=lambda: _NOW)
         source = _organizational_memory_result(["a", "b"], seed="om-e2e-5")

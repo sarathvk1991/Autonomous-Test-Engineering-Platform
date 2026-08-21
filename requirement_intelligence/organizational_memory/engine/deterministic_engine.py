@@ -128,6 +128,19 @@ class DeterministicOrganizationalMemoryEngine:
         )
         memory_id_str = str(memory_id)
 
+        if not self._policy.capability_switches.enable_deterministic_engine:
+            return self._empty_result(
+                memory_id=memory_id,
+                continuous_improvement_result_id=str(continuous_improvement_result.result_id),
+                knowledge_graph_result_id=str(knowledge_graph_result.result_id),
+                started_at=started_at,
+                completed_at=self._clock(),
+                headline=(
+                    "Organizational Memory curation is disabled by policy "
+                    "(enable_deterministic_engine=False)."
+                ),
+            )
+
         if not self._policy.capability_switches.enable_experience_capture:
             return self._empty_result(
                 memory_id=memory_id,

@@ -132,13 +132,23 @@ class TestOrganizationalMemoryPolicyBuilder:
         policy = OrganizationalMemoryPolicyBuilder().build()
         assert policy.policy_id == DEFAULT_ORGANIZATIONAL_MEMORY_POLICY_ID
 
-    def test_default_policy_version_is_1_0_0(self) -> None:
+    def test_policy_version_advanced_for_cap_085b(self) -> None:
         policy = OrganizationalMemoryPolicyBuilder().build()
-        assert str(policy.policy_version) == "1.0.0"
+        assert str(policy.policy_version) == "1.1.0"
 
-    def test_default_policy_deterministic_engine_is_reserved_off(self) -> None:
-        policy = OrganizationalMemoryPolicyBuilder().build()
-        assert policy.capability_switches.enable_deterministic_engine is False
+    def test_deterministic_engine_enabled_ml_llm_graph_rag_neuro_symbolic_reserved_off(
+        self,
+    ) -> None:
+        # CAP-085B implements the deterministic engine, so its governed switch
+        # flips to True; the ML/LLM/GraphRAG/neuro-symbolic engine families
+        # remain reserved off (mirrors ADR-0022 Recommendation 5, ADR-0023
+        # Recommendation 5).
+        switches = OrganizationalMemoryPolicyBuilder().build().capability_switches
+        assert switches.enable_deterministic_engine is True
+        assert switches.enable_ml_engine is False
+        assert switches.enable_llm_engine is False
+        assert switches.enable_graph_rag_engine is False
+        assert switches.enable_neuro_symbolic_engine is False
 
     def test_default_policy_curation_switches_are_on(self) -> None:
         policy = OrganizationalMemoryPolicyBuilder().build()

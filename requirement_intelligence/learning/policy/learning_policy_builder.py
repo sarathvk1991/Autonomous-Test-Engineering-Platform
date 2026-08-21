@@ -5,11 +5,13 @@ deterministic, immutable value — and rejects nothing beyond the model's own
 field constraints. It proposes no candidate, validates no learning, records
 no confidence, retires nothing, and has no runtime consumers.
 
-CAP-086A ships the governed default at ``LearningPolicyVersion`` 1.0.0 with
-``enable_deterministic_engine`` reserved off — no engine exists yet. The
-values are **governed data**: tuning them is a versioned policy change,
-never an engine code change, and no future engine hard-codes any of them
-(mirrors ADR-0022 Recommendation 5, ADR-0023 Recommendation 5, ADR-0027 D6).
+CAP-086A shipped the governed default at ``LearningPolicyVersion`` 1.0.0 with
+``enable_deterministic_engine`` reserved off — no engine existed yet.
+CAP-086B advances it to 1.1.0 and flips that switch to ``True`` now that
+``DeterministicLearningEngine`` exists. The values are **governed data**:
+tuning them is a versioned policy change, never an engine code change, and
+no future engine hard-codes any of them (mirrors ADR-0022 Recommendation 5,
+ADR-0023 Recommendation 5, ADR-0027 D6).
 """
 
 from __future__ import annotations
@@ -35,8 +37,8 @@ class LearningPolicyBuilder:
             policy_id=DEFAULT_LEARNING_POLICY_ID,
             policy_version=LEARNING_POLICY_VERSION,
             description=(
-                "Default learning policy (CAP-086A): governed capability switches and "
-                "deterministic thresholds. The deterministic engine is reserved off; the "
+                "Default learning policy (CAP-086B): governed capability switches and "
+                "deterministic thresholds. The deterministic engine is enabled; the "
                 "framework remains unwired into any runtime pipeline."
             ),
             capability_switches=LearningCapabilitySwitches(
@@ -44,7 +46,7 @@ class LearningPolicyBuilder:
                 enable_validation=True,
                 enable_confidence_recording=True,
                 enable_lifecycle_recording=True,
-                enable_deterministic_engine=False,
+                enable_deterministic_engine=True,
                 enable_ml_engine=False,
                 enable_llm_engine=False,
                 enable_reinforcement_learning_engine=False,

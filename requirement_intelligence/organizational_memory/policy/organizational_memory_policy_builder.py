@@ -5,11 +5,13 @@ deterministic, immutable value — and rejects nothing beyond the model's own
 field constraints. It captures no experience, promotes no lesson, promotes no
 best practice, retires nothing, and has no runtime consumers.
 
-CAP-085A ships the governed default at ``OrganizationalMemoryPolicyVersion``
-1.0.0 with ``enable_deterministic_engine`` reserved off — no engine exists
-yet. The values are **governed data**: tuning them is a versioned policy
-change, never an engine code change, and no future engine hard-codes any of
-them (mirrors ADR-0022 Recommendation 5, ADR-0023 Recommendation 5).
+CAP-085A shipped the governed default at ``OrganizationalMemoryPolicyVersion``
+1.0.0 with ``enable_deterministic_engine`` reserved off — no engine existed
+yet. CAP-085B advances it to 1.1.0 and flips that switch to ``True`` now that
+``DeterministicOrganizationalMemoryEngine`` exists. The values are **governed
+data**: tuning them is a versioned policy change, never an engine code
+change, and no future engine hard-codes any of them (mirrors ADR-0022
+Recommendation 5, ADR-0023 Recommendation 5).
 """
 
 from __future__ import annotations
@@ -39,16 +41,16 @@ class OrganizationalMemoryPolicyBuilder:
             policy_id=DEFAULT_ORGANIZATIONAL_MEMORY_POLICY_ID,
             policy_version=ORGANIZATIONAL_MEMORY_POLICY_VERSION,
             description=(
-                "Default organizational memory policy (CAP-085A): governed capability "
+                "Default organizational memory policy (CAP-085B): governed capability "
                 "switches and deterministic thresholds. The deterministic engine is "
-                "reserved off; the framework remains unwired into any runtime pipeline."
+                "enabled; the framework remains unwired into any runtime pipeline."
             ),
             capability_switches=OrganizationalMemoryCapabilitySwitches(
                 enable_experience_capture=True,
                 enable_lesson_promotion=True,
                 enable_best_practice_promotion=True,
                 enable_retirement=True,
-                enable_deterministic_engine=False,
+                enable_deterministic_engine=True,
                 enable_ml_engine=False,
                 enable_llm_engine=False,
                 enable_graph_rag_engine=False,

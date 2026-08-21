@@ -723,7 +723,7 @@ class TestDeterministicEngineEndToEnd:
         result = engine.build(ci_result, kg_result)
         assert result.memory_id == expected
 
-    def test_disabled_master_switch_yields_the_empty_result_path(self) -> None:
+    def test_disabled_experience_capture_switch_yields_the_empty_result_path(self) -> None:
         base_policy = default_organizational_memory_policy()
         policy = base_policy.model_copy(
             update={
@@ -738,6 +738,26 @@ class TestDeterministicEngineEndToEnd:
         assert result.lessons == ()
         assert result.best_practices == ()
         assert "disabled" in result.summary.headline
+
+    def test_disabled_deterministic_engine_switch_yields_the_empty_result_path(self) -> None:
+        # The master on/off switch (mirrors continuous_improvement/knowledge_graph/
+        # recommendation's own engines): False short-circuits before the
+        # per-stage switches are ever consulted.
+        base_policy = default_organizational_memory_policy()
+        policy = base_policy.model_copy(
+            update={
+                "capability_switches": base_policy.capability_switches.model_copy(
+                    update={"enable_deterministic_engine": False}
+                )
+            }
+        )
+        engine = DeterministicOrganizationalMemoryEngine(policy=policy, clock=lambda: _NOW)
+        result = engine.build(_ci_result(), _kg_result())
+        assert result.experiences == ()
+        assert result.lessons == ()
+        assert result.best_practices == ()
+        assert "disabled" in result.summary.headline
+        assert "enable_deterministic_engine" in result.summary.headline
 
     def test_round_trips_from_serialization_alone(self) -> None:
         engine = DeterministicOrganizationalMemoryEngine(
