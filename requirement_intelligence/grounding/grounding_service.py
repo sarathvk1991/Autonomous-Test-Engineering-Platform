@@ -51,9 +51,9 @@ Dependency inversion
 Runtime status (CAP-077E)
     ``assess`` is now implemented: ``DefaultGroundingService`` delegates to a private
     :class:`~requirement_intelligence.grounding.pipeline.GroundingPipeline` that sequences
-    the frozen stages end to end. The service is still **not wired into the execution
-    pipeline** (nothing calls ``assess`` at runtime), so behaviour remains byte-identical;
-    execution-package integration lands in CAP-077F.
+    the frozen stages end to end. The service **is wired into the execution
+    pipeline** (``scripts/run_requirement_analysis.py`` calls ``assess`` at runtime,
+    CAP-077F).
 """
 
 from __future__ import annotations
@@ -110,7 +110,8 @@ class DefaultGroundingService(GroundingService):
 
     It holds a private :class:`GroundingPipeline` and delegates ``assess`` to it, owning
     only the public boundary and lifecycle. It computes nothing; the pipeline sequences the
-    governed stages. Still unwired into the execution pipeline, so runtime is byte-identical.
+    governed stages. Wired into the execution pipeline (``scripts/run_requirement_analysis.py``
+    calls ``assess`` at runtime).
     """
 
     def __init__(self, pipeline: GroundingPipeline) -> None:

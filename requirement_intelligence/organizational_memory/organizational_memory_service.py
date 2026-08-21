@@ -55,10 +55,9 @@ Runtime status (CAP-085B)
     experience capture, clustering, lesson generation/consolidation,
     best-practice generation, promotion recording, and lifecycle recording end
     to end — via independent, modular collaborators, never one large engine.
-    The service is still **not wired into any execution pipeline** (nothing
-    calls ``build`` at runtime) and only ``PlatformContext`` may construct it
-    outside this package — so runtime behaviour is byte-identical and the
-    golden baseline is unchanged. Runtime integration is future work, exactly
+    The service **is wired into** the execution pipeline
+    (``scripts/run_requirement_analysis.py`` calls ``build`` at runtime) and
+    only ``PlatformContext`` may construct it outside this package, exactly
     as CAP-083B implemented the Continuous Improvement Framework's own entry
     point before a later milestone activated it, and CAP-084B did the same for
     the Knowledge Graph Framework.

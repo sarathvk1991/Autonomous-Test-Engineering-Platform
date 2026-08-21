@@ -35,11 +35,10 @@ Runtime status (CAP-080C)
     ``evaluate`` is now implemented: :class:`DefaultQualityGovernanceService` delegates
     to a private ``QualityGovernancePipeline`` (``quality_governance.pipeline``)
     that sequences the frozen stages — rule evaluation → assessment → decision →
-    assembly — end to end. The service is still **not wired into the Requirement
-    Intelligence execution pipeline** (nothing calls ``evaluate`` at runtime), so
-    behaviour remains byte-identical and the golden baseline is unchanged;
-    execution-package and CLI integration land in CAP-080D behind this unchanged
-    ``evaluate`` signature.
+    assembly — end to end. The service **is wired into the Requirement
+    Intelligence execution pipeline** (``scripts/run_requirement_analysis.py``
+    calls ``evaluate`` at runtime, CAP-080D, behind this unchanged ``evaluate``
+    signature).
 """
 
 from __future__ import annotations
@@ -104,9 +103,9 @@ class DefaultQualityGovernanceService(QualityGovernanceService):
     It holds a private :class:`QualityGovernancePipeline` and delegates ``evaluate`` to it,
     owning only the public boundary and lifecycle. It **computes nothing**: the pipeline
     sequences the governed stages (rule evaluation → assessment → decision → assembly) and
-    the builder assembles the result. Still unwired into the Requirement Intelligence
-    execution pipeline, so runtime is byte-identical — exactly mirroring the Grounding
-    subsystem's thin service over its private pipeline.
+    the builder assembles the result. Wired into the Requirement Intelligence execution
+    pipeline (``scripts/run_requirement_analysis.py`` calls ``evaluate`` at runtime) —
+    exactly mirroring the Grounding subsystem's thin service over its private pipeline.
     """
 
     def __init__(self, pipeline: QualityGovernancePipeline) -> None:

@@ -95,12 +95,20 @@ def test_registered_prompt_sha256_matches_the_manifest() -> None:
 
 
 def test_registered_as_draft() -> None:
-    """Not yet exercised by any live pipeline (no orchestration wired into a
-    CLI, no CP3/CP4) -- Draft is the honest lifecycle."""
+    """Draft is the honest lifecycle for every registered version except
+    `generate_page_objects` v1.0.0, retired (DEPRECATED, cosmetic-tidy
+    session, 2026-08-21) once superseded by v1.1.0's methods-list template
+    -- LivePageObjectGenerator loads only v1.3.0."""
     registry = build_prompt_registry()
 
     for definition in registry.get_all():
-        assert definition.metadata.lifecycle == PromptLifecycle.DRAFT
+        if (
+            definition.metadata.prompt_id == "generate_page_objects"
+            and definition.metadata.version == "1.0.0"
+        ):
+            assert definition.metadata.lifecycle == PromptLifecycle.DEPRECATED
+        else:
+            assert definition.metadata.lifecycle == PromptLifecycle.DRAFT
 
 
 @pytest.mark.parametrize("prompt_id", _ALL_PROMPT_IDS)

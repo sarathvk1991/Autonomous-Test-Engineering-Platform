@@ -10,10 +10,9 @@ Reporting, or Serialization upstream of it (ADR-0017).
 **Runtime status (CAP-080C):** every layer is implemented behind its frozen contract —
 rule evaluation (CAP-080B), assessment (CAP-080B.1), decision (CAP-080B.2), and the
 :class:`DefaultQualityGovernanceService` that sequences them via a private pipeline
-(CAP-080C). The subsystem is **not yet wired into the Requirement Intelligence execution
-pipeline** (nothing calls ``evaluate`` at runtime), so runtime behaviour is byte-identical
-and the golden baseline is unchanged; CLI and execution-package integration land in
-CAP-080D. Governed by ADR-0017.
+(CAP-080C). The subsystem **is wired into the Requirement Intelligence execution
+pipeline** (``scripts/run_requirement_analysis.py`` calls ``evaluate`` at runtime,
+CAP-080D). Governed by ADR-0017.
 """
 
 from __future__ import annotations

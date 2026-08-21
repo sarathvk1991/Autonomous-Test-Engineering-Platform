@@ -41,12 +41,11 @@ Runtime status (CAP-083B)
     delegates to a private :class:`~requirement_intelligence.continuous_improvement.
     engine.DeterministicContinuousImprovementEngine` that performs deterministic
     recurring-finding detection, trend detection, opportunity generation, metrics,
-    and summary end to end. The service is still **not wired into any execution
-    pipeline** (nothing calls ``improve`` at runtime) and only ``PlatformContext``
-    may construct it outside this package — so runtime behaviour is byte-identical
-    and the golden baseline is unchanged. Runtime integration is future work,
-    exactly as CAP-082B implemented the first deterministic Recommendation engine
-    before a later milestone would activate it.
+    and summary end to end. The service **is wired into** the execution pipeline
+    (``scripts/run_requirement_analysis.py`` calls ``improve`` at runtime) and only
+    ``PlatformContext`` may construct it outside this package, exactly as CAP-082B
+    implemented the first deterministic Recommendation engine before a later
+    milestone activated it.
 """
 
 from __future__ import annotations

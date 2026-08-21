@@ -41,12 +41,11 @@ Runtime status (CAP-084B)
     engine.DeterministicKnowledgeGraphEngine` that performs deterministic node
     projection, edge projection, subgraph detection, observation generation, and
     finding detection end to end — via independent, modular collaborators, never
-    one large engine. The service is still **not wired into any execution
-    pipeline** (nothing calls ``build`` at runtime) and only ``PlatformContext``
-    may construct it outside this package — so runtime behaviour is byte-identical
-    and the golden baseline is unchanged. Runtime integration is future work,
-    exactly as CAP-083B implemented the first deterministic Continuous
-    Improvement engine before a later milestone activated it.
+    one large engine. The service **is wired into** the execution pipeline
+    (``scripts/run_requirement_analysis.py`` calls ``build`` at runtime) and only
+    ``PlatformContext`` may construct it outside this package, exactly as CAP-083B
+    implemented the first deterministic Continuous Improvement engine before a
+    later milestone activated it.
 """
 
 from __future__ import annotations

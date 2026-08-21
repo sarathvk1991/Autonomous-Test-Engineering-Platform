@@ -618,6 +618,19 @@ way a reader of the deck would be; **this LLD's own claims about wiring status (
 verified against the live call sites in `scripts/run_requirement_analysis.py`, not against these
 docstrings.**
 
+**RESOLVED (2026-08-21, cosmetic-tidy session).** All eleven occurrences of the stale claim across
+the six flagged packages (`grounding_service.py` carried it twice — module and
+`DefaultGroundingService` docstrings — as did `requirement_quality_governance/
+quality_governance_service.py`; `knowledge_graph/`, `continuous_improvement/` each also carried a
+second copy in their own `*_service.py`, beyond the `__init__.py` this section named) were corrected
+to state the package **is** wired, each pointing at the real `scripts/run_requirement_analysis.py`
+call site verified in this session (`assess`/`build`/`improve`/`evaluate`). Two further, unflagged
+siblings — `recommendation/recommendation_service.py` and `enhancement/
+requirement_enhancement_service.py` — carry the identical stale claim and are ALSO confirmed called
+live (`recommend`/`enhance`); left uncorrected, out of this session's scoped six, flagged here for a
+follow-up tidy. `make lint`/`make test` (6104, unchanged) and mypy (436, unchanged) all green;
+docstring text only, no behavior change.
+
 ---
 
 ## 22. Deck reconciliation — what the PPTX got wrong, stated once, precisely

@@ -20,9 +20,9 @@ large engine). It resolves each ``HistoricalDatasetReference`` through a
 private, replaceable ``HistoricalDatasetProvider`` (the Historical Dataset
 Resolution Principle, mirrored from ADR-0022 §D9) and never recursively
 consumes a prior ``KnowledgeGraphResult`` or any of its constituents. The
-subsystem is still **not wired into** any execution pipeline — nothing calls
-``build`` at runtime — so runtime behaviour is byte-identical and the golden
-baseline is unchanged. Governed by ADR-0023.
+subsystem **is wired into** the execution pipeline —
+``scripts/run_requirement_analysis.py`` calls ``build`` at runtime. Governed
+by ADR-0023.
 """
 
 from __future__ import annotations

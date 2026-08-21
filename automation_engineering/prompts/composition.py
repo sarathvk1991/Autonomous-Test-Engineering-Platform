@@ -322,6 +322,16 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
     )
 
     # --- generate_page_objects v1.0.0 --------------------------------------
+    # Retired (cosmetic-tidy session, 2026-08-21): superseded by v1.1.0's
+    # methods-list template (see live_page_object_generator.py's own "ONE prompt
+    # version now, not two" note) and, in turn, by v1.2.0/v1.3.0 -- LivePageObject
+    # Generator loads only v1.3.0 (`_PROMPT_VERSION`). Registered-but-never-selected
+    # at runtime; no production code loads this version. Per ADR-0014 invariant H.1,
+    # only the governed WORDING is frozen -- lifecycle metadata is exactly what the
+    # governed vocabulary (Draft -> Experimental -> Approved -> Production ->
+    # Deprecated -> Archived) exists to record, so this is a metadata-only change:
+    # the file, its sha256, and its content are byte-for-byte unchanged (still kept,
+    # per ADR-0014, for governance/audit history -- never deleted).
     loaded = loader.load(
         prompt_id="generate_page_objects",
         version="1.0.0",
@@ -334,7 +344,7 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 name="Generate Page Objects",
                 version="1.0.0",
                 owner="Automation Engineering Layer",
-                lifecycle=PromptLifecycle.DRAFT,
+                lifecycle=PromptLifecycle.DEPRECATED,
                 description=(
                     "Generates one Java page-object class for a page-object action the "
                     "reuse engine (automation_engineering.reuse.engine.decide_reuse) "
@@ -345,11 +355,15 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                     "constructor-injected driver per ADR-0041 D5), not WHETHER it is used. "
                     "Targets the tracked test-suite-baseline's own package "
                     "com.automation.pages convention, extending BasePage. Never generates "
-                    "utilities, test-data classes, or a runner/test class (ADR-0044 D2)."
+                    "utilities, test-data classes, or a runner/test class (ADR-0044 D2). "
+                    "DEPRECATED: superseded by v1.1.0's methods-list template (itself "
+                    "superseded by v1.2.0/v1.3.0); LivePageObjectGenerator loads only "
+                    "v1.3.0. Retained, unedited, for governance/audit history only."
                 ),
                 sha256=loaded.sha256,
                 compatibility=_GENERATE_PAGE_OBJECTS_COMPATIBILITY,
                 release_introduced="1.0.0",
+                release_deprecated="1.1.0",
             ),
             content=loaded.content,
         )

@@ -51,13 +51,11 @@ Runtime status (CAP-086B)
     institutionalization evaluation, stability evaluation, confidence
     recording, promotion recording, and lifecycle recording end to end — via
     independent, modular collaborators, never one large engine (ADR-0029
-    D9-D26). The service is still **not wired into any execution pipeline**
-    (nothing calls ``build`` at runtime) and only ``PlatformContext`` may
-    construct it outside this package — so runtime behaviour is
-    byte-identical and the golden baseline is unchanged. Runtime
-    integration is future work (CAP-086C, reserved), exactly as CAP-085B
-    implemented the Organizational Memory Framework's own entry point
-    before a later milestone activated it.
+    D9-D26). The service **is wired into** the execution pipeline
+    (``scripts/run_requirement_analysis.py`` calls ``build`` at runtime) and
+    only ``PlatformContext`` may construct it outside this package, exactly
+    as CAP-085B implemented the Organizational Memory Framework's own entry
+    point before a later milestone activated it.
 """
 
 from __future__ import annotations
