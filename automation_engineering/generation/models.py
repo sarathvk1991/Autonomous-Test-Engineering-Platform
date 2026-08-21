@@ -354,12 +354,26 @@ class GeneratedUtility:
     (:func:`~.utility_orchestrator.derive_utility_class_name`) the
     generation context instructed the seam to use -- informational, the
     same trust level :class:`GeneratedPageObject.class_name` already uses.
+
+    ``generation_identity`` (additive, the pinning-gap fix -- previously
+    ABSENT from this class entirely, the identical gap
+    :class:`GeneratedPageObject.generation_identity` already closed) is the
+    prompt/model identity that produced ``java_source``, threaded from the
+    generator's own ``last_identity`` (:class:`~.utility_generator.UtilityGenerator`
+    implementations that capture one, e.g.
+    :class:`~.live_utility_generator.LiveUtilityGenerator`, which already
+    captures it at its own LLM call, mirroring
+    :class:`GeneratedPageObject.generation_identity`'s own identical
+    discipline exactly -- never re-derived, never invented, ``None`` for an
+    implementation that captures none (e.g.
+    :class:`~.utility_generator.StubUtilityGenerator`).
     """
 
     method_need: UtilityMethodNeed
     java_source: str
     target_package: str
     class_name: str
+    generation_identity: GenerationIdentity | None = None
 
 
 @dataclass(frozen=True, slots=True)

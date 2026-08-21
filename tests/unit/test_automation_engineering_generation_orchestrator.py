@@ -714,6 +714,52 @@ class TestGenerationIdentityThreading:
         assert isinstance(outcome, GeneratedStepDefinition)
         assert outcome.generation_identity is None
 
+    def test_a_no_match_utility_request_threads_its_own_identity_onto_utility_outcome(
+        self,
+    ) -> None:
+        """The twice-flagged gap this build closes, proven end to end: a
+        `utility_request` whose need resolves NO_MATCH (generate) lands a
+        `GeneratedUtility` on `GeneratedStepDefinition.utility_outcome`
+        carrying ITS OWN `generation_identity` -- there is no separate
+        wrapper field to double-thread here (unlike page-object's own
+        `CoGeneratedStepDefinition.generation_identity`, a distinct field
+        that needed its own explicit copy): `utility_outcome` stores the
+        `GeneratedUtility` instance directly, so once
+        `orchestrate_utility_method` populates the field at construction,
+        it survives this path for free."""
+        from automation_engineering.generation.models import GeneratedUtility, UtilityMethodNeed
+        from automation_engineering.generation.utility_orchestrator import UtilityBindingRequest
+
+        need = _need("I log out")
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({need.text: ()})
+        step_generator = StubStepDefinitionGenerator(
+            {need.text: "package com.automation.steps;\npublic class LogoutSteps {}\n"}
+        )
+        util_need_text = "read a test-data value"
+        util_matcher = StubSemanticMatcher({util_need_text: ()})  # NO_MATCH -> generate
+        util_identity = _identity(model="utility-fake-model")
+        util_generator = _IdentityCapturingGenerator(
+            "package com.automation.utils;\npublic final class TestDataReader {}\n",
+            util_identity,
+        )
+        utility_request = UtilityBindingRequest(
+            method_need=UtilityMethodNeed(
+                need=GherkinStepNeed(text=util_need_text, step_type="UtilityAction", captures=()),
+                method_name="data",
+            ),
+            matcher=util_matcher,
+            generator=util_generator,
+        )
+
+        outcome = orchestrate_step_definition(
+            need, catalog, matcher, step_generator, utility_request=utility_request
+        )
+
+        assert isinstance(outcome, GeneratedStepDefinition)
+        assert isinstance(outcome.utility_outcome, GeneratedUtility)
+        assert outcome.utility_outcome.generation_identity == util_identity
+
 
 class TestNoLiveLlmInvolvementInOrchestration:
     def test_orchestrator_module_never_imports_llm_factory_or_an_embedding_provider(

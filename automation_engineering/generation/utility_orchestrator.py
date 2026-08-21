@@ -62,6 +62,19 @@ Generation (Part 1), mirroring :mod:`.page_object_orchestrator` exactly
 
 This module never imports ``llm_factory`` or any LLM provider, and never
 imports a live embedding provider.
+
+``GeneratedUtility.generation_identity`` (additive, the pinning-gap fix --
+this class used to be an always-``None``/always-ABSENT gap, flagged twice:
+by the page-object identity-threading task and the page-object cache task).
+The ``NoMatch`` branch below now threads ``generator.last_identity`` onto
+the returned :class:`~.models.GeneratedUtility`, the identical one-line
+pattern :func:`~.page_object_orchestrator.orchestrate_page_object_method`
+already established for page objects -- ``LiveUtilityGenerator`` already
+captured its own ``last_identity`` at its LLM call (unlike page-object's
+own history, this generator's capture was never missing, only the
+threading onto the outcome record was). :class:`~.models.BoundUtilityMethod`
+carries no identity field at all -- a bind is never a generation, mirroring
+:class:`~.models.BoundPageObjectMethod`'s own permanent absence.
 """
 
 from __future__ import annotations
@@ -212,6 +225,7 @@ def orchestrate_utility_method(
             java_source=java_source,
             target_package=target_package,
             class_name=class_name,
+            generation_identity=getattr(generator, "last_identity", None),
         )
 
     raise AssertionError(f"unreachable: unknown ReuseDecision variant {decision!r}")

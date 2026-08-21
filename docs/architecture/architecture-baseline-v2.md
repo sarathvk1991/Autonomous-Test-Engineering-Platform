@@ -43,6 +43,55 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **The `LiveUtilityGenerator` `generation_identity` gap CLOSED (2026-08-21) — the prerequisite
+  flagged TWICE (by the page-object identity-threading task and the page-object cache task) for
+  utility cache/eval, now resolved.** `GeneratedUtility` (`automation_engineering/generation/
+  models.py`) carried no `generation_identity` field at all, the identical gap
+  `GeneratedPageObject` had before ITS own identity fix — despite `GenerationIdentity` already
+  being imported into that file for the OTHER outcome shapes. **Confirmed, not assumed: utility's
+  real state was a CLEAN mirror of page-object's own fix, not a bigger gap.**
+  `LiveUtilityGenerator.generate` already captured `last_identity` at its own LLM call, correctly,
+  exactly like `LiveStepDefinitionGenerator`/`LivePageObjectGenerator` — the CAPTURE was never
+  missing; only the THREADING onto the outcome record was. Utility generation is also confirmed
+  NOT wired into stage 15 at all (unlike page-object, which already had partial stage-15 wiring
+  before its own identity fix) — `stage/models.py`'s own `AssetRecord` docstring already states
+  plainly that "no utility `AssetRecord` is ever produced here," and
+  `run_automation_engineering_stage` accepts no `utility_matcher`/`utility_generator` parameters —
+  so there is no `AssetRecord`/stage-15 destination to thread identity onto today; that half of the
+  proven page-object template does not (yet) apply here, an honest scope-narrowing this task
+  found rather than assumed. **The fix, mirroring the proven page-object pattern exactly:** added
+  `generation_identity: GenerationIdentity | None = None` (additive) to `GeneratedUtility`;
+  `utility_orchestrator.orchestrate_utility_method`'s `NoMatch` (generate) branch now populates it
+  via `generation_identity=getattr(generator, "last_identity", None)` — the identical one-line
+  pattern `orchestrate_page_object_method`/`orchestrate_step_definition` already use. No wrapper
+  gap exists here the way `CoGeneratedStepDefinition.generation_identity` was for page objects:
+  `GeneratedStepDefinition.utility_outcome` stores the `GeneratedUtility` instance directly (not a
+  separate field needing its own copy), so the identity now survives the step-def orchestrator's
+  own `utility_request` path for free, proven end to end. `BoundUtilityMethod` carries no
+  `generation_identity` field at all (not merely `None`) — a bind is never a generation, mirroring
+  `BoundPageObjectMethod`/`BoundStepDefinition`'s own permanent absence; there is no utility "bind
+  drops identity" case, since a bind never had a field to drop. **Proven (4 new tests, no live LLM
+  call):** a hand-written identity-capturing double proves `GeneratedUtility.generation_identity`
+  carries the generator's real identity; `StubUtilityGenerator` (no `last_identity` attribute)
+  degrades to `None` via `getattr`, never an `AttributeError` — every pre-existing utility-
+  orchestrator test (unmodified, all still green) is the implicit proof this is purely additive; a
+  bound utility is proven to carry no such field via `hasattr`; and the nested path
+  through `orchestrate_step_definition`'s own `utility_request` is proven end to end
+  (`GeneratedStepDefinition.utility_outcome.generation_identity` carries the utility generator's
+  own identity, unmodified by the step-def wrapping). **No ADR disagreement found** —
+  `GenerationIdentity` threading is additive infra, not itself governed by an ADR (ADR-0051's own
+  dependency line: "additive infra, not itself ADR'd"), so there was nothing for this fix to
+  reconcile against. **Utility cache (CAP-089) and eval (CAP-090) are now UNBLOCKED** — utility is
+  on the exact same footing page-object was immediately after ITS OWN identity fix, before its own
+  cache/eval increments were built; those two remain separate, NOT built by this task (steps 2 and
+  3 of 3). `make lint`: clean; `make test`: 6054 (6050 + 4 new); `mypy`: whole-repo error count
+  unchanged (436) — the two changed source files are themselves zero-error under `mypy strict`.
+  **Owner:** `automation_engineering/generation/models.py`,
+  `automation_engineering/generation/utility_orchestrator.py`. **Trigger for the next task:**
+  utility cache (`CachingUtilityGenerator`, mirroring `CachingPageObjectGenerator`'s own store/
+  key/decorator pattern) and utility eval (`eval_harness/utility_*.py`, mirroring the page-object
+  increment's own pattern), each a separate, later step. One mentor throughout (Nitin).
+
 - **Generation Quality Eval Harness (CAP-090, ADR-0051) EXTENDED to a fourth generator,
   `LivePageObjectGenerator` — 4 of 7 target generators, still not wired (2026-08-21, the last
   extension the page-object live-wiring arc unblocked).** Page-object carries the RICHEST defect
