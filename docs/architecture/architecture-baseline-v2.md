@@ -43,6 +43,60 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Generation Quality Eval Harness (CAP-090, ADR-0051) EXTENDED to a fourth generator,
+  `LivePageObjectGenerator` — 4 of 7 target generators, still not wired (2026-08-21, the last
+  extension the page-object live-wiring arc unblocked).** Page-object carries the RICHEST defect
+  grounding of any increment in this arc: three of its four checks each guard the regression of
+  one of the THREE real, MEASURED defects the 2026-08-10 live regeneration run found against the
+  real 32-class corpus (`method-name mismatch` — 67% of requested calls, `new XPage()` vs. a
+  constructor-injected `WebDriver` per ADR-0041 D5, and a fictional `BasePage` helper called on 31
+  of 32 generated classes — `[[cap-page-object-live-regen-findings]]`), all independently fixed on
+  the input side already (`live_page_object_generator.py`'s own module docstring). The fourth check
+  composes CP4's real, already-live static locator-health gate
+  (`automation_engineering.cp4.gate.evaluate_cp4`) DIRECTLY — a genuinely public function, no port
+  needed, since CP4 has no adapter/Protocol seam at all — proven to fail on an absolute-XPath
+  locator exactly as the real stage-16 wiring does (`[[cp7-cp8-stage16-wiring]]`); CP4's own
+  cross-class `duplicate_locators` criterion structurally cannot fire at this package's
+  one-artifact-per-case scoring grain, an honest consequence of the grain, not an unreachable check
+  invented here. **Built and tested (25 new tests, no live LLM call anywhere in the suite):**
+  `eval_harness/page_object_eval_set.py`/`page_object_properties.py`/`page_object_runner.py` — a
+  curated 3-case set seeded from the real, currently-tracked page-object catalog
+  (`test-suite-baseline/src/test/java/com/automation/pages/`, 33 real page objects), continuing
+  `LoginPage`'s own two methods `STEP_DEFINITION_EVAL_SET` already calls through
+  (`attemptLogin`/`isErrorMessageDisplayed`) plus one real `InventoryPage` method
+  (`isInventorySortedBy`) for a call-site parameter shape `LoginPage` alone does not exercise.
+  `class_name` is supplied as the real tracked name directly, not derived from `need.text` via
+  `derive_page_object_class_name` — checked directly: that function does not reproduce real names
+  like `"LoginPage"`, the SAME class-name-mismatch gap `class_name_override` already exists to
+  close for a real step-def call site. **`models.py`, `scoring.py`'s `score_eval_set`, and
+  `baseline_store.py` reused verbatim a FOURTH time** — no longer resting on three data points. No
+  new coverage-shaped check was built: a page object keys on `class_name`/`method_name`, not a
+  `requirement_id`, so CAP-088's `CompletenessReport` has no node it maps onto — named honestly,
+  not forced. **Proven end to end** (`StubPageObjectGenerator`, real tracked-corpus-shaped text,
+  zero live LLM calls): a clean generator's first run has no prior baseline
+  (`ESTABLISHED_BASELINE`) and is explicitly recorded as one; a generator standing in for a worse
+  model (defect 1's own real, dominant shape — every case's method name paraphrased — reintroduced
+  into every case) is caught (`REGRESSED`) relative to that baseline; re-running the same clean
+  generator stays `PASSED`. Each check additionally proven to catch its own real defect shape on a
+  fixture and PASS the real, tracked-corpus-shaped clean text; `check_locator_validity` degrades to
+  `NOT_APPLICABLE`, never a false `FAILED`, on unparseable Java (mirroring CP3's own
+  `(JavaSyntaxError, LexerError)` degrade pattern). **Milestone: `LivePageObjectGenerator` is now
+  BOTH cached (CAP-089) AND eval'd (CAP-090) — the page-object live-wiring arc's own extensions are
+  complete.** `LiveUtilityGenerator` remains the one generator with neither. **Scope held exactly
+  as ADR-0051 D5 sequenced it:** three generators/skills remain out of scope
+  (`LiveUtilityGenerator`, `LiveFeatureRemediator`, `RequirementAnalysisService`), and the entire
+  rubric/LLM-judge layer (Layer 2) remains unbuilt (verdicted not worth building now, per ADR-0051's
+  own 2026-08-20 Investigation Note). **Not CI-wired, not live-wired** — no `PlatformContext`
+  composition-root method, no CI job exists; the live-vs-cached LLM-in-CI question (ADR-0051 D2)
+  stays exactly as open as the ADR named it. `make lint`: clean; `make test`: 6050 (6025 + 25 new);
+  `mypy`: whole-repo error count unchanged (436) — the five new/changed files are themselves
+  zero-error under `mypy strict`. Recorded additively in ADR-0051 (a fourth, dated Implementation
+  Note plus additive Consequences/Ownership updates — no body rewrites), the `CAP-090` matrix row
+  (§5.13), and this register entry. **Owner:** `eval_harness/`. **Trigger for the next task:**
+  extend the same pattern to the remaining three generators/skills, one at a time, measured, each
+  deriving its own checks from its own real, already-enforced detection mechanism. One mentor
+  throughout (Nitin).
+
 - **Artifact-Level Generation Cache (CAP-089, ADR-0050) EXTENDED to a fourth generator,
   `LivePageObjectGenerator` — 4 of 5 target generators, still not wired (2026-08-20, same day as
   the `GenerationIdentity` co-generation fix and the live page-object `SemanticMatcher` that

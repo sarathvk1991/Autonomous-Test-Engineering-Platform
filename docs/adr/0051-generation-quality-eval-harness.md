@@ -1,10 +1,12 @@
 # ADR-0051 — Generation Quality Eval Harness (Layer 1: Deterministic Property Checks)
 
-- **Status:** Accepted (Layer 1, three of seven target generators —
-  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, and `LiveTestDataGenerator` — see
-  the "Implementation Note" sections, below; the remaining four generators and the judge layer,
-  D5, remain future, separate work). **All three of ADR-0050's own measured/cached token sinks
-  now have quality-drift eval coverage** (step-def, feature-content, test-data).
+- **Status:** Accepted (Layer 1, four of seven target generators —
+  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`, and
+  `LivePageObjectGenerator` — see the "Implementation Note" sections, below; the remaining three
+  generators and the judge layer, D5, remain future, separate work). **All three of ADR-0050's
+  own measured/cached token sinks now have quality-drift eval coverage** (step-def,
+  feature-content, test-data). **`LivePageObjectGenerator` (2026-08-21) is now both cached
+  (CAP-089) and eval'd (CAP-090) — the page-object live-wiring arc's own extensions are complete.**
 - **Date:** 2026-08-17
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR *is* the governing design. It records the decisions
@@ -24,16 +26,17 @@
   checks, D3, never extended); ADR-0050 (Artifact-Level Generation Cache — sibling precedent for a
   new, focused, ADR-first capability, and the module this harness's own scorecard store shape
   mirrors, D2).
-- **Runtime status: Built and tested (Layer 1, three of seven target generators — see the
+- **Runtime status: Built and tested (Layer 1, four of seven target generators — see the
   "Implementation Note" sections, below).** `eval_harness/` exists: a curated eval set,
   deterministic property checks, scoring/aggregation, CAP-088 coverage consumption, and a
   regression-gated baseline store — for `LiveStepDefinitionGenerator` (first increment),
-  `LiveFeatureContentGenerator` (second increment, 2026-08-20), and `LiveTestDataGenerator` (third
-  increment, 2026-08-20). **Not CI-wired and not live-wired.** No CI job, no `PlatformContext`
+  `LiveFeatureContentGenerator` (second increment, 2026-08-20), `LiveTestDataGenerator` (third
+  increment, 2026-08-20), and `LivePageObjectGenerator` (fourth increment, 2026-08-21). **Not
+  CI-wired and not live-wired.** No CI job, no `PlatformContext`
   composition-root method, and no live LLM call anywhere in this package's own test suite — every
   proof runs against a Stub generator seeded with captured/fixture text (D2's own "live-vs-cached"
   open question is left exactly as open as this ADR named it; this build resolves only the eval
-  *logic*, deterministically). The remaining four generators and the judge layer (D5) are
+  *logic*, deterministically). The remaining three generators and the judge layer (D5) are
   untouched.
 
 ## Problem
@@ -727,6 +730,145 @@ built: no judge module, no rubric, no CI wiring, no new eval-harness code of any
 
 ---
 
+## Implementation Note (2026-08-21) — D5's fourth increment: `LivePageObjectGenerator`, built and tested
+
+Extends D5's own "same pattern, applied once step-def's own build proves the mechanism" claim to a
+FOURTH generator — the one the page-object live-wiring arc named as its own last unblocked
+extension: `LivePageObjectGenerator` gained a real `GenerationIdentity`
+(`[[cap-page-object-generation-identity-threaded]]`) and, immediately after, its own fourth
+artifact-cache increment (CAP-089, `docs/architecture/architecture-baseline-v2.md` §3's own
+register entry) — both prerequisites this ADR's own eval-score key (`GenerationIdentity`) and
+curated-set pattern needed. One mentor throughout (Nitin).
+
+**Pre-flight.** Clean tree, `main`, tip `20c7a8b` (the page-object artifact-cache increment).
+`make lint`/`make test` clean, 6025 unchanged.
+
+**Page-object's OWN defect shapes — the RICHEST grounding of any increment in this arc.** Unlike
+feature-content/test-data (contract-grounded, no known incident), page-object has THREE real,
+MEASURED defects on record from the 2026-08-10 live regeneration run against the real 32-class
+corpus (`[[cap-page-object-live-regen-findings]]`), each independently fixed on the input side
+since (`live_page_object_generator.py`'s own module docstring records all three fixes in full):
+(1) method-name mismatch (67% of requested calls came back under a name the model paraphrased from
+`action_text`, fixed by requiring `method_name` unconditionally,
+`[[cap-page-object-defect1-method-name-fix]]`); (2) `new XPage()` instead of a constructor-injected
+`WebDriver` (ADR-0041 D5); (3) fictional `BasePage` helpers (31 of 32 generated classes called at
+least one of `isElementDisplayed`/`sendKeys`/`click`/`findElement`/`getText` as if inherited, none
+of which `BasePage` provides). **All three are deterministically checkable** — each guards its own
+defect's regression directly, no judge needed.
+
+**CP4's real, already-live locator-health gate, composed directly, not reinvented.**
+`automation_engineering.cp4.gate.evaluate_cp4` is a genuinely public function (CP4 has no
+adapter/Protocol seam at all, per its own module docstring — "there is nothing live to stand in
+for") — called directly against one generated class, the same static gate the real stage-16 wiring
+already runs, proven to fail on an absolute-XPath locator among its four criteria
+(`[[cp7-cp8-stage16-wiring]]`). At this package's own per-case grain (one artifact per check call),
+`duplicate_locators` (CROSS-class by CP4's own design) structurally never fires — an honest
+consequence of the per-case scoring grain, not an unreachable check invented here: the other three
+criteria (`locator_uniqueness`, `dynamic_xpath`, `well_formedness`) remain fully live, and
+`duplicate_locators` would fire the moment this check is composed across more than one class in the
+same call, exactly as CP4 already does in the real run.
+
+**One check considered and NOT built, reported honestly.** A page-object-specific
+`customqa:long-method` check was considered and rejected: `test_data_properties.
+check_no_long_method` already calls CP3's real, public `evaluate_long_method` directly with no
+class-role restriction (that function's own docstring: "ANY generated class... no class-role
+restriction") — a page-object-specific copy would be a second definition of an already-generic,
+already-reusable check, not a new finding. Left to a future increment's own decision whether to
+compose it into this module's default set.
+
+**Built:** `eval_harness/page_object_eval_set.py`, `page_object_properties.py`,
+`page_object_runner.py` — reusing `models.py`, `scoring.py`'s `score_eval_set`, and
+`baseline_store.py` verbatim, generator-agnostic exactly as D2 designed them (no changes to any of
+the three — the FOURTH proof, not merely a claim resting on three data points). No coverage-shaped
+check was built for this generator: unlike step-def/feature-content/test-data (each keyed by
+`requirement_id`, traceable through CAP-088's `CompletenessReport`), a page object keys on
+`class_name`/`method_name`, not a requirement — there is no natural node in the requirement→
+scenario→step graph a page-object generation maps onto, so `check_requirement_covered`/
+`check_step_covered` do not apply and no new page-object-specific coverage module was invented to
+force one. Named honestly, not built around.
+
+- **The curated eval set (D2).** `PAGE_OBJECT_EVAL_SET` (independently versioned,
+  `PAGE_OBJECT_EVAL_SET_VERSION`) — three cases seeded from the real, currently-tracked page-object
+  catalog (`test-suite-baseline/src/test/java/com/automation/pages/`, 34 files, 33 real page
+  objects) — the SAME corpus the 2026-08-10 live regeneration run measured its three defects
+  against. Two cases continue `LoginPage`'s own two real methods
+  (`LoginPage.attemptLogin`/`LoginPage.isErrorMessageDisplayed`) that `STEP_DEFINITION_EVAL_SET`
+  already calls through, for continuity across the harness's four built increments; a third
+  (`InventoryPage.isInventorySortedBy`) exercises a call-site parameter shape `LoginPage` alone does
+  not. **`class_name` is supplied directly as the real tracked name, not derived from `need.text`
+  via `derive_page_object_class_name`** — checked directly, not assumed: that function does not
+  reproduce these real names (`derive_page_object_class_name("the user attempts to login with
+  credentials")` returns `"UserAttemptsLoginCredentialsPage"`, not `"LoginPage"`) — the SAME
+  class-name-mismatch gap `page_object_reference_derivation.py`'s own `class_name_override` already
+  exists to close for a real step-def call site; supplying the real name directly is this curated
+  set's own equivalent of that override.
+- **Four deterministic property checks (D2/D3, composed not invented — three incident-grounded, one
+  composing CP4 directly).** `page_object_properties.py`: `check_method_names_present` (ports
+  `live_page_object_generator._declares_method` verbatim, guards defect 1's regression),
+  `check_di_constructor` (guards defect 2's regression, the v1.3.0 prompt's own CONSTRAINTS text,
+  ADR-0041 D5), `check_no_fictional_basepage_helper` (guards defect 3's regression against
+  BASEPAGE'S REAL INHERITED API, the v1.2.0+ prompt's own hardcoded inventory), and
+  `check_locator_validity` (composes `automation_engineering.cp4.gate.evaluate_cp4` directly,
+  degrading to `NOT_APPLICABLE` — not a false `FAILED` — on unparseable Java, mirroring CP3's own
+  `(JavaSyntaxError, LexerError)` degrade pattern, since CP4 itself has no built-in
+  degrade-to-empty behaviour for a parse failure the way `evaluate_long_method` does).
+- **Scoring, keyed by `GenerationIdentity` (D2).** Reuses `eval_harness.scoring.score_eval_set`
+  verbatim — the FOURTH generator to do so unchanged.
+- **The regression gate, reused verbatim (D2).** `EvalBaselineStore`/`check_regression` — no
+  changes; `generator_id="page_object_generation"` (`LivePageObjectGenerator.CALL_TYPE`) stores to
+  its own separate file, no collision with the other three generators' baselines.
+- **The runner (D5).** `page_object_runner.py`'s `run_page_object_eval` — takes any
+  `PageObjectGenerator` (Protocol-typed, agnostic to live/stub/cached) plus a caller-supplied
+  `GenerationIdentity`, mirroring the other three runners' own shape exactly.
+
+**Proven two ways, both deterministic, no live LLM call anywhere in this package's own test suite
+(25 new tests):**
+
+1. **Each property check catches its own real defect shape and passes real, tracked-corpus-shaped
+   clean text** (`test_eval_harness_page_object_properties.py`) — fixtures lifted directly from the
+   real, currently-tracked `LoginPage.java`/`InventoryPage.java`. `check_method_names_present`
+   FAILS on a paraphrased method name (defect 1's own shape); `check_di_constructor` FAILS on a
+   no-arg constructor, a static `WebDriver` field, and a missing `super(driver)` call (defect 2's
+   own shape, three independent sub-cases); `check_no_fictional_basepage_helper` FAILS on a bare
+   `isElementDisplayed(...)` call (no real API under that name anywhere) and on a bare, unqualified
+   `click()` call, while PASSING the same clean text's own qualified
+   `driver.findElement(...).click()`/`.sendKeys(...)` usage — proving the qualifier distinction is
+   not merely theoretical (defect 3's own shape); `check_locator_validity` FAILS on an absolute-
+   XPath locator (CP4's own `dynamic_xpath` criterion, proven live to fail on exactly this shape,
+   `[[cp7-cp8-stage16-wiring]]`) and returns `NOT_APPLICABLE`, not a false `FAILED`, on unparseable
+   Java. All four checks PASS the real, unmodified clean fixtures.
+2. **The full arc — scores-first baseline establishment, then regression detection — end to end**
+   (`test_eval_harness_page_object_runner.py`), driven entirely by `StubPageObjectGenerator` seeded
+   with the real, tracked-corpus-shaped clean text: a clean generator's first run has no prior
+   baseline (`ESTABLISHED_BASELINE`) and is explicitly recorded as one; a generator standing in for
+   a worse model (defect 1's own real, dominant shape — every case's method name paraphrased —
+   reintroduced into every case, since it is the one real defect this arc measured most, 67% of
+   requested calls) is caught (`REGRESSED`) relative to that baseline; re-running the same clean
+   generator stays `PASSED`.
+
+**Scope held exactly as ADR-0051 D5 sequenced it.** Four of seven target generators
+(`LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`,
+`LivePageObjectGenerator`) are built. Three generators/skills remain out of scope
+(`LiveUtilityGenerator`, `LiveFeatureRemediator`, `RequirementAnalysisService`), and the entire
+rubric/LLM-judge layer (Layer 2) remains unbuilt (Investigation Note, above: not worth building
+now). **Not CI-wired, not live-wired** — no `PlatformContext` composition-root method, no CI job
+exists; the live-vs-cached LLM-in-CI question (ADR-0051 D2) stays exactly as open as the ADR named
+it. **Milestone: `LivePageObjectGenerator` is now BOTH cached (CAP-089, ADR-0050) AND eval'd
+(CAP-090, this ADR)** — the page-object live-wiring arc's own extensions (cache + eval) are
+complete; `LiveUtilityGenerator` remains the one generator with neither.
+
+Gate: `make lint` clean; `make test` 6050 passed (6025 + 25 new, itemized above); `mypy`:
+whole-repo error count unchanged (436, confirmed) — the five new/changed files are themselves
+zero-error under `mypy strict`. Tree: 3 new files under `eval_harness/`, 2 new test files, this ADR
+amended further.
+
+**No disagreement found between this task's own framing and this ADR's text** — checked directly:
+the "4 of 7 generators" claim, the "page-object is the last extension the live-wiring arc
+unblocked" framing, and the CP4-composition instruction all match ADR-0051 D5's own sequencing and
+CAP-089's own register note exactly; nothing here needed reconciling in the ADR's favor.
+
+---
+
 ## Consequences
 
 - **Enables, proven for the first increment (Implementation Note, above):** a curated, versioned,
@@ -800,6 +942,18 @@ built: no judge module, no rubric, no CI wiring, no new eval-harness code of any
   considered and honestly not built — no real `TestDataSpecification` this platform has ever
   emitted carries a non-empty `fields` list to ground it against. Four generators and the judge
   layer remain future, separate work.
+- **Extended to a fourth generator, additively (2026-08-21, Implementation Note above).**
+  `LivePageObjectGenerator`'s Layer 1 is now also built, tested, and Accepted for its own scope —
+  the FOURTH proof that `models.py`/`scoring.py`'s `score_eval_set`/`baseline_store.py` are
+  genuinely generator-agnostic. Page-object's own checks carry the RICHEST grounding of any
+  increment in this arc: three of its four checks each guard the regression of a real, MEASURED
+  historical defect (method-name mismatch, `new XPage()` vs. DI, fictional `BasePage` helpers — the
+  2026-08-10 live regeneration corpus, `[[cap-page-object-live-regen-findings]]`), and the fourth
+  composes CP4's own real, already-live static locator-health gate
+  (`automation_engineering.cp4.gate.evaluate_cp4`) directly, no port needed. **Milestone:**
+  `LivePageObjectGenerator` is now both cached (CAP-089) and eval'd (CAP-090) — the page-object
+  live-wiring arc's own extensions are complete; `LiveUtilityGenerator` remains the one generator
+  with neither. Three generators and the judge layer remain future, separate work.
 
 ## Ownership, runtime position, governance
 
@@ -810,21 +964,23 @@ built: no judge module, no rubric, no CI wiring, no new eval-harness code of any
 - **Does not own:** `GenerationIdentity`, any live generator, `CompletenessReport`/the traceability
   graph, any CP5 check (reused, not owned), the golden-baseline harness, or the judge/rubric layer
   itself (named as future scope, not designed).
-- **Runtime position (built for three increments; not CI-wired, not live-wired):** generator +
+- **Runtime position (built for four increments; not CI-wired, not live-wired):** generator +
   caller-supplied identity + curated eval-set case → a runner (`runner.py`'s
-  `run_step_definition_eval`, `feature_content_runner.py`'s `run_feature_content_eval`, or
-  `test_data_runner.py`'s `run_test_data_eval`) → property-check results per case
-  (`step_definition_properties.py`, `feature_content_properties.py`, or `test_data_properties.py`)
+  `run_step_definition_eval`, `feature_content_runner.py`'s `run_feature_content_eval`,
+  `test_data_runner.py`'s `run_test_data_eval`, or `page_object_runner.py`'s
+  `run_page_object_eval`) → property-check results per case (`step_definition_properties.py`,
+  `feature_content_properties.py`, `test_data_properties.py`, or `page_object_properties.py`)
   → aggregate `EvalScore`, keyed by `GenerationIdentity` (`scoring.py`, reused verbatim by all
-  three) → `check_regression` against `EvalBaselineStore`'s current baseline (`baseline_store.py`,
-  reused verbatim by all three — one JSON file per `generator_id`, no collision) →
+  four) → `check_regression` against `EvalBaselineStore`'s current baseline (`baseline_store.py`,
+  reused verbatim by all four — one JSON file per `generator_id`, no collision) →
   `ESTABLISHED_BASELINE` / `PASSED` / `REGRESSED`. This chain exists and is tested for
-  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, and `LiveTestDataGenerator` only
-  (proven against Stub generators, never a live LLM call, in this package's own test suite) — no
-  CI job invokes it, and no `PlatformContext` composition-root method exists for it.
+  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`, and
+  `LivePageObjectGenerator` only (proven against Stub generators, never a live LLM call, in this
+  package's own test suite) — no CI job invokes it, and no `PlatformContext` composition-root
+  method exists for it.
 - **Governance:** recommended `CAP-090` (not yet entered — Consequences) for the Requirement
-  Intelligence Platform. This ADR is **Accepted** for its first three increments (Implementation
+  Intelligence Platform. This ADR is **Accepted** for its first four increments (Implementation
   Notes, above) — it now clears the same bar ADR-0050 cleared (built, tested, and proven against
   each covered generator's own real defect shapes), for the scope D5 defined. It does not claim
-  any of the other four generators' eval sets, the judge layer, or CI/live wiring are built — that
+  any of the other three generators' eval sets, the judge layer, or CI/live wiring are built — that
   remains future, separate work, exactly as D5 sequenced it.
