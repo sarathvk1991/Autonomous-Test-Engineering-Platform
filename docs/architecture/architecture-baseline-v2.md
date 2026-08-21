@@ -43,6 +43,60 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Artifact-Level Generation Cache (CAP-089, ADR-0050) EXTENDED to a fifth and FINAL generator,
+  `LiveUtilityGenerator` — 5 of 5 target generators, the set is now COMPLETE (2026-08-21, step 2 of
+  the identity → cache → eval sequence, immediately after the utility identity fix).** The
+  identical prerequisite page-object needed (a real, threaded `GenerationIdentity`) was closed for
+  utilities by the immediately preceding task; this increment repeats the proven store/key/decorator
+  pattern a FIFTH time, unchanged. **Utility's shape was CONFIRMED, not assumed, before wrapping:**
+  the payload is `LiveUtilityGenerator._build_prompt`'s own inline dict
+  (`action_text`/`captures`/`class_name`/`target_package`/`customqa_constraints`), extracted
+  content-unmodified into a new public `build_utility_payload(context)`
+  (`automation_engineering/generation/live_utility_generator.py`, alongside a new
+  `resolve_utility_identity`, both mirroring the page-object increment's own extraction verbatim);
+  and utility generation is confirmed reuse-first at the ASSET level too, the IDENTICAL shape
+  page-object has (`utility_orchestrator.orchestrate_utility_method` calls `decide_reuse` before any
+  generation, and a `TrustedReuse` BINDS to an existing tracked `UtilityAsset` with no generation
+  call at all — `BoundUtilityMethod` carries no `generation_identity` field whatsoever) — NOT the
+  simpler always-generate shape the first three generators had. **Built and tested (19 new tests, no
+  live LLM call anywhere in the suite):** `automation_engineering/generation/
+  caching_utility_generator.py`'s `CachingUtilityGenerator`, wrapping `UtilityGenerator` exactly as
+  `CachingPageObjectGenerator` wraps `PageObjectGenerator` — same store, same key function
+  (`generation_cache.py` reused verbatim, unmodified, a FIFTH time), same hit/miss/identity-mismatch
+  discipline, same `record_cache_hit` instrumentation, its own
+  `GenerationCacheIdentityMismatchError` (a separate class, same `TransportFailureError`-subclass
+  reason the fourth increment's own note gives). **Proven:** key completeness (a changed
+  `action_text`/`class_name`/`target_package`/`customqa_constraints`/capture shape each MISSES; two
+  separately-built, content-identical contexts HIT); hit correctness (byte-identical to a fresh
+  generation); a genuine identity mismatch on a MISS raises, storing nothing; a HIT records the
+  cache-hit bucket under `utility_generation`, never `unmeasured`; a two-pass, three-artifact proof
+  shows pass 2 makes zero generation calls and returns byte-identical output to pass 1; and — the
+  bind/cache composition proof, mirroring page-object's own exactly — a `TrustedReuse` bind against
+  a real `UtilityAsset` with the specific method needed never touches
+  `CachingUtilityGenerator.generate` at all (zero LLM calls, `last_identity` stays `None`, nothing
+  written to the store), while a sibling `NoMatch` need in the same test reaches the cache normally.
+  **No live measurement this increment — an honest gap, ONE STEP EARLIER than page-object's own:**
+  utility generation is not merely absent from the one measured live distribution — it is not wired
+  into stage 15 AT ALL (confirmed directly in the immediately preceding identity task:
+  `run_automation_engineering_stage` accepts no `utility_matcher`/`utility_generator` parameters, and
+  `stage/models.py`'s own `AssetRecord` docstring states "no utility `AssetRecord` is ever produced
+  here") — so its real token share stays unmeasured until BOTH stage-15 wiring AND live CLI
+  activation happen, two separate, undone decisions. **The cache now covers ALL 5 GENERATORS**
+  (step-def, feature-content, test-data, page-object, utility) — the full set ADR-0050 D5 named;
+  only the remediator remains unwrapped, D5's own explicit, permanent exclusion, not a gap. `make
+  lint`: clean; `make test`: 6073 (6054 + 19 new); `mypy`: whole-repo error count unchanged (436) —
+  the three new/changed files are themselves zero-error under `mypy strict`. Recorded additively in
+  ADR-0050 (a fifth, dated Implementation Note plus additive Consequences/Ownership/Status updates —
+  no body rewrites), the `CAP-089` matrix row (§5.12, Implementation now ✓, maturity now
+  "Implementation Complete"), and this register entry. **Owner:**
+  `automation_engineering/generation/`. **Trigger for the next task:** utility eval (step 3 of 3 —
+  `eval_harness/utility_*.py`, mirroring the page-object eval increment's own pattern, bringing eval
+  coverage to 5 of 7 generators — the last "finish the set" step this arc's own identity → cache →
+  eval sequence names); separately, decide and (if warranted) execute BOTH utility's own stage-15
+  wiring AND live CLI activation (two separate, undone decisions, distinct from this cache's own
+  build), the prerequisite for ever measuring this increment's real token saving. One mentor
+  throughout (Nitin).
+
 - **The `LiveUtilityGenerator` `generation_identity` gap CLOSED (2026-08-21) — the prerequisite
   flagged TWICE (by the page-object identity-threading task and the page-object cache task) for
   utility cache/eval, now resolved.** `GeneratedUtility` (`automation_engineering/generation/

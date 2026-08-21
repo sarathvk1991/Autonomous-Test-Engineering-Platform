@@ -28,6 +28,20 @@ performs no retries.
 ``generate_utilities`` v1.0.0 conforms to the full governed system/user
 template contract (exactly one ``{artifact_context}`` placeholder), the same
 as the other two Layer 3 prompts.
+
+``build_utility_payload``/``resolve_utility_identity`` (additive, the
+artifact-cache extension -- the 5th and final generator, closing ADR-0050's
+own "one remaining generator" gap) mirror
+:func:`~.live_page_object_generator.build_page_object_payload`/
+:func:`~.live_page_object_generator.resolve_page_object_identity` exactly:
+the FORMER extracts :meth:`LiveUtilityGenerator._build_prompt`'s own inline
+payload dict, content-unmodified, to a public, standalone function -- the
+one, single definition of "what determines this generator's output," usable
+by a caching decorator that never constructs a live generator; the LATTER
+resolves this generator's :class:`~requirement_intelligence.llm.
+generation_identity.GenerationIdentity` WITHOUT calling the LLM (ADR-0050
+D3's own "Gap 1" -- the pre-call identity a caching decorator needs to
+compute a key BEFORE deciding hit-or-miss).
 """
 
 from __future__ import annotations
@@ -183,23 +197,79 @@ class LiveUtilityGenerator:
         the single ``{artifact_context}`` placeholder -- only the fields
         ``generate_utilities`` v1.0.0's own INPUT CONTRACT names.
         """
-        input_payload = {
-            "action_text": context.need.text,
-            "captures": [
-                {
-                    "index": capture.index,
-                    "style": capture.style,
-                    "expression_type": capture.expression_type,
-                }
-                for capture in context.need.captures
-            ],
-            "class_name": context.class_name,
-            "target_package": context.target_package,
-            "customqa_constraints": list(context.customqa_constraints),
-        }
+        input_payload = build_utility_payload(context)
         artifact_context = json.dumps(input_payload, indent=2, sort_keys=True)
         user_prompt = self._template.render_user_prompt(artifact_context)
         return f"{self._template.system_prompt}{_SECTION_SEPARATOR}{user_prompt}"
 
 
-__all__ = ["LiveGenerationError", "LiveUtilityGenerator"]
+def build_utility_payload(context: UtilityGenerationContext) -> dict[str, object]:
+    """The exact, deterministic payload :meth:`LiveUtilityGenerator.
+    _build_prompt` serializes into the LLM call -- extracted to a public,
+    standalone function so there is exactly ONE definition of "what
+    determines this generator's output," the same discipline
+    :func:`~.live_step_definition_generator.build_step_definition_payload`/
+    :func:`~.live_page_object_generator.build_page_object_payload` already
+    established (used both to render the prompt and, by
+    :mod:`automation_engineering.generation.caching_utility_generator`, to
+    compute the artifact-generation cache key, ADR-0050 D1). A pure function
+    of ``context`` alone (never ``self``) -- content-unmodified from the
+    inline dict this function replaces, so this extraction is behavior-
+    preserving by construction, not a re-derivation.
+    """
+    return {
+        "action_text": context.need.text,
+        "captures": [
+            {
+                "index": capture.index,
+                "style": capture.style,
+                "expression_type": capture.expression_type,
+            }
+            for capture in context.need.captures
+        ],
+        "class_name": context.class_name,
+        "target_package": context.target_package,
+        "customqa_constraints": list(context.customqa_constraints),
+    }
+
+
+def resolve_utility_identity(
+    *,
+    provider: str,
+    model: str,
+    prompt_registry: PromptRegistry | None = None,
+) -> GenerationIdentity:
+    """The ``generate_utilities`` v1.0.0 :class:`GenerationIdentity`,
+    resolved WITHOUT calling the LLM (ADR-0050 D3's "Gap 1" -- the pre-call
+    identity a caching decorator needs to compute a key BEFORE deciding
+    hit-or-miss). Mirrors
+    :func:`~.live_page_object_generator.resolve_page_object_identity`
+    exactly, scoped to this generator's own prompt id/version.
+
+    ``prompt_id``/``prompt_version``/``prompt_sha256`` are read straight off
+    the registry -- the same, already-sealed source
+    :class:`LiveUtilityGenerator` itself reads in ``__init__``, never
+    re-derived. ``provider``/``model`` are supplied by the SAME caller that
+    already chose them when constructing the live provider -- not invented
+    here; a caller that supplies a value the provider will not actually echo
+    back produces a caching decorator that raises on its first MISS (the
+    decorator's own identity-mismatch safety check), never a silent wrong
+    cache entry.
+    """
+    registry = prompt_registry if prompt_registry is not None else build_prompt_registry()
+    definition = registry.get(_PROMPT_ID, _PROMPT_VERSION)
+    return GenerationIdentity(
+        prompt_id=definition.metadata.prompt_id,
+        prompt_version=definition.metadata.version,
+        prompt_sha256=definition.metadata.sha256,
+        provider=provider,
+        model=model,
+    )
+
+
+__all__ = [
+    "LiveGenerationError",
+    "LiveUtilityGenerator",
+    "build_utility_payload",
+    "resolve_utility_identity",
+]
