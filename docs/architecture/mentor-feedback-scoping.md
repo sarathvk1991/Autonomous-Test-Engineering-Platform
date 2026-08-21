@@ -1986,6 +1986,31 @@ against what this platform actually measured, the efficiency outcome is already 
 three live-measured cache runs; only the reviewability outcome remains open, and it does not
 require the branch-scoped generation architecture he described to get it.
 
+**PAGE-OBJECT PRODUCTION-ACTIVATION DECISION SURFACED (2026-08-21) — the "page-object live-wiring
+blocks one small part" note above is now stale; that blocker closed same-day
+([[cap-page-object-live-wiring-decision]]), and cache + eval were extended to the page-object
+generator the same day this note was written (`20c7a8b`, `11d916e`).** Activation at the
+`scripts/run_requirement_analysis.py` stage-15 call site is now purely a two-parameter flip
+(`LivePageObjectSemanticMatcher(GeminiEmbeddingProvider())` + a page-object generator) — nothing
+else is missing: wiring, matcher, generator, `GenerationIdentity`, cache, and eval Layer 1 are all
+built and tested. Real per-run cost if flipped: live LLM generation calls (Gemini, 12/min pacing)
+plus live embedding calls (90/min pacing) on every `--with-automation-engineering` run — the one
+real prior full-corpus measurement was 32 page objects generated in 145.8s with zero throttling
+([[cap-page-object-live-regen-findings]]). The historical pattern held here too: that same live run
+surfaced 3 real defects only live generation exposed (method-name conveyance, DI constructor
+mismatch, fictional `BasePage` helpers) — all 3 are now fixed and the tracked baseline compiles
+clean (`mvn clean test-compile` exit 0, committed `4db1ea2`,
+[[cap-compile-gap-closed]]); the new page-object eval (`eval_harness/page_object_*.py`) exists
+specifically to catch a regression of those 3 shapes automatically. **Decision: DEFER, not
+activate-now or validate-first** — `--with-automation-engineering` is off by default and every live
+page-object run to date has been a manual, investigative session (no CI wiring, no scheduled/
+production runs found anywhere in this repo). Activating would add real per-run cost for a saving
+and an eval that nothing currently consumes — the same "no consumer" reasoning already applied to
+runtime-citation and the eval judge layer. If a concrete need appears (a new AUT, or a decision to
+start measuring the cache saving live), the low-risk path is Option B (a scoped validation run
+through the real call site) before flipping it on for every run, not a blind Option A. Nothing
+built, changed, or activated by this note — investigation only.
+
 ---
 
 ### Item 5 — Centralized constitution
