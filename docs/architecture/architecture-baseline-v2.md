@@ -43,6 +43,73 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Generation Quality Eval Harness (CAP-090, ADR-0051) EXTENDED to a fifth generator,
+  `LiveUtilityGenerator` — 5 of 7 target generators (2026-08-21, step 3 of 3 of the identity → cache
+  → eval sequence, immediately after the utility artifact-cache increment) — THE MILESTONE: the
+  "finish the set" arc this three-step sequence pursued is COMPLETE.** Repeats the proven curated-
+  eval-set + deterministic-property-check + regression-gate pattern a FIFTH time, reusing
+  `models.py`/`scoring.py`'s `score_eval_set`/`baseline_store.py` verbatim, unchanged (no changes to
+  any of the three). **Grounding basis confirmed first, not assumed: CONTRACT, not incident.**
+  Utility generation has never once run live (not wired into stage 15 at all, absent from the one
+  measured live token distribution) — unlike page-object's three real, measured 2026-08-10 defects,
+  there is no real utility incident to replay; every check is grounded in the governed
+  `generate_utilities` v1.0.0 prompt's own explicit OUTPUT CONTRACT/CONSTRAINTS text instead, the
+  same grounding basis feature-content/test-data used. **What utility generation actually produces,
+  read directly:** one `final` Java class with a private no-argument constructor and static methods
+  only, mirroring the one real, currently-tracked utility this platform has ever committed
+  (`ConfigReader`, confirmed by a direct `javalang` parse: `final`, one `{'private'}`-modifier no-arg
+  constructor, every method `'static'`). **Five checks built — the honest count, not forced to match
+  any prior increment's own number** (`eval_harness/utility_properties.py`):
+  `check_no_markdown_fence`/`check_class_name_matches` (contract-grounded, ported from the same
+  OUTPUT CONTRACT clause shape test-data already used for a different artifact type),
+  `check_no_selenium_or_basepage_reference` (a stricter cousin of test-data's own WebDriver check —
+  utility's contract additionally forbids extending `BasePage`), `check_no_long_method` (composes
+  CP3's real, public `evaluate_long_method` DIRECTLY, no port needed — "ANY generated class... no
+  class-role restriction," utility included), and `check_static_utility_shape` — a genuinely NEW
+  structural check no existing CP3/CP4 criterion already covers, guarding utility's own most
+  distinctive contract clause (final class, one private no-arg constructor, static-only methods),
+  parsed via the same `javalang`/`parse_java_file` primitive CP3 uses, degrading to `NOT_APPLICABLE`
+  on unparseable Java or on text declaring no class under the expected name at all. **One check
+  considered and honestly NOT built:** a method-parameter-shape check (the INPUT CONTRACT's own
+  "parameters must correspond to captures, in order" clause) was rejected — unlike page-object's
+  explicit, caller-supplied `method_name`, `UtilityGenerationContext` names no specific method to
+  anchor such a check against; a check here would have to guess, which is a heuristic, not a
+  deterministic property check. **The curated eval set, a HYBRID seed, reported honestly**
+  (`eval_harness/utility_eval_set.py`, `UTILITY_EVAL_SET_VERSION` "1.0.0"): two cases seeded directly
+  from `ConfigReader`'s own two real, currently-tracked methods (`env`/`data`), `class_name`/
+  `target_package` supplied as its own real tracked values (`"ConfigReader"`/`"com.automation.base"`
+  — honestly NOT `DEFAULT_UTILITY_TARGET_PACKAGE`, since `ConfigReader` predates that convention);
+  one case built the way `orchestrate_utility_method`'s own `NoMatch` branch actually constructs a
+  context for a brand-new need TODAY (`target_package=DEFAULT_UTILITY_TARGET_PACKAGE`, `class_name`
+  computed via the real `derive_utility_class_name` function, never hardcoded), since no second real
+  tracked utility exists to seed a third real-corpus case from. **Proven (31 new tests, no live LLM
+  call anywhere in the suite):** each check independently proven to FAIL on a fixture reproducing its
+  own real defect shape and PASS on real/constructed clean content (`check_static_utility_shape`
+  alone across four independent sub-cases plus two `NOT_APPLICABLE` paths); the full regression arc
+  end to end via `StubUtilityGenerator` — a clean generator's first run has no prior baseline
+  (`ESTABLISHED_BASELINE`) and is explicitly recorded as one; a generator standing in for a worse
+  model (a markdown code fence — the prompt's own single most explicit forbidden defect shape,
+  mirroring feature-content's identical choice, since no real historical defect exists to replay) is
+  caught (`REGRESSED`) relative to that baseline; re-running the same clean generator stays `PASSED`.
+  `eval_harness/utility_runner.py`'s `run_utility_eval` mirrors the other four runners' own shape
+  exactly. **THE MILESTONE:** `LiveUtilityGenerator` is now BOTH cached (CAP-089) AND eval'd
+  (CAP-090) — every one of ADR-0050's five in-scope generators now has BOTH cache AND eval; no
+  in-scope generator has neither. Two honest caveats carried forward, not resolved here: utility's
+  grounding stays CONTRACT (no real defect has ever been observed, because utility generation has
+  never run live); utility's eval score, like its cache sibling, stays unmeasured against any real
+  corpus until utility generation is BOTH wired into stage 15 AND activated in the live CLI — two
+  separate, undone decisions. `make lint`: clean; `make test`: 6104 (6073 + 31 new); `mypy`:
+  whole-repo error count unchanged (436) — the five new/changed files are themselves zero-error
+  under `mypy strict`. Recorded additively in ADR-0051 (a fifth, dated Implementation Note plus
+  additive Consequences/Ownership/Status updates — no body rewrites), the `CAP-090` matrix row
+  (§5.13, five-of-seven, the milestone note), and this register entry. **Owner:** `eval_harness/`.
+  **Trigger for the next task:** extend the same pattern to the remaining two generators
+  (`LiveFeatureRemediator`, `RequirementAnalysisService`) when warranted; separately, resolve the
+  live-vs-cached LLM-in-CI open question (ADR-0051 D2) and CI/runtime integration for all five built
+  generators; separately, decide and (if warranted) execute utility's own stage-15 wiring and live
+  CLI activation (the prerequisite for ever measuring utility's real eval score against a live
+  corpus, distinct from this eval increment's own build). One mentor throughout (Nitin).
+
 - **Artifact-Level Generation Cache (CAP-089, ADR-0050) EXTENDED to a fifth and FINAL generator,
   `LiveUtilityGenerator` — 5 of 5 target generators, the set is now COMPLETE (2026-08-21, step 2 of
   the identity → cache → eval sequence, immediately after the utility identity fix).** The

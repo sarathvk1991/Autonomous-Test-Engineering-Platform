@@ -1,12 +1,14 @@
 # ADR-0051 — Generation Quality Eval Harness (Layer 1: Deterministic Property Checks)
 
-- **Status:** Accepted (Layer 1, four of seven target generators —
-  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`, and
-  `LivePageObjectGenerator` — see the "Implementation Note" sections, below; the remaining three
-  generators and the judge layer, D5, remain future, separate work). **All three of ADR-0050's
-  own measured/cached token sinks now have quality-drift eval coverage** (step-def,
-  feature-content, test-data). **`LivePageObjectGenerator` (2026-08-21) is now both cached
-  (CAP-089) and eval'd (CAP-090) — the page-object live-wiring arc's own extensions are complete.**
+- **Status:** Accepted (Layer 1, five of seven target generators —
+  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`,
+  `LivePageObjectGenerator`, and `LiveUtilityGenerator` — see the "Implementation Note" sections,
+  below; the remaining two generators (`LiveFeatureRemediator`, `RequirementAnalysisService`) and
+  the judge layer, D5, remain future, separate work). **All three of ADR-0050's own measured/cached
+  token sinks now have quality-drift eval coverage** (step-def, feature-content, test-data).
+  **`LivePageObjectGenerator` and `LiveUtilityGenerator` (2026-08-21) are now both cached (CAP-089)
+  and eval'd (CAP-090) — the "finish the set" arc is COMPLETE: every one of ADR-0050's five
+  in-scope generators now has BOTH cache and eval; no in-scope generator has neither.**
 - **Date:** 2026-08-17
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR *is* the governing design. It records the decisions
@@ -26,12 +28,13 @@
   checks, D3, never extended); ADR-0050 (Artifact-Level Generation Cache — sibling precedent for a
   new, focused, ADR-first capability, and the module this harness's own scorecard store shape
   mirrors, D2).
-- **Runtime status: Built and tested (Layer 1, four of seven target generators — see the
+- **Runtime status: Built and tested (Layer 1, five of seven target generators — see the
   "Implementation Note" sections, below).** `eval_harness/` exists: a curated eval set,
   deterministic property checks, scoring/aggregation, CAP-088 coverage consumption, and a
   regression-gated baseline store — for `LiveStepDefinitionGenerator` (first increment),
   `LiveFeatureContentGenerator` (second increment, 2026-08-20), `LiveTestDataGenerator` (third
-  increment, 2026-08-20), and `LivePageObjectGenerator` (fourth increment, 2026-08-21). **Not
+  increment, 2026-08-20), `LivePageObjectGenerator` (fourth increment, 2026-08-21), and
+  `LiveUtilityGenerator` (fifth increment, 2026-08-21). **Not
   CI-wired and not live-wired.** No CI job, no `PlatformContext`
   composition-root method, and no live LLM call anywhere in this package's own test suite — every
   proof runs against a Stub generator seeded with captured/fixture text (D2's own "live-vs-cached"
@@ -869,6 +872,152 @@ CAP-089's own register note exactly; nothing here needed reconciling in the ADR'
 
 ---
 
+## Implementation Note (2026-08-21) — D5's fifth increment: `LiveUtilityGenerator`, built and tested — the "finish the set" arc COMPLETE
+
+Extends D5's own "same pattern, applied once step-def's own build proves the mechanism" claim to a
+FIFTH generator — the step-3-of-3 close of a three-step arc (identity → cache → eval) that started
+with `LiveUtilityGenerator`'s own `GenerationIdentity` gap fix (commit `925c9ef`, "Fix the
+generation_identity gap in the UTILITY generator") and continued through its own fifth artifact-cache
+increment (CAP-089, commit `a8038be`, "Extend the artifact cache to the UTILITY generator") — both
+prerequisites this ADR's own eval-score key (`GenerationIdentity`) and curated-set pattern needed.
+One mentor throughout (Nitin).
+
+**Pre-flight.** Clean tree, `main`, tip `a8038be` (the utility artifact-cache increment). `make
+lint`/`make test` clean, 6073 unchanged.
+
+**Grounding basis confirmed first, as expected — CONTRACT, not incident.** Unlike page-object
+(three real, MEASURED defects from a live regeneration run), utility generation has never once run
+live: `LiveUtilityGenerator` exists, but `CachingUtilityGenerator`'s own module docstring
+(2026-08-21) already records that utility generation is not wired into stage 15 at all
+(`run_automation_engineering_stage` accepts no `utility_matcher`/`utility_generator` parameters),
+and utility was absent from the one measured live token distribution entirely
+(`docs/architecture/mentor-feedback-scoping.md`). **There is no real utility incident to replay.**
+Every check below is grounded in the governed `generate_utilities` v1.0.0 prompt's own explicit
+OUTPUT CONTRACT/CONSTRAINTS text (`automation_engineering/prompts/versions/
+generate_utilities_v1.0.0.txt`) — the same grounding basis feature-content/test-data used, stated
+honestly, not dressed up as an incident it is not.
+
+**What utility generation actually produces, read directly, not assumed.** `LiveUtilityGenerator`
+(`automation_engineering/generation/live_utility_generator.py`) returns raw Java source for one
+`final` class with a private no-argument constructor and static methods only — mirroring the one
+real, currently-tracked utility this platform has ever committed, `ConfigReader`
+(`test-suite-baseline/src/test/java/com/automation/base/ConfigReader.java`, confirmed directly by
+parsing it with `javalang`: a `final` class, one `{'private'}`-modifier no-arg constructor, and
+every method — `load`/`env`/`data`/`require` — carrying `'static'`). `UtilityGenerationContext`
+(`utility_generator.py`) carries no `method_name` field the way `PageObjectGenerationContext` does
+— no caller-supplied method name to check verbatim presence of, unlike page-object's own
+`check_method_names_present`.
+
+**Five checks — the honest count, not forced to match any prior increment's own number.**
+`utility_properties.py`: `check_no_markdown_fence`/`check_class_name_matches` (contract-grounded,
+ported from the same OUTPUT CONTRACT clauses `test_data_properties.py` already ported for a
+different artifact type), `check_no_selenium_or_basepage_reference` (a stricter cousin of
+`test_data_properties.check_no_webdriver_reference` — utility's own contract additionally forbids
+extending `BasePage`, which test-data's contract does not need to state), `check_no_long_method`
+(composes CP3's real, public `evaluate_long_method` directly — "ANY generated class... no
+class-role restriction," utility included), and `check_static_utility_shape` — a genuinely NEW
+structural check, held by no other artifact type this harness covers: guards utility's own most
+distinctive contract clause ("final... exactly one private, no-argument constructor... every method
+must be static"), parsed via `javalang`/`parse_java_file` the same way CP3 does, degrading to
+`NOT_APPLICABLE` (not a false `FAILED`) on unparseable Java or on text declaring no class under
+`context.class_name` at all.
+
+**One check considered and NOT built, reported honestly.** A method-parameter-shape check (the
+INPUT CONTRACT's own "your method's own parameters must correspond to these [captures], in order"
+clause) was considered and rejected: unlike page-object (an explicit, caller-supplied `method_name`
+to anchor "this exact method's parameters" against), `UtilityGenerationContext` names no specific
+method at all — a freshly generated class may declare one or several methods, and nothing in the
+context says which one the captures bind to. A check here would have to guess, which is a
+heuristic with no real anchor, not a deterministic property check — left out on that basis, the same
+"don't force a check with no real anchor" discipline test-data's own field-variant-coverage finding
+already established.
+
+**Built:** `eval_harness/utility_eval_set.py`, `utility_properties.py`, `utility_runner.py` —
+reusing `models.py`, `scoring.py`'s `score_eval_set`, and `baseline_store.py` verbatim,
+generator-agnostic exactly as D2 designed them (no changes to any of the three — the FIFTH proof).
+No coverage-shaped check was built, for the identical reason page-object's own increment gave: a
+utility keys on `class_name`, not a `requirement_id` — no natural `CompletenessReport` node to
+consume.
+
+- **The curated eval set (D2), a HYBRID seed, reported honestly.** `UTILITY_EVAL_SET`
+  (independently versioned, `UTILITY_EVAL_SET_VERSION`) — unlike page-object's three cases (all
+  seeded from a real, 33-class tracked catalog), utility has exactly ONE real, currently-tracked
+  utility class (`ConfigReader`) and no committed class in `com.automation.utils`
+  (`DEFAULT_UTILITY_TARGET_PACKAGE`) at all. Two cases are seeded directly from `ConfigReader`'s own
+  two real methods (`env`/`data`), `class_name`/`target_package` supplied as its own real, tracked
+  values (`"ConfigReader"`/`"com.automation.base"` — honestly NOT the default package, since
+  `ConfigReader` predates that convention). The third case is built the way
+  `orchestrate_utility_method`'s own `NoMatch` branch actually constructs a context for a brand-new
+  need TODAY (`target_package=DEFAULT_UTILITY_TARGET_PACKAGE`,
+  `class_name=derive_utility_class_name(action_text)` computed via the real function, never
+  hardcoded) — the honest current production shape, since no second real tracked utility exists to
+  seed a third real-corpus case from.
+- **Five deterministic property checks (D2/D3, composed not invented — four contract-grounded,
+  one genuinely new structural check).** Detailed above; each returns `PASSED`, `FAILED`, or
+  `NOT_APPLICABLE`.
+- **Scoring, keyed by `GenerationIdentity` (D2).** Reuses `eval_harness.scoring.score_eval_set`
+  verbatim — the FIFTH generator to do so unchanged.
+- **The regression gate, reused verbatim (D2).** `EvalBaselineStore`/`check_regression` — no
+  changes; `generator_id="utility_generation"` (`LiveUtilityGenerator.CALL_TYPE`) stores to its own
+  separate file, no collision with the other four generators' baselines.
+- **The runner (D5).** `utility_runner.py`'s `run_utility_eval` — takes any `UtilityGenerator`
+  (Protocol-typed, agnostic to live/stub/cached) plus a caller-supplied `GenerationIdentity`,
+  mirroring the other four runners' own shape exactly.
+
+**Proven two ways, both deterministic, no live LLM call anywhere in this package's own test suite
+(31 new tests):**
+
+1. **Each property check catches its own real defect shape and passes real/constructed clean
+   content** (`test_eval_harness_utility_properties.py`) — `_CLEAN_CONFIG_READER` is the real,
+   currently-tracked `ConfigReader.java` content verbatim (no reconstruction needed, mirroring
+   test-data's own finding that a Java generator's raw output IS its final text); `_CLEAN_
+   DATE_DISPLAY` is the constructed clean fixture for the eval set's own third, non-real-tracked
+   case. `check_static_utility_shape` is proven against FOUR independent sub-cases (a non-final
+   class, a public no-arg constructor, a parameterized constructor, a non-static method) plus two
+   `NOT_APPLICABLE` paths (unparseable Java; no class of the expected name declared at all) — not
+   merely one defect shape. `check_no_selenium_or_basepage_reference` is proven against both its own
+   proscriptions independently (a `WebDriver` import, an `extends BasePage` declaration).
+   `check_no_long_method` is proven to actually FIRE on a real 45-line method, not structurally
+   unreachable. All five checks PASS both real/constructed clean fixtures unmodified.
+2. **The full arc — scores-first baseline establishment, then regression detection — end to end**
+   (`test_eval_harness_utility_runner.py`), driven by `StubUtilityGenerator` seeded with the
+   real/constructed clean text: a clean generator's first run has no prior baseline
+   (`ESTABLISHED_BASELINE`) and is explicitly recorded as one; a generator standing in for a worse
+   model (a markdown code fence — the prompt's own single most explicit, unconditionally forbidden
+   defect shape, mirroring feature-content's identical choice — reintroduced into every case, since
+   no real historical utility defect exists to replay) is caught (`REGRESSED`) relative to that
+   baseline; re-running the same clean generator stays `PASSED`.
+
+**Scope held exactly as ADR-0051 D5 sequenced it.** Five of seven target generators
+(`LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`,
+`LivePageObjectGenerator`, `LiveUtilityGenerator`) are built. Two generators/skills remain out of
+scope (`LiveFeatureRemediator` — excluded per ADR-0050 D5's own "repairs a prior attempt...
+independently rare" reasoning, mirrored here; `RequirementAnalysisService`), and the entire
+rubric/LLM-judge layer (Layer 2) remains unbuilt (Investigation Note, above: not worth building
+now). **Not CI-wired, not live-wired** — no `PlatformContext` composition-root method, no CI job
+exists; the live-vs-cached LLM-in-CI question (ADR-0051 D2) stays exactly as open as the ADR named
+it.
+
+**THE MILESTONE — the "finish the set" arc is COMPLETE.** `LiveUtilityGenerator` is now BOTH cached
+(CAP-089) AND eval'd (CAP-090), mirroring `LivePageObjectGenerator`'s own identical milestone one
+increment earlier. **Every one of ADR-0050's five in-scope generators (`LiveStepDefinitionGenerator`,
+`LiveFeatureContentGenerator`, `LiveTestDataGenerator`, `LivePageObjectGenerator`,
+`LiveUtilityGenerator`) now has BOTH cache (CAP-089, 5 of 5) AND eval (CAP-090, 5 of 7) — no in-scope
+generator has neither.** Two honest caveats, carried forward, not resolved by this increment:
+utility's own grounding is CONTRACT, not incident (no real defect has ever been observed, because
+utility generation has never run live); and, exactly like its cache sibling, utility's eval score
+stays unmeasured against any real corpus until utility generation is BOTH wired into stage 15 AND
+activated in the live CLI — two separate, deliberate decisions, neither made by this increment. The
+judge layer (Layer 2) and the two remaining eval-target generators (`LiveFeatureRemediator`,
+`RequirementAnalysisService`) remain future, separate work.
+
+Gate: `make lint` clean; `make test` 6104 passed (6073 + 31 new, itemized above); `mypy`:
+whole-repo error count unchanged (436, confirmed) — the five new/changed files are themselves
+zero-error under `mypy strict`. Tree: 3 new files under `eval_harness/`, 2 new test files, this ADR
+amended further.
+
+---
+
 ## Consequences
 
 - **Enables, proven for the first increment (Implementation Note, above):** a curated, versioned,
@@ -954,6 +1103,25 @@ CAP-089's own register note exactly; nothing here needed reconciling in the ADR'
   `LivePageObjectGenerator` is now both cached (CAP-089) and eval'd (CAP-090) — the page-object
   live-wiring arc's own extensions are complete; `LiveUtilityGenerator` remains the one generator
   with neither. Three generators and the judge layer remain future, separate work.
+- **Extended to a fifth generator, additively (2026-08-21, Implementation Note above) — the
+  "finish the set" arc COMPLETE.** `LiveUtilityGenerator`'s Layer 1 is now also built, tested, and
+  Accepted for its own scope — the FIFTH proof that `models.py`/`scoring.py`'s
+  `score_eval_set`/`baseline_store.py` are genuinely generator-agnostic. Utility's own checks are
+  CONTRACT-grounded, not incident-grounded (confirmed, not assumed: utility generation has never
+  run live, so no real defect exists to replay) — four checks port the governed
+  `generate_utilities` v1.0.0 prompt's own OUTPUT CONTRACT/CONSTRAINTS text or compose CP3's real
+  `evaluate_long_method` directly, and one (`check_static_utility_shape`) is a genuinely NEW
+  structural check no existing CP3/CP4 criterion already covers, guarding utility's own
+  most distinctive contract clause (final class, one private no-arg constructor, static-only
+  methods). Five checks — the honest count, not forced to match any prior increment's own number;
+  one method-parameter-shape check was considered and correctly NOT built, since
+  `UtilityGenerationContext` names no specific method to anchor it against. **Milestone:**
+  `LiveUtilityGenerator` is now both cached (CAP-089) and eval'd (CAP-090) — mirroring page-object's
+  own identical milestone one increment earlier. **Every one of ADR-0050's five in-scope generators
+  now has BOTH cache AND eval; no in-scope generator has neither — the "finish the set" arc this
+  three-step identity→cache→eval sequence pursued is COMPLETE.** Two generators/skills
+  (`LiveFeatureRemediator`, `RequirementAnalysisService`) and the judge layer remain future,
+  separate work.
 
 ## Ownership, runtime position, governance
 
@@ -964,23 +1132,25 @@ CAP-089's own register note exactly; nothing here needed reconciling in the ADR'
 - **Does not own:** `GenerationIdentity`, any live generator, `CompletenessReport`/the traceability
   graph, any CP5 check (reused, not owned), the golden-baseline harness, or the judge/rubric layer
   itself (named as future scope, not designed).
-- **Runtime position (built for four increments; not CI-wired, not live-wired):** generator +
+- **Runtime position (built for five increments; not CI-wired, not live-wired):** generator +
   caller-supplied identity + curated eval-set case → a runner (`runner.py`'s
   `run_step_definition_eval`, `feature_content_runner.py`'s `run_feature_content_eval`,
-  `test_data_runner.py`'s `run_test_data_eval`, or `page_object_runner.py`'s
-  `run_page_object_eval`) → property-check results per case (`step_definition_properties.py`,
-  `feature_content_properties.py`, `test_data_properties.py`, or `page_object_properties.py`)
+  `test_data_runner.py`'s `run_test_data_eval`, `page_object_runner.py`'s
+  `run_page_object_eval`, or `utility_runner.py`'s `run_utility_eval`) → property-check results per
+  case (`step_definition_properties.py`, `feature_content_properties.py`,
+  `test_data_properties.py`, `page_object_properties.py`, or `utility_properties.py`)
   → aggregate `EvalScore`, keyed by `GenerationIdentity` (`scoring.py`, reused verbatim by all
-  four) → `check_regression` against `EvalBaselineStore`'s current baseline (`baseline_store.py`,
-  reused verbatim by all four — one JSON file per `generator_id`, no collision) →
+  five) → `check_regression` against `EvalBaselineStore`'s current baseline (`baseline_store.py`,
+  reused verbatim by all five — one JSON file per `generator_id`, no collision) →
   `ESTABLISHED_BASELINE` / `PASSED` / `REGRESSED`. This chain exists and is tested for
-  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`, and
-  `LivePageObjectGenerator` only (proven against Stub generators, never a live LLM call, in this
-  package's own test suite) — no CI job invokes it, and no `PlatformContext` composition-root
-  method exists for it.
-- **Governance:** recommended `CAP-090` (not yet entered — Consequences) for the Requirement
-  Intelligence Platform. This ADR is **Accepted** for its first four increments (Implementation
-  Notes, above) — it now clears the same bar ADR-0050 cleared (built, tested, and proven against
-  each covered generator's own real defect shapes), for the scope D5 defined. It does not claim
-  any of the other three generators' eval sets, the judge layer, or CI/live wiring are built — that
+  `LiveStepDefinitionGenerator`, `LiveFeatureContentGenerator`, `LiveTestDataGenerator`,
+  `LivePageObjectGenerator`, and `LiveUtilityGenerator` only (proven against Stub generators, never
+  a live LLM call, in this package's own test suite) — no CI job invokes it, and no
+  `PlatformContext` composition-root method exists for it.
+- **Governance:** `CAP-090` is entered (`docs/governance/platform-capability-matrix.md` §5.13) for
+  the Requirement Intelligence Platform. This ADR is **Accepted** for its first five increments
+  (Implementation Notes, above) — it now clears the same bar ADR-0050 cleared (built, tested, and
+  proven against each covered generator's own real defect shapes, or its own honestly-stated
+  contract grounding where no incident exists), for the scope D5 defined. It does not claim either
+  of the two remaining generators' eval sets, the judge layer, or CI/live wiring are built — that
   remains future, separate work, exactly as D5 sequenced it.
