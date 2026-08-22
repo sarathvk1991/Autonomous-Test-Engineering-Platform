@@ -2264,6 +2264,158 @@ This is the cheapest of all eight items to actually build, since both halves of 
 (per-stage scoping, multi-provider seam) are already proven in production. The only real blocker is
 the procurement decision the mentor's own framing already names as a precondition.
 
+**LICENSING DECISION SURFACED (2026-08-22) — decision-support only, nothing built, configured, or
+changed.** *Pre-flight.* Clean tree, `main`, tip `0b2ad3b`. `make lint` clean. `make test`: 6106
+passed, unchanged. This note adds text only to this document; nothing else touched.
+
+**What the mechanism supports today, verified against the real construction sites, not the prior
+note's summary.** `scripts/run_requirement_analysis.py`'s live-wiring (`handle_analyze`) constructs
+exactly **two** provider instances per run, not five: a shared `provider` (`context.create_provider
+(args.provider, args.model)`, resolving `GEMINI_MODEL`/`args.model`) handed to
+`LiveFeatureContentGenerator`, `LiveFeatureRemediator`, and `LiveTestDataGenerator` alike (three
+generators, one model), and a second, separately-constructed `step_definition_provider`
+(`_step_definition_model()`, resolving `STEP_DEF_GEMINI_MODEL`) for `LiveStepDefinitionGenerator`
+alone. `LivePageObjectGenerator`/`LiveUtilityGenerator` are not constructed anywhere in this file at
+all — confirmed by grep, zero matches — so they have no live model assignment today, scoped or
+otherwise (the pre-existing, already-recorded `[[cap-page-object-live-wiring-decision]]` DEFER).
+**The real granularity is per-carve-out, not per-stage:** the mechanism *can* scope any generator
+individually (each is a constructor-injected `LLMProvider`, per `llm_factory.create_provider`'s own
+"no other change required anywhere in the platform" contract for adding a provider or a caller-side
+override) — but only one such override has ever been built (`STEP_DEF_GEMINI_MODEL`). Three
+generators still share one undifferentiated model; two more have no live model at all. "Per-stage
+model scoping exists" is accurate as a *capability*; "per-stage model assignment exists" is not yet
+true as a *configuration*.
+
+**What's configured today, read from the actual live `.env` (gitignored), not `.env.example`'s
+documented default.** `GEMINI_MODEL=gemini-3.1-flash-lite` — this, not `gemini_provider.py`'s own
+code-level fallback (`gemini-2.5-pro`) or `.env.example`'s committed illustration
+(`gemini-2.5-pro`), is what `requirement_analysis`, `feature_content_generation`,
+`feature_remediation`, and `test_data_generation` actually run on. `STEP_DEF_GEMINI_MODEL` is unset
+in this `.env`, so `step_definition_generation` falls through to `_DEFAULT_STEP_DEFINITION_MODEL`,
+`gemini-3.5-flash`. `page_object_generation`/`utility_generation`: not configured, because not
+live-constructed. `AZURE_OPENAI_*` entries exist in `.env` but hold placeholder values
+(`https://your-resource.openai.azure.com/`, `your_azure_openai_api_key_here`) — confirming the
+provider is unlicensed here too, not merely unimplemented in code.
+
+**Nitin's pinning ask: name-only, confirmed a real, already-flagged gap, not newly discovered.**
+`GenerationIdentity` (`requirement_intelligence/llm/generation_identity.py`) has `model: str` and
+`provider: str` fields — the hosted model's *name* (e.g. `"gemini-3.1-flash-lite"`), never a version
+or content-hash of that model's own behavior. This is the identical gap ADR-0050's own design note
+already named verbatim: "the env var names a hosted model, never a content hash of its own
+behavior, a structural limitation caching can pin around but never fully close." By contrast,
+prompt pinning is genuinely name+version+content-hash (`prompt_id`/`prompt_version`/`prompt_sha256`,
+`PromptRegistry`-enforced, immutable after `seal()`). **So: model pinning is partial** — a caller
+can pin *which named model* a stage uses (already true, via env var, for the one carve-out), but not
+*which version of that model's behavior* a hosted provider serves under that name — a gap this
+platform cannot close unilaterally (it depends on the provider publishing dated/pinned model
+snapshots, which neither Gemini's `GEMINI_MODEL` env-var shape nor this platform's own
+`GenerationIdentity` schema currently captures). This connects #8 directly to the artifact-cache
+work's own residual risk (ADR-0050, above) rather than opening a new one.
+
+**The real choice-space, grounded in the measured token distribution
+(`[[cap-artifact-cache-first-increment-built]]`'s own 2026-08-12 run,
+`run-20260812T064317663150Z-a20b0cc2`).** `feature_content_generation` (45.4%, 20 calls) and
+`test_data_generation` (43.4%, 20 calls) are the two token-heavy generation stages — together ~89%
+of measured spend — and both, today, already run on the cheapest configured model
+(`gemini-3.1-flash-lite`, the shared default). `step_definition_generation` recorded **zero** tokens
+in that run (reuse hits + pre-generation escalation absorbed all 60 needs) but is the one stage with
+a **measured, real defect history** at the model-choice level (`gemini-2.5-flash`'s 76% defect rate,
+corrected to `gemini-3.5-flash`) — already acted on, already the one existing carve-out. No
+comparable defect measurement exists for `feature_content_generation` or `test_data_generation` on
+`gemini-3.1-flash-lite`: this same live run recorded feature generation CP2-clean for all 20
+requirements on the first pass, and the `gemini-model-evaluation.md` benchmark (a different,
+L1-`requirement_analysis`-scoped comparison, not L2/L3, but the only controlled multi-model
+Gemini-family comparison this platform has run) shows `gemini-3.1-flash-lite` matching
+`gemini-2.5-flash`'s completeness and determinism at 8.4x the speed and lowest token cost —
+`gemini-3-flash-preview` scored highest completeness but was non-deterministic and ~200x slower.
+`page_object_generation`/`utility_generation` are absent from the token distribution entirely
+(unwired, per above) — the earlier-recorded live-regen defect line
+(`[[cap-page-object-live-regen-findings]]`) is a real, separate quality concern for those two
+generators specifically, orthogonal to this item's licensing question and already tracked under the
+page-object work, not this one.
+
+**Complexity map, verified against real code, not assumed from the mentor's own framing.** Every
+stage that calls an LLM at all is a **generation** stage — `requirement_analysis` (L1, one call),
+`feature_content_generation`/`feature_remediation` (L2), `step_definition_generation`/
+`page_object_generation`/`utility_generation`/`test_data_generation` (L3): six generators, one
+`LLMProvider` call each, "one prompt in, one artifact out" — the exact shape the artifact-cache
+design note already characterized in full. **Every governance stage checked
+(`suite_quality_governance`'s CP1–CP8) is deterministic, confirmed directly, not inferred:**
+`suite_quality_governance/cp5/pattern_matching.py`'s own docstring states its comparison is "never
+[an] LLM-generated assessment," and CAP-080A's own frozen pipeline
+(`RuleEvaluator`→`AssessmentEngine`→`DecisionEngine`→`GovernanceService`) is rule-based throughout —
+no governance stage in this platform calls an LLM today. **The mentor's own three-way split
+("generation" / "structural governance" / "semantic governance") therefore only has a real target
+for its first leg.** "Structural governance → Haiku" and "semantic governance → OpenAI" both
+presuppose an LLM-driven governance stage that does not exist yet — CP1–CP8 are already
+deterministic-and-cheap (zero token cost, not merely a low-cost model), so there is nothing today
+for either leg to route. The platform's one existing "semantic" LLM-adjacent use is
+`GeminiEmbeddingProvider` (`automation_engineering/reuse/embeddings.py`, its own
+`EMBEDDING_MODEL` env var) — catalog reuse-matching, a semantic **match**, not a governance
+**gate** — a different concern from what "semantic governance" names, and already independently
+model-scoped (its own env var, mirroring the same pattern).
+
+**What the licensing decision actually requires, concretely.** Only `gemini` is a real, live
+provider. `azure_openai` is a genuine `NotImplementedError` stub (every method raises), and this
+environment's own `.env` confirms it is unlicensed in practice, not just unbuilt (placeholder
+endpoint/key/deployment values). No Anthropic (Sonnet/Haiku) provider exists in any form — not even
+a stub — `_PROVIDER_REGISTRY` (`llm_factory.py`) lists exactly `{"gemini", "azure_openai"}`. So:
+**(a) if only Gemini is ever licensed,** the real choice-space is Gemini-internal
+(`flash-lite`/`flash`/`flash-preview`/`pro`), and the mentor's cross-provider routing does not apply
+at all. **(b) if Sonnet/Haiku/OpenAI licensing lands,** the engineering seam to add them is proven
+(mirror `AzureOpenAIProvider`'s shape for a new `AnthropicProvider`, register it, then reuse
+`STEP_DEF_GEMINI_MODEL`'s own env-scoped pattern per generator) — but the "structural/semantic
+governance" legs of the mentor's specific routing still have no LLM-driven consumer to attach to
+until/unless a governance stage becomes LLM-driven, which is a separate, unproposed design change,
+not a licensing question.
+
+**Cost/quality tradeoff, per stage, grounded in the two real measurements this platform actually
+has.** For the two token-heavy stages (`feature_content_generation`, `test_data_generation`): both
+already run on the cheapest available model, and no defect measurement exists to justify paying for
+a stronger one — moving them to a costlier model would spend more with no measured quality
+justification, the inverse of the step-def case. For `step_definition_generation`: the one stage
+with a real, measured, resolved model-quality incident — already on its corrected model
+(`gemini-3.5-flash`), already isolated from the shared default via the existing carve-out. There is,
+today, **no second stage with a comparable measured defect signal** to justify extending the
+carve-out pattern further.
+
+**Options assessed.**
+- **Option A (decide Gemini-only routing now):** buildable immediately (seam exists), but nothing in
+  the measured evidence names a stage that would benefit — the two heavy stages are already on the
+  cheap model with no defect signal, and the one stage with a defect signal already has its own
+  carve-out. Would be a configuration change made without a measured reason.
+- **Option B (defer for provider licensing):** the mentor's actual "Sonnet / Haiku / OpenAI" routing
+  is blocked here regardless of Option A — no Anthropic provider exists in any form, and Azure
+  OpenAI is a confirmed-unlicensed stub in this environment. This leg is a procurement decision, not
+  an engineering one, exactly as the mentor's own framing already says.
+- **Option C (status quo):** the current shape — one shared default plus the one measured-need
+  carve-out — already matches every measured signal this platform has. The token instrumentation
+  that would detect a *new* need (a defect on `gemini-3.1-flash-lite` for feature-content or
+  test-data, or a cost spike worth trading for a cheaper/faster model) exists and keeps running on
+  every live invocation; it has not, so far, surfaced one.
+
+**Recommendation: Option C (status quo) now; Option A is available but not measured-justified;
+Option B is blocked on procurement, not engineering.** The mentor's multi-provider vision is real and
+the seam is proven, but it is gated entirely on a licensing decision this document cannot make. Within
+what's actually licensed today (Gemini only), the existing shared-default-plus-one-carve-out
+allocation already reflects every measured cost/quality signal on record — extending per-stage
+routing further, absent a new measured defect or cost pressure, would be the premature optimization
+this platform's own discipline elsewhere (`[[cap-step-def-non-lite-model-scoping]]`'s own "correct
+and simple now, refine later if warranted") already argues against. If a future live run's token
+scorecard or a CP2/compile-gate regression flags `feature_content_generation` or
+`test_data_generation` specifically, that would be the concrete trigger to revisit Option A for that
+stage — named here as the condition to watch for, not acted on.
+
+**Nothing built, configured, or changed by this note.** No provider added, no env var set, no
+generator rewired, no ADR opened. This surfaces the mechanism's real granularity (per-carve-out, not
+uniformly per-stage), what's actually configured (`.env`, not the code default or `.env.example`),
+the pinning gap (name-only, already flagged by ADR-0050, not new), the token-distribution-plus-
+complexity grounding for the choice-space, the licensing reality (Gemini live, Azure OpenAI a
+confirmed-unlicensed stub, no Anthropic provider at all), and the recommendation; adopting any option
+remains a future, separate decision.
+
+Gate: `make lint` clean; `make test` 6106 passed, unchanged. Tree modified only in this document.
+
 ---
 
 ## Cross-cutting: the "build individual layers first, then wire" sequencing principle
