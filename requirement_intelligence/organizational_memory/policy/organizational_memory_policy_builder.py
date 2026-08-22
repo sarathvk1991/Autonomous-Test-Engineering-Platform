@@ -43,7 +43,8 @@ class OrganizationalMemoryPolicyBuilder:
             description=(
                 "Default organizational memory policy (CAP-085B): governed capability "
                 "switches and deterministic thresholds. The deterministic engine is "
-                "enabled; the framework remains unwired into any runtime pipeline."
+                "enabled; the framework is wired into the execution pipeline "
+                "(scripts/run_requirement_analysis.py calls build at runtime)."
             ),
             capability_switches=OrganizationalMemoryCapabilitySwitches(
                 enable_experience_capture=True,

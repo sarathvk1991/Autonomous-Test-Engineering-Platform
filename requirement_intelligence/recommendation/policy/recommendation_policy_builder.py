@@ -42,7 +42,8 @@ class RecommendationPolicyBuilder:
             description=(
                 "Default recommendation policy (CAP-082B): governed capability "
                 "switches and deterministic configuration. The deterministic engine "
-                "is enabled; the framework remains unwired into the runtime pipeline."
+                "is enabled; the framework is wired into the execution pipeline "
+                "(scripts/run_requirement_analysis.py calls recommend at runtime)."
             ),
             capability_switches=RecommendationCapabilitySwitches(
                 enable_prioritization=True,

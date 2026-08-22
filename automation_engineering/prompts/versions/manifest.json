@@ -31,7 +31,7 @@
             "version": "1.1.0",
             "file": "generate_page_objects_v1.1.0.txt",
             "sha256": "c41ffbcf143c37e52d91dc870b9cb1ffa1570b645841a7cbf4f40aa64c6e79d9",
-            "lifecycle": "Draft",
+            "lifecycle": "Deprecated",
             "introduced_in_release": "1.1.0"
         },
         {
@@ -39,7 +39,7 @@
             "version": "1.2.0",
             "file": "generate_page_objects_v1.2.0.txt",
             "sha256": "101c6b4b131d4246aaa6da0d6fe730015962487f0879d8734f1b9924b21d4ab3",
-            "lifecycle": "Draft",
+            "lifecycle": "Deprecated",
             "introduced_in_release": "1.2.0"
         },
         {

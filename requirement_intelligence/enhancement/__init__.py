@@ -15,9 +15,9 @@ enrichment, relationship construction (Recommendation 6's canonical
 ``RelationshipGraph``), observation generation, findings, metrics, and summary end to
 end — behind the CAP-081A frozen contracts, with no architectural change. The governed
 ``EnhancementRuleCatalog`` (CAP-081B) declares the deterministic mechanisms the engine
-applies. The subsystem is still **not wired into the Requirement Intelligence
-execution pipeline** — nothing calls ``enhance`` at runtime — so runtime behaviour is
-byte-identical and the golden baseline is unchanged. Governed by ADR-0018.
+applies. The subsystem **is wired into** the Requirement Intelligence execution
+pipeline — ``scripts/run_requirement_analysis.py`` calls ``enhance`` at runtime.
+Governed by ADR-0018.
 """
 
 from __future__ import annotations

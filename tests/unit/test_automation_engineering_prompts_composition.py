@@ -96,15 +96,19 @@ def test_registered_prompt_sha256_matches_the_manifest() -> None:
 
 def test_registered_as_draft() -> None:
     """Draft is the honest lifecycle for every registered version except
-    `generate_page_objects` v1.0.0, retired (DEPRECATED, cosmetic-tidy
-    session, 2026-08-21) once superseded by v1.1.0's methods-list template
-    -- LivePageObjectGenerator loads only v1.3.0."""
+    `generate_page_objects` v1.0.0/v1.1.0/v1.2.0, retired (DEPRECATED) once
+    each was superseded -- v1.0.0 by v1.1.0's methods-list template
+    (cosmetic-tidy session, 2026-08-21), v1.1.0 by v1.2.0's real-BasePage-
+    inventory template and v1.2.0 by v1.3.0's return-type contract (both
+    cosmetic-tidy follow-up session, 2026-08-22) -- LivePageObjectGenerator
+    loads only v1.3.0."""
     registry = build_prompt_registry()
+    deprecated_versions = {"1.0.0", "1.1.0", "1.2.0"}
 
     for definition in registry.get_all():
         if (
             definition.metadata.prompt_id == "generate_page_objects"
-            and definition.metadata.version == "1.0.0"
+            and definition.metadata.version in deprecated_versions
         ):
             assert definition.metadata.lifecycle == PromptLifecycle.DEPRECATED
         else:
@@ -273,8 +277,9 @@ class TestGeneratePageObjectsV110:
     """The multi-method-per-class prompt version -- additive alongside
     v1.0.0, never editing it (ADR-0014 invariant H.1: governed prompt
     wording is byte-for-byte frozen unless a governed version bump is
-    performed). Registered DRAFT, mirroring every other Layer 3 prompt's
-    own current lifecycle."""
+    performed). Retired (DEPRECATED, cosmetic-tidy follow-up session,
+    2026-08-22) once superseded by v1.2.0's real-BasePage-inventory
+    template -- LivePageObjectGenerator loads only v1.3.0."""
 
     def test_registered_alongside_v100_not_instead_of_it(self) -> None:
         registry = build_prompt_registry()
@@ -293,9 +298,9 @@ class TestGeneratePageObjectsV110:
         )
         assert "the single page action described below" in v100.content
 
-    def test_lifecycle_is_draft(self) -> None:
+    def test_lifecycle_is_deprecated(self) -> None:
         d = build_prompt_registry().get("generate_page_objects", "1.1.0")
-        assert d.metadata.lifecycle == PromptLifecycle.DRAFT
+        assert d.metadata.lifecycle == PromptLifecycle.DEPRECATED
 
     def test_release_introduced(self) -> None:
         d = build_prompt_registry().get("generate_page_objects", "1.1.0")
@@ -370,8 +375,10 @@ class TestGeneratePageObjectsV120:
     regeneration run called at least one such fictional helper and failed to
     compile. v1.2.0 is additive alongside v1.0.0 and v1.1.0, never editing
     either (ADR-0014 invariant H.1: governed prompt wording is byte-for-byte
-    frozen unless a governed version bump is performed). Registered DRAFT,
-    mirroring every other Layer 3 prompt's own current lifecycle."""
+    frozen unless a governed version bump is performed). Retired
+    (DEPRECATED, cosmetic-tidy follow-up session, 2026-08-22) once
+    superseded by v1.3.0's return-type contract -- LivePageObjectGenerator
+    loads only v1.3.0."""
 
     #: The real BasePage's complete inherited surface, read directly from
     #: the tracked baseline -- the source of truth this prompt version's own
@@ -402,9 +409,9 @@ class TestGeneratePageObjectsV120:
             "c41ffbcf143c37e52d91dc870b9cb1ffa1570b645841a7cbf4f40aa64c6e79d9"
         )
 
-    def test_lifecycle_is_draft(self) -> None:
+    def test_lifecycle_is_deprecated(self) -> None:
         d = build_prompt_registry().get("generate_page_objects", "1.2.0")
-        assert d.metadata.lifecycle == PromptLifecycle.DRAFT
+        assert d.metadata.lifecycle == PromptLifecycle.DEPRECATED
 
     def test_release_introduced(self) -> None:
         d = build_prompt_registry().get("generate_page_objects", "1.2.0")

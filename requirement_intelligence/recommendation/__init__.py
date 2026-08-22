@@ -11,10 +11,10 @@ downstream of it (ADR-0019).
 **Runtime status (CAP-082B):** ``DeterministicRecommendationEngine`` generates
 recommendations, prioritizes, groups, scores confidence, and assembles metrics/summary
 entirely from the governed ``RecommendationRuleCatalog`` and ``RecommendationPolicy`` —
-deterministic, no AI, no heuristics beyond governed data. The subsystem is still **not
-wired into** the Requirement Intelligence execution pipeline — nothing calls
-``recommend`` at runtime — so runtime behaviour is byte-identical and the golden
-baseline is unchanged. Governed by ADR-0019.
+deterministic, no AI, no heuristics beyond governed data. The subsystem **is wired
+into** the Requirement Intelligence execution pipeline —
+``scripts/run_requirement_analysis.py`` calls ``recommend`` at runtime. Governed by
+ADR-0019.
 """
 
 from __future__ import annotations

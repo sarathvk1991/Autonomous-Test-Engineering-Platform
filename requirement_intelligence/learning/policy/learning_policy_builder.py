@@ -39,7 +39,8 @@ class LearningPolicyBuilder:
             description=(
                 "Default learning policy (CAP-086B): governed capability switches and "
                 "deterministic thresholds. The deterministic engine is enabled; the "
-                "framework remains unwired into any runtime pipeline."
+                "framework is wired into the execution pipeline "
+                "(scripts/run_requirement_analysis.py calls build at runtime)."
             ),
             capability_switches=LearningCapabilitySwitches(
                 enable_candidate_proposal=True,

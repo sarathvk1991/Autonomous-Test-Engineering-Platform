@@ -379,11 +379,17 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
     # more than one method per class. v1.0.0's own file/metadata are
     # UNCHANGED (ADR-0014 invariant H.1: governed prompt wording is
     # byte-for-byte frozen unless a governed version bump is performed --
-    # this is that bump, added alongside, never edited in place). Registered
-    # DRAFT, mirroring the other three Layer 3 prompts' own current
-    # lifecycle (Layer 3 has not reached production maturity) -- unlike
-    # Layer 1's `requirement_analysis` v1.1.0 precedent (registered
-    # APPROVED, since that family is already PRODUCTION).
+    # this is that bump, added alongside, never edited in place).
+    # Retired (cosmetic-tidy follow-up session, 2026-08-22): superseded by
+    # v1.2.0's real-BasePage-inventory template (itself superseded by
+    # v1.3.0) -- LivePageObjectGenerator loads only v1.3.0 (`_PROMPT_VERSION`).
+    # Registered-but-never-selected at runtime; no production code loads
+    # this version. Per ADR-0014 invariant H.1, only the governed WORDING is
+    # frozen -- lifecycle metadata is exactly what the governed vocabulary
+    # (Draft -> Experimental -> Approved -> Production -> Deprecated ->
+    # Archived) exists to record, so this is a metadata-only change: the
+    # file, its sha256, and its content are byte-for-byte unchanged (still
+    # kept, per ADR-0014, for governance/audit history -- never deleted).
     loaded_v1_1_0 = loader.load(
         prompt_id="generate_page_objects",
         version="1.1.0",
@@ -396,7 +402,7 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 name="Generate Page Objects",
                 version="1.1.0",
                 owner="Automation Engineering Layer",
-                lifecycle=PromptLifecycle.DRAFT,
+                lifecycle=PromptLifecycle.DEPRECATED,
                 description=(
                     "Generates one Java page-object class for MULTIPLE page-object "
                     "actions at once -- the multi-method extension of v1.0.0. Takes an "
@@ -413,11 +419,15 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                     "including customqa:long-method applied to EVERY generated method, "
                     "not just one. Targets the same tracked test-suite-baseline's own "
                     "package com.automation.pages convention, extending BasePage. v1.0.0 "
-                    "remains registered, unedited, for the ordinary single-method case."
+                    "remains registered, unedited, for the ordinary single-method case. "
+                    "DEPRECATED: superseded by v1.2.0's real-BasePage-inventory template "
+                    "(itself superseded by v1.3.0); LivePageObjectGenerator loads only "
+                    "v1.3.0. Retained, unedited, for governance/audit history only."
                 ),
                 sha256=loaded_v1_1_0.sha256,
                 compatibility=_GENERATE_PAGE_OBJECTS_V1_1_0_COMPATIBILITY,
                 release_introduced="1.1.0",
+                release_deprecated="1.2.0",
             ),
             content=loaded_v1_1_0.content,
         )
@@ -455,6 +465,16 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
     # inventory reaches the prompt; whether the model actually stops
     # inventing helpers is proven by the (separate, later) live
     # regeneration re-run, not by this registration.
+    # Retired (cosmetic-tidy follow-up session, 2026-08-22): superseded by
+    # v1.3.0's return-type contract -- LivePageObjectGenerator loads only
+    # v1.3.0 (`_PROMPT_VERSION`). Registered-but-never-selected at runtime;
+    # no production code loads this version. Per ADR-0014 invariant H.1,
+    # only the governed WORDING is frozen -- lifecycle metadata is exactly
+    # what the governed vocabulary (Draft -> Experimental -> Approved ->
+    # Production -> Deprecated -> Archived) exists to record, so this is a
+    # metadata-only change: the file, its sha256, and its content are
+    # byte-for-byte unchanged (still kept, per ADR-0014, for
+    # governance/audit history -- never deleted).
     loaded_v1_2_0 = loader.load(
         prompt_id="generate_page_objects",
         version="1.2.0",
@@ -467,7 +487,7 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 name="Generate Page Objects",
                 version="1.2.0",
                 owner="Automation Engineering Layer",
-                lifecycle=PromptLifecycle.DRAFT,
+                lifecycle=PromptLifecycle.DEPRECATED,
                 description=(
                     "Generates one Java page-object class for MULTIPLE page-object "
                     "actions at once -- identical request/response shape to v1.1.0, now "
@@ -481,11 +501,14 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                     "don't exist on this platform's real BasePage -- a live-measured "
                     "defect (31 of 32 generated classes called at least one such "
                     "nonexistent helper, failing to compile). v1.1.0 and v1.0.0 both "
-                    "remain registered, unedited."
+                    "remain registered, unedited. DEPRECATED: superseded by v1.3.0's "
+                    "return-type contract; LivePageObjectGenerator loads only v1.3.0. "
+                    "Retained, unedited, for governance/audit history only."
                 ),
                 sha256=loaded_v1_2_0.sha256,
                 compatibility=_GENERATE_PAGE_OBJECTS_V1_2_0_COMPATIBILITY,
                 release_introduced="1.2.0",
+                release_deprecated="1.3.0",
             ),
             content=loaded_v1_2_0.content,
         )

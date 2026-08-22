@@ -40,7 +40,8 @@ class ImprovementPolicyBuilder:
             description=(
                 "Default improvement policy (CAP-083B): governed capability "
                 "switches and deterministic thresholds. The deterministic engine "
-                "is enabled; the framework remains unwired into any runtime pipeline."
+                "is enabled; the framework is wired into the execution pipeline "
+                "(scripts/run_requirement_analysis.py calls improve at runtime)."
             ),
             capability_switches=ImprovementCapabilitySwitches(
                 enable_trend_detection=True,

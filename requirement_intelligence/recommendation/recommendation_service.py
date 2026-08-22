@@ -40,14 +40,13 @@ Runtime status (CAP-082B)
     delegates to a private
     :class:`~requirement_intelligence.recommendation.engine.DeterministicRecommendationEngine`
     that performs deterministic candidate collection, confidence surfacing, priority
-    resolution, grouping, metrics, and summary end to end. The service is still **not
-    wired into the Requirement Intelligence execution pipeline** (nothing calls
-    ``recommend`` at runtime) and only ``PlatformContext`` may construct it outside
-    this package — so runtime behaviour is byte-identical and the golden baseline is
-    unchanged. Runtime integration is future work, exactly as CAP-080B implemented the
-    first deterministic Quality Governance rule evaluator before CAP-080D wired the
-    subsystem in, and CAP-081B implemented the first deterministic Requirement
-    Enhancement engine before CAP-081C activated it.
+    resolution, grouping, metrics, and summary end to end. The service **is wired into**
+    the Requirement Intelligence execution pipeline (``scripts/run_requirement_analysis.py``
+    calls ``recommend`` at runtime) and only ``PlatformContext`` may construct it outside
+    this package, exactly as CAP-080B implemented the first deterministic Quality
+    Governance rule evaluator before CAP-080D wired the subsystem in, and CAP-081B
+    implemented the first deterministic Requirement Enhancement engine before CAP-081C
+    activated it.
 """
 
 from __future__ import annotations

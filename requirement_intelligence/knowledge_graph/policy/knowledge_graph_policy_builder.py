@@ -38,7 +38,8 @@ class KnowledgeGraphPolicyBuilder:
             description=(
                 "Default knowledge graph policy (CAP-084B): governed capability "
                 "switches and deterministic thresholds. The deterministic engine "
-                "is enabled; the framework remains unwired into any runtime pipeline."
+                "is enabled; the framework is wired into the execution pipeline "
+                "(scripts/run_requirement_analysis.py calls build at runtime)."
             ),
             capability_switches=KnowledgeGraphCapabilitySwitches(
                 enable_node_ingestion=True,
