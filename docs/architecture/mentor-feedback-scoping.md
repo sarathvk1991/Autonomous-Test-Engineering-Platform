@@ -2011,6 +2011,82 @@ start measuring the cache saving live), the low-risk path is Option B (a scoped 
 through the real call site) before flipping it on for every run, not a blind Option A. Nothing
 built, changed, or activated by this note — investigation only.
 
+**UTILITY STAGE-15 WIRING DECISION SURFACED (2026-08-22) — a sibling question to the page-object
+note above, with a different answer.** `LiveUtilityGenerator` is fully built (this same week: identity
+threading, `CachingUtilityGenerator`, and `eval_harness/utility_*.py`'s Layer 1 eval all landed), but
+unlike page objects it is not one flip away from live — it is not even plumbed that far.
+
+- **What utility generation is for.** A generated utility (e.g. `ConfigReader`) is a stateless helper
+  a step definition's own body calls. Consumption is identical in shape to page objects: reuse-first
+  (`orchestrate_utility_method`), generate on `NoMatch`. The generator and orchestrator are fully
+  built and unit-tested (mirroring `page_object_orchestrator.py` deliberately, including the precise
+  method-fit discharge — `utility_orchestrator.py`'s own module docstring investigates and confirms
+  the risk is real, sharper even than for page objects, citing `ConfigReader`'s own `env`/`data`
+  same-shape-different-meaning accessors).
+- **No derivation feeds it — this is the real gap, not activation.** Page objects get their live
+  requests from `page_object_reference_derivation.py`, which parses a freshly generated step-def's
+  own body for field call sites. That module's own docstring states plainly: "utilities remain out
+  of scope, mirroring every prior page-object-before-utilities build," and explicitly excludes
+  utility-typed fields from its traversal. No equivalent `derive_utility_requests` exists anywhere.
+  `UtilityBindingRequest`/`utility_request` is a real, tested, optional parameter on
+  `orchestrate_step_definition` (`automation_engineering/generation/orchestrator.py`) — but nothing
+  outside a unit test ever constructs one. Confirmed by reading the actual plumbing: unlike page
+  objects, which at least reached `page_object_matcher`/`page_object_generator` as optional
+  parameters on both `run_automation_engineering_stage` and `execute_automation_engineering_stage`
+  (`automation_engineering/stage/runner.py`), **no `utility_matcher`/`utility_generator` parameter
+  exists at either level.** Utility wiring is one full layer further back than page-object activation
+  was — it needs the derivation module built first, not just a two-parameter flip at the CLI.
+- **The real corpus generates zero utility demand.** The entire tracked baseline (33 step-def
+  classes, 33 page-object classes, the real saucedemo 20-req/33-need corpus) contains exactly one
+  committed utility class, `ConfigReader` — hand-authored baseline infrastructure that predates the
+  `com.automation.utils` convention (it lives in `com.automation.base`, confirmed by
+  `utility_orchestrator.py`'s own docstring and `eval_harness/utility_eval_set.py`'s own "hybrid
+  seed" note), never something the pipeline generated. Grepped directly: zero of the 33 real,
+  committed step-def classes reference `ConfigReader` or any other utility-typed field. The corpus
+  that exercises this platform's own generation pipeline end-to-end has never once asked for a
+  utility.
+- **No CP gate depends on it.** CP4 (`automation_engineering/cp4/gate.py`) is exclusively locator
+  health — four criteria, all defined over page-object field locators. A utility has no locators by
+  construction (`eval_harness/utility_eval_set.py`'s own framing: "no locators, no `BasePage`").
+  Wiring utility would not activate a dormant gate the way page-object activation would have for
+  CP4 — there is no utility-specific gate sitting idle waiting for live utility assets. Promotion
+  outcome types (`GeneratedUtility`/`BoundUtilityMethod`/`EscalatedUtilityMethodNeed`) exist and are
+  wired into `automation_engineering/promotion/outcomes.py` identically to page objects, so a
+  utility asset that did arrive would flow through promotion correctly — that much is real.
+- **Value vs. effort.** Cost to wire: build the missing derivation (utility-typed-field call-site
+  parsing, mirroring `page_object_reference_derivation.py`'s own shape but for a class kind that
+  never had a derivation attempt made against it), then plumb `utility_matcher`/`utility_generator`
+  through both stage-runner levels, then the CLI flip — strictly more work than page-object
+  activation, which was already fully built. Payoff if built: the dormant identity/cache/eval assets
+  become live-exercised — but against a corpus that has generated zero real utility need in every
+  run to date, so "live-exercised" would mean exercised by a fixture, not a real demand.
+- **This is the same "no consumer" pattern as page-object activation, runtime citation, the eval
+  judge layer, and #8 — but one step earlier.** Those items had everything built and just needed
+  activating, and were deferred for lack of a live consumer. Utility does not even have everything
+  built (the derivation is missing) and *also* has no live consumer (zero real corpus demand) — a
+  stronger case for deferring than any of the four prior "no consumer" items, since here there is
+  additionally no proof the missing derivation would ever fire.
+
+**Options.** (A) Wire utility into stage 15 — build the derivation, plumb both stage-runner levels,
+flip the CLI: real effort (a new module, not a flag flip) for a payoff nothing in this platform's own
+corpus currently demands. (B) Defer, leave wired-ready-but-dormant like page-object activation — but
+utility is not actually wired-ready; deferring here means leaving a known, scoped, unbuilt gap
+documented rather than an armed-and-idle capability. (C) Accept utility as a permanently
+harness/standalone capability (eval + cache prove the generator seam works in isolation; the derivation
+that would make it a live pipeline consumer may simply never be worth building if no AUT this platform
+targets ever needs more than `ConfigReader`-shaped helpers).
+
+**Recommendation: Option C, with Option B's language for the record.** Wiring utility now (Option A)
+would be speculative engineering against zero measured demand, worse than the "no consumer" items
+already deferred this session because part of the wiring (the derivation) doesn't exist yet either —
+there is nothing today asking for it and no reason to believe that will change absent a new AUT with a
+richer helper surface than saucedemo's. Treat utility generation as proven-standalone
+(generator/orchestrator/identity/cache/eval all real and tested) but not a pipeline consumer, and
+revisit only if a concrete generated step-def or page-object is observed needing a helper
+`derive_page_object_requests`'s own page-object-only scope cannot supply. Nothing built, wired, or
+changed by this note — investigation only. Gate: `make lint` clean; `make test` 6106 passed,
+unchanged.
+
 ---
 
 ### Item 5 — Centralized constitution
