@@ -257,11 +257,11 @@ class PlatformContext:
     def create_grounding_configuration(self) -> GroundingConfiguration:
         """Return the governed :class:`GroundingConfiguration` (CAP-077A, ADR-0016).
 
-        Construction only, and **not yet consumed by any runtime path**. CAP-077A
-        registers the Grounding Framework's versioned configuration here so future
-        milestones can obtain it from the same seam every other component uses; the
-        configuration is weightless today (matching and confidence land later). No
-        pipeline stage calls this method, so runtime behaviour is unchanged.
+        **Wired**: consumed by :meth:`create_grounding_service`, which constructs it
+        into the pipeline it passes to ``assess`` at runtime (CAP-077F.2). The
+        configuration itself remains weightless — matching and confidence weights
+        live in :meth:`create_matching_policy` and :meth:`create_confidence_policy`,
+        not here.
         """
         return default_grounding_configuration()
 
@@ -273,8 +273,9 @@ class PlatformContext:
         from the governed components (matching context builder, deterministic strategy,
         classification engine, confidence calculator, builders) and injects it into the
         service, which delegates ``assess`` to it. The pipeline is an internal detail —
-        it is not exposed as a public factory. **Still unwired into the execution
-        pipeline**: nothing calls ``assess`` at runtime, so behaviour is byte-identical.
+        it is not exposed as a public factory. **Wired into the execution
+        pipeline** (CAP-077F.2): ``scripts/run_requirement_analysis.py`` calls
+        ``assess`` at runtime, immediately downstream of Analysis.
         """
         pipeline = GroundingPipeline(
             matching_context_builder=self.create_matching_context_builder(),
@@ -294,19 +295,19 @@ class PlatformContext:
 
         The construction-only translator from runtime models (``EngineeringContext``
         + ``AnalysisResult``) to the canonical ``MatchingContext`` every grounding
-        strategy consumes. **Not yet wired**: no pipeline stage calls it, so runtime
-        behaviour is unchanged. It is registered here so the future
-        :class:`GroundingService` can obtain it from the same seam.
+        strategy consumes. **Wired**: consumed by :meth:`create_grounding_service`,
+        which is wired into the execution pipeline (CAP-077F.2).
         """
         return MatchingContextBuilder()
 
     def create_matching_normalizer(self) -> MatchingNormalizer:
         """Return the :class:`MatchingNormalizer` preprocessing boundary (CAP-077A.4).
 
-        The canonical text-normalization seam every grounding strategy will share.
+        The canonical text-normalization seam every grounding strategy shares.
         Returns the minimal :class:`DefaultMatchingNormalizer` (lowercase + whitespace);
-        the full normalizer lands with the first strategy (CAP-077B). **Not yet wired**:
-        no pipeline stage calls it, so runtime behaviour is unchanged.
+        the full normalizer lands with the first strategy (CAP-077B). **Wired**: consumed
+        by :meth:`create_deterministic_text_matching_strategy`, which is wired into the
+        execution pipeline via :meth:`create_grounding_service` (CAP-077F.2).
         """
         return DefaultMatchingNormalizer()
 
@@ -315,8 +316,9 @@ class PlatformContext:
 
         The governed decision rules for *what constitutes a match* — thresholds,
         weights, permitted relations, ranking, tie-breaking. A ``GroundingStrategy``
-        reads it; it contains no logic. **Not yet wired**: no pipeline stage calls it,
-        so runtime behaviour is unchanged.
+        reads it; it contains no logic. **Wired**: :class:`DeterministicTextMatchingStrategy`
+        reads its thresholds, weights, ranking, and tie-breaker at runtime, via
+        :meth:`create_grounding_service` (CAP-077F.2).
         """
         return MatchingPolicyBuilder().build()
 
@@ -324,8 +326,8 @@ class PlatformContext:
         """Return Strategy V1 — the deterministic text matcher (CAP-077B, ADR-0016).
 
         Built from the governed matching normalizer and matching policy. It owns
-        comparison only. **Not yet wired**: no pipeline stage or ``GroundingService``
-        calls it, so runtime behaviour is unchanged.
+        comparison only. **Wired**: :meth:`create_grounding_service` constructs and
+        uses it at runtime (CAP-077F.2).
         """
         return DeterministicTextMatchingStrategy(
             normalizer=self.create_matching_normalizer(),
@@ -337,8 +339,9 @@ class PlatformContext:
 
         The governed decision rules for *what constitutes support* — score thresholds,
         relation-to-role mapping, precedence, conflict and unknown handling. A
-        ``SupportClassificationEngine`` reads it; it contains no logic. **Not yet
-        wired**: no pipeline stage calls it, so runtime behaviour is unchanged.
+        ``SupportClassificationEngine`` reads it; it contains no logic. **Wired**:
+        consumed by :meth:`create_support_classification_engine`, which
+        :meth:`create_grounding_service` constructs into its pipeline (CAP-077F.2).
         """
         return ClassificationPolicyBuilder().build()
 
@@ -346,8 +349,8 @@ class PlatformContext:
         """Return the :class:`SupportClassificationEngine` (CAP-077C, ADR-0016).
 
         Classifies a ``MatchResult`` into a ``ClassificationResult`` under the governed
-        classification policy. It consumes only a ``MatchResult``. **Not yet wired**:
-        no pipeline stage calls it, so runtime behaviour is unchanged.
+        classification policy. It consumes only a ``MatchResult``. **Wired**:
+        :meth:`create_grounding_service` constructs and uses it at runtime (CAP-077F.2).
         """
         return SupportClassificationEngine(policy=self.create_classification_policy())
 
@@ -356,8 +359,8 @@ class PlatformContext:
 
         The governed decision rules for confidence — base scores per verdict, bonuses,
         penalties, ceiling, band thresholds. A ``ConfidenceCalculator`` reads it; it
-        contains no logic. **Not yet wired**: no pipeline stage calls it, so runtime
-        behaviour is unchanged.
+        contains no logic. **Wired**: consumed by :meth:`create_confidence_calculator`,
+        which :meth:`create_grounding_service` constructs into its pipeline (CAP-077F.2).
         """
         return ConfidencePolicyBuilder().build()
 
@@ -366,8 +369,8 @@ class PlatformContext:
 
         The first production confidence calculator, bound to the governed confidence
         policy. It scores deterministically from the policy and a ``ClassificationResult``.
-        **Not yet wired**: no pipeline stage or ``GroundingService`` calls it, so runtime
-        behaviour is unchanged.
+        **Wired**: :meth:`create_grounding_service` constructs and uses it at runtime
+        (CAP-077F.2).
         """
         return DeterministicConfidenceCalculator(policy=self.create_confidence_policy())
 

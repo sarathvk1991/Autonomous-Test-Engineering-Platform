@@ -36,8 +36,10 @@ from shared.contracts.base import Schema
 #: re-baselines the golden dataset. 2.0.0 (CAP-077B) replaces the CAP-077A.5
 #: weightless foundation with the meaningful weights and thresholds Strategy V1
 #: matches against — a governed data change (no matcher code depends on the values).
-#: The policy is unwired, so no execution artifact or golden baseline carries the
-#: 1.0.0 values; the bump invalidates no stored data.
+#: The policy was unwired at the time of this bump, so no execution artifact or golden
+#: baseline carried the 1.0.0 values; the bump invalidated no stored data. The policy is
+#: now wired (CAP-077F.2): ``DeterministicTextMatchingStrategy`` reads these 2.0.0 values
+#: at runtime, and the golden baseline (re-baselined to 1.1.0) carries their effect.
 MATCHING_POLICY_VERSION = MatchingPolicyVersion(2, 0, 0)
 
 #: The identity of the framework's default governed matching policy.
