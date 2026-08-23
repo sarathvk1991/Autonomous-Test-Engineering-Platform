@@ -1208,6 +1208,138 @@ would require — not assumed here either way.
 **surface-as-own-design-task** — the next step is a dedicated design-surfacing task to resolve the
 re-framing-vs-re-architecture sizing question above, not a build.
 
+**SIZING RESOLVED (2026-08-23) — MIXED, and the re-architecture half has no live use case today.
+Nothing built.** One mentor throughout (Nitin).
+
+**Pre-flight.** Clean tree, `main`, tip `26982a2` (the grounding-docstring fix). `make lint` clean,
+`make test` 6106 passed, unchanged.
+
+**The generators, read directly, are already close to a uniform "skill" shape.** All six —
+`LiveStepDefinitionGenerator`, `LivePageObjectGenerator`, `LiveTestDataGenerator`,
+`LiveUtilityGenerator`, `LiveFeatureContentGenerator`, `LiveFeatureRemediator` — each sit behind
+their own dedicated `Protocol` (`StepDefinitionGenerator`, `PageObjectGenerator`,
+`TestDataGenerator`, `UtilityGenerator`, `FeatureContentGenerator`, `FeatureRemediator`), each with a
+single narrow method (`generate(context) -> str`, or for the remediator,
+`remediate(content, violations) -> str`), each with a matching `Stub*` deterministic test double, each
+raising its own `LiveGenerationError(TransportFailureError)`. This is exactly the shape of a
+discrete, single-purpose, independently-testable skill — just six separately-named Protocols, not one
+common interface, and not exposed anywhere as a catalog.
+
+**The gates are, if anything, even more skill-shaped than the generators.** CP4/CP5/CP7/CP8
+(`evaluate_cp4`, `evaluate_promotion_wrap`, `evaluate_rating_gate`, `evaluate_static_readiness`) are
+plain, deterministic, single-purpose functions — no LLM, trivially unit-testable in isolation, a
+closer literal match to Nitin's own "a linting/quality-check skill" example than the generators are.
+They are composed by three flat, hardcoded function calls in
+`suite_quality_governance/stage/runner.py::run_suite_quality_governance_stage`, in fixed order — no
+registry, no selection logic, same invocation shape as the generators (see below).
+
+**The orchestrator invokes everything by constructor-injected parameter, in a fixed loop — there is
+no selection/routing layer anywhere.** `run_automation_engineering_stage` and
+`run_feature_engineering_stage` both take their generators as plain typed parameters
+(`step_definition_generator: StepDefinitionGenerator`, `content_generator: FeatureContentGenerator`,
+etc.) and call them inside an ordinary `for need in unique_needs` / `for requirement in
+requirement_set.requirements` loop. Which generator handles which need is decided entirely by
+**need-kind, statically, in Python control flow** (an `if page_object_generation_enabled:` branch,
+not a dynamic lookup) — there is no place today where the platform chooses among interchangeable
+skills, or between a skill and an agent, at runtime. The `EngineeringContextOrchestrator`
+(CAP-076D)'s own policy-selection mechanism (`create_orchestration_policy` vs
+`create_legacy_selection_policy`) is the platform's one real precedent for "selection," and it
+selects among context-assembly *policies*, not generation *skills* — not the same axis.
+
+**A registry/catalog pattern already exists, repeatedly, in this codebase — this is the strongest
+re-framing evidence.** Six independent registries already ship: `PromptRegistry` (the one the
+original note names as the shape to mirror — register/seal/lookup by `(id, version)`, sourced from
+`shared/prompts/framework/prompt_registry.py`), plus `provider_registry.py`, `connector_registry.py`,
+`validation_registry.py`, `criterion_registry.py`, and `normalization_registry.py`. A "skill catalog"
+naming and registering the six generation Protocols (and, if extended, the gate functions) is not a
+new pattern this platform would need to invent — it is the sixth-or-seventh instance of a pattern
+already proven cheap here.
+
+**Surprising finding, bearing directly on the value question: the caching decorators exist and are
+tested, but are not constructed anywhere live.** `CachingStepDefinitionGenerator`,
+`CachingFeatureContentGenerator`, `CachingTestDataGenerator`, `CachingPageObjectGenerator`, and
+`CachingUtilityGenerator` all exist (per-Protocol decorators, ADR-0050) and each has its own unit
+test file — but grepped directly, none is ever constructed inside `scripts/run_requirement_analysis.py`
+or anywhere else outside a test file. The decorator pattern that would make "wrap any skill in a
+cache" mechanical already exists; nothing wires it live yet. This is a real, pre-existing gap
+independent of #2, worth its own future note, but it also means: a skill catalog would not, by
+itself, close this — the caching wiring gap is a separate, already-latent finding, not something
+adopting #2 would fix or that blocks #2.
+
+**Testability, the value a catalog might otherwise chiefly buy, is already delivered a different way.**
+`eval_harness/` already evaluates each generator independently — `feature_content_{eval_set,
+properties, runner}.py`, `step_definition_{eval_set, properties}.py`, `test_data_*`, `page_object_*`,
+`utility_*` — five parallel per-generator eval surfaces (ADR-0051), the same "test each skill in
+isolation" value a skill catalog would otherwise be the mechanism to unlock. It already exists,
+achieved by file-naming convention rather than a central registry object.
+
+**Sizing determination: MIXED, decomposed.**
+
+| Part of #2 | Size | Evidence |
+| --- | --- | --- |
+| Naming the six generator classes + gate functions as first-class, named "skills" | **Re-framing** | They already are Protocol-bounded, single-method, independently stubbed and eval'd; only the label is missing. |
+| A registry/catalog exposing them uniformly | **Re-framing** | Mirrors an existing, cheap, six-times-proven pattern (`PromptRegistry` and siblings) — mechanical, not novel. |
+| A uniform cross-skill invocation interface | **Re-framing, mostly** | Five of six already share `generate(context) -> str`; the remediator's `remediate(content, violations) -> str` is the one real shape mismatch a common interface would have to paper over or exclude. |
+| A skill-selection/routing layer choosing among skills at runtime | **Re-architecture, but with no live use case** | No current need is ambiguous about which generator should handle it — need-kind to generator is a fixed, static 1:1 mapping today. There is nothing for a routing layer to route. |
+| Agent-vs-skill routing decided per step | **Re-architecture, and entirely hypothetical today** | See the agent question below — zero current code is agent-shaped; there is no "step" anywhere that would need this decision made. |
+
+**The honest verdict: the cheap, valuable half (catalog + naming) is real and precedented; the
+expensive half (selection/routing, agent-vs-skill-per-step) has no current problem to solve.**
+Building the routing layer now would be architecture in search of a use case, not a response to a
+measured need — the same shape this arc has already declined for utility wiring and the eval judge
+layer.
+
+**The value question, grounded in Nitin's own rationale, not abstract architecture-goodness.** Item
+2's own opening framing ties this to token minimization and predictability — already fully achieved
+(no agent/tool-loop exists; per-stage model scoping and the water-filled evidence budget are the real
+token-cost mechanisms, both already live). The separate "bias and token cost" through-line Nitin names
+(spec-slicing, the change-impact graph, caching-plus-pinning, the traceability graph) is a different
+cluster, already built (`[[cap-pinning-foundation-built]]`, `[[cap-artifact-cache-adr]]`,
+`[[cap-traceability-graph-adr]]`) — a skill catalog does not feed that cluster; conflating the two
+would overstate #2's own value. What a catalog would concretely buy: **discoverability and governance
+visibility** — a single, named, versioned inventory of "what LLM-backed and deterministic capabilities
+this platform has," the same role `PromptRegistry` plays for prompts. That is real but modest value
+(this session's own read-only repo audit had to re-derive that inventory by reading six separate
+files; a catalog would have made that a lookup) — not a reuse, composability, or token-cost win, since
+none of those are currently constrained by the catalog's absence.
+
+**The agent question: bounded to one hypothetical, unbuilt place.** Grepped and register-confirmed:
+no agent/tool-loop architecture exists anywhere in this platform today (reaffirming the original,
+pre-clarification finding above). The one place something agent-shaped could plausibly first appear
+is Layer 6 (Failure Intelligence & Self-Healing) — confirmed still UNBUILT, `governing_citation="none
+yet"` in `stages.py`, per the 2026-08-23 repo audit. There is no current code, current generator, or
+current gate that would benefit from agent-autonomy instead of a skill call — the "agents where
+genuinely needed" half of Nitin's framing is entirely a future-L6 question, not a present one.
+
+**Honest current-need check: no measured pain today.** No duplicated capability was found (each
+generator/gate has exactly one live implementation), no reuse blocker (constructor injection already
+lets any stage swap implementations freely — the `Stub*`/`Live*` pairing already proves this), and no
+testing gap (the eval harness already tests each generator independently). This is the same
+"surfaced, no measured need now, defer with a named trigger" pattern this session already applied to
+page-object activation, utility wiring, #8, and the eval judge layer — not a special case.
+
+**Options.** (A) **Re-frame now**: build a lightweight skill registry (mirroring `PromptRegistry`'s
+own register/seal/lookup shape) cataloguing the six generation Protocols and, optionally, the CP4/5/7/8
+gate functions, under consistent naming — small, mechanical, no behavior change, a few days at most.
+(B) **Re-architect**: additionally build a genuine skill-selection/routing layer and an agent-vs-skill
+decision point per step — large, and today would have nothing real to select among or route, since
+need-kind already statically determines the generator. (C) **Defer**: record the direction (re-frame,
+not re-architect, if ever done) and wait for a concrete trigger — a new (7th+) generator joining the
+roster where a catalog would make onboarding it mechanical, Layer 6's agent loop actually getting
+built (making the skill-vs-agent distinction load-bearing for the first time), or a recurring external
+need to enumerate the platform's capabilities (this audit's own experience is a soft data point, not
+yet a real recurring need).
+
+**Recommendation: Option C, with Option A's direction recorded for whenever a trigger appears.** The
+re-framing half is cheap and precedented but has no measured pain to relieve today (reusability,
+composability, and per-skill testability are already achieved by other means); the re-architecture
+half has no live use case to justify it (routing is already static and correct). Building either now
+would be forward-looking reorganization, not a response to a real gap — consistent with this session's
+own pattern for every other "surfaced, no consumer yet" item. If Layer 6 is ever designed, revisit
+#2's re-architecture half specifically then, since that is the one place the skill-vs-agent decision
+would become real. Nothing built, wired, or changed by this note — investigation only. Gate: `make
+lint` clean; `make test` 6106 passed, unchanged.
+
 ---
 
 ### Item 3 — Requirements Intelligence: subset-not-everything + completeness + Knowledge Graph (Neo4j)
