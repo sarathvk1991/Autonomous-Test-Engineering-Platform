@@ -33,6 +33,22 @@ class HistoricalExecutionRecord:
     :meth:`DeterministicKnowledgeGraphEngine.build` call. Names the entities one
     historical execution touched, by id only, so the node/edge projectors can
     deterministically build governed nodes and edges from it.
+
+    ``requirement_id`` remains the single, representative requirement every
+    other per-execution fact (``recommendation_id``/``finding_id``/
+    ``capability_id``/``document_id``, each still execution-scalar) is anchored
+    to — unchanged, so every existing node/edge relationship keeps its exact
+    prior meaning. ``requirement_ids`` (Historical Dataset arc, piece 3) is an
+    **additive** field carrying the execution's full requirement set, when a
+    provider has one to give — always including ``requirement_id`` itself
+    (never a disjoint list). It defaults to ``()``, meaning "not populated by
+    this provider," never "this execution genuinely has zero requirements" —
+    :class:`DeterministicHistoricalDatasetProvider` below leaves it at that
+    default and is unaffected by this field's addition. The node projector
+    treats ``{requirement_id} | set(requirement_ids)`` as the full set to
+    project, so a provider that never populates ``requirement_ids`` still
+    yields exactly today's one representative requirement node — no behaviour
+    change for the synthetic path.
     """
 
     execution_id: str
@@ -43,6 +59,7 @@ class HistoricalExecutionRecord:
     capability_id: str | None
     document_id: str | None
     depends_on_previous: bool
+    requirement_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

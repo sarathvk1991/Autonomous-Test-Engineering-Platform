@@ -17,7 +17,10 @@ best effort.
 
 from __future__ import annotations
 
-from requirement_intelligence.knowledge_graph.engine.historical_dataset import HistoricalDataset
+from requirement_intelligence.knowledge_graph.engine.historical_dataset import (
+    HistoricalDataset,
+    HistoricalExecutionRecord,
+)
 from requirement_intelligence.knowledge_graph.identity import KnowledgeNodeId
 from requirement_intelligence.knowledge_graph.models.enums import KnowledgeNodeType
 from requirement_intelligence.knowledge_graph.models.node import KnowledgeNode
@@ -62,7 +65,15 @@ class NodeProjector:
             if KnowledgeNodeType.EXECUTION in enabled_types:
                 self._add(nodes, KnowledgeNodeType.EXECUTION, execution.execution_id)
             if KnowledgeNodeType.REQUIREMENT in enabled_types:
-                self._add(nodes, KnowledgeNodeType.REQUIREMENT, execution.requirement_id)
+                # requirement_id (the representative, always first) followed by
+                # requirement_ids (piece 3's full set, when a provider populates
+                # it), deduplicated in stable file order — never a set, so
+                # insertion order (and therefore the returned tuple's order)
+                # stays deterministic. A provider that never populates
+                # requirement_ids still yields exactly the one representative
+                # node, unchanged.
+                for requirement_id in self._representative_first(execution):
+                    self._add(nodes, KnowledgeNodeType.REQUIREMENT, requirement_id)
             if execution.recommendation_id and KnowledgeNodeType.RECOMMENDATION in enabled_types:
                 self._add(nodes, KnowledgeNodeType.RECOMMENDATION, execution.recommendation_id)
             if execution.finding_id and KnowledgeNodeType.FINDING in enabled_types:
@@ -76,6 +87,16 @@ class NodeProjector:
             self._add(nodes, KnowledgeNodeType.DATASET, dataset.dataset_id)
 
         return tuple(nodes.values())
+
+    @staticmethod
+    def _representative_first(execution: HistoricalExecutionRecord) -> tuple[str, ...]:
+        """``requirement_id`` first, then ``requirement_ids`` extras, deduplicated,
+        in stable file order — never a set, so this stays deterministic."""
+        ids = [execution.requirement_id]
+        for requirement_id in execution.requirement_ids:
+            if requirement_id not in ids:
+                ids.append(requirement_id)
+        return tuple(ids)
 
     def _enabled_node_types(self) -> frozenset[KnowledgeNodeType]:
         """Return the governed node types whose rule is enabled and policy-gated on."""

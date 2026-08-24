@@ -34,6 +34,7 @@ def _record(
     ordinal: int,
     *,
     requirement_id: str | None = None,
+    requirement_ids: tuple[str, ...] = (),
     recommendation_id: str | None = None,
     finding_id: str | None = None,
     capability_id: str | None = None,
@@ -49,6 +50,7 @@ def _record(
         capability_id=capability_id,
         document_id=document_id,
         depends_on_previous=depends_on_previous,
+        requirement_ids=requirement_ids,
     )
 
 
@@ -121,6 +123,49 @@ class TestNodeProjector:
         nodes = NodeProjector(default_knowledge_graph_policy(), _CATALOG).project(dataset)
         requirement_node = next(n for n in nodes if n.node_type == KnowledgeNodeType.REQUIREMENT)
         assert requirement_node.node_id == KnowledgeNodeId.for_entity("requirement", "req-fixed")
+
+    def test_requirement_ids_unpopulated_yields_only_the_representative_node(self) -> None:
+        """Piece 3, regression guard: a provider that never populates
+        ``requirement_ids`` (the synthetic default, unchanged) still yields
+        exactly one requirement node — today's behaviour, byte-identical."""
+        dataset = _dataset(_record(0, requirement_id="req-0"))
+        nodes = NodeProjector(default_knowledge_graph_policy(), _CATALOG).project(dataset)
+        requirement_nodes = [n for n in nodes if n.node_type == KnowledgeNodeType.REQUIREMENT]
+        assert len(requirement_nodes) == 1
+        assert requirement_nodes[0].referenced_id == "req-0"
+
+    def test_requirement_ids_populated_projects_one_node_per_real_requirement(self) -> None:
+        """Piece 3: an execution with many requirements yields many requirement nodes."""
+        dataset = _dataset(
+            _record(
+                0,
+                requirement_id="req-0",
+                requirement_ids=("req-0", "req-1", "req-2"),
+            )
+        )
+        nodes = NodeProjector(default_knowledge_graph_policy(), _CATALOG).project(dataset)
+        requirement_ids = {
+            n.referenced_id for n in nodes if n.node_type == KnowledgeNodeType.REQUIREMENT
+        }
+        assert requirement_ids == {"req-0", "req-1", "req-2"}
+
+    def test_requirement_ids_overlapping_the_representative_deduplicates(self) -> None:
+        """The representative is always the first element of requirement_ids in
+        real provider output — must not double-count."""
+        dataset = _dataset(
+            _record(0, requirement_id="req-0", requirement_ids=("req-0", "req-1"))
+        )
+        nodes = NodeProjector(default_knowledge_graph_policy(), _CATALOG).project(dataset)
+        requirement_nodes = [n for n in nodes if n.node_type == KnowledgeNodeType.REQUIREMENT]
+        assert len(requirement_nodes) == 2
+
+    def test_requirement_ids_projection_is_deterministic_in_order(self) -> None:
+        dataset = _dataset(
+            _record(0, requirement_id="req-0", requirement_ids=("req-0", "req-1", "req-2"))
+        )
+        n1 = NodeProjector(default_knowledge_graph_policy(), _CATALOG).project(dataset)
+        n2 = NodeProjector(default_knowledge_graph_policy(), _CATALOG).project(dataset)
+        assert n1 == n2
 
 
 @pytest.mark.unit
@@ -223,6 +268,24 @@ class TestEdgeProjector:
         _, e2 = self._nodes_and_edges(dataset)
         assert e1 == e2
 
+    def test_generated_by_stays_anchored_to_the_representative_only(self) -> None:
+        """Piece 3 boundary: recommendation/finding/capability/document stay
+        execution-scalar facts — GENERATED_BY (and its siblings) must NOT fan out
+        across every requirement in requirement_ids, only the representative."""
+        dataset = _dataset(
+            _record(
+                0,
+                requirement_id="req-0",
+                requirement_ids=("req-0", "req-1", "req-2"),
+                recommendation_id="rec-0",
+            )
+        )
+        _, edges = self._nodes_and_edges(dataset)
+        generated_by_edges = [e for e in edges if str(e.edge_type) == "generated_by"]
+        assert len(generated_by_edges) == 1
+        requirement_node_id = KnowledgeNodeId.for_entity("requirement", "req-0")
+        assert generated_by_edges[0].target_node_id == requirement_node_id
+
     def test_edge_id_matches_deterministic_factory(self) -> None:
         dataset = _dataset(_record(0, capability_id="cap-0"))
         _, edges = self._nodes_and_edges(dataset)
@@ -253,3 +316,30 @@ class TestEdgeProjector:
         _, edges = self._nodes_and_edges(dataset)
         belongs_to_edges = [e for e in edges if str(e.edge_type) == "belongs_to"]
         assert len(belongs_to_edges) == 1
+
+    def test_belongs_to_unpopulated_requirement_ids_yields_one_edge(self) -> None:
+        """Regression guard: the synthetic default (unchanged) still yields exactly
+        today's single BELONGS_TO edge."""
+        dataset = _dataset(_record(0, requirement_id="req-0"))
+        _, edges = self._nodes_and_edges(dataset)
+        belongs_to_edges = [e for e in edges if str(e.edge_type) == "belongs_to"]
+        assert len(belongs_to_edges) == 1
+
+    def test_belongs_to_populated_requirement_ids_yields_one_edge_per_requirement(self) -> None:
+        """Piece 3: every real requirement in the execution gets its own BELONGS_TO
+        edge — no requirement node is ever left isolated."""
+        dataset = _dataset(
+            _record(
+                0,
+                requirement_id="req-0",
+                requirement_ids=("req-0", "req-1", "req-2"),
+            )
+        )
+        nodes, edges = self._nodes_and_edges(dataset)
+        belongs_to_edges = [e for e in edges if str(e.edge_type) == "belongs_to"]
+        assert len(belongs_to_edges) == 3
+        requirement_node_ids = {
+            n.node_id for n in nodes if n.node_type == KnowledgeNodeType.REQUIREMENT
+        }
+        linked_source_ids = {e.source_node_id for e in belongs_to_edges}
+        assert linked_source_ids == requirement_node_ids

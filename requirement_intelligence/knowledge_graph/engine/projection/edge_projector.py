@@ -20,7 +20,10 @@ node/edge rules are policy-enabled.
 
 from __future__ import annotations
 
-from requirement_intelligence.knowledge_graph.engine.historical_dataset import HistoricalDataset
+from requirement_intelligence.knowledge_graph.engine.historical_dataset import (
+    HistoricalDataset,
+    HistoricalExecutionRecord,
+)
 from requirement_intelligence.knowledge_graph.identity import KnowledgeEdgeId, KnowledgeNodeId
 from requirement_intelligence.knowledge_graph.models.edge import KnowledgeEdge
 from requirement_intelligence.knowledge_graph.models.enums import (
@@ -114,13 +117,20 @@ class EdgeProjector:
                     previous.requirement_id,
                 )
 
-            _link(
-                KnowledgeEdgeType.BELONGS_TO,
-                KnowledgeNodeType.REQUIREMENT,
-                execution.requirement_id,
-                KnowledgeNodeType.EXECUTION,
-                execution.execution_id,
-            )
+            # requirement_id (the representative) followed by requirement_ids
+            # extras (piece 3's full set, when a provider populates it),
+            # deduplicated in stable file order — every requirement node
+            # NodeProjector projects for this execution gets its own BELONGS_TO
+            # edge, never an isolated node. A provider that never populates
+            # requirement_ids still yields exactly today's one edge, unchanged.
+            for requirement_id in self._representative_first(execution):
+                _link(
+                    KnowledgeEdgeType.BELONGS_TO,
+                    KnowledgeNodeType.REQUIREMENT,
+                    requirement_id,
+                    KnowledgeNodeType.EXECUTION,
+                    execution.execution_id,
+                )
             _link(
                 KnowledgeEdgeType.DERIVED_FROM,
                 KnowledgeNodeType.EXECUTION,
@@ -179,6 +189,16 @@ class EdgeProjector:
                 )
 
         return tuple(edges.values())
+
+    @staticmethod
+    def _representative_first(execution: HistoricalExecutionRecord) -> tuple[str, ...]:
+        """``requirement_id`` first, then ``requirement_ids`` extras, deduplicated,
+        in stable file order — never a set, so this stays deterministic."""
+        ids = [execution.requirement_id]
+        for requirement_id in execution.requirement_ids:
+            if requirement_id not in ids:
+                ids.append(requirement_id)
+        return tuple(ids)
 
     def _enabled_edge_types(self) -> frozenset[KnowledgeEdgeType]:
         """Return the governed edge types whose rule is enabled and policy-gated on."""

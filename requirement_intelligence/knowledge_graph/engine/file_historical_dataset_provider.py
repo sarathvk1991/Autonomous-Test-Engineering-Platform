@@ -22,16 +22,15 @@ Python-object equality because of loosely-typed nested fields. Reading with
 never reconstructs a typed contract object, it only ever reads the handful of scalar
 fields ``HistoricalExecutionRecord`` needs.
 
-Keeps ``HistoricalExecutionRecord``'s existing scalar shape unchanged (piece 3's own
-future work, not this one). A real execution has MANY requirements
-(``TestableRequirementSet.requirements``); this provider represents each qualifying
-execution with exactly ONE record, using the FIRST requirement in that execution's own
-set as a deterministic representative id — **execution-granularity, not
-requirement-granularity**. Every other requirement in that execution is invisible to
-the graph until piece 3 extends the record shape (or denormalizes) to carry more than
-one. ``capability_id``/``document_id`` are always ``None``: no real per-execution
-equivalent exists anywhere in today's Layer 1 runtime contracts (a genuine absence in
-the data model, not an omission of this provider).
+Still one record per qualifying execution — **execution-granularity**, not
+requirement-granularity records — but the record itself is no longer requirement-blind
+beyond its representative id: ``requirement_id`` stays the FIRST requirement in that
+execution's own set (unchanged, still the anchor every other per-execution fact
+relates to), and ``requirement_ids`` (piece 3) additionally carries every requirement
+in ``TestableRequirementSet.requirements``, in file order, read at the dict level —
+never a fuller reconstruction. ``capability_id``/``document_id`` are always ``None``:
+no real per-execution equivalent exists anywhere in today's Layer 1 runtime contracts
+(a genuine absence in the data model, not an omission of this provider).
 
 Never fabricates. A run directory is silently skipped — not padded, not guessed —
 when it has no ``manifest.json``, no ``testable_requirement_set.json``, or an empty
@@ -191,7 +190,26 @@ class FileHistoricalDatasetProvider(HistoricalDatasetProvider):
             capability_id=None,
             document_id=None,
             depends_on_previous=depends_on_previous,
+            requirement_ids=self._all_requirement_ids(requirements),
         )
+
+    @staticmethod
+    def _all_requirement_ids(requirements: list[Any]) -> tuple[str, ...]:
+        """Return every requirement's own ``requirementId``, in file order.
+
+        Piece 3: the execution's full requirement set (``requirement_id`` above
+        stays the first-in-set representative, unchanged). Dict-level only, same
+        as every other read in this provider — an entry missing ``requirementId``
+        (or not a dict at all) is silently skipped, never guessed.
+        """
+        ids: list[str] = []
+        for requirement in requirements:
+            if not isinstance(requirement, dict):
+                continue
+            requirement_id = requirement.get("requirementId")
+            if isinstance(requirement_id, str) and requirement_id:
+                ids.append(requirement_id)
+        return tuple(ids)
 
     @staticmethod
     def _first_id(path: Path, list_key: str, id_key: str) -> str | None:

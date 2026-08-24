@@ -2730,7 +2730,105 @@ fixed before landing. Tree left with exactly this arc's 8 changed files; nothing
 
 **Piece 3 (record-shape extension for #3a's requirement-granularity need) remains unbuilt and out of
 this task's scope**, unaffected by this wiring — see [[cap-real-completeness-measured]] and
-[[cap-mentor-item3a-completeness-surfaced]].
+[[cap-mentor-item3a-completeness-surfaced]]. (Built below, same day — see the entry immediately
+following, which also corrects this note's own premise.)
+
+---
+
+**HISTORICAL DATASET ARC, PIECE 3 BUILT (2026-08-24) — `HistoricalExecutionRecord` extended
+scalar→many, WITH A LOAD-BEARING CORRECTION to this arc's own "unblocks #3a" framing, found by
+reading an Accepted, frozen ADR before building.**
+
+**The current shape and piece 2's scalar choice, confirmed.** `HistoricalExecutionRecord`
+(`knowledge_graph/engine/historical_dataset.py`) held one scalar `requirement_id`; piece 2's
+`FileHistoricalDatasetProvider._record_for` populated it as `requirements[0]["requirementId"]` — the
+first-in-set representative, honestly documented as such, never all 20. The real
+`testable_requirement_set.json` already carries the full set (`requirements: [...]`, 20 rich objects —
+`requirementId`, `title`, `acceptanceCriteria`, etc. — confirmed against the real corpus's most recent
+qualifying run) — piece 3's job was exposing what already exists, not deriving anything new.
+
+**THE CORRECTION — extending this exact type cannot literally reach a future #3a, per a frozen ADR
+clause this task's own framing didn't check.** `HistoricalExecutionRecord` is not merely
+"engine-internal by convention" — ADR-0023 §D10 (frozen permanently) states, verbatim: *"The resolved
+dataset is an implementation detail — never a runtime contract, never Historical Truth, never Derived
+Knowledge, **never exported past the `knowledge_graph` package boundary**."* And separately (§D9,
+frozen, reused from ADR-0022 §D9): *"`knowledge_graph`'s `HistoricalDatasetProvider` / `HistoricalDataset`
+/ `HistoricalExecutionRecord` are distinct classes from `continuous_improvement`'s own, never imported
+across the two packages... deliberately replicated rather than shared."* If #3a is ever built as its
+own Layer 2+ capability — which every prior scoping note about it assumes (`[[cap-mentor-item3-graphs-design]]`'s
+"new sibling service, not an extension," CAP-088's own identical precedent) — it can **never** import
+or consume this exact type without violating this frozen recommendation. So literally extending
+`HistoricalExecutionRecord` does not, and architecturally cannot, hand a future #3a anything it can
+read. This is a real disagreement between this task's own framing and an Accepted ADR; **the ADR
+wins**, reported here rather than silently built around or silently ignored.
+
+**What extending it DOES deliver — real value, honestly scoped.** (1) A genuine enrichment to the
+Knowledge Graph's own real graph: every one of an execution's real requirements is now a real node,
+not just the representative one — a more accurate historical graph, for the KG's own sake, independent
+of #3a. (2) A PROVEN, working pattern — tolerant, dict-level, real-corpus-tested extraction of a full
+requirement set from `testable_requirement_set.json` — that a future #3a-specific reader can mirror
+line-for-line, exactly the way KG's and Continuous Improvement's own resolution machinery were
+"deliberately replicated rather than shared." What #3a's completeness reasoning actually needs (the
+full requirement set, readable, tolerant of the real corpus's messiness) is now proven buildable and
+low-risk — but #3a will still need its **own**, disjoint provider/record pair when it is built. This
+is the honest, corrected form of "unblocked": the risk and pattern are retired, not the wiring.
+
+**The design decision (surfaced, then executed).** ADD-ALONGSIDE, not replace: `requirement_id: str`
+(the representative) is untouched; a new `requirement_ids: tuple[str, ...] = ()` field carries the
+full set additively. REPLACING the scalar was rejected: `GENERATED_BY`/`TRACEABLE_TO`/`IMPLEMENTS`/
+`REFERENCES` (recommendation/finding/capability/document → requirement) and `DEPENDS_ON`
+(cross-execution requirement chaining) are all anchored to exactly ONE requirement per execution today
+— fanning those out across 20 requirements would misrepresent a real N:1 relationship (one
+recommendation, not 20) as N:M, or explode `DEPENDS_ON` into a 20×20 combinatorial mess with no real
+informational content. Only `REQUIREMENT` node projection and the `BELONGS_TO` edge naturally
+generalize to "for every real requirement" without ambiguity — those two, and only those two, were
+extended. One-record-per-requirement (the task's Option 2) was rejected: `ordinal`/`depends_on_previous`
+are execution-level chronological facts (used by `DEPENDS_ON`'s cross-execution chain); splitting one
+execution into 20 records would make those fields ambiguous per record for no benefit an additive field
+doesn't already deliver. This determination didn't need Nitin — it followed directly from reading the
+existing `EdgeProjector`'s real call sites, not a product/business judgment call.
+
+**Built.** `HistoricalExecutionRecord.requirement_ids: tuple[str, ...] = ()` (additive, defaults to
+"not populated," never "zero requirements" — `requirement_id` alone already guarantees at least one).
+`FileHistoricalDatasetProvider._record_for` gained `_all_requirement_ids` — dict-level, tolerant (skips
+non-dict entries and entries missing/empty `requirementId`), file order. `NodeProjector`/`EdgeProjector`
+each gained a `_representative_first` helper: `requirement_id` first, then `requirement_ids` extras,
+**deduplicated in stable list order — deliberately never a Python `set`**, since `set` iteration order
+is hash-randomized per-process and would have made the returned node/edge tuples' order
+non-deterministic across runs, breaking this engine's own "determinism is structural" invariant. A
+provider that never populates `requirement_ids` (the synthetic default, `DeterministicHistoricalDatasetProvider`,
+completely untouched) still yields exactly today's one requirement node and one `BELONGS_TO` edge — the
+regression guard, proven by dedicated tests, not just asserted.
+
+**KG win preserved AND enriched (live-verified, real corpus, read-only).** The same minted prior-run
+reference from the KG-live-win build now resolves to a record with `requirement_ids` = all 20 real ids
+(`requirement_ids[0] == requirement_id`, confirmed). Building the KG on it: **23 nodes** (20
+requirement + execution + dataset + recommendation), **22 edges** (20 `belongs_to` + `derived_from` +
+`generated_by`) — up from piece 2's own measured 4 nodes / 3 edges, still real, still traced to the
+same run's own JSON, zero regression. The synthetic provider's own golden-baseline shape (`3–7` nodes,
+`2–8` edges) is untouched — confirmed by the full productization suite (193/193) and full unit suite
+passing unchanged.
+
+**Findings held.** Dict-level tolerance proven directly: a fabricated `requirements` list with a
+missing key, `null`, empty string, and a non-dict entry all silently skip, never fabricate. A real,
+pre-piece-1 mixed-directory run (no `cp1_result.json`) still yields its full `requirement_ids`,
+independent of `finding_id` staying honestly `None`.
+
+**Governance.** No ADR-0021 note needed — ADR-0021 never specifies this shape at all (it is ADR-0023's
+own engine-internal concern); ADR-0023 §D9/§D10 already frame the resolved structure as a replaceable
+implementation detail, explicitly anticipating internal shape evolution. No amendment required; the
+finding above is a *reporting* correction (this task's "unblocks #3a" framing), not a *governance* gap.
+
+**Gate.** `make lint`: clean. `make test`: **6145 passed** (6131 + 14 new, itemized: 5 node-projection,
+2 edge-projection, 1 dataclass-default, 1 dataclass-populated-and-frozen, 1 synthetic-provider-regression,
+4 real-provider extraction/tolerance/representative-match). mypy: **436**, unchanged (the one shifted
+line was a pre-existing, unrelated error relocated by insertion, confirmed by a sorted-set diff against
+the true baseline, not a new error). Tree: exactly 7 files this piece touched (4 engine, 3 test).
+
+**Register.** The Historical Dataset arc is now COMPLETE for its originally-scoped consumer (the
+Knowledge Graph): real data, live, and now fully requirement-shaped. `#3a`'s completeness CAPABILITY
+remains a separate, future, unbuilt task — now genuinely lower-risk (the extraction pattern is proven)
+but still requiring its own provider/record pair per ADR-0023 §D9/§D10, not a reuse of this one.
 
 ---
 

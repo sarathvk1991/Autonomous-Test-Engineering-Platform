@@ -53,6 +53,37 @@ class TestHistoricalExecutionRecord:
         with pytest.raises(AttributeError):
             record.ordinal = 1  # type: ignore[misc]
 
+    def test_requirement_ids_defaults_to_empty(self) -> None:
+        """Piece 3: omitting requirement_ids (every pre-piece-3 call site,
+        including the synthetic provider below) is still valid construction."""
+        record = HistoricalExecutionRecord(
+            execution_id="ex-1",
+            ordinal=0,
+            requirement_id="req-1",
+            recommendation_id=None,
+            finding_id=None,
+            capability_id=None,
+            document_id=None,
+            depends_on_previous=False,
+        )
+        assert record.requirement_ids == ()
+
+    def test_requirement_ids_can_be_populated(self) -> None:
+        record = HistoricalExecutionRecord(
+            execution_id="ex-1",
+            ordinal=0,
+            requirement_id="req-1",
+            recommendation_id=None,
+            finding_id=None,
+            capability_id=None,
+            document_id=None,
+            depends_on_previous=False,
+            requirement_ids=("req-1", "req-2", "req-3"),
+        )
+        assert record.requirement_ids == ("req-1", "req-2", "req-3")
+        with pytest.raises(AttributeError):
+            record.requirement_ids = ()  # type: ignore[misc]
+
 
 @pytest.mark.unit
 class TestDeterministicHistoricalDatasetProvider:
@@ -124,3 +155,9 @@ class TestDeterministicHistoricalDatasetProvider:
     def test_resolved_dataset_is_a_plain_historical_dataset(self) -> None:
         dataset = DeterministicHistoricalDatasetProvider().resolve(_reference())
         assert isinstance(dataset, HistoricalDataset)
+
+    def test_requirement_ids_stays_unpopulated(self) -> None:
+        """Piece 3, regression guard: the synthetic provider is unaffected — it
+        never populates requirement_ids, still defaulting to ()."""
+        dataset = DeterministicHistoricalDatasetProvider().resolve(_reference(execution_count=5))
+        assert all(execution.requirement_ids == () for execution in dataset.executions)

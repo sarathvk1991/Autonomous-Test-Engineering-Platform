@@ -113,7 +113,8 @@ class TestSingleExecutionResolution:
         assert len(dataset.executions) == 1
         record = dataset.executions[0]
         assert record.execution_id == "ex-1"
-        assert record.requirement_id == "REQ-a"  # representative — the first, not all 3
+        assert record.requirement_id == "REQ-a"  # representative — the first of the full set
+        assert record.requirement_ids == ("REQ-a", "REQ-b", "REQ-c")  # piece 3: the full set
         assert record.ordinal == 0
         assert record.depends_on_previous is False
 
@@ -311,7 +312,7 @@ class TestRealCp1JsonReadAtDictLevel:
 @pytest.mark.unit
 class TestScalarShapeHonesty:
     """capability_id/document_id are always None — no real per-execution equivalent
-    exists; requirement_id is the representative-first id, not the full set."""
+    exists; requirement_id stays the representative-first id, unchanged."""
 
     def test_capability_id_and_document_id_are_always_none(self, tmp_path: Path) -> None:
         run_dir = tmp_path / "run-a"
@@ -325,17 +326,96 @@ class TestScalarShapeHonesty:
         assert dataset.executions[0].document_id is None
 
     def test_one_record_per_execution_not_per_requirement(self, tmp_path: Path) -> None:
-        """Execution-granularity: a real execution's 20 requirements still yield
-        exactly ONE record — the remaining 19 are invisible until piece 3."""
+        """Execution-granularity is unchanged: a real execution's 20 requirements
+        still yield exactly ONE record — but (piece 3) the record itself is no
+        longer requirement-blind: requirement_ids now carries all 20, in file
+        order, while requirement_id stays the representative-first id."""
         run_dir = tmp_path / "run-a"
+        all_ids = tuple(f"REQ-{i}" for i in range(20))
         _write_manifest(run_dir, execution_id="ex-1", completed="2026-08-01T00:00:00+00:00")
-        _write_trs(run_dir, requirement_ids=tuple(f"REQ-{i}" for i in range(20)))
+        _write_trs(run_dir, requirement_ids=all_ids)
 
         dataset = FileHistoricalDatasetProvider(tmp_path).resolve(
             _reference(first_execution_id="ex-1", last_execution_id="ex-1")
         )
         assert len(dataset.executions) == 1
-        assert dataset.executions[0].requirement_id == "REQ-0"
+        record = dataset.executions[0]
+        assert record.requirement_id == "REQ-0"
+        assert record.requirement_ids == all_ids
+
+
+@pytest.mark.unit
+class TestRequirementIdsFullSet:
+    """Piece 3: the record's additive ``requirement_ids`` field."""
+
+    def test_requirement_ids_carries_the_full_set_in_file_order(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run-a"
+        _write_manifest(run_dir, execution_id="ex-1", completed="2026-08-01T00:00:00+00:00")
+        _write_trs(run_dir, requirement_ids=("REQ-a", "REQ-b", "REQ-c"))
+
+        dataset = FileHistoricalDatasetProvider(tmp_path).resolve(
+            _reference(first_execution_id="ex-1", last_execution_id="ex-1")
+        )
+        assert dataset.executions[0].requirement_ids == ("REQ-a", "REQ-b", "REQ-c")
+
+    def test_requirement_ids_first_element_matches_the_representative(
+        self, tmp_path: Path
+    ) -> None:
+        run_dir = tmp_path / "run-a"
+        _write_manifest(run_dir, execution_id="ex-1", completed="2026-08-01T00:00:00+00:00")
+        _write_trs(run_dir, requirement_ids=("REQ-a", "REQ-b"))
+
+        dataset = FileHistoricalDatasetProvider(tmp_path).resolve(
+            _reference(first_execution_id="ex-1", last_execution_id="ex-1")
+        )
+        record = dataset.executions[0]
+        assert record.requirement_ids[0] == record.requirement_id
+
+    def test_entries_missing_requirement_id_are_skipped_not_fabricated(
+        self, tmp_path: Path
+    ) -> None:
+        """Dict-level tolerance (piece 1/2's finding, carried forward): a
+        malformed requirement entry is silently skipped, never guessed."""
+        run_dir = tmp_path / "run-a"
+        _write_manifest(run_dir, execution_id="ex-1", completed="2026-08-01T00:00:00+00:00")
+        (run_dir / "testable_requirement_set.json").write_text(
+            json.dumps(
+                {
+                    "requirements": [
+                        {"requirementId": "REQ-a"},
+                        {"title": "no requirementId key at all"},
+                        {"requirementId": None},
+                        {"requirementId": ""},
+                        "not-even-a-dict",
+                        {"requirementId": "REQ-b"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        dataset = FileHistoricalDatasetProvider(tmp_path).resolve(
+            _reference(first_execution_id="ex-1", last_execution_id="ex-1")
+        )
+        assert dataset.executions[0].requirement_ids == ("REQ-a", "REQ-b")
+
+    def test_mixed_directory_missing_cp1_result_still_populates_requirement_ids(
+        self, tmp_path: Path
+    ) -> None:
+        """A real, pre-piece-1 run (no cp1_result.json) still yields its full
+        requirement set — requirement_ids reads only testable_requirement_set.json,
+        independent of cp1_result.json's presence."""
+        run_dir = tmp_path / "run-a"
+        _write_manifest(run_dir, execution_id="ex-1", completed="2026-08-01T00:00:00+00:00")
+        _write_trs(run_dir, requirement_ids=("REQ-a", "REQ-b", "REQ-c"))
+        # No cp1_result.json written — mirrors the real corpus's pre-piece-1 runs.
+
+        dataset = FileHistoricalDatasetProvider(tmp_path).resolve(
+            _reference(first_execution_id="ex-1", last_execution_id="ex-1")
+        )
+        record = dataset.executions[0]
+        assert record.requirement_ids == ("REQ-a", "REQ-b", "REQ-c")
+        assert record.finding_id is None
 
 
 @pytest.mark.unit
