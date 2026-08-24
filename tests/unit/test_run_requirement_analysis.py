@@ -1473,13 +1473,39 @@ def test_cli_default_run_carries_no_cp1_result(
 
 
 @pytest.mark.unit
-def test_execution_package_transports_cp1_result_object(tmp_path: Path) -> None:
-    # The Execution Package still only *transports* the CP1Result object (no
-    # cp1_result.json is ever serialised); CAP-068 renders a presentation-only
-    # cp1_report.md from it. Superseded the CAP-067B "no new artifacts" assertion.
+def test_execution_package_serializes_cp1_result_object(tmp_path: Path) -> None:
+    # The Execution Package now also serializes the CP1Result object as JSON
+    # (ADR-0021 §Stage 6 — CP1Result is one of the named runtime contracts a
+    # Historical Dataset is built from), alongside CAP-068's presentation-only
+    # cp1_report.md. Supersedes the CAP-067B "transported, never serialised"
+    # assertion this test locked in previously.
     ExecutionWriter().write(tmp_path, _live_data(cp1_result=_cp1_result()))
-    assert not (tmp_path / "cp1_result.json").exists()  # transported, never serialised
+    assert (tmp_path / "cp1_result.json").exists()  # serialised (ADR-0021 §Stage 6)
     assert (tmp_path / "cp1_report.md").exists()  # rendered presentation (CAP-068)
+
+
+@pytest.mark.unit
+def test_cp1_result_json_matches_contract(tmp_path: Path) -> None:
+    """``cp1_result.json`` is a straight ``model_dump`` of the real ``CP1Result``."""
+    cp1_result = _cp1_result()
+    ExecutionWriter().write(tmp_path, _live_data(cp1_result=cp1_result))
+    data = json.loads((tmp_path / "cp1_result.json").read_text(encoding="utf-8"))
+    assert data == cp1_result.model_dump(mode="json", by_alias=True)
+    assert data["cp1Id"] == "CP1-RUN-1"
+    assert data["overallVerdict"] == "pass"
+    # Round-trips at the JSON level: CP1Result.model_validate(dumped), re-dumped,
+    # is byte-for-byte identical JSON (the same discipline GroundingSerializer's
+    # own "round-trips" docstring claims). Full Python-object equality is NOT
+    # asserted here: CP1Input nests ValidationResult/AnalysisResult/
+    # NormalizationResult, which carry loosely-typed nested fields (e.g.
+    # ``execution_status``, ``parsed_response``) that already do not reconstruct
+    # to identical Python types from raw JSON — a pre-existing characteristic of
+    # those already-shipped, already-JSON-persisted contracts, not something this
+    # CP1Result JSON emission introduces or needs to fix.
+    from requirement_intelligence.cp1.models import CP1Result
+
+    reloaded = CP1Result.model_validate(data)
+    assert reloaded.model_dump(mode="json", by_alias=True) == data
 
 
 # ===========================================================================
@@ -1549,10 +1575,12 @@ def test_cp1_pass_manifest_updated(tmp_path: Path) -> None:
     result = ExecutionWriter().write(tmp_path, _live_data(cp1_result=_cp1_result()))
     assert result.manifest["cp1Executed"] is True
     assert result.manifest["cp1Report"] == _CP1_REPORT
+    assert result.manifest["cp1ResultArtifact"] == "cp1_result.json"
     assert result.manifest["cp1Verdict"] == "pass"
-    # The report artifact is recorded (name/bytes/sha256) in generatedArtifacts.
+    # Both artifacts are recorded (name/bytes/sha256) in generatedArtifacts.
     entries = {a["name"] for a in result.manifest["generatedArtifacts"]}
     assert _CP1_REPORT in entries
+    assert "cp1_result.json" in entries
 
 
 @pytest.mark.unit
@@ -1610,12 +1638,12 @@ def test_existing_artifacts_unchanged_when_cp1_present(tmp_path: Path) -> None:
     ExecutionWriter().write(with_cp1, _live_data(cp1_result=_cp1_result()))
 
     # The core analysis artifacts and baseline metrics are byte-identical; the summary
-    # and review gain an additive reference section (by design), and cp1_report.md is
-    # the only new file.
+    # and review gain an additive reference section (by design), and cp1_report.md +
+    # cp1_result.json (ADR-0021 §Stage 6) are the only new files.
     for name in ("analysis_result.json", "raw_llm_response.json", "baseline_metrics.md"):
         assert (without / name).read_text() == (with_cp1 / name).read_text()
     added = {p.name for p in with_cp1.iterdir()} - {p.name for p in without.iterdir()}
-    assert added == {_CP1_REPORT}
+    assert added == {_CP1_REPORT, "cp1_result.json"}
 
 
 @pytest.mark.unit
@@ -1628,6 +1656,7 @@ def test_writer_cp1_report_deterministic(tmp_path: Path) -> None:
     ExecutionWriter().write(first, data)
     ExecutionWriter().write(second, data)
     assert (first / _CP1_REPORT).read_text() == (second / _CP1_REPORT).read_text()
+    assert (first / "cp1_result.json").read_text() == (second / "cp1_result.json").read_text()
 
 
 # --- Determinism & thread safety of the owned service -----------------------

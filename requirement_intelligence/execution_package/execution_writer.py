@@ -203,13 +203,23 @@ class ExecutionWriter:
                 self._validation_report.build(data), encoding="utf-8"
             )
             names += ["validation_result.json", "validation_report.md"]
-        # CP1 report (CAP-068): rendered only when CP1 was executed. Presentation only —
-        # the CP1Result is transported, never re-evaluated or transformed here.
+        # CP1 artifacts (CAP-068, JSON persistence added for ADR-0021 §Stage 6 —
+        # CP1Result is one of Stage 7's named runtime contracts, and was previously
+        # recoverable only through its markdown projection). Rendered/written only
+        # when CP1 was executed. Pure projection — the CP1Result is transported,
+        # never re-evaluated or transformed here. ``cp1_result.json`` is the
+        # canonical serialization (mirrors ``validation_result.json``: a direct
+        # ``model_dump``, no serializer class, since CP1 has no metrics.md sibling);
+        # ``cp1_report.md`` remains the human-readable projection, unchanged.
         if data.cp1_result is not None:
+            _write_json(
+                target_dir / "cp1_result.json",
+                data.cp1_result.model_dump(mode="json", by_alias=True),
+            )
             (target_dir / "cp1_report.md").write_text(
                 self._cp1_report.build(data), encoding="utf-8"
             )
-            names.append("cp1_report.md")
+            names += ["cp1_result.json", "cp1_report.md"]
         # Grounding artifacts (CAP-077F.1): appended only when a GroundingResult was
         # produced. Pure projection — the GroundingResult is serialised/rendered as-is,
         # nothing is matched, classified, scored, or recomputed.

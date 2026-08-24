@@ -61,7 +61,7 @@ _RESULT_ARTIFACTS = frozenset(
     }
 )
 _VALIDATION_ARTIFACTS = frozenset({"validation_result.json", "validation_report.md"})
-_CP1_ARTIFACTS = frozenset({"cp1_report.md"})
+_CP1_ARTIFACTS = frozenset({"cp1_report.md", "cp1_result.json"})
 _GROUNDING_ARTIFACTS = frozenset(
     {"grounding_result.json", "grounding_report.md", "grounding_metrics.md"}
 )
@@ -695,10 +695,11 @@ class TestPhase4OutputVerification:
             assert path.stat().st_size > 0, f"Validation artifact is empty: {name}"
 
     @pytest.mark.productization
-    def test_cp1_report_present(self, golden_pipeline_result: PipelineResult) -> None:
-        path = golden_pipeline_result.output_dir / "cp1_report.md"
-        assert path.exists(), "cp1_report.md missing"
-        assert path.stat().st_size > 0, "cp1_report.md is empty"
+    def test_cp1_artifacts_present(self, golden_pipeline_result: PipelineResult) -> None:
+        for name in _CP1_ARTIFACTS:
+            path = golden_pipeline_result.output_dir / name
+            assert path.exists(), f"CP1 artifact missing: {name}"
+            assert path.stat().st_size > 0, f"CP1 artifact is empty: {name}"
 
     @pytest.mark.productization
     def test_grounding_artifacts_present(self, golden_pipeline_result: PipelineResult) -> None:
@@ -1018,6 +1019,22 @@ class TestPhase4OutputVerification:
         )
 
     # --- CP1Result verification --------------------------------------------
+
+    @pytest.mark.productization
+    def test_cp1_result_json_parseable(self, golden_pipeline_result: PipelineResult) -> None:
+        data = _load_json(golden_pipeline_result.output_dir / "cp1_result.json")
+        assert "cp1Id" in data
+        assert "overallVerdict" in data
+        assert "findings" in data
+
+    @pytest.mark.productization
+    def test_cp1_result_json_matches_manifest_verdict(
+        self, golden_pipeline_result: PipelineResult
+    ) -> None:
+        """``cp1_result.json``'s verdict must agree with the manifest's ``cp1Verdict``."""
+        data = _load_json(golden_pipeline_result.output_dir / "cp1_result.json")
+        manifest = _load_json(golden_pipeline_result.output_dir / "manifest.json")
+        assert data["overallVerdict"] == manifest["cp1Verdict"]
 
     @pytest.mark.productization
     def test_cp1_verdict_is_pass(self, golden_pipeline_result: PipelineResult) -> None:

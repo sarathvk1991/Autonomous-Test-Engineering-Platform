@@ -2344,6 +2344,77 @@ future, separate task.
 
 ---
 
+**HISTORICAL DATASET ARC, PIECE 1 BUILT (2026-08-24) — CP1Result JSON emission, closing the one
+emission gap the architecture surfacing found.** Real code this time, scoped exactly as sized above:
+CP1Result additively serialized as `cp1_result.json`, alongside the existing `cp1_report.md`
+(unchanged). Mirrors the `ValidationResult` precedent exactly (direct `model_dump(mode="json",
+by_alias=True)` in `execution_writer.py`, no new serializer class — CP1 has no metrics.md sibling,
+the same shape as Validation, not the 3-artifact Grounding/QualityGovernance pattern). Manifest gets
+one new key, `cp1ResultArtifact` = `"cp1_result.json"`, alongside the existing `cp1Executed`/
+`cp1Report`/`cp1Verdict` — package metadata only, the artifact already appears in
+`generatedArtifacts` via the same checksum mechanism as every other file.
+
+**All 8 of ADR-0021 §Stage 7's named runtime contracts are now JSON-persisted** — the piece-2
+precondition this arc's own prior note named is met. Verified via the golden productization suite
+(`_CP1_ARTIFACTS` extended to `{cp1_report.md, cp1_result.json}`; new `test_cp1_result_json_parseable`,
+`test_cp1_result_json_matches_manifest_verdict`) and unit tests (`test_run_requirement_analysis.py`:
+`test_execution_package_serializes_cp1_result_object`, `test_cp1_result_json_matches_contract`,
+`test_cp1_pass_manifest_updated` extended, determinism test extended) — 6109 passed (6106 + 3 net
+new), `make lint` clean, mypy unchanged at 436 (confirmed against a `git stash`-isolated pre-edit
+baseline — the 436 is the real current whole-repo count, not the "432" an earlier session's note
+cited; this build added zero new mypy errors either way).
+
+**Two pre-existing regression tests had to change, honestly, not just newly-written ones.**
+`test_run_requirement_analysis.py` carried a test explicitly named
+`test_execution_package_transports_cp1_result_object` asserting `not (tmp_path /
+"cp1_result.json").exists()` — a deliberate CAP-067B-era lock-in of the OLD "transported, never
+serialised" behavior. Renamed to `test_execution_package_serializes_cp1_result_object` and inverted,
+with the old intent recorded in the docstring rather than silently deleted. A second test,
+`test_existing_artifacts_unchanged_when_cp1_present`, asserted the exhaustive set of new files was
+exactly `{cp1_report.md}`; extended to `{cp1_report.md, cp1_result.json}`. Both are expected,
+intentional consequences of this piece's own purpose — not collateral damage.
+
+**A real finding, surfaced not forced (per this task's own instruction).** `CP1Result` nests
+`CP1Input` → `ValidationResult`/`NormalizationResult` → `AnalysisResult`/`ParsedResponse`, and some
+of those already-shipped nested fields (`LLMResponse.execution_status`, the normalization
+`parsed_response` shape) are loosely typed enough that `CP1Result.model_validate(json_dump)` does
+**not** reconstruct to full Python-object equality with the original in-memory result (an enum stays
+a string, a typed sub-model stays a plain dict) — confirmed by writing and then relaxing the
+round-trip assertion in `test_cp1_result_json_matches_contract`. **This is not a CP1Result
+serialization defect** — the JSON emission itself is exact (`data ==
+cp1_result.model_dump(mode="json", by_alias=True)` holds, and the JSON-level round-trip,
+`model_validate(data).model_dump(...) == data`, also holds) — it is a pre-existing looseness in
+nested contracts CP1Result was always going to inherit the moment any of them got serialized
+together, not something introduced by or blocking this piece. Named for whoever builds piece 2: the
+provider reading this JSON back should compare at the JSON/dict level (as this task's own tests now
+do), not assume full Python-object round-trip identity through `model_validate`.
+
+**The backfill question, answered plainly: going-forward-only, not migrated.** The 5 real runs
+already on disk in `output/executions/` (measured by the architecture-surfacing note above) do
+**not** get a `cp1_result.json` retroactively — no migration script was written, deliberately out of
+this piece's own scope (`cp1_report.md`-to-JSON backfill is new functionality, not "emit CP1Result as
+JSON" for new runs). **What this means for piece 2:** a real `HistoricalDatasetProvider` built next
+must tolerate execution directories with 7 of 8 contracts (the 5 existing runs) alongside newer ones
+with all 8 — or those 5 runs must be re-run to backfill, which regenerates every artifact fresh
+rather than patching one file in place, consistent with ADR-0021 Stage 4's own "corrections create
+new executions, never edit an old one" rule. Named as piece 2's own first real input, not decided
+here.
+
+**ADR agreement check (per this task's own instruction — where this prompt and an Accepted ADR
+disagree, the ADR wins).** No disagreement found: ADR-0021 §Stage 7 names `CP1Result` as one of the
+eight runtime contracts a Historical Dataset must be built from, and specifies no shape or field
+constraint beyond "the runtime contracts themselves... never a report" — a direct `model_dump` of the
+real `CP1Result` (its existing, already-governed 1.1 shape, `cp1_result.py`) satisfies that exactly,
+with no shape decision required at this piece. The prompt's own instruction to "serialize the
+CP1Result CONTRACT per ADR-0021... NOT the markdown report's prose" is exactly what was built.
+
+**Nothing beyond CP1Result JSON emission touched.** No provider, no `HistoricalDatasetProvider`
+change, no `HistoricalExecutionRecord` shape extension (piece 3), no durable-storage decision. Piece
+2 (a real file-based provider over `output/executions/`) and piece 3 (the record-shape extension) are
+both still future, separate work.
+
+---
+
 ### Item 4 — Spec-based development (features, page objects, artifacts)
 
 **What it is:** drive generation from structured specifications (feature files, page-object

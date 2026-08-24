@@ -85,12 +85,17 @@ class ManifestBuilder:
             "generatedArtifacts": generated_artifacts,
         }
 
-        # CP1 references (CAP-068): additive, and only when CP1 was executed. When CP1
-        # did not run, the manifest is byte-identical to before — no key is added.
-        # Presentation only: the verdict is read from the CP1Result, never computed.
+        # CP1 references (CAP-068; ``cp1ResultArtifact`` added for ADR-0021 §Stage 6):
+        # additive, and only when CP1 was executed. When CP1 did not run, the manifest
+        # is byte-identical to before — no key is added. Presentation only: the verdict
+        # is read from the CP1Result, never computed. ``cp1_result.json`` already
+        # appears in ``generatedArtifacts`` via the same checksum mechanism as every
+        # other file; this key is package metadata only — the artifact filename —
+        # never the result's content itself.
         if data.cp1_result is not None:
             manifest["cp1Executed"] = True
             manifest["cp1Report"] = "cp1_report.md"
+            manifest["cp1ResultArtifact"] = "cp1_result.json"
             manifest["cp1Verdict"] = str(
                 getattr(data.cp1_result.overall_verdict, "value", data.cp1_result.overall_verdict)
             )
