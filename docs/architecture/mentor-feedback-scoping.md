@@ -2534,6 +2534,107 @@ no capability-matrix row, no touch to `HistoricalExecutionRecord`'s shape (piece
 
 ---
 
+**HISTORICAL DATASET ARC, KG-LIVE-WIN PREREQUISITE SURFACED (2026-08-24) — decision-support only,
+resolving piece 2's own two named candidate fixes.** Piece 2 found that wiring
+`FileHistoricalDatasetProvider` live today would trade fake-but-populated for real-but-empty and
+named two unbuilt candidate fixes without comparing them. This surfacing reads the real code and the
+governing ADRs to compare them; it builds, reorders, and wires nothing.
+
+**The ordering, re-confirmed verbatim against the current code (`scripts/run_requirement_analysis.py`)
+— piece 2's claim holds exactly.** The live phase sequence is: Recommendation → Continuous Improvement
+(lines 1492–1509) → Knowledge Graph (lines 1523–1541) → Organizational Memory → Learning →
+`ExecutionWriter().write(target_dir, data)` (line 1632). All four Layer 2 phases run and complete
+**before** the current run's own `output/executions/<dir>/` is ever written to disk.
+
+**The minting, re-confirmed against the real code.**
+`_knowledge_graph_historical_dataset_reference_for_execution` (lines 808–831) builds a
+`HistoricalDatasetReference` with `first_execution_id=result.execution_id` and
+`last_execution_id=result.execution_id` — both name the run **currently in flight**, the same run
+whose directory does not exist yet. Confirmed self-referential, not merely asserted.
+
+**The consequence, re-confirmed by reading `FileHistoricalDatasetProvider._select_window`
+directly, not assumed.** When `first_execution_id == last_execution_id`, the provider looks up that
+one id in its chronological index of `output/executions/`; the current run's id is never in that
+index yet (its directory doesn't exist), so the window resolves to `[]` and `resolve()` returns zero
+records. This is the provider's real, tested, honest behavior (`test_unfound_execution_resolves_to_
+empty_not_fabricated`) — not a bug in piece 2, a structural consequence of what the CLI hands it.
+
+**What the Knowledge Graph semantically needs — grounded in ADR-0021/0022/0023, not inferred.**
+ADR-0021 §Stage 6 defines the Historical Dataset as "the canonical owner of historical
+**executions**" — an indexed, multi-execution corpus a learning capability reads from, explicitly
+never scoped to one execution (Layer 1 contracts are "scoped to exactly one execution"; the
+Historical Dataset is the thing that spans many). More directly: ADR-0023 §D12, Recommendation 20
+(frozen permanently) already anticipates and licenses this exact swap: *"A future Historical Dataset
+implementation — and a future `HistoricalDatasetProvider` backed by it — may replace the
+single-execution reference this milestone reuses without requiring any change to the CLI, the
+serializer, the Execution Package, or `KnowledgeGraphResult`."* The self-reference was always
+understood as a temporary placeholder for "no real Historical Dataset exists yet" — never the
+intended long-run shape. This settles the semantic question before comparing implementations: the KG
+is a cross-run, historical-truth consumer by design; referencing prior executions is not a
+workaround, it is what the architecture already says the reference should eventually name.
+
+**CANDIDATE A — prior-execution minting.**
+- *What it touches:* only `_knowledge_graph_historical_dataset_reference_for_execution` (and its
+  Continuous Improvement twin, same shape, out of this task's scope but noted for completeness). It
+  would need to enumerate prior, already-qualifying execution ids from `output/executions/` — the
+  same root `FileHistoricalDatasetProvider._index_chronologically` already reads — and set
+  `first_execution_id`/`last_execution_id` to a chronological window ending at the most recent prior
+  run (never the current one). **No provider change is needed**: `_select_window` already handles a
+  `first != last` chronological range; this is unexercised-but-existing code, not new surface.
+- *Blast radius:* contained to the minting helper. No change to the CLI's phase order, the
+  `KnowledgeGraphService`/`DeterministicKnowledgeGraphEngine` call shape, the serializer, the
+  Execution Package, or `KnowledgeGraphResult` — exactly the boundary ADR-0023 Recommendation 20
+  already promises stays untouched.
+- *Correct-by-design, not a workaround:* confirmed above against ADR-0021 §Stage 6 and ADR-0023
+  Recommendation 20. Self-reference never had real data even in principle (the synthetic provider's
+  populated look was always fabricated); prior-reference is what "historical" was always defined to
+  mean.
+- *Cold start:* `HistoricalDatasetReference` requires `first_execution_id`/`last_execution_id`
+  (`min_length=1`) and `execution_count` (`ge=1`) — the type cannot represent "zero prior
+  executions," so a corpus with no qualifying prior runs (the very first live run, or any run
+  before one qualifying prior exists) needs an explicit fallback. The honest fallback is today's
+  existing self-referential mint, which — proven above — already resolves to zero records through
+  the real provider. That is not a new failure mode; it is today's live behavior, narrowed from
+  "every run" to "only the cold-start case."
+
+**CANDIDATE B — phase reordering.**
+- *What it would take:* move `ExecutionWriter().write(...)` (or at least the current run's directory
+  persistence) to before the Continuous Improvement/Knowledge Graph phases.
+- *What it touches — the real structural problem, not just risk-in-the-abstract:* `ExecutionData`
+  (lines 1599–1625) bundles `continuous_improvement_result`, `knowledge_graph_result`,
+  `organizational_memory_result`, and `learning_result` into the **same** `ExecutionWriter().write()`
+  call that would need to move earlier. Moving the write before KG runs means the write can no longer
+  include this run's own CI/KG/OM/Learning results — the exact thing the current, frozen ordering
+  guarantees gets persisted into this run's own Execution Package. A partial-then-final write would
+  mean splitting `ExecutionWriter` into two passes, real restructuring of a currently single,
+  self-contained write call, not a reorder of two lines.
+- *ADR conflict:* both ADR-0022 §D11 and ADR-0023 §D12 state, verbatim, "**Activation and execution
+  order (frozen)**" for exactly this sequence (`... → Continuous Improvement → Knowledge Graph → ...
+  → Execution Package`). Reordering would contradict two ADRs' explicitly frozen recommendations,
+  requiring a governance amendment before any code change — not a mechanical move.
+- *Semantic question:* even if built, B only makes the **current** run's own data readable to KG.
+  Per the grounding above, the KG's own architecture wants historical (prior-run) truth, not
+  necessarily this run's own truth about itself — so B, even fully built, doesn't obviously answer
+  the question A already answers correctly.
+
+**Comparison and recommendation.** A is contained (one helper, zero change to the
+CLI/serializer/Execution Package/runtime-contract boundary, explicitly pre-licensed by ADR-0023
+Recommendation 20) and correct-by-design (ADR-0021 §Stage 6's own definition of what "historical"
+means). B is structurally invasive (splits an atomic write call), conflicts with two ADRs' frozen
+ordering decisions, and — even if built — doesn't clearly deliver a more-correct KG than A already
+would. **Recommend A** — prior-execution minting — as the fix that actually delivers the live
+"Knowledge Graph on real, populated data" win with the least risk and the most architectural
+justification. Cold-start caveat carries forward unchanged: the first qualifying live run (or any run
+before a prior one qualifies) legitimately falls back to today's self-referential, zero-record mint —
+an honest empty result for a genuinely history-less run, not a defect.
+
+**Nothing built, reordered, or wired by this surfacing.** No `PlatformContext` change, no minting
+code change, no phase-order change, no ADR amendment, no register entry, no capability-matrix row.
+The decision to build Candidate A (and then, separately, whether to wire the live provider) remains
+the user's to make.
+
+---
+
 ### Item 4 — Spec-based development (features, page objects, artifacts)
 
 **What it is:** drive generation from structured specifications (feature files, page-object
