@@ -1974,6 +1974,175 @@ this package.
 
 ---
 
+**#3a DESIGN-SURFACING SURFACED (2026-08-24) — the heaviest remaining mentor item, both mentors'
+independently-named #1 strategic risk. Decision-support only: build nothing, change nothing.**
+
+*Pre-flight.* Clean tree, `main`, HEAD `4219d82`. `make lint` clean. `make test`: **6106 passed**,
+unchanged. This note adds text only to this document; nothing else touched.
+
+**What #3a is, precisely, now that #3b (graphs) is built.** Item 3's original "Already-partly-done?"
+list (above) had three parts: (1) subset-not-everything (ingestion volume), (2) completeness, (3)
+Knowledge Graph. Part 3 is done — the traceability graph (ADR-0048) shipped, governed, and is now
+answering real numbers (D5/D5-binding above: 100% Gherkin-authoring coverage, ~50% step-definition-
+binding coverage, on the real 20-requirement corpus). **#3a is what's left: parts 1 and 2 — subset-
+not-everything and corpus/input completeness — the mentor-program tracking label the repo audit
+(`[[cap-repo-audit-2026-08-23]]`) already uses for this remaining pair.** This note resolves the
+buildable-vs-blocked question that memory entry flagged as still open.
+
+**The distinction, made precise.** `evaluate_completeness`/`evaluate_binding_completeness`
+(`traceability_graph/completeness.py`, read directly, both confirmed by direct reading this session)
+answer: *given the `TestableRequirement` nodes that already exist in this run's `TestableRequirementSet`,
+does each one reach a full scenario→step chain, and is each step bound to a step-definition?* Both
+traverse a graph built **from** the requirement set — neither ever asks whether the requirement set
+itself is missing a requirement. **This is coverage-completeness (BUILT). #3a is input/corpus
+completeness — are the requirements themselves a complete picture of what should be tested — a
+different, still-open question**, exactly the "house of cards" framing: coverage-completeness is
+complete *relative to* whatever the corpus already contains; if the corpus is short a requirement,
+coverage-completeness reports 100% over an incomplete set and never flags it.
+
+**What #3a encompasses — both sub-questions, read from the original item-3 text and Nitin's own
+follow-up, not merely assumed:** (a) **corpus-set internal completeness** — are there missing
+requirements, inferred from the existing set or from history (the KG/inference angle); (b)
+**subset-not-everything** — feeding a relevant subset rather than the whole corpus, for token/
+hallucination control. These are related (both are about the *input* side of the pipeline, both
+were named together as one item) but not identical: (a) is a completeness question, (b) is a
+volume/relevance question. Confirmed via direct code reading, `TestableRequirement`
+(`contracts/testable_requirement.py`) carries **no cross-requirement relationship field** —
+`traces_to` links out to external `SourceRef`s (JIRA/doc), `supersedes` links to a prior version of
+the *same* requirement's own lineage — there is no field linking one requirement to another sibling
+requirement it might imply, depend on, or duplicate. This matters directly for the verdict below: a
+within-run, requirements-only internal-consistency check has almost no relational data to reason
+over today.
+
+**What it touches — ADR-0032, confirmed by reading its actual freeze text, not inferred.** Both
+sub-questions are new Layer 1 judgment: (a) inferring a missing requirement from the existing set or
+from history, and (b) intelligently prioritizing which requirements matter most for a subset, are
+each a new reasoning capability over `requirement_intelligence/`'s own domain, not a bugfix,
+contract-emission, or orchestration carve-out. Checked against ADR-0032 §"Permitted carve-outs"
+(the five: `TestableRequirement` emission, run/stage-state integration, ADR-0033 renames, bugfixes,
+tests) — **neither sub-question fits any of the five.** Building either directly into Layer 1 (new
+extraction/inference logic *inside* `requirement_intelligence/`'s own governed pipeline, e.g. new
+CP1/enhancement/grounding rules) requires the freeze lifted first, per ADR-0032's own three-part
+procedure: (1) Layer 2 (Feature Engineering) must have reached Runtime Integration, (2) Architecture
+Review Board approval, (3) the lifting ADR names the specific new CAP number(s) — general lifts are
+out of policy.
+
+**A genuinely new finding this session: precondition (1) is now factually met, but that does not
+mean the freeze is lifted.** `[[cap-repo-audit-2026-08-23]]` and this session's own re-check both
+confirm Layer 2 (Feature Engineering, stage 14) is BUILT and live — Runtime Integration reached, the
+same milestone ADR-0032 §"How the freeze is lifted" names as its exit condition. ADR-0032's own
+2026-07-25 resolution note already anticipated this exact question and answered it directly for
+ADR-0043 ("Layer 2's own Architecture Freeze... is stage 1... not stage 4 [Runtime Integration]...
+this freeze is not lifted by it") — at that time Layer 2 hadn't reached Runtime Integration yet. It
+has now. **Precondition 1 is satisfied today; preconditions 2 and 3 are not — no Architecture Review
+Board action has been taken, and no ADR names a specific Layer 1 CAP number for this capability.**
+The freeze is not lifted by anything that has already happened; the *first* of its three gates has
+simply stopped being the blocking one. This narrows a hypothetical freeze-lift path's remaining
+work, but lifting the freeze is still a deliberate governance act requiring the other two steps —
+not something a design-surfacing note performs or assumes on the user's behalf.
+
+**What it depends on — the unbuilt Historical Dataset, confirmed by reading the code, not the
+prose.** Read `requirement_intelligence/knowledge_graph/engine/historical_dataset.py` directly:
+`DeterministicHistoricalDatasetProvider.resolve` synthesizes every field —
+`execution_id`/`requirement_id`/`recommendation_id`/`finding_id`/`capability_id`/`document_id` — as
+a pure SHA-256 digest of the reference's own provenance fields (`dataset_id`, ordinal), never real
+requirement data from any actual past execution. Its own docstring says so plainly: "No Historical
+Dataset storage implementation exists yet (ADR-0021 §Stage 6)... A future milestone replaces this
+with a provider backed by a real Historical Dataset implementation." Grepped for any other
+implementation anywhere in the repo — none exists; every hit is this same synthetic provider
+(Knowledge Graph's copy) or its Continuous Improvement sibling, same pattern, same absence. ADR-0021
+itself: **Status now reads "Accepted (ratified by ADR-0049)"** — but ADR-0049 §D2 is explicit that
+ratification covers only "the lineage's substantive constitutional content — the Truth Hierarchy,
+Historical Dataset Resolution Principle..." and explicitly **does not** ratify "ADR-0021–0029's
+runtime contracts" (there are none to ratify — none were ever built). Ratifying the constitution is
+not building the service it describes. **Corpus/input completeness genuinely depends on this,
+because "is a requirement missing" is not answerable from one execution's own data alone** — it
+requires comparing this run's requirement set against a pattern established across many prior runs
+(what a given component/functional_tag usually yields, what recurs across executions) — exactly the
+Historical Truth layer ADR-0021 defines and nothing has built.
+
+**The KG connection — boundary-blocked, same shape as the #3b graphs finding, re-confirmed.**
+ADR-0023's `KnowledgeGraphService.build` is frozen (D2/Recommendation 9, quoted above in the #3b
+notes) to consume `HistoricalDatasetReference` only — never a Layer 1 runtime contract, never an
+Execution Package artifact, directly. This is the identical boundary that forced traceability/
+change-impact to become a new sibling service rather than an extension of `knowledge_graph/`. For
+completeness inference, the KG's frozen boundary is not fatal in principle — completeness genuinely
+*is* a Historical-Truth-shaped question (per the paragraph above), unlike traceability/change-impact
+which needed per-run Runtime Truth the KG boundary correctly forbids it from touching. **But today
+the KG cannot host it either way**, because the Historical Truth it would need to consume doesn't
+exist — only the synthetic stand-in. Once a real Historical Dataset exists, the KG (or a sibling
+built the same way) becomes the *architecturally correct* home for this reasoning; today it is
+simply empty of anything real to reason over.
+
+**THE VERDICT — mostly BLOCKED, with one narrow buildable-now slice named honestly as a lesser
+proxy, not equated with the real question.**
+
+- **Sub-question (a), corpus-set completeness (missing requirements):** **BLOCKED**, on two real
+  prerequisites — the unbuilt Historical Dataset (ADR-0021 §Stage 6) for any inference that compares
+  against history, and the ADR-0032 freeze-lift (precondition 1 met, 2/3 not) for any inference
+  built as new judgment logic *inside* Layer 1 itself. A within-run-only version (reasoning purely
+  over the current `TestableRequirementSet`, no history) has near-zero relational data to work with
+  today — `TestableRequirement` carries no cross-requirement links (confirmed above) — so even
+  waiving both prerequisites, there is little for it to detect beyond trivial duplicate-content-hash
+  checks. Not a real answer to "are we missing requirements."
+- **Sub-question (b), subset-not-everything (intelligent prioritization):** **BLOCKED** on the same
+  freeze question. ADR-0032's own text names this exact case: "If the platform genuinely needs
+  Layer 1 itself to change (e.g., ingestion-time prioritization), the freeze-lift path is real,
+  slower work" — this is that case, verbatim.
+- **One buildable-now slice, real but narrower than either sub-question: ingestion-funnel
+  visibility.** The JIRA connector already computes two real, already-available numbers per run —
+  issues fetched under `_max_issues`'s pagination cap, and the final `TestableRequirementSet` count
+  after enhancement/grounding/CP1 — but nothing today reports the *drop-off* between them (how many
+  fetched issues never became a `TestableRequirement`, and whether the pagination cap itself was hit,
+  meaning issues beyond it were never even fetched). Reporting this pair of counts needs no new
+  Layer 1 judgment (it aggregates numbers each already-governed stage already produces), no
+  freeze-lift, and no Historical Dataset — a Layer 2+ consumer (or even a Layer 1 reporting-only
+  carve-out, arguably bugfix-adjacent instrumentation) could emit it. **Named honestly: this is
+  visibility into "how much of the source did we see and keep," not "are we missing a requirement
+  a human would expect to exist."** It answers a real, smaller, adjacent question — worth naming,
+  not worth conflating with #3a's actual ask.
+
+**The prerequisite sequence, if #3a is taken on later.** Historical Dataset service (ADR-0021 §Stage
+6, real build — the same prerequisite every completeness-adjacent thread in this document converges
+on: the #3b graphs note above, the Knowledge Graph's own synthetic-provider caveat, and now this)
+→ (in parallel, independent of the Dataset) ADR-0032 freeze-lift, if corpus-completeness needs new
+judgment *inside* Layer 1 rather than as an arm's-length consumer (precondition 1 already met;
+precondition 2/3 remain a deliberate governance act) → the completeness/subsetting capability itself,
+built as a new Layer 2+ consumer of Historical Truth (mirroring how traceability/change-impact
+already avoided the freeze entirely by consuming Runtime Truth as an arm's-length Layer 2+ peer,
+never touching Layer 1's frozen internals) — the same "arm's-length Layer 2+ consumer" framing this
+item's own original recommendation (above) already named as the cheapest real path, now confirmed
+concretely against ADR-0021/0023/0032's real text rather than argued abstractly.
+
+**Options.**
+- **OPTION A — build the buildable slice now (ingestion-funnel visibility).** Real, cheap,
+  unblocked, but answers a narrower question than #3a's own ask — a proxy, not a substitute.
+- **OPTION B — defer #3a, blocked.** Both real sub-questions need prerequisites that don't exist yet
+  (Historical Dataset built; freeze-lift enacted, not just precondition-1-eligible). Honest verdict,
+  not a dead end — the prerequisite chain above is now concrete, not vague.
+- **OPTION C — surface the Historical Dataset service (ADR-0021 §Stage 6) as the actual next
+  actionable step.** It is the shared prerequisite for #3a's deeper half, and this session confirms
+  (again) that it is the same recurring blocker the #3b graphs note, the Knowledge Graph's own
+  built-on-a-stand-in status, and this note all converge on independently.
+
+**Recommendation.** **Option C, with Option A as a cheap, honest side-build if visibility is wanted
+now.** #3a itself — both mentors' #1 strategic risk — is genuinely blocked, not dodged: real
+corpus-completeness inference needs history that does not exist yet, and intelligent subsetting
+needs Layer 1 judgment the platform has deliberately frozen pending Layer 2+ proof (a freeze this
+session confirms is now one precondition closer to liftable, not fully liftable). The highest-
+leverage next action toward #3a is not #3a itself — it is scoping the Historical Dataset service,
+the same unblocker three independent threads in this document now point to. Building the ingestion-
+funnel visibility slice (Option A) is optional, cheap, and honest about what it is — it does not
+substitute for, or reduce the size of, the real prerequisite chain above.
+
+**Nothing built by this note.** No new package, no new field, no ADR, no freeze-lift, no register
+entry, no capability-matrix row. This resolves the buildable-vs-blocked question
+`[[cap-repo-audit-2026-08-23]]` left open, distinguishes coverage-completeness (built) from
+input/corpus completeness (#3a, still open), and names a concrete, evidence-grounded prerequisite
+chain and a narrow honest buildable-now slice; building any of it remains a future, separate task.
+
+---
+
 ### Item 4 — Spec-based development (features, page objects, artifacts)
 
 **What it is:** drive generation from structured specifications (feature files, page-object
