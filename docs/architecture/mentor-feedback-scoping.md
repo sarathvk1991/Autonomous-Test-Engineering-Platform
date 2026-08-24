@@ -2832,6 +2832,179 @@ but still requiring its own provider/record pair per ADR-0023 §D9/§D10, not a 
 
 ---
 
+**#3a ARC OPENED (2026-08-24) — ARCHITECTURE SURFACING, not a build. Both mentors' #1 strategic risk,
+re-examined now that the Historical Dataset arc (pieces 1–3) is real and live. Decision-support only:
+build nothing, change nothing.**
+
+*Pre-flight.* Clean tree, `main`, HEAD `91fc2d5` (piece 3 committed). `make lint` clean. `make test`:
+**6145 passed**, unchanged. Read-only session; nothing here touches code.
+
+**The recorded framing, carried forward unchanged.** The prior #3a note (above) already distinguished
+coverage-completeness (BUILT — the traceability graph, CAP-088, answers "given the requirements that
+exist, is each fully tested," 100% Gherkin-authoring / ~50% step-def-binding on the real corpus) from
+#3a's own **input/corpus completeness** — are the requirements THEMSELVES a complete picture. The
+graph structurally cannot answer this: it traverses a graph built FROM the requirement set; a missing
+requirement is not a node the graph ever sees, confirmed again by re-reading `completeness.py` — it
+counts existing `TestableRequirement`s and their scenario/step chains, nothing upstream of that set.
+#3a still decomposes into the same two sub-questions the prior note named: (a) corpus-set completeness
+(missing requirements, inferred from the set itself or from history) and (b) subset-not-everything
+(intelligent prioritization for token/relevance control).
+
+**The frozen boundaries, re-confirmed against the real text, not the old note's paraphrase.**
+
+- **ADR-0023 §D9/§D10 (frozen permanently), re-read verbatim, unchanged since piece 3.** *"The
+  resolved dataset is an implementation detail — never a runtime contract, never Historical Truth,
+  never Derived Knowledge, never exported past the `knowledge_graph` package boundary."* And: KG's
+  `HistoricalDatasetProvider`/`HistoricalDataset`/`HistoricalExecutionRecord` are *"deliberately
+  replicated rather than shared"* from Continuous Improvement's own identical-shaped, disjoint copy.
+  **Confirmed, consequence unchanged:** a #3a capability cannot import KG's types under any
+  circumstance. It needs its own reader over `output/executions/`, mirroring — never reusing — piece
+  2/3's extraction pattern.
+- **ADR-0032 (Layer 1 Capability Freeze), re-read directly, not inferred.** The freeze's actual
+  Decision text names its own scope precisely: *"Layer 1 (Requirement Intelligence, including every
+  capability redesignated to it as a sub-capability by ADR-0031 D3 — CAP-083 Continuous Improvement,
+  CAP-084 Knowledge Graph, CAP-085 Organizational Memory, CAP-086 Learning Framework)... no new CAP
+  number may be allocated in the Layer 1 series"* — concretely, the two blocks `CAP-001…073` and
+  `CAP-081…086`. Precondition 1 (Layer 2 reaches Runtime Integration) is met; preconditions 2 (ARB
+  approval) and 3 (a lifting ADR naming the specific CAP) are not — unchanged since the prior note,
+  confirmed again by re-reading the ADR's own "How the freeze is lifted" section.
+- **A genuinely new finding this session, found by reading ADR-0032's own enforcement mechanism
+  precisely rather than its rationale prose.** The freeze is scoped to specific CAP-number RANGES, not
+  to "any new judgment capability anywhere in the platform." The capability matrix
+  (`docs/governance/platform-capability-matrix.md` §3.1) shows this has ALREADY been used, three
+  times, for capabilities whose own placement in the layer model is explicitly ambiguous or
+  Layer-1-adjacent: **CAP-087** (Executable Specification Engineering, self-described "the platform's
+  first Layer 2.5 capability"), **CAP-088** (Traceability Graph — ADR-0048 §D2 explicitly states its
+  placement is *"left explicitly open... it sits closer to Layer 1, reading Layer 1/Layer 2 Runtime
+  Truth directly"* — yet it was NOT blocked by ADR-0032, because CAP-088 is in the open-ended
+  `CAP-060…` "Downstream/Future" block, confirmed as "the next unused id" at the time, outside both
+  frozen ranges), **CAP-089**, **CAP-090** (same block, same pattern, both built and Accepted after
+  ADR-0032). **This is a repeated, governance-sanctioned path, not a loophole being invented here.**
+  The next unused id in that block is **CAP-091** (confirmed: no `CAP-091` or higher appears anywhere
+  in the matrix today).
+
+**Piece 3's extraction pattern — the thing #3a mirrors, re-confirmed.**
+`FileHistoricalDatasetProvider._record_for`/`_all_requirement_ids` reads `output/executions/<run>/`'s
+own `manifest.json`/`testable_requirement_set.json` at the dict level (never `model_validate`,
+carrying piece 1's round-trip-looseness finding forward), tolerant of mixed/incomplete directories
+(22 of the real corpus's directories index, 13 of those qualify), extracting a full requirement set
+per execution. **This is the pattern to mirror — not a type to import.** #3a's own reader would be a
+new, disjoint module reading the identical real files, independently, exactly as CI's and KG's own
+historical-resolution machinery are "deliberately replicated rather than shared" from each other.
+
+---
+
+**WHAT "COMPLETENESS" CONCRETELY MEANS — the decomposition, checked against real data, not just the
+contract's field list.**
+
+**`TestableRequirement`'s real shape, re-read in full (`contracts/testable_requirement.py`).** The
+prior note's "no cross-requirement relationship field" finding holds — confirmed again, there is no
+`depends_on`/`related_to`/sibling-linking field anywhere in the model. Two ADDITIONAL structural facts
+this session found by reading the constructor, not just the model: `TestableRequirement.risks` is
+**always constructed empty** (`build_testable_requirement` "carries no `risks` parameter... always
+constructed empty" — risks live only at the *set* level, with no per-requirement attribution) and
+`AcceptanceCriterion.traces_to` is **always constructed empty** too (same reservation pattern, "no
+caller can honestly populate criterion-level provenance... `contract_version` 1.0.0"). Both fields are
+real in the frozen schema but structurally unpopulatable today — checking either for "missing" data
+would be checking a field that can never be otherwise, not a real completeness signal.
+
+**Sub-question (a), decomposed into three concrete slices, checked against the real, unmodified
+corpus (`output/executions/run-20260812T064317663150Z-a20b0cc2`, 20 requirements) — not theorized:**
+
+- **INTERNAL consistency (within one requirement set).** Three checks ARE structurally real and
+  buildable with zero L1 judgment, zero freeze, zero history: (i) a requirement with zero acceptance
+  criteria, (ii) a requirement with zero `tracesTo`, (iii) a duplicate `contentHash` across the set.
+  **Checked against the real corpus, all three currently fire on ZERO of 20 requirements** — every
+  requirement has exactly 1 acceptance criterion (no variance: `[1, 1, 1, ..., 1]`, all 20), every
+  requirement's `tracesTo` is the identical 50-item source-artifact list (not a per-requirement
+  provenance signal in practice — the whole consolidated source set is attached uniformly, not
+  requirement-specifically), and zero duplicate hashes. **This sharpens, rather than contradicts, the
+  prior note's "near-zero" verdict** — not because the fields are absent (they exist, they're
+  checkable), but because on the one real corpus this platform has produced, they are uniformly
+  saturated/constant, giving a checker built today nothing real to detect. A real defect-shape has not
+  yet been observed to ground these checks against, the same honest "contract-grounded, not
+  incident-grounded" caveat several `eval_harness/` checks in CAP-090 already carry.
+- **CROSS-CORPUS completeness (this run vs. history) — the real "house of cards" question.** Needs a
+  corpus to compare against. **Checked directly, real signal exists at the EXECUTION level:** requirement
+  counts across the 13 real qualifying executions cluster at three distinct values — 15, 20, 30 (never
+  a single constant) — a genuine, non-trivial cross-run variance a comparison could reason over ("this
+  run has N requirements; history clusters around 15/20/30; N is unusually low"). **A real limitation,
+  found the same way:** `component` and `functionalTag` turn out to be constant WITHIN every run
+  checked (one value shared by all requirements in a given execution — this corpus's ingestion appears
+  scoped to one source file per run) — so a hoped-for finer-grained "per-component" comparison
+  collapses to the same signal as the coarser per-run total in this corpus; whether real per-component
+  variance exists is an open empirical question for whoever builds this, not something to assume.
+  **The freeze question, resolved by the new finding above:** this does NOT need ADR-0032 lifted if
+  built as a new, disjoint package outside the frozen CAP ranges (CAP-091, mirroring CAP-087/088/089/090's
+  own precedent) that reads already-emitted Layer 1 exports (`TestableRequirementSet`, carve-out #1
+  compatible) and real execution history, producing its OWN new report — never modifying any existing
+  Layer 1 subsystem's governed pipeline.
+- **PROXY visibility (ingestion-funnel).** Unchanged from the prior note: JIRA-fetch-count vs.
+  final-`TestableRequirementSet`-count drop-off. Cheap, real, buildable now, honestly a proxy for "how
+  much source we kept," not "are we missing a requirement a human would expect."
+
+**Sub-question (b), subset-not-everything — a DIFFERENT kind of problem, not folded into (a).**
+Intelligent prioritization of WHICH requirements reach the LLM prompt is a change to Layer 1's own
+generation-time behavior (Engineering Context Orchestration / prompt composition), not a post-hoc
+analysis of an already-emitted artifact — the same distinction that makes (a) mirror-able as an
+arm's-length CAP-091-style reader but does not extend to (b). ADR-0032's own text names this exact
+case ("if the platform genuinely needs Layer 1 itself to change... the freeze-lift path is real,
+slower work"). (b) genuinely still needs either the freeze lifted or a fundamentally different
+framing — it is not resolved by this session's CAP-number-range finding.
+
+---
+
+**THE ARC SHAPE — options, then a recommendation.**
+
+- **OPTION A — internal-consistency first.** Real, buildable, zero freeze/history dependency — but
+  now EMPIRICALLY shown to detect nothing on the only real corpus available. Cheap to build, honest
+  about its current value: future defect detection, not a demonstrated catch, unlike every piece of
+  the Historical Dataset arc (1–3), which each produced real, non-trivial, populated output the
+  moment they ran.
+- **OPTION B — cross-corpus first (recommend as CAP-091).** The real #3a question — "are the
+  requirements themselves a complete picture" — and, per this session's finding, buildable NOW as a
+  new, disjoint Layer-2.5-adjacent package (mirroring CAP-088's own placement precedent, piece 3's own
+  extraction pattern, and Continuous Improvement's own report-only findings/trends/opportunities
+  *shape*, though CI itself is Layer 1 and not the architectural precedent — CAP-087/088/089/090 are).
+  Real execution-count variance exists to reason over (15/20/30 clustering); per-component granularity
+  is unproven and should be scoped honestly as unverified, not assumed. Never gates anything —
+  advisory/report-only, mirroring this entire program's own standing discipline (CP2's dormant
+  advisory signals, Continuous Improvement's findings/trends/opportunities, the traceability graph's
+  own report-only completeness).
+- **OPTION C — proxy only.** Cheapest, narrowest, honestly not the real question. A fine side-build
+  either way, never a substitute.
+
+**Recommendation.** **Option B (cross-corpus, as CAP-091) is the arc's real first piece** — it is the
+question both mentors actually named as the #1 risk, and the two things that blocked it before
+(no real historical data to reason over; an assumed freeze-lift requirement) are both resolved by this
+session's evidence: pieces 1–3 proved a real, tolerant extraction pattern against the real corpus, and
+re-reading ADR-0032's own enforcement mechanism (CAP-number ranges, not a blanket judgment-anywhere
+ban) shows a repeatedly-used, governance-sanctioned path around it, already exercised three times.
+**Unlike CAP-088's own admitted governance debt (built before its ADR, "an inversion... this ADR is
+the acknowledgment of"), #3a's own weight ("both mentors' #1 strategic risk") argues for doing this
+one architecture-first** — an Accepted ADR before any engine code, mirroring the platform's own
+standing discipline for every other Layer 2(-adjacent) capability (ADR-0022/0023's own precedent),
+not CAP-088's inverted shortcut. **Option A (internal-consistency)** is a legitimate, cheap,
+freeze-free side-slice — worth naming, not worth leading with, given it currently detects nothing on
+real data. **Option C (proxy)** remains available as the cheapest slice of all, independent of both.
+**Sub-question (b) (subset-not-everything) is explicitly NOT part of this arc's first piece** — it is
+a different, Layer-1-internal problem, deferred pending either a freeze-lift or a fundamentally
+different framing neither this note nor the arc above resolves.
+
+**The decision this note does NOT make unilaterally.** Given #3a's stated weight in the whole program,
+whether to actually FUND/OPEN this arc now (vs. continue deferring it) is a real, significant resource
+call — flagged for the user, not decided here. What this note DOES resolve, with evidence: the
+architectural PATH is no longer blocked the way the prior note recorded it (real data now exists; the
+freeze has a proven bypass already used three times) — if/when the user opens this arc, CAP-091,
+architecture-first, cross-corpus-first is the grounded recommendation to start from.
+
+**Nothing built by this note.** No new package, no new field, no ADR, no CAP-091 allocation, no
+register entry, no capability-matrix row. This resolves the "is #3a still blocked" question the
+Historical Dataset arc's own completion left open, and names a concrete, evidence-grounded first-piece
+recommendation; building any of it remains a future, separate, user-authorized task.
+
+---
+
 ### Item 4 — Spec-based development (features, page objects, artifacts)
 
 **What it is:** drive generation from structured specifications (feature files, page-object
