@@ -2635,6 +2635,105 @@ the user's to make.
 
 ---
 
+**HISTORICAL DATASET ARC, KG-LIVE-WIN BUILT (2026-08-24) — Candidate A + live provider wiring, both
+executed.** The user decided: build the recommended fix and wire the real provider live. Two-part
+change, exactly as scoped above.
+
+**Part 1 — prior-execution minting.** `_knowledge_graph_historical_dataset_reference_for_execution`
+(`scripts/run_requirement_analysis.py`) now takes an `executions_root: Path` parameter and mints a
+reference naming the most recent PRIOR execution already on disk — found by a new, contained sibling
+helper, `_most_recent_prior_execution_id`, which reads only `manifest.json`'s `executionId`/
+`executionCompletedTimestamp` (the same two fields real historical-dataset resolution already indexes
+by), never a fuller reconstruction. Falls back to today's original self-referential mint only when no
+prior execution qualifies (cold start). The call site passes `output_base` — the same base directory
+the current run itself is being saved under (respects `--output-dir`), already in scope at the call
+site. No provider change was needed: `FileHistoricalDatasetProvider._select_window` already resolved
+a `first != last` range; this mint keeps `execution_count=1`/`history_window=1` (still exactly
+CAP-083C's single-execution shape) and only changes *which* execution the one slot names. Confirmed
+live and real: the current, in-flight run's own directory has no `manifest.json` yet at KG-phase time
+(it's a `write()`-generated artifact, appended to `output_paths` only after `write_result` returns),
+so no explicit "exclude the current run" logic was needed — the manifest-presence check alone excludes
+it, for the same reason piece 2's provider does.
+
+**Part 2 — live provider wiring.** `PlatformContext.create_knowledge_graph_service` gained an optional
+`provider: HistoricalDatasetProvider | None = None` parameter, defaulting to
+`FileHistoricalDatasetProvider()` when omitted — the live default flip. The bare CLI call site
+(`context.create_knowledge_graph_service()`, unchanged) now gets the real provider automatically.
+
+**A real ripple the pre-licensing didn't cover, found and resolved — reported, not silently
+absorbed.** ADR-0023 §D12 Recommendation 20 licenses this swap "without any change to the CLI, the
+serializer, the Execution Package, or `KnowledgeGraphResult`" — honored; none of those four changed.
+But two *other* real consequences surfaced during the build, outside that named list:
+1. **Golden/productization hermeticity.** `tests/productization/conftest.py`'s golden pipeline fixture
+   also calls `context.create_knowledge_graph_service()` bare, with its own hardcoded self-referential
+   reference (never on real disk). Once the live default became the real provider, this fixture would
+   resolve to the real, ambient `output/executions/` corpus — non-deterministic across machines (and
+   empty on a fresh CI clone, where that gitignored directory doesn't exist at all) — breaking the
+   golden dataset's structurally-bounded node/edge-count assertions
+   (`3 <= len(nodes) <= 7`, etc., pinned to the synthetic SHA-256 provider's specific behavior).
+   **Fixed:** the golden fixture, and the two determinism tests that independently rebuild a second
+   `KnowledgeGraphResult` from the same reference (`test_knowledge_graph_execution_integration.py`,
+   `test_golden_baseline.py::test_determinism_knowledge_graph_result_content`), now pass
+   `provider=DeterministicHistoricalDatasetProvider()` explicitly — pinning the exact prior behavior,
+   unchanged. This is the "explicit synthetic injection" escape hatch, applied for real.
+2. **A frozen provider-containment test.** `HistoricalDatasetProvider` (KG's, and — via the identical
+   generic name — Continuous Improvement's own copy) was frozen private to its own package:
+   `test_knowledge_graph_result_freeze.py` / `test_continuous_improvement_result_freeze.py` each assert
+   *zero* other modules anywhere in `requirement_intelligence/` may even name the string
+   `"HistoricalDatasetProvider"`. `PlatformContext` naming it (to accept the override and construct the
+   real default) trips both. **Resolved, not bypassed:** both tests' `permitted` allowlist now includes
+   `platform/platform_context.py` explicitly, with a docstring explaining why — the composition root is
+   the one place in the platform whose entire purpose is making exactly this kind of concrete wiring
+   decision (its own module docstring: "keeps wiring in one place"). This is a deliberate, narrow,
+   documented exception, not a weakened guard: it still catches any *other* accidental leak.
+
+**Also updated, coherently, not silently:** `test_cli_reuses_the_cap_083c_minting_strategy_not_a_second_one`
+previously asserted byte-identical minting text between the CI and KG helpers — necessarily false now
+that they name different executions by design. Rewritten to assert the invariant that actually still
+holds (the shared single-execution *shape*, `execution_count=1`/`history_window=1` in each helper)
+instead of literal self-reference text. The old single minting-helper unit test
+(`test_minting_helper_produces_a_valid_single_execution_reference`) is replaced by three: cold-start
+fallback, prior-execution reference, and malformed/incomplete-manifest skip — direct coverage of the
+new behavior, not just text-scanning.
+
+**Verified live, against the real, unmodified `output/executions/` corpus (read-only,
+never written to):**
+- **Minting is real:** the helper, called with the real executions root, minted
+  `first_execution_id == last_execution_id == "2ca6862f-cc6b-483d-935d-d29e689a2522"` — the real,
+  most-recently-completed qualifying execution on disk (`run-20260812T064317663150Z-a20b0cc2`) — never
+  the simulated current run's own id.
+- **The win, precisely measured:** building the KG through the now-default real provider on that
+  minted reference produced **4 nodes** (`dataset`, `execution`, `requirement`, `recommendation`),
+  **3 edges**, **1 subgraph**, **0 findings** — real content, traced to that run's own
+  `manifest.json`/`testable_requirement_set.json`/`recommendation_result.json`.
+- **The exact pre-fix shape, reproduced and precisely characterized (not just asserted):** resolving a
+  self-referential reference (today's old shape) through the same real provider yields exactly
+  **1 node**, and only of type `dataset` — the engine's own `NodeProjector` unconditionally projects a
+  `dataset` identity node from the reference itself regardless of whether any execution backs it (real
+  code, `node_projector.py`), so "real-but-empty" precisely means "the dataset identity node alone,
+  zero execution-derived nodes" — a sharper, code-grounded correction of the surfacing's own looser
+  "zero records" framing.
+- **Synthetic provider unaffected:** the same self-referential reference through an explicitly-pinned
+  `DeterministicHistoricalDatasetProvider()` still yields its own fake-but-populated shape, unchanged.
+- **Cold start, live-checked:** an empty executions root yields the self-referential fallback mint, and
+  resolving it returns zero `HistoricalExecutionRecord`s — no crash, an honest empty history.
+- **Piece 2's findings hold live:** of 22 really-indexed executions, 13 genuinely qualify (have a
+  non-empty `testable_requirement_set.json`) — new, more precise data than piece 2's own memory
+  recorded. Resolving the oldest qualifying (pre-piece-1) run succeeded without crashing, with
+  `finding_id = None` — an honest reflection of a run that predates `cp1_result.json` emission, not an
+  error.
+
+**Gate.** `make lint`: clean. `make test`: **6131 passed** (6129 baseline + 2 net new, from replacing
+one minting test with three). mypy: **436**, unchanged from baseline — the only mypy delta introduced
+during the build (a `ModuleType`-vs-inferred-`object` annotation on a new test helper) was caught and
+fixed before landing. Tree left with exactly this arc's 8 changed files; nothing else touched.
+
+**Piece 3 (record-shape extension for #3a's requirement-granularity need) remains unbuilt and out of
+this task's scope**, unaffected by this wiring — see [[cap-real-completeness-measured]] and
+[[cap-mentor-item3a-completeness-surfaced]].
+
+---
+
 ### Item 4 — Spec-based development (features, page objects, artifacts)
 
 **What it is:** drive generation from structured specifications (feature files, page-object

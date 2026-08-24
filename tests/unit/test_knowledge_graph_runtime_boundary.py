@@ -12,6 +12,7 @@ Complements ``test_knowledge_graph_execution_integration.py``,
 from __future__ import annotations
 
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -104,7 +105,8 @@ class TestServiceCompositionRootPostActivation:
         assert "context.create_knowledge_graph_service()" in source
 
     def test_platform_context_still_returns_the_deterministic_service(self) -> None:
-        """CAP-084C activates the pipeline; it does not change what PlatformContext builds."""
+        """The service class stays ``DeterministicKnowledgeGraphService`` — only the
+        historical-dataset resolver it's given has changed (Historical Dataset arc)."""
         service = PlatformContext().create_knowledge_graph_service()
         assert isinstance(service, DeterministicKnowledgeGraphService)
 
@@ -201,31 +203,126 @@ class TestSerializationPackageIsSelfContained:
         assert pkg.__all__ == ["KnowledgeGraphSerializer"]
 
 
+def _load_run_requirement_analysis_module() -> ModuleType:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("run_requirement_analysis", _SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.mark.unit
 class TestKnowledgeGraphReferenceMinting:
-    def test_minting_helper_produces_a_valid_single_execution_reference(self) -> None:
-        """Direct unit coverage of the CLI's KG-specific minting helper (not just text-scan)."""
-        import importlib.util
+    """Direct unit coverage of the CLI's KG-specific minting helper (Candidate A).
+
+    Historical Dataset arc: the minting helper now names the most recent PRIOR
+    execution on disk (ADR-0023 §D12 Recommendation 20), falling back to the
+    original CAP-084C self-reference only when no prior execution qualifies
+    (cold start).
+    """
+
+    def test_falls_back_to_self_reference_when_no_prior_execution_exists(
+        self, tmp_path: Path
+    ) -> None:
+        """Cold start: an empty (or nonexistent) executions root yields today's
+        original self-referential mint — an honest, zero-record reference for a
+        genuinely history-less run, not a defect."""
         from datetime import UTC, datetime
         from types import SimpleNamespace
 
-        spec = importlib.util.spec_from_file_location("run_requirement_analysis", _SCRIPT)
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
+        module = _load_run_requirement_analysis_module()
         fake_result = SimpleNamespace(
             execution_id="ex-mint-test",
             completed_at=datetime(2026, 7, 16, tzinfo=UTC),
         )
         reference = module._knowledge_graph_historical_dataset_reference_for_execution(
-            fake_result
+            fake_result, tmp_path / "does-not-exist"
         )
         assert reference.first_execution_id == "ex-mint-test"
         assert reference.last_execution_id == "ex-mint-test"
         assert reference.execution_count == 1
         assert reference.history_window == 1
         assert reference.generated_at == fake_result.completed_at
+        assert reference.dataset_id == "single-execution:ex-mint-test"
+
+    def test_references_the_most_recent_prior_execution_when_one_exists(
+        self, tmp_path: Path
+    ) -> None:
+        """A qualifying prior execution on disk is named instead of the current run."""
+        import json
+        from datetime import UTC, datetime
+        from types import SimpleNamespace
+
+        module = _load_run_requirement_analysis_module()
+        older = tmp_path / "run-older"
+        newer = tmp_path / "run-newer"
+        older.mkdir()
+        newer.mkdir()
+        (older / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "executionId": "ex-older",
+                    "executionCompletedTimestamp": "2026-07-01T00:00:00+00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (newer / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "executionId": "ex-newer",
+                    "executionCompletedTimestamp": "2026-07-10T00:00:00+00:00",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        fake_result = SimpleNamespace(
+            execution_id="ex-mint-test",
+            completed_at=datetime(2026, 7, 16, tzinfo=UTC),
+        )
+        reference = module._knowledge_graph_historical_dataset_reference_for_execution(
+            fake_result, tmp_path
+        )
+        # Names the most recent PRIOR execution — never the current, not-yet-written run.
+        assert reference.first_execution_id == "ex-newer"
+        assert reference.last_execution_id == "ex-newer"
+        assert reference.dataset_id == "single-execution:ex-newer"
+        assert reference.execution_count == 1
+        assert reference.history_window == 1
+        # generated_at is when the reference was minted (this run's own completion),
+        # never the referenced prior execution's own timestamp.
+        assert reference.generated_at == fake_result.completed_at
+
+    def test_skips_directories_with_no_manifest_or_incomplete_manifest(
+        self, tmp_path: Path
+    ) -> None:
+        """A malformed or incomplete prior directory is skipped, never fabricated."""
+        import json
+        from datetime import UTC, datetime
+        from types import SimpleNamespace
+
+        module = _load_run_requirement_analysis_module()
+        no_manifest = tmp_path / "run-no-manifest"
+        no_manifest.mkdir()
+        incomplete = tmp_path / "run-incomplete"
+        incomplete.mkdir()
+        (incomplete / "manifest.json").write_text(
+            json.dumps({"executionId": None, "executionCompletedTimestamp": None}),
+            encoding="utf-8",
+        )
+
+        fake_result = SimpleNamespace(
+            execution_id="ex-mint-test",
+            completed_at=datetime(2026, 7, 16, tzinfo=UTC),
+        )
+        reference = module._knowledge_graph_historical_dataset_reference_for_execution(
+            fake_result, tmp_path
+        )
+        # Neither directory qualifies — falls back to self-reference exactly as cold start.
+        assert reference.first_execution_id == "ex-mint-test"
         assert reference.dataset_id == "single-execution:ex-mint-test"
 
 

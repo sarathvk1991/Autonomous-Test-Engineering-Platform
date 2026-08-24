@@ -99,26 +99,34 @@ class TestCliContainment:
         assert ".build(" in source
 
     def test_cli_reuses_the_cap_083c_minting_strategy_not_a_second_one(self) -> None:
-        """Only one minting helper exists per Layer 2 capability — the same shape twice.
+        """Only one minting *shape* exists per Layer 2 capability, never a second one.
 
-        Recommendation 1 (this milestone): Knowledge Graph must reuse the exact
-        deterministic single-execution minting strategy CAP-083C introduced,
-        never invent a second one. The KG-specific helper exists (because the
-        target type is the deliberately duplicated
-        ``knowledge_graph.models.HistoricalDatasetReference``), but its field
-        values must be constructed identically to the CAP-083C helper's.
+        Recommendation 1 (CAP-084C): Knowledge Graph must reuse the exact
+        deterministic single-execution *shape* CAP-083C introduced
+        (``execution_count=1``, ``history_window=1``) — never invent a second
+        one. The KG-specific helper exists (because the target type is the
+        deliberately duplicated ``knowledge_graph.models.HistoricalDatasetReference``).
+
+        Historical Dataset arc, Candidate A (ADR-0023 §D12 Recommendation 20):
+        KG's helper now names the most recent PRIOR execution instead of always
+        self-referencing — a deliberate, ADR-licensed divergence in *which*
+        execution the one slot names, not a second minting strategy. Continuous
+        Improvement's own helper is untouched and still self-references
+        (out of this arc's scope); this test now asserts the still-shared
+        single-execution *shape* rather than byte-identical field text.
         """
         source = _SCRIPT.read_text(encoding="utf-8")
         assert "def _historical_dataset_reference_for_execution(" in source
         assert "def _knowledge_graph_historical_dataset_reference_for_execution(" in source
-        for marker in (
-            "dataset_id=f\"single-execution:{result.execution_id}\"",
-            "execution_count=1",
-            "history_window=1",
-        ):
+        # Continuous Improvement's helper still self-references — unchanged, out of scope.
+        assert source.count('dataset_id=f"single-execution:{result.execution_id}"') == 1
+        # Both helpers still construct the identical single-execution shape.
+        for marker in ("execution_count=1", "history_window=1"):
             assert source.count(marker) == 2, (
-                f"expected the identical minting fragment {marker!r} in both helpers"
+                f"expected the identical single-execution shape {marker!r} in both helpers"
             )
+        # KG's helper falls back to that same self-reference shape only at cold start.
+        assert 'dataset_id=f"single-execution:{reference_execution_id}"' in source
 
     def test_knowledge_graph_phase_is_wired_after_continuous_improvement(self) -> None:
         """The CLI orchestrates Knowledge Graph strictly after Continuous Improvement."""
@@ -160,12 +168,22 @@ class TestExactlyOnceExecution:
         full explanation. This test proves the actual determinism contract:
         same reference in, same content out.
         """
+        from requirement_intelligence.knowledge_graph.engine import (
+            DeterministicHistoricalDatasetProvider,
+        )
         from requirement_intelligence.platform.platform_context import PlatformContext
 
         pipeline = _run_golden_pipeline(tmp_path)
         r1 = pipeline.knowledge_graph_result
         assert r1 is not None
-        r2 = PlatformContext().create_knowledge_graph_service().build(r1.historical_dataset)
+        # Same provider as the golden fixture used to build r1 (pinned explicitly
+        # — PlatformContext's own default now resolves against the real, on-disk
+        # corpus, which r1's self-referential golden id was never written to).
+        r2 = (
+            PlatformContext()
+            .create_knowledge_graph_service(provider=DeterministicHistoricalDatasetProvider())
+            .build(r1.historical_dataset)
+        )
         assert r1.nodes == r2.nodes
         assert r1.edges == r2.edges
         assert r1.metrics == r2.metrics

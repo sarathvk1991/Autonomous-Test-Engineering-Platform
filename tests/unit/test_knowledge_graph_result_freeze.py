@@ -308,9 +308,16 @@ class TestRuntimeBoundary:
         exclusion of ``knowledge_graph/``). This guard still catches a real leak:
         an accidental import of *this* package's provider anywhere outside it
         (Continuous Improvement included).
+
+        ``platform/platform_context.py`` is the one sanctioned exception: it is
+        the platform's composition root, and the Historical Dataset arc's
+        live-wiring step (ADR-0023 §D12 Recommendation 20) requires it to name
+        ``HistoricalDatasetProvider`` to accept an explicit override and
+        construct the real ``FileHistoricalDatasetProvider`` default — exactly
+        the kind of concrete wiring decision a composition root exists to make.
         """
         needle = "HistoricalDatasetProvider"
-        permitted: set[Path] = set()
+        permitted: set[Path] = {Path("requirement_intelligence/platform/platform_context.py")}
         external: set[Path] = set()
         for path in (_REPO_ROOT / "requirement_intelligence").rglob("*.py"):
             if (

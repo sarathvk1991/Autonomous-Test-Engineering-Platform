@@ -98,6 +98,10 @@ from requirement_intelligence.grounding.normalization import (
 )
 from requirement_intelligence.grounding.pipeline import GroundingPipeline
 from requirement_intelligence.grounding.strategies import DeterministicTextMatchingStrategy
+from requirement_intelligence.knowledge_graph.engine import (
+    FileHistoricalDatasetProvider,
+    HistoricalDatasetProvider,
+)
 from requirement_intelligence.knowledge_graph.knowledge_graph_service import (
     DeterministicKnowledgeGraphService,
     KnowledgeGraphService,
@@ -617,22 +621,36 @@ class PlatformContext:
         """
         return default_knowledge_graph_rule_catalog()
 
-    def create_knowledge_graph_service(self) -> KnowledgeGraphService:
-        """Return the :class:`DeterministicKnowledgeGraphService` (CAP-084B, ADR-0023).
+    def create_knowledge_graph_service(
+        self, *, provider: HistoricalDatasetProvider | None = None
+    ) -> KnowledgeGraphService:
+        """Return the :class:`DeterministicKnowledgeGraphService` (CAP-084B/C, ADR-0023).
 
         The single runtime entry point into the Knowledge Graph Framework — the
         second Layer 2 capability (ADR-0020) — and the **composition root** for
         the subsystem: it constructs the deterministic engine, injecting the
         governed :meth:`create_knowledge_graph_policy` and
-        :meth:`create_knowledge_graph_rule_catalog`. CAP-084B replaces the
-        dormant CAP-084A service with this real, deterministic one, but it
-        remains **unwired into any execution pipeline** — nothing calls
-        ``build`` at runtime, so runtime behaviour is byte-identical and the
-        golden baseline is unchanged.
+        :meth:`create_knowledge_graph_rule_catalog`. Live in the pipeline since
+        CAP-084C (``scripts/run_requirement_analysis.py``'s
+        ``run_knowledge_graph_phase``).
+
+        Defaults to :class:`FileHistoricalDatasetProvider`, resolving the
+        reference it is given against the real, on-disk ``output/executions/``
+        corpus — the Historical Dataset arc's live-wiring step, exercising the
+        replaceability ADR-0023 §D12 Recommendation 20 (frozen) already
+        licensed: swapping the resolver here requires no change to the CLI, the
+        serializer, the Execution Package, or ``KnowledgeGraphResult``. Pass an
+        explicit ``provider=`` (for example the synthetic
+        ``DeterministicHistoricalDatasetProvider``, still available as a peer)
+        to pin a different resolution strategy — exactly what the golden and
+        productization fixtures do, to keep their own structurally-bounded
+        regression assertions reproducible regardless of what happens to be on
+        disk.
         """
         return DeterministicKnowledgeGraphService(
             policy=self.create_knowledge_graph_policy(),
             rule_catalog=self.create_knowledge_graph_rule_catalog(),
+            provider=provider if provider is not None else FileHistoricalDatasetProvider(),
         )
 
     def create_organizational_memory_policy(self) -> OrganizationalMemoryPolicy:

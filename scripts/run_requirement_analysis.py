@@ -805,26 +805,77 @@ def run_continuous_improvement_phase(
     return result
 
 
-def _knowledge_graph_historical_dataset_reference_for_execution(
-    result: Any,
-) -> KnowledgeGraphHistoricalDatasetReference:
-    """Mint a single-execution ``HistoricalDatasetReference`` for *result* (CAP-084C).
+def _most_recent_prior_execution_id(executions_root: Path) -> str | None:
+    """Return the ``executionId`` of the most recently completed PRIOR execution
+    already on disk beneath *executions_root*, or ``None`` if none qualifies.
 
-    Reuses the exact deterministic single-execution minting strategy CAP-083C
-    introduced for Continuous Improvement
-    (``_historical_dataset_reference_for_execution`` above) — no second minting
-    strategy is invented for Knowledge Graph. The two calls construct the same
-    field values from the same ``result``; only the target type differs, because
-    ``knowledge_graph.models.HistoricalDatasetReference`` is a deliberately
-    duplicated, structurally identical type (ADR-0023 Stage 0 assessment,
-    ADR-0024 Stage 0), never imported across the two packages. No real Historical
-    Dataset implementation exists yet (ADR-0021 §Stage 6, reserved).
+    Reads only ``manifest.json``'s own ``executionId``/
+    ``executionCompletedTimestamp`` fields — the same two fields real
+    historical-dataset resolution already indexes by (Historical Dataset arc,
+    piece 2) — never a fuller reconstruction; this is orchestration glue, not a
+    second implementation of that resolution. A directory missing, or with an
+    unreadable or incomplete manifest, is silently skipped, never guessed —
+    ``None`` is genuinely "no qualifying prior execution," never an error.
+
+    The current, in-flight run is never among these directories: its own
+    ``manifest.json`` is one of the artifacts the Execution Package write
+    produces, and that write has not run yet at the point this is called — no
+    explicit exclusion of the current run is needed.
     """
+    if not executions_root.is_dir():
+        return None
+    most_recent_id: str | None = None
+    most_recent_completed: str | None = None
+    for run_dir in executions_root.iterdir():
+        if not run_dir.is_dir():
+            continue
+        manifest_path = run_dir / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        execution_id = manifest.get("executionId")
+        completed = manifest.get("executionCompletedTimestamp")
+        if not execution_id or not completed:
+            continue
+        if most_recent_completed is None or completed > most_recent_completed:
+            most_recent_completed = completed
+            most_recent_id = execution_id
+    return most_recent_id
+
+
+def _knowledge_graph_historical_dataset_reference_for_execution(
+    result: Any, executions_root: Path
+) -> KnowledgeGraphHistoricalDatasetReference:
+    """Mint a single-execution ``HistoricalDatasetReference`` naming the most
+    recent PRIOR execution already on disk beneath *executions_root* (Historical
+    Dataset arc, Candidate A — ADR-0023 §D12 Recommendation 20, frozen,
+    explicitly licenses replacing the single-execution reference this milestone
+    minted without any change to the CLI, the serializer, the Execution
+    Package, or ``KnowledgeGraphResult``; only this minting helper changes).
+
+    Falls back to naming *result*'s own, not-yet-written ``execution_id`` —
+    CAP-084C's original self-referential mint, unchanged — only when no prior
+    execution qualifies: the first live run ever, or a corpus with no readable
+    prior manifest yet. That fallback yields an honest, reproducible
+    zero-record reference for a genuinely history-less run, never a defect.
+
+    Still constructs the identical single-execution cardinality CAP-083C's
+    helper for Continuous Improvement uses — no second minting *strategy* is
+    invented, only a different source for which execution the one slot names.
+    """
+    reference_execution_id = (
+        _most_recent_prior_execution_id(executions_root) or result.execution_id
+    )
     return KnowledgeGraphHistoricalDatasetReference(
-        dataset_id=f"single-execution:{result.execution_id}",
+        dataset_id=f"single-execution:{reference_execution_id}",
         dataset_version=_HISTORICAL_DATASET_VERSION,
-        first_execution_id=result.execution_id,
-        last_execution_id=result.execution_id,
+        first_execution_id=reference_execution_id,
+        last_execution_id=reference_execution_id,
         execution_count=1,
         history_window=1,
         generated_at=result.completed_at,
@@ -1515,11 +1566,13 @@ def handle_analyze(args: argparse.Namespace) -> int:
     # HistoricalDatasetReference — never any Layer 1 peer result, and never
     # ContinuousImprovementResult (Recommendation 1/9, ADR-0023) — and runs
     # whenever this is a live run (a completed AnalysisResult exists, so a
-    # single-execution reference can be minted, reusing the exact CAP-083C
-    # minting strategy; no real, multi-execution Historical Dataset
-    # implementation exists yet, ADR-0021 §Stage 6). It modifies nothing
-    # upstream. Mirroring every prior phase, a failure here is surfaced but
-    # never fatal, and never corrupts the already-completed upstream results.
+    # single-execution reference can be minted). The reference names the most
+    # recent PRIOR execution already on disk beneath output_base (Historical
+    # Dataset arc, Candidate A — ADR-0023 §D12 Recommendation 20), falling back
+    # to this run's own execution_id only when no prior execution qualifies. It
+    # modifies nothing upstream. Mirroring every prior phase, a failure here is
+    # surfaced but never fatal, and never corrupts the already-completed
+    # upstream results.
     knowledge_graph_result: Any = None
     if result is not None:
         run_state_mgr.start_stage(
@@ -1527,7 +1580,7 @@ def handle_analyze(args: argparse.Namespace) -> int:
         )
         try:
             kg_historical_dataset = _knowledge_graph_historical_dataset_reference_for_execution(
-                result
+                result, output_base
             )
             knowledge_graph_result = run_knowledge_graph_phase(
                 context, kg_historical_dataset, console

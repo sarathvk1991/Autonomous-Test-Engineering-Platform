@@ -38,6 +38,9 @@ from requirement_intelligence.execution_package.execution_writer import (
     ExecutionWriter,
     ExecutionWriteResult,
 )
+from requirement_intelligence.knowledge_graph.engine import (
+    DeterministicHistoricalDatasetProvider,
+)
 from requirement_intelligence.knowledge_graph.models import (
     HistoricalDatasetReference as KnowledgeGraphHistoricalDatasetReference,
 )
@@ -360,7 +363,15 @@ def _run_golden_pipeline(
         history_window=1,
         generated_at=analysis_result.completed_at,
     )
-    knowledge_graph_result = context.create_knowledge_graph_service().build(kg_historical_dataset)
+    # Pinned to the synthetic provider explicitly: PlatformContext's own default
+    # (as of the Historical Dataset arc's live-wiring step) now resolves against
+    # the real, on-disk output/executions/ corpus, which would make this golden
+    # fixture's structurally-bounded assertions depend on whatever happens to be
+    # on the machine running the tests. The golden dataset's reproducibility
+    # requires the deterministic, SHA-256-gated synthetic provider instead.
+    knowledge_graph_result = context.create_knowledge_graph_service(
+        provider=DeterministicHistoricalDatasetProvider()
+    ).build(kg_historical_dataset)
 
     # -----------------------------------------------------------------------
     # Step 6g — Organizational Memory (CAP-085C): Layer 2's third capability,

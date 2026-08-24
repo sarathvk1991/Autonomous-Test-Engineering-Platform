@@ -302,10 +302,16 @@ class TestRuntimeBoundary:
         subsystem, never imported across them (ADR-0023 §D9). This guard still
         catches a real leak: an accidental import of *this* package's provider
         anywhere outside it (Knowledge Graph included).
+
+        ``platform/platform_context.py`` is the one sanctioned exception: the
+        Historical Dataset arc's live-wiring step (ADR-0023 §D12 Recommendation
+        20) requires the composition root to name Knowledge Graph's own
+        ``HistoricalDatasetProvider`` (an unrelated class of the same generic
+        name — not this package's) to inject its real provider by default.
         """
         needle = "HistoricalDatasetProvider"
         knowledge_graph_pkg = _REPO_ROOT / "requirement_intelligence" / "knowledge_graph"
-        permitted: set[Path] = set()
+        permitted: set[Path] = {Path("requirement_intelligence/platform/platform_context.py")}
         external: set[Path] = set()
         for path in (_REPO_ROOT / "requirement_intelligence").rglob("*.py"):
             if (

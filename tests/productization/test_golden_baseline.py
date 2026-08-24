@@ -2390,10 +2390,20 @@ class TestPhase5Determinism:
         ``resultId``, since that id is minted from the graph id via
         ``ResultBuilder`` but the object itself is rebuilt, not cached).
         """
+        from requirement_intelligence.knowledge_graph.engine import (
+            DeterministicHistoricalDatasetProvider,
+        )
         from requirement_intelligence.platform.platform_context import PlatformContext
 
         r1 = golden_pipeline_result.knowledge_graph_result
-        r2 = PlatformContext().create_knowledge_graph_service().build(r1.historical_dataset)
+        # Same provider the golden fixture used to build r1 (pinned explicitly —
+        # PlatformContext's own default now resolves against the real, on-disk
+        # corpus, which r1's self-referential golden id was never written to).
+        r2 = (
+            PlatformContext()
+            .create_knowledge_graph_service(provider=DeterministicHistoricalDatasetProvider())
+            .build(r1.historical_dataset)
+        )
         assert r1.nodes == r2.nodes
         assert r1.edges == r2.edges
         assert r1.subgraphs == r2.subgraphs
