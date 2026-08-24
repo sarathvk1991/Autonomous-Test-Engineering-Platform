@@ -2143,6 +2143,207 @@ chain and a narrow honest buildable-now slice; building any of it remains a futu
 
 ---
 
+**HISTORICAL DATASET SERVICE SURFACED (2026-08-24) — the shared prerequisite #3a named, resolved
+against ADR-0021's actual text and the real on-disk data. Decision-support only: build nothing,
+change nothing.**
+
+*Pre-flight.* Clean tree, `main`, HEAD `af1b4db` (the #3a note above, already committed by the
+user). `make lint` clean. `make test`: **6106 passed**, unchanged. This note adds text only to this
+document; nothing else touched.
+
+**The convergence, checked, one correction.** The #3a note above and the KG synthetic-provider
+caveat (#3b's "GRAPHS DESIGN SURFACED" note) both genuinely name the Historical Dataset as a real,
+current blocker: #3a's corpus-completeness inference needs cross-run comparison data that doesn't
+exist; the Knowledge Graph runs live today (CAP-084C) but only ever over
+`DeterministicHistoricalDatasetProvider`'s synthetic SHA-256 output, never real requirement data —
+both true, re-confirmed this session. **The change-impact graph's inclusion needs a correction: it
+does not depend on the Historical Dataset.** Re-reading its own design note precisely (line ~1512
+above): Historical Dataset is named there only to explain why *extending* `KnowledgeGraphService`
+was **rejected** as change-impact's architecture — the verdict was a new sibling service reading
+Runtime Truth directly, built and shipped with **zero** Historical Dataset dependency. The real,
+current convergence is two threads, not three: **#3a (completeness) and the Knowledge Graph's own
+live synthetic-data problem.** Traceability/change-impact are relevant here only as the *precedent*
+for how a Layer 2+ capability avoids needing the Historical Dataset at all — not as a third blocked
+thread.
+
+**What ADR-0021 §Stage 6 specifies.** Read in full this session (not re-derived): the Historical
+Dataset is "the canonical owner of historical executions" — it owns ordering, lineage, retention,
+indexing, search, and organization of a corpus Stage 5 requires to be append-only and permanent.
+Stage 7 is the load-bearing rule for sizing: **"Historical datasets are constructed exclusively from
+runtime contracts... Never from reports, Markdown, manifests, logs, or execution artifacts
+generally."** Stage 7 names the source contracts explicitly: `EngineeringContext`, `AnalysisResult`,
+`RequirementEnhancementResult`, `GroundingResult`, `ValidationResult`, `CP1Result`,
+`QualityGovernanceResult`, `RecommendationResult`. Consumers, per Stage 10/11: "Continuous Learning
+consumes Historical Datasets" (owns learning), and every later stage (Feature Engineering,
+Prediction, ...) consumes Continuous Learning's output, never the Dataset directly — Stage 6's own
+text forbids anything "reaching past the Historical Dataset to read `manifest.json` or a
+`*_report.md` file directly." In today's actual codebase the two live consumers of the *reference*
+(not yet a real dataset) are Continuous Improvement and Knowledge Graph, both minting/consuming it
+directly rather than through a "Continuous Learning" intermediary — a naming/placement gap already
+flagged, unchanged by this note (`[[cap-mentor-item3-graphs-design]]`'s own open-placement finding).
+
+**Governance state — no new ADR is strictly required to start, but the platform's own practice
+argues for one anyway.** ADR-0021's header now reads "Status: Accepted (ratified by ADR-0049)," but
+its own closing "Governance" line (§ bottom) and Stage 15 point 10 still read "Proposed... becomes
+Accepted as CAP-083A" — the same stale-inconsistent-status-line shape the #3a note already found
+elsewhere in this ADR, not a new discovery, re-confirmed by direct reading. Substantively: ADR-0049
+§D2 ratifies ADR-0021's **constitutional content** (Truth Hierarchy, Stage 6 ownership, the
+Stage-7/10/11 rules) but explicitly does **not** ratify "runtime contracts" — there are none, because
+nothing implementing Stage 6 has ever been built. **Net: ADR-0021 already constitutionally
+authorizes building the Historical Dataset service — no freeze-lift, no ADR-0032 conflict (checked:
+the frozen range is `CAP-001…073` + the Layer-1-sub-capability range `CAP-081…086`; a new Historical
+Dataset capability would take the next id in the separate, open-ended `CAP-060…` block
+`docs/governance/platform-capability-matrix.md` §3.1 already uses for CAP-088/089/090 — confirmed
+directly, next unused id is CAP-091, no freeze territory).** What the ADR-0021 text does not supply
+is an implementation-level capability ADR of its own (schema, storage mechanism, provider contract)
+— every prior Layer 2 peer (Continuous Improvement/ADR-0022, Knowledge Graph/ADR-0023) got one
+before or alongside its build; the traceability graph (ADR-0048) proved a "scores-first, ADR-after"
+sequence is also an accepted pattern in this repo. Either order is available; not a blocker either
+way.
+
+**What the synthetic stand-in does today, read directly (a second time, now for its consumers and
+contract, not just its mechanism).** `DeterministicHistoricalDatasetProvider.resolve` (both copies —
+`knowledge_graph/engine/historical_dataset.py`, `continuous_improvement/engine.py`, byte-identical
+pattern) is a pure function of `HistoricalDatasetReference`'s own provenance fields
+(`dataset_id`, ordinal) via SHA-256 digest — it never reads a file, a database, or any prior
+execution's real output. **Its contract, which any real provider must satisfy (drop-in, per the
+`HistoricalDatasetProvider(ABC)` boundary both engines already depend on, never the concrete
+class):** `resolve(HistoricalDatasetReference) -> HistoricalDataset`, where `HistoricalDataset` is
+`{dataset_id, executions: tuple[HistoricalExecutionRecord, ...]}` and each
+`HistoricalExecutionRecord` is exactly 8 fields, **one scalar value each** — `execution_id`,
+`ordinal`, `requirement_id`, `recommendation_id`, `finding_id`, `capability_id`, `document_id`,
+`depends_on_previous`. **Live consumers, confirmed by direct grep, both wired in
+`scripts/run_requirement_analysis.py` (`_historical_dataset_reference_for_execution`,
+`_knowledge_graph_historical_dataset_reference_for_execution`):** every live analysis run mints and
+consumes this reference for both Continuous Improvement and Knowledge Graph — **real, live call
+sites, not dormant code** — but every mint today is deliberately single-execution
+(`dataset_id=f"single-execution:{execution_id}"`, `execution_count=1`, `history_window=1`,
+`generated_at=result.completed_at`), so the "real" consumers run every time, but only ever over one
+execution's worth of synthesized, not real, data.
+
+**A real model-shape gap, found by reading the record, not assumed.** `HistoricalExecutionRecord`
+carries `requirement_id: str` — **one** requirement per execution. A real execution's
+`TestableRequirementSet` carries **many** requirements (the real corpus measured earlier in this
+document: 20). The current record shape was built to exercise the deterministic engine end to end
+(per its own docstring — "solely so the deterministic engine can be exercised end to end"), never to
+represent a real execution's actual multiplicity. **This means a real provider cannot simply swap
+the synthetic function for a real lookup and be done** — either the record shape needs extending
+(e.g. `requirement_ids: tuple[str, ...]`) or the projection needs to denormalize one row per
+requirement per execution — a real, small design decision a full implementation must make, not
+merely plumbing.
+
+**The data question — mostly already emitted, one concrete gap, confirmed by listing a real run's
+own directory, not assumed.** `output/executions/` holds **5 real prior runs** on this machine
+today. Listed one in full
+(`run-20260812T064317663150Z-a20b0cc2/`, the same run this document's own D5/CP4 measurements
+already used): it contains real JSON for 7 of Stage 7's 8 named runtime contracts —
+`analysis_result.json`, `requirement_enhancement_result.json`, `grounding_result.json`,
+`validation_result.json`, `quality_governance_result.json`, `recommendation_result.json`, and
+`engineering_context.json` (plus `testable_requirement_set.json`, the L1→L2 export ADR-0032's own
+carve-out #1 already authorizes). **One real, specific, confirmed gap: `CP1Result` is persisted only
+as `cp1_report.md`** — grepped `execution_package/*.py` directly: `execution_writer.py` writes
+`cp1_report.md` from a supplied `CP1Result`, but no `cp1_result.json` is ever written anywhere. Per
+Stage 7's own rule ("never from reports... execution artifacts remain projections only"), CP1Result
+is **not** recoverable as Runtime Truth from today's execution package — only its Markdown
+projection exists. Closing this is small and additive (persisting an already-computed, already-
+governed result as JSON — the same shape every sibling contract already gets, not new judgment
+logic) — real, but the *only* concrete emission gap found; **this is not "runs must start emitting
+data they don't produce today"** — 7 of 8 contracts already are, in exactly the shape Stage 7
+requires.
+
+**The storage question — no technology mandated, but the existing location is disqualifying for
+"permanent."** ADR-0021 deliberately reserves the storage mechanism (Stage 6: "no storage, no
+schema, no query surface" — CAP-084A's own scope note says the same). Confirmed: `output/` is
+listed in `.gitignore` (`output/`, line in `.gitignore`) — untracked, per-machine, no retention
+guarantee. Stage 5's own permanence requirement ("once appended, an entry is never deleted,
+archived-and-forgotten") is **not satisfiable by reading `output/executions/` as-is** — it could be
+cleared by any `git clean`, a fresh checkout, or normal disk hygiene, none of which this repository
+treats as a destructive operation against tracked state. **Two separable questions, not one:** (a)
+does the *shape* of the data a Historical Dataset needs already exist? Yes, confirmed above. (b) does
+it live somewhere *durable*? No — and that is a deliberate scope/ops decision (a committed/archived
+directory outside `.gitignore`, or real storage infra), not something more code resolves on its own.
+
+**Blast radius + effort, grounded in the above, not estimated abstractly.**
+- **Additive, standalone, no ADR-0032 conflict** — confirmed above (open `CAP-060…` numbering,
+  next id CAP-091; no Layer 1 internals touched; reads only already-emitted, already-governed L1
+  JSON output, mirroring the traceability graph's own precedent).
+- **Not one build, three separable pieces of real but bounded size:** (1) close the CP1Result JSON
+  gap — small, additive, no design question. (2) Build a real `HistoricalDatasetProvider` — a
+  file-based reader/indexer over `output/executions/` (no new infra required for the read path
+  itself; the *shape* of a real, multi-execution provider is a genuinely new module, comparable in
+  size to the traceability graph's own projector, not to a full new subsystem) — but must first
+  resolve the record-shape mismatch above (extend `HistoricalExecutionRecord` or denormalize).
+  (3) Decide durable storage location — a scope/ops decision, not sized in engineering terms, and the
+  one piece this note cannot size because it isn't a code question.
+- **Not large in the way the completeness capability itself is large.** The heaviest-looking risk
+  named for #3a — "a genuine multi-execution Historical Dataset... a real prerequisite" — turns out,
+  on direct inspection, to be mostly an aggregation/indexing layer over data the platform already
+  produces, plus one small missing artifact and one deliberate storage decision — not a new
+  emission-instrumentation project across every layer.
+
+**Its own prerequisites — real, but small, not another blocked chain.** (1) CP1Result JSON — no
+prerequisite, buildable immediately. (2) The record-shape decision — no prerequisite, a design call
+this note surfaces but does not make. (3) Durable storage location — the one item genuinely
+outside pure engineering scope; everything else is buildable standalone, now.
+
+**THE VERDICT — buildable-slice-now, not fully blocked and not a clean single build-now either.**
+Unlike #3a itself (genuinely blocked on this service), the Historical Dataset service is **not**
+blocked on anything external — its two code prerequisites (CP1Result JSON, record-shape decision)
+are both small and resolvable within this same effort, and its one non-code prerequisite (durable
+storage location) does not need to be resolved to start: a first real provider can read
+`output/executions/` exactly as it stands today, honestly named as "real data, not yet durable
+storage," mirroring how the traceability graph itself shipped "scores-first" against real data
+before its own wiring/durability questions were settled.
+
+**An honest limit on what this unblocks.** A first real provider built against today's scalar
+`HistoricalExecutionRecord` contract (one representative id per field per execution) would replace
+Continuous Improvement's and Knowledge Graph's synthetic inputs with real ones — real value, a
+direct fix to the KG's own live synthetic-data problem. **It would not, by itself, unblock #3a.**
+Corpus-completeness inference needs each historical execution's **full** requirement set (to compare
+against the current run's own set for gaps), not one representative requirement id per execution —
+exactly the record-shape mismatch named above. Reaching #3a specifically requires the shape
+extension, not merely a real (vs. synthetic) resolution of today's shape.
+
+**Options.**
+- **OPTION A — build the real service now, full scope (CP1Result JSON + shape extension + a
+  file-based provider over `output/executions/`).** Directly reaches #3a's own data need. Real,
+  bounded effort (three small-to-medium pieces, not a new subsystem), no external blocker. Durability
+  named but not required to start.
+- **OPTION B — build a narrower slice first: a real provider against TODAY's scalar contract only
+  (skip the shape extension), fixing the Knowledge Graph's live synthetic-data problem immediately,
+  deferring the shape work (and therefore #3a's own unblock) to a named follow-on.** Cheaper, real
+  value, but explicitly does not reach #3a.
+- **OPTION C — defer, durability-first.** Treat "not durable" as disqualifying before writing any
+  provider, on the theory that building against `output/`'s ephemeral corpus produces a service that
+  looks real but silently violates Stage 5's own permanence rule. Considered and not favored: this
+  repo's own precedent (traceability graph) already shipped real-data-but-not-yet-durably-placed
+  work and named the gap honestly rather than waiting on it; nothing in ADR-0021 requires durability
+  to be settled before a first implementation exists to *validate* the shape against.
+
+**Recommendation.** **Option A**, scoped exactly as sized above — this is the first real,
+standalone, unblocked build in the completeness/truth-frontier arc, not another surfacing-only stop.
+Order: (1) CP1Result JSON persistence (small, no design question, unblocks nothing by itself but
+removes the one real emission gap while it's already been found); (2) resolve the record-shape
+question (extend `HistoricalExecutionRecord` to carry the real per-execution collections its
+consumers actually need, or denormalize — a real but bounded decision); (3) a file-based
+`HistoricalDatasetProvider` reading `output/executions/`, behind the existing `HistoricalDatasetProvider`
+ABC (drop-in for both Continuous Improvement and Knowledge Graph, no call-site change required).
+Name durable storage location as an explicit, separate, later decision — not a blocker, exactly the
+same "scores-first" governance debt pattern the traceability graph ADR (ADR-0048) already used and
+recorded honestly rather than gated on. Once built, #3a's own corpus-completeness capability becomes
+a genuinely new, arm's-length Layer 2+ consumer of this real dataset — buildable next, no longer
+blocked on an unbuilt prerequisite, only on the deliberate freeze-lift question if it turns out to
+need judgment *inside* Layer 1 rather than as a consumer (the #3a note's own still-open branch,
+unchanged by this note).
+
+**Nothing built by this note.** No new module, no schema, no provider implementation, no CP1Result
+JSON persistence, no ADR, no register entry, no capability-matrix row. This surfaces §Stage 6's real
+spec, corrects the change-impact convergence claim, and grounds the buildable-slice-vs-blocked
+verdict in the real on-disk corpus and the real record contract; building any of it remains a
+future, separate task.
+
+---
+
 ### Item 4 — Spec-based development (features, page objects, artifacts)
 
 **What it is:** drive generation from structured specifications (feature files, page-object
