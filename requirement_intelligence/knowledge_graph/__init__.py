@@ -30,6 +30,7 @@ from __future__ import annotations
 from requirement_intelligence.knowledge_graph.engine import (
     DeterministicHistoricalDatasetProvider,
     DeterministicKnowledgeGraphEngine,
+    FileHistoricalDatasetProvider,
     HistoricalDataset,
     HistoricalDatasetProvider,
     HistoricalExecutionRecord,
@@ -106,6 +107,7 @@ __all__ = [
     "DeterministicHistoricalDatasetProvider",
     "DeterministicKnowledgeGraphEngine",
     "DeterministicKnowledgeGraphService",
+    "FileHistoricalDatasetProvider",
     "HistoricalDataset",
     "HistoricalDatasetProvider",
     "HistoricalDatasetReference",

@@ -2415,6 +2415,125 @@ both still future, separate work.
 
 ---
 
+**HISTORICAL DATASET ARC, PIECE 2 BUILT (2026-08-24) — `FileHistoricalDatasetProvider`, a real,
+file-based `HistoricalDatasetProvider`, drop-in behind the existing ABC.** New module
+`requirement_intelligence/knowledge_graph/engine/file_historical_dataset_provider.py`. Reads
+`output/executions/<run>/manifest.json`, `testable_requirement_set.json`,
+`recommendation_result.json`, and `cp1_result.json` (piece 1) as plain JSON — dict-level only, never
+`model_validate` (carries piece 1's own finding forward: nested contracts like `CP1Result` do not
+round-trip to full Python-object equality). Never fabricates: a run missing `manifest.json`, an
+`executionId`, `testable_requirement_set.json`, or a non-empty `requirements` list is skipped, not
+padded — proven directly against dry-run and interrupted-run shapes actually present in the real
+corpus, not just the anticipated missing-CP1-JSON case. Keeps `HistoricalExecutionRecord`'s existing
+scalar shape unchanged: one record per qualifying execution, `requirement_id` = the first requirement
+in that execution's own set (a deterministic representative, execution-granularity not
+requirement-granularity — piece 3's own future work); `capability_id`/`document_id` always `None`,
+documented as a genuine absence in today's Layer 1 data model, not an oversight.
+
+**20 new unit tests** (`tests/unit/test_file_historical_dataset_provider.py`), all against tiny,
+self-built `tmp_path` corpora (never the real, gitignored `output/executions/` directory, matching
+how every other test in this suite avoids depending on real local run output) — contract/ABC checks,
+single- and multi-execution window resolution, reversed/capped windows, six tolerance cases (missing
+manifest, missing/empty `testable_requirement_set.json`, malformed JSON, missing `cp1_result.json`,
+mixed 7-of-8/8-of-8 runs in one window), two dict-level nested-contract reads, two scalar-shape-honesty
+checks, one determinism check. **6129 passed** (6109 + 20), `make lint` clean, mypy unchanged at 436
+(re-verified via `git stash -u`-isolated baseline).
+
+**A one-off verification, not a committed test, proved two things beyond the unit suite:**
+(1) A **genuine, machine-generated** `cp1_result.json` — a real `CP1Result` object (reusing piece 1's
+own test helper, `_cp1_result`) through the real `ExecutionWriter`, not a hand-shaped stand-in —
+is read correctly at the dict level: the provider's resolved `finding_id` matched the real object's
+`findings[0].finding_id` exactly. (2) Run against the **actual real corpus** on this machine
+(`output/executions/`): **22 of 26 directories index cleanly** (not "5" — the #3a/architecture
+surfacing sessions' own `ls | tail -5` undercounted the real corpus; corrected here). The 4 excluded
+are honestly, gracefully skipped, not crashed on: 3 dry runs (`executionId: null`) and 1 run with no
+`manifest.json` at all (an interrupted run) — real, messy, previously-unseen shapes the tolerance
+logic handled correctly without being specifically written for them. The most recent real execution
+resolved to a real record (`execution_id=2ca6862f-...`, `requirement_id=REQ-f90f23fa`,
+`recommendation_id=rc-ad5d22c0641f`, `finding_id=None` — no `cp1_result.json` exists for any
+pre-piece-1 run, exactly as documented). A full-corpus window resolved 13 of the 22 indexed
+executions as qualifying (the other 9 lack `testable_requirement_set.json` — genuinely older/
+rehearsal runs that predate ADR-0032's carve-out).
+
+**The consumer, confirmed.** `DeterministicKnowledgeGraphService.__init__(*, policy, rule_catalog,
+provider=None)` → `DeterministicKnowledgeGraphEngine.__init__` defaults `provider` to
+`DeterministicHistoricalDatasetProvider()` when `None`. `PlatformContext.create_knowledge_graph_service`
+is the composition root and today passes no `provider=` at all — the synthetic default flows through
+untouched. `FileHistoricalDatasetProvider` satisfies the identical `HistoricalDatasetProvider` ABC, so
+swapping it in is a one-line constructor-injection change at that single composition-root call site —
+mirroring exactly how this platform's other live/stub swaps work — **not yet made** (see the finding
+below for why).
+
+**THE LOAD-BEARING FINDING — the "consumer win" this task promised is not yet reachable through the
+LIVE call path, for a reason outside piece 2's own scope, confirmed by reading the CLI's real
+ordering, not assumed.** `scripts/run_requirement_analysis.py`: `run_knowledge_graph_phase` (and
+`run_continuous_improvement_phase`) execute at lines ~1499–1532, strictly **before**
+`ExecutionWriter().write(...)` at line 1632. Both phases' own reference-minting helpers
+(`_historical_dataset_reference_for_execution`, `_knowledge_graph_historical_dataset_reference_for_
+execution`) mint a **self-referential, single-execution** reference — `first_execution_id ==
+last_execution_id == this run's own execution_id`, `execution_count == 1` — always, today, with no
+other minting path. **The consequence: at the moment the live Knowledge Graph phase calls `build`,
+the current run's own `output/executions/<dir>/` does not exist on disk yet** — the Execution Package
+that would create it hasn't run. A real, file-based provider asked to resolve THAT specific live
+reference will therefore correctly, honestly resolve to **zero records**, every single time, for
+every live run — not because the provider is wrong (`test_unfound_execution_resolves_to_empty_not_
+fabricated` proves this is exactly the intended, honest behavior for an execution not found on disk),
+but because the live reference, as currently minted, can never name an execution the provider can
+find. **This is not a piece 2 defect and not fixable within piece 2's own scope** (build the reader,
+not change minting or phase ordering) — it is a real, pre-existing architectural fact this task's own
+framing ("the KG starts running on real historical data... fixing the KG's synthetic-data problem")
+did not anticipate.
+
+**What this means concretely, stated plainly.** If `PlatformContext.create_knowledge_graph_service`
+were changed today to inject `FileHistoricalDatasetProvider` by default, every live run's Knowledge
+Graph phase would go from building a small, **fake-but-populated** graph (today's synthetic SHA-256
+data) to building a **real-but-empty** one (zero nodes, zero edges, since the live reference resolves
+to no records) — an honest result, arguably more correct in spirit (never fabricate), but a visible
+behavior change this task's own "first consumer win" framing did not anticipate and this note will
+not make unilaterally.
+
+**What the provider DOES deliver, real and proven, right now:** correct resolution against any
+reference naming an execution that already exists on disk — which is exactly what an OFFLINE/
+out-of-band Knowledge Graph build (or, eventually, piece 3's completeness work) would use; not the
+in-flight live CLI call as currently wired. The 22-of-26-real-executions verification above is genuine
+evidence this works, just not yet reachable through `scripts/run_requirement_analysis.py`'s live path
+without also changing minting or phase order — both explicitly out of piece 2's scope.
+
+**Two real prerequisites for the LIVE consumer win specifically (not piece 2's own build), named, not
+built:** (a) minting logic that references a **prior**, already-completed execution instead of the
+current in-flight one (a real design question: which prior execution — the immediately preceding run,
+a fixed window? — not answered here); or (b) reordering the Knowledge Graph phase to run **after**
+`ExecutionWriter().write(...)`, so the current run's own directory exists by the time `build` is
+called (own consequence: KG could no longer contribute anything for the Execution Package to persist
+about the current run, since it would run after the package is already written — a real trade-off,
+not free). Neither is small, both are genuine follow-on design questions, and neither was in scope
+here.
+
+**Options, and the call this note does NOT make unilaterally.**
+- **Wire it live now, accept real-but-empty.** Honest, matches this platform's own
+  never-fabricate discipline, and removes the SHA-256 stand-in from the live path entirely — but
+  every live KG run produces an empty graph until (a) or (b) above is separately built, a visible
+  regression in apparent (if not honest) behavior from today's fake-but-populated graph.
+- **Hold the live wiring; build+prove only.** Matches this whole arc's own repeated pattern
+  (traceability graph, change-impact graph, page-object/utility generation — built and tested, wiring
+  left a deliberate, separate decision). The provider is available (`FileHistoricalDatasetProvider`,
+  exported from `knowledge_graph`/`knowledge_graph.engine`), fully correct, fully tested against both
+  synthetic fixtures and the real corpus — just not the live default yet.
+- **Build prerequisite (a) or (b) first, then wire.** The actual path to the promised live consumer
+  win — but a separate, real, unscoped design task either way.
+
+**Recommendation.** Hold the live wiring (Option 2) — this mirrors the codebase's own established,
+repeatedly-successful pattern for exactly this shape of situation, and flipping the default today
+would trade one honest-but-limited state (synthetic-fake) for another (real-but-empty) without
+actually reaching the win this task promised. Piece 3 (`HistoricalExecutionRecord`'s shape extension,
+for #3a's requirement-granularity need) does not depend on this wiring decision either way and can
+proceed once the user calls it.
+
+**Nothing else changed.** No `PlatformContext` change, no live wiring flip, no ADR, no register entry,
+no capability-matrix row, no touch to `HistoricalExecutionRecord`'s shape (piece 3) or #3a itself.
+
+---
+
 ### Item 4 — Spec-based development (features, page objects, artifacts)
 
 **What it is:** drive generation from structured specifications (feature files, page-object
