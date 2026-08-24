@@ -3005,6 +3005,23 @@ recommendation; building any of it remains a future, separate, user-authorized t
 
 ---
 
+**#3a ARC — ARCHITECTURE WRITTEN (2026-08-24, same day) — ADR-0052, CAP-091, documentation only, no
+code.** The user authorized opening the arc architecture-first, exactly as recommended above.
+`docs/adr/0052-cross-corpus-requirement-completeness.md` (Status: Proposed — a pure architecture
+freeze, no code, matching ADR-0030/CAP-087's own bar) designs the capability this note recommended:
+per-run-total requirement-count comparison against the real historical corpus (D1/D2), its own
+disjoint reader respecting ADR-0023 §D9/§D10's frozen boundary (D3), placement left explicitly open
+in the unfrozen `CAP-060…` block mirroring CAP-087/088/089/090's own precedent (D4), report-only in
+this ADR's scope (D5), and explicit scope boundaries excluding internal-consistency and
+subset-not-everything (D6) — no decision beyond what this note already surfaced and recommended.
+Registered additively: `docs/governance/platform-capability-matrix.md` §5.14 (`CAP-091`, Proposed,
+Architecture-only lifecycle row) and `docs/architecture/architecture-baseline-v2.md` §3 (top entry).
+`make lint`/`make test`: 6145, unchanged — zero code touched. **The build (the reader, the
+comparison engine, `CorpusCompletenessReport`) remains this ADR's own named next step, a separate,
+future, not-yet-authorized task.**
+
+---
+
 ### Item 4 — Spec-based development (features, page objects, artifacts)
 
 **What it is:** drive generation from structured specifications (feature files, page-object

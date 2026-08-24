@@ -43,6 +43,46 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Cross-Corpus Requirement Completeness (CAP-091, ADR-0052) OPENED — architecture-first,
+  documentation only, no code (2026-08-24).** Both mentors' #1 strategic risk ("house of cards": an
+  incomplete input requirement corpus, undetected, makes every downstream completeness check
+  complete-against-an-incomplete-spec) is now a governed, designed capability — not built. Follows
+  directly from the same-day design-surfacing task
+  (`docs/architecture/mentor-feedback-scoping.md`, "#3a ARC OPENED"), which found the two things
+  previously blocking it (no real historical data to compare against; an assumed need to lift
+  ADR-0032's freeze) both resolved by the Historical Dataset arc's own completion (pieces 1–3, the
+  same day) and by re-reading ADR-0032's own enforcement text precisely. **Six decisions locked:**
+  (D1) a completeness *assessor* — flags an anomalous run, never infers or drafts a specific missing
+  requirement; (D2) **per-run-total granularity only**, honestly recorded as a limitation, not a
+  defect — `component`/`functionalTag` were checked directly against the real corpus and found
+  constant within every execution, so a hoped-for per-component comparison collapses to the same
+  signal as the coarser total (real signal DOES exist at the run-total level: requirement counts
+  cluster at 15/20/30 across the 13 real qualifying executions, verified directly, not assumed); (D3)
+  its **own, disjoint Layer 2+ reader** over `output/executions/`, mirroring — never importing —
+  piece 2/3's proven `FileHistoricalDatasetProvider` extraction pattern, respecting ADR-0023
+  §D9/§D10's frozen boundary (`HistoricalExecutionRecord` never crosses the `knowledge_graph`
+  package boundary) verbatim; (D4) **not freeze-blocked** — ADR-0032's own Decision text scopes the
+  freeze to specific CAP-number ranges (`CAP-001…073`/`CAP-081…086`), not "any new judgment
+  capability anywhere," and the open `CAP-060…` Downstream/Future block already hosts three
+  precedents with the identical bypass (`CAP-087`/`CAP-088`/`CAP-089`/`CAP-090`) — CAP-091 follows
+  the same, already-exercised path, placement left explicitly open exactly as `CAP-088`'s own
+  (ADR-0048 D2); (D5) **report-only**, scores-first — `CorpusCompletenessReport` sketched, not
+  built, no gating logic designed, mirroring `CAP-088` D5/CP7's own sequencing; (D6) **explicitly
+  excludes** internal-consistency checking (checked against the real corpus and found currently
+  signal-less — every requirement has exactly one acceptance criterion, `tracesTo` is an identical
+  50-item list on every requirement, zero duplicate `contentHash`es — reserved, separate, freeze-free
+  future slice) and subset-not-everything prioritization (a genuinely different, Layer-1-internal
+  problem, still freeze-blocked, unlike this capability). **Written architecture-first, on purpose,
+  explicitly not repeating `CAP-088`'s own build-then-ADR governance debt** (ADR-0048 D5) — the
+  standing discipline ADR-0022/ADR-0023/ADR-0030/ADR-0051 each followed. `make lint`: clean; `make
+  test`: 6145, unchanged (documentation only, zero code touched). Recorded in ADR-0052 (Proposed —
+  matching the bar ADR-0030/CAP-087 cleared for a pure architecture freeze, not the higher "Accepted"
+  bar a capability needs real, tested code to clear), the `CAP-091` matrix row (§5.14, new), and this
+  register entry — all additive; no existing ADR body, matrix row, or register entry edited. **The
+  build (the reader, the distributional-comparison engine, `CorpusCompletenessReport`) is this ADR's
+  own named next step, not performed here — and whether/when to actually build it remains the user's
+  own resourcing decision, not decided by this entry.** One mentor throughout (Nitin).
+
 - **Generation Quality Eval Harness (CAP-090, ADR-0051) EXTENDED to a fifth generator,
   `LiveUtilityGenerator` — 5 of 7 target generators (2026-08-21, step 3 of 3 of the identity → cache
   → eval sequence, immediately after the utility artifact-cache increment) — THE MILESTONE: the
