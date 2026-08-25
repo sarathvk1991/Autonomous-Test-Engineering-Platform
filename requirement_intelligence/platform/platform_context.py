@@ -417,8 +417,9 @@ class PlatformContext:
 
         The metadata-only declaration of *which* quality rules the framework governs —
         ordering, lookup, and grouping over the governed rules. The deterministic
-        evaluator iterates it; it evaluates nothing itself. **Not yet wired**: no runtime
-        path calls it, so runtime behaviour is unchanged.
+        evaluator iterates it; it evaluates nothing itself. **Wired** (CAP-080D):
+        consumed by :meth:`create_quality_rule_evaluator`, itself constructed into the
+        live :meth:`create_quality_governance_service` pipeline.
         """
         return default_quality_rule_catalog()
 
@@ -429,9 +430,8 @@ class PlatformContext:
         evaluation: constructed with the governed :meth:`create_quality_policy` (the
         source of every threshold) and :meth:`create_quality_rule_catalog` (the source of
         every rule). CAP-080B replaces the dormant CAP-080A.1 evaluator with this real,
-        deterministic one, but it remains **unwired** — no runtime path consumes it, so
-        runtime behaviour is byte-identical and the golden baseline is unchanged. The
-        governance service consumes it in a later CAP-080 milestone.
+        deterministic one. **Wired** (CAP-080D): constructed directly into
+        :meth:`create_quality_governance_service`'s pipeline as its ``rule_evaluator``.
         """
         return DeterministicQualityRuleEvaluator(
             policy=self.create_quality_policy(),
@@ -442,9 +442,10 @@ class PlatformContext:
         """Return the governed default :class:`AssessmentPolicy` (CAP-080A.2, ADR-0017).
 
         The governed rules for *how a rule evaluation is interpreted* — precedence,
-        conflict handling, blocking semantics, weighting, recommendation behaviour. The
-        future assessment engine reads it; it contains no logic and carries no release
-        decision. **Not yet wired**: no runtime path calls it, so runtime is unchanged.
+        conflict handling, blocking semantics, weighting, recommendation behaviour. It
+        contains no logic and carries no release decision. **Wired** (CAP-080D):
+        consumed by :meth:`create_quality_assessment_engine`, itself constructed into
+        the live :meth:`create_quality_governance_service` pipeline.
         """
         return default_assessment_policy()
 
@@ -455,9 +456,8 @@ class PlatformContext:
         into a ``QualityAssessmentResult`` of observations. It is the composition root for
         assessment: constructed with the governed :meth:`create_assessment_policy` (its
         only dependency). CAP-080B.1 replaces the dormant CAP-080A.2 engine with this
-        real, deterministic one, but it remains **unwired** — no runtime path consumes it,
-        so runtime behaviour is byte-identical and the golden baseline is unchanged. The
-        governance service consumes it in a later CAP-080 milestone.
+        real, deterministic one. **Wired** (CAP-080D): constructed directly into
+        :meth:`create_quality_governance_service`'s pipeline as its ``assessment_engine``.
         """
         return DeterministicQualityAssessmentEngine(policy=self.create_assessment_policy())
 
@@ -466,8 +466,9 @@ class PlatformContext:
 
         The governed rules for *how an assessment becomes a release decision* — the base
         ``AssessmentLevel`` → ``QualityDecision`` mapping plus the mandatory gates that
-        can force ``FAIL``. The future decision engine reads it; it contains no logic.
-        **Not yet wired**: no runtime path calls it, so runtime is unchanged.
+        can force ``FAIL``. It contains no logic. **Wired** (CAP-080D): consumed by
+        :meth:`create_quality_decision_engine`, itself constructed into the live
+        :meth:`create_quality_governance_service` pipeline.
         """
         return default_decision_policy()
 
@@ -477,10 +478,9 @@ class PlatformContext:
         The single owner of the release decision — deriving ``PASS`` /
         ``PASS_WITH_WARNINGS`` / ``FAIL`` from a ``QualityAssessmentResult`` under the
         governed :meth:`create_decision_policy` (its only dependency). CAP-080B.2 replaces
-        the dormant CAP-080A.3 engine with this real, deterministic one, but it remains
-        **unwired** — no runtime path consumes it, so runtime behaviour is byte-identical
-        and the golden baseline is unchanged. The governance service consumes it in a later
-        CAP-080 milestone.
+        the dormant CAP-080A.3 engine with this real, deterministic one. **Wired**
+        (CAP-080D): constructed directly into :meth:`create_quality_governance_service`'s
+        pipeline as its ``decision_engine``.
         """
         return DeterministicQualityDecisionEngine(policy=self.create_decision_policy())
 
