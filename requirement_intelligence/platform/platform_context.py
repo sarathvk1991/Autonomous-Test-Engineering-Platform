@@ -383,8 +383,10 @@ class PlatformContext:
 
         The governed decision rules for *what constitutes acceptable release quality*
         — the failure/warning numeric bars, per-source severity budgets, and mandatory
-        release rules. A future decision engine reads it; it contains no logic. **Not
-        yet wired**: no runtime path calls it, so runtime behaviour is unchanged.
+        release rules. It contains no logic. **Wired** (CAP-080D): injected directly
+        into :meth:`create_quality_governance_service`'s pipeline as its ``policy``,
+        and consumed by :meth:`create_quality_rule_evaluator` (the source of every
+        threshold).
         """
         return default_quality_policy()
 
