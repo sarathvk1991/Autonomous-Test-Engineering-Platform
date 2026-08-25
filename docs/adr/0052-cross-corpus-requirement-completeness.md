@@ -317,3 +317,61 @@ none in `corpus_completeness/`).
 (D5) remain entirely unbuilt — this piece only enumerates and extracts. This ADR's Status stays
 **Proposed**; per this document's own Governance section, it moves to Accepted only once a future
 milestone builds and tests the comparison engine and report as well, not on the reader alone.
+
+## Implementation Note (2026-08-25, same day) — Piece 2: the comparison engine
+
+Built, additive, does not change any decision above. `requirement_intelligence/corpus_completeness/
+engine.py` now holds `CorpusCompletenessEngine`, reading THROUGH piece 1's reader — never
+re-implementing corpus access — to assess a given run's requirement count against the historical
+distribution (D1/D2).
+
+**The one real design decision this piece carries, made and recorded rather than assumed.** D1 named
+the mechanism only as "distributional comparison ... never a new AI-judgment capability," leaving the
+concrete anomaly rule open. Checked directly against the real distribution piece 1 extracts (13
+qualifying runs: 15×3, 20×7, 30×3 — mean 21.15, population stddev 5.25), a continuous-stats model does
+not fit: one stddev below the mean (~15.9) sits ABOVE the real, three-times-repeated 15-cluster, so a
+z-score rule would misflag a normal, recurring historical value as anomalous. The chosen rule is
+**BELOW-HISTORICAL-MINIMUM** — a run's count is flagged only when it falls below the lowest count this
+platform's real history has ever produced. This makes no assumption about the distribution's shape,
+never flags an already-observed value, and yields a transparent, one-sentence rationale ("count 5 is
+below the historical minimum of 15 (n=13, median=20, max=30)") rather than an opaque score. On the
+real data BELOW-HISTORICAL-MINIMUM and BELOW-THE-LOWEST-CLUSTER coincide exactly (15 is both), so no
+separate framing needed resolving. **Recorded as a genuine judgment call, not fully forced by the
+data's shape — flagged here for Nitin's confirmation before this ever gates anything.** Low-risk to
+revisit: D5 keeps this capability report-only, so a different threshold later is a non-breaking
+change, not a correction to anything currently depended on.
+
+**Cold-start honesty, per D1's "never fabricates."** Below `MIN_SAMPLE_SIZE_FOR_ASSESSMENT` (3 — the
+smallest cluster size, shared by the 15- and 30-clusters, the real corpus has ever actually produced)
+the engine returns `AssessmentStatus.INSUFFICIENT_HISTORY` with `flagged=False` and an honest reason,
+never a forced verdict — proven for 0, 1, and 2 prior runs; the real 13-run corpus clears the bar with
+room to spare.
+
+**Report-only, structurally, not just by convention (D5).** `CompletenessAssessment` is a plain,
+immutable dataclass with no method whose name contains "gate," "block," "fail," or "raise" — a
+dedicated test asserts this directly by introspecting the type. `assess()` never raises on a flagged
+result; it returns a value like any other.
+
+**Per-run granularity, structurally (D2).** `assess()`'s public signature takes a bare
+`requirement_count: int`, not a requirement object or a component/tag parameter — there is no API
+surface to assess anything finer-grained than the per-run total.
+
+**Boundary held (D3 / ADR-0023 §D9/§D10).** Zero `knowledge_graph` imports, proven the same two ways
+as piece 1 (a package grep, and a dedicated AST-based test parsing the engine module's own imports).
+
+**Proven against the real corpus, not only fixtures.** Assessing hypothetical counts against the real,
+current 13-run distribution: a normal count (20) and the real minimum itself (15) are both correctly
+NOT flagged; an anomalously low count (5) IS flagged, with the expected reason; a count above the real
+maximum (35) is correctly NOT flagged — D1's scope is incompleteness (low counts), not general
+outlier detection, so an unusually high count is deliberately not this capability's concern.
+
+16 new fixture-based unit tests (`tests/unit/test_corpus_completeness_engine.py`), reading through a
+real `CorpusExecutionReader` over a fixture corpus shaped like the real cluster distribution (never
+the real gitignored `output/executions/` in committed tests). `make lint`/`make test` green (6183
+passed, up from the 6167 post-piece-1 baseline); mypy strict clean on the new module, no rise in the
+platform's existing informational mypy baseline (436 pre-existing errors, none in
+`corpus_completeness/`).
+
+**Not built by this piece:** `CorpusCompletenessReport` (D5) — the reader and engine only enumerate,
+extract, and assess; nothing renders or serializes an assessment into the report shape D5 sketches.
+This ADR's Status stays **Proposed** until that piece exists and is tested too.
