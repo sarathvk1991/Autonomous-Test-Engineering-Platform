@@ -397,9 +397,11 @@ class PlatformContext:
         :meth:`create_quality_policy`) into the private
         :class:`QualityGovernancePipeline`, and delegates the thin service to it. The
         service and pipeline own only orchestration/sequencing; every stage is a governed
-        collaborator. **Not yet wired into the execution pipeline** (nothing calls
-        ``evaluate`` at runtime), so runtime behaviour is byte-identical and the golden
-        baseline is unchanged; CLI and execution-package integration land in CAP-080D.
+        collaborator. **Wired into the execution pipeline** (CAP-080D):
+        ``scripts/run_requirement_analysis.py``'s quality-governance phase calls
+        ``evaluate`` at runtime, immediately after CP1, as the pipeline's terminal
+        release authority; the returned ``QualityDecision`` is the canonical release
+        verdict (ADR-0017 §D30).
         """
         pipeline = QualityGovernancePipeline(
             policy=self.create_quality_policy(),
