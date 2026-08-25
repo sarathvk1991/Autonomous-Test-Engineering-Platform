@@ -288,3 +288,32 @@ corpus or a future Layer 1 capability that partitions runs that way.
   them. Status moves to Accepted only once a future implementation milestone builds and tests the
   reader and report this ADR designs, mirroring exactly how CAP-087 remains Proposed until its own
   CAP-087B is built.
+
+## Implementation Note (2026-08-25) — Piece 1: the reader
+
+Built, additive, does not change any decision above: `requirement_intelligence/corpus_completeness/`
+(D3's named future location) now exists, holding `CorpusExecutionReader`/`CorpusExecutionRecord` —
+CAP-091's own, disjoint reader over `output/executions/`. It enumerates each run directory and reads
+`manifest.json`/`testable_requirement_set.json` at the dict level (never `model_validate`),
+extracting `execution_id`, `completed_timestamp`, `requirement_count` (D1's core signal), and the
+representative (first-requirement) `component`/`functional_tag` (D2's honestly-available, currently
+non-differentiating extra fields) per qualifying run — mirroring, never importing, the Historical
+Dataset arc's own file-based-provider extraction discipline (piece 2/3). A malformed or partial run
+directory (missing manifest, missing/empty requirement set, unparseable JSON) is silently skipped,
+never fabricated, identically to that provider's own tolerance rules.
+
+Proven against the real corpus, not only fixtures: 13 of 26 real run directories under
+`output/executions/` qualify, and their extracted requirement counts cluster at exactly 15/20/30 —
+confirming, with the reader's own code rather than an ad hoc script, the distributional signal D1
+asserts. 22 new fixture-based unit tests (`tests/unit/test_corpus_execution_reader.py`) cover
+extraction, chronological enumeration, mixed-directory tolerance, and determinism; a dedicated test
+statically parses the reader module's own imports and asserts none names `knowledge_graph`,
+proving D3's boundary holds, alongside a plain `grep` over the new package showing the same. `make
+lint`/`make test` green (6167 passed, up from the 6145 baseline); mypy strict clean on the new
+package, no rise in the platform's existing informational mypy baseline (436 pre-existing errors,
+none in `corpus_completeness/`).
+
+**Not built by this piece:** the distributional comparison (D1/D2) and `CorpusCompletenessReport`
+(D5) remain entirely unbuilt — this piece only enumerates and extracts. This ADR's Status stays
+**Proposed**; per this document's own Governance section, it moves to Accepted only once a future
+milestone builds and tests the comparison engine and report as well, not on the reader alone.
