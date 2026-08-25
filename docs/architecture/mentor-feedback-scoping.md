@@ -3020,6 +3020,19 @@ Architecture-only lifecycle row) and `docs/architecture/architecture-baseline-v2
 comparison engine, `CorpusCompletenessReport`) remains this ADR's own named next step, a separate,
 future, not-yet-authorized task.**
 
+**#3a ARC — BUILT AND COMPLETE (2026-08-25, next day) — all three pieces, ADR-0052 Proposed →
+Accepted.** The build named above as this ADR's own next step is done: `requirement_intelligence/
+corpus_completeness/` now holds the disjoint reader (piece 1), the distributional comparison engine
+(piece 2 — resolving the one real design decision this ADR left open, the anomaly rule, as
+BELOW-HISTORICAL-MINIMUM, grounded in the real 15×3/20×7/30×3 trimodal distribution rather than a
+continuous-stats model that would misfire on it), and the report-only surfacing (piece 3,
+`CorpusCompletenessReport`, mirroring `CAP-088`'s and CP7's own report-only shapes). Proven
+end-to-end against the real, current corpus (reader → engine → report over the real 13-run
+distribution). 49 fixture-based unit tests total; `make lint`/`make test`: 6194. ADR-0052 is now
+**Accepted**; the `CAP-091` matrix row and the baseline register (§3) both updated additively. Not
+wired into any live pipeline — that remains separate, future, deliberate work, unchanged from this
+note's own original framing.
+
 ---
 
 ### Item 4 — Spec-based development (features, page objects, artifacts)

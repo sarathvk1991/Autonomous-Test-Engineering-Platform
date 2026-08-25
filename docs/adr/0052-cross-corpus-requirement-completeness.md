@@ -1,6 +1,7 @@
 # ADR-0052 — Cross-Corpus Requirement Completeness (CAP-091)
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-08-25 — the reader, comparison engine, and report this ADR designs are
+  now all built and tested; see the three Implementation Notes below)
 - **Date:** 2026-08-24
 - **Supersedes:** nothing. **Amends:** nothing.
 - **Governing design:** none — this ADR follows directly from the design-surfacing task
@@ -276,18 +277,20 @@ corpus or a future Layer 1 capability that partitions runs that way.
   1 subsystem's own governed pipeline (read-only consumer, never modifies); the Knowledge Graph
   (`knowledge_graph/`, ADR-0023, never imported); the traceability graph (`traceability_graph/`,
   ADR-0048, a distinct capability, not extended or duplicated by this one).
-- **Runtime position (not built):** `output/executions/<run>/manifest.json` +
-  `testable_requirement_set.json` (many executions, read by CAP-091's own reader) →
-  distributional comparison → `CorpusCompletenessReport` (report-only). No pipeline stage, no
-  `PlatformContext` method, no Execution Package artifact exists for this chain today.
+- **Runtime position (built, not wired into any pipeline):** `output/executions/<run>/manifest.json`
+  + `testable_requirement_set.json` (many executions, read by CAP-091's own reader) → distributional
+  comparison (`CorpusCompletenessEngine`) → `CorpusCompletenessReport` (report-only). All three exist
+  and are tested (Implementation Notes below); no pipeline stage, no `PlatformContext` method, no
+  Execution Package artifact wires this chain into any live run today — that remains future,
+  separate, deliberate work, not decided by this ADR (Consequences).
 - **Governance:** registered as `CAP-091` (recommended, not yet entered in the capability matrix —
   Consequences), in the open `CAP-060…` Downstream/Future block, outside ADR-0032's frozen `CAP-
-  001…073`/`CAP-081…086` ranges (D4). This ADR is **Proposed** — a pure architecture freeze, no code
-  built — matching the bar ADR-0030 (CAP-087) cleared for its own "Proposed" status, not the higher
-  "Accepted" bar ADR-0022/ADR-0023/ADR-0048 each cleared only once real, tested code existed behind
-  them. Status moves to Accepted only once a future implementation milestone builds and tests the
-  reader and report this ADR designs, mirroring exactly how CAP-087 remains Proposed until its own
-  CAP-087B is built.
+  001…073`/`CAP-081…086` ranges (D4). This ADR is **Accepted** (2026-08-25): the reader (piece 1),
+  comparison engine (piece 2), and report (piece 3) this ADR designs are now all built and tested —
+  clearing the same "Accepted" bar ADR-0022/ADR-0023/ADR-0048 each cleared only once real, tested
+  code existed behind them, not merely the lower "Proposed" bar ADR-0030 (CAP-087) accepted for an
+  architecture-only freeze. Not wired into any live pipeline — that is separate, future, deliberate
+  work this ADR does not authorize or schedule.
 
 ## Implementation Note (2026-08-25) — Piece 1: the reader
 
@@ -375,3 +378,61 @@ platform's existing informational mypy baseline (436 pre-existing errors, none i
 **Not built by this piece:** `CorpusCompletenessReport` (D5) — the reader and engine only enumerate,
 extract, and assess; nothing renders or serializes an assessment into the report shape D5 sketches.
 This ADR's Status stays **Proposed** until that piece exists and is tested too.
+
+## Implementation Note (2026-08-25, same day) — Piece 3 (final): the report; CAP-091 complete
+
+Built, additive, does not change any decision above. `requirement_intelligence/corpus_completeness/
+report.py` now holds `CorpusCompletenessReport` and `build_corpus_completeness_report` — the report-
+only surfacing D5 sketched but left unbuilt. It carries no new design decision: it is a pure,
+deterministic projection of piece 2's own `CompletenessAssessment` into D5's own vocabulary
+(`outlier` for `flagged`, `rationale` for `reason`), passing `execution_id`, `requirement_count`,
+`status`, and `distribution` straight through.
+
+**Mirrors the platform's other report-only governance shapes, deliberately.** Both
+`suite_quality_governance.cp7`'s own whole-suite quality report and the traceability graph's own
+completeness report (ADR-0048) are plain, immutable results with no `overall_verdict`/`passed`/gate
+field — a report presents a measurement, never decides pass/fail. `CorpusCompletenessReport` follows
+the identical discipline, proven the same way CP7's own report is: a dedicated test asserts
+`not hasattr(report, "overall_verdict")` / `not hasattr(report, "passed")` /
+`not hasattr(report, "gate")` and pins the type's exact field set via `__dataclass_fields__`
+(`execution_id`, `requirement_count`, `status`, `distribution`, `outlier`, `rationale` — nothing
+else), plus a second test confirming no gate/block/fail/raise-shaped method exists on the type at
+all, mirroring piece 2's identical structural proof on `CompletenessAssessment`.
+
+**The transparent reason and cold-start honesty both carry through unchanged.** A flagged assessment
+surfaces `outlier=True` with the same plain-language rationale piece 2 produced ("count 5 is below
+the historical minimum of 15 (n=13, median=20, max=30)") — never an opaque score. An
+`INSUFFICIENT_HISTORY` assessment (a thin corpus) surfaces that status and `outlier=False` honestly,
+never a fabricated verdict — proven for both a 1-run corpus (a partial `distribution` still present,
+for transparency) and a 0-run corpus (`distribution=None`).
+
+**Scope discipline held.** D1's incompleteness-only scope carries through: a count far ABOVE the
+historical maximum surfaces `outlier=False`, exactly as piece 2 computed it — the report never widens
+the engine's one-sided signal into general outlier detection. Not wired into any live pipeline
+(deliberately, mirroring how CP7's and the traceability graph's own reports were built report-only,
+not-wired, first) — that remains separate, future, deliberate work.
+
+**Boundary held (D3 / ADR-0023 §D9/§D10).** Zero `knowledge_graph` imports, proven the same way as
+pieces 1 and 2 (a package grep, and a dedicated AST-based test parsing the report module's own
+imports).
+
+**Proven end-to-end against the real corpus, not only fixtures.** The full chain — reader → engine →
+report — run over the real, current `output/executions/` corpus (13 qualifying runs, min=15/
+median=20/max=30): a normal count (20) and the real minimum itself (15) both surface `outlier=False`;
+an anomalously low hypothetical count (5) surfaces `outlier=True` with the expected rationale and
+full provenance (13 contributing execution ids); a count above the real maximum (35) surfaces
+`outlier=False`. CAP-091's cross-corpus completeness capability works end-to-end on real data.
+
+11 new fixture-based unit tests (`tests/unit/test_corpus_completeness_report.py`), including one
+exercising the full reader→engine→report chain over a fixture corpus shaped like the real cluster
+distribution (never the real gitignored `output/executions/` in committed tests). `make lint`/`make
+test` green (6194 passed, up from the 6183 post-piece-2 baseline); mypy strict clean on the new
+module, no rise in the platform's existing informational mypy baseline (436 pre-existing errors, none
+in `corpus_completeness/`).
+
+**CAP-091 is now complete.** All three pieces this ADR designs — the disjoint reader (D3), the
+distributional comparison engine with its below-historical-minimum anomaly rule (D1/D2), and the
+report-only surfacing (D5) — are built and tested, end-to-end, against real data. This ADR's own
+condition for Accepted (Governance, above) is met; **Status moves from Proposed to Accepted** as of
+this note. Not wired into any live pipeline or `PlatformContext` composition root — that remains a
+separate, deliberate, future decision, exactly as D5/Consequences always scoped it to be.

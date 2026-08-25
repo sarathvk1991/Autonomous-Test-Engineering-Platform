@@ -43,6 +43,45 @@ This is the single page a reader consults to answer "what is locked, and what is
 
 ## 3. Related state changes this baseline produced
 
+- **Cross-Corpus Requirement Completeness (CAP-091, ADR-0052) COMPLETE — all three designed pieces
+  built and tested, end-to-end, against real data; ADR-0052 Proposed → ACCEPTED (2026-08-25, same
+  day as the entry below).** The reader (D3), the distributional comparison engine (D1/D2), and the
+  report-only surfacing (D5) all now exist in `requirement_intelligence/corpus_completeness/`,
+  clearing this ADR's own stated condition for Accepted — real, tested code behind every decision it
+  designed, the same bar ADR-0022/ADR-0023/ADR-0048 each cleared. **Piece 1, the reader:**
+  `CorpusExecutionReader`/`CorpusExecutionRecord` enumerate `output/executions/` and extract each
+  qualifying run's requirement count at the dict level, mirroring — never importing — the Historical
+  Dataset arc's own file-based-provider pattern. **Piece 2, the comparison engine — the one real
+  design decision this arc carried, made and recorded, not assumed:** `CorpusCompletenessEngine`
+  reads through the reader and assesses a run's count via **BELOW-HISTORICAL-MINIMUM**, chosen over a
+  z-score/stddev model after checking the real distribution's actual shape (13 points, trimodal —
+  15×3/20×7/30×3, mean 21.15, stddev 5.25 — under which one stddev below the mean sits ABOVE the
+  real, legitimate 15-cluster, so z-score would misflag a normal historical value). Cold-start
+  honest below `MIN_SAMPLE_SIZE_FOR_ASSESSMENT` (3, the smallest real cluster size ever produced) —
+  `INSUFFICIENT_HISTORY`, never a fabricated verdict. **Piece 3, the report:**
+  `CorpusCompletenessReport`/`build_corpus_completeness_report` project the assessment into D5's own
+  vocabulary (`outlier`, `rationale`), mirroring `CAP-088`'s own `CompletenessReport` and CP7's
+  whole-suite report — no `overall_verdict`/`passed`/gate field, proven structurally (field-set
+  introspection plus a check that no gate/block/fail/raise-shaped method exists on the type), not
+  merely by never failing in practice. **Proven end-to-end against the real, current corpus, not
+  only fixtures:** `output/executions/` → reader → engine → report, over the real 13-qualifying-run
+  distribution (min=15/median=20/max=30) — the real minimum and a normal count both correctly surface
+  `outlier=False`, an anomalously low hypothetical count correctly surfaces `outlier=True` with a
+  transparent rationale and full provenance, a count above the real maximum stays `outlier=False`
+  (scope is incompleteness only, per D1, never widened into general outlier detection). 49 total unit
+  tests across the three pieces (22 + 16 + 11), all fixture-based; zero `knowledge_graph` imports
+  anywhere in the package, proven per-module by grep and AST-based import checks (ADR-0052 D3 /
+  ADR-0023 §D9/§D10 held throughout). `make lint`: clean; `make test`: 6194, up from the 6145
+  pre-CAP-091 baseline. Report-only throughout, structurally — no gating logic anywhere in the
+  package. **Not wired into any execution pipeline** — no `PlatformContext` method, no golden-baseline
+  entry, no Execution Package artifact; a real, in-flight execution's own count is not yet assessed
+  automatically, mirroring exactly how `CAP-088`'s own traceability graph remains built-but-unwired.
+  That wiring, like whether/when this ever gates a release, remains separate, future, deliberate work
+  — not decided here. Recorded in ADR-0052 (now Accepted, two additive Implementation Notes for
+  pieces 2 and 3 alongside piece 1's own), the `CAP-091` matrix row (§5.14, updated), and this
+  register entry — all additive; no prior ADR body, matrix row, or register entry edited, only
+  extended. One mentor throughout (Nitin).
+
 - **Cross-Corpus Requirement Completeness (CAP-091, ADR-0052) OPENED — architecture-first,
   documentation only, no code (2026-08-24).** Both mentors' #1 strategic risk ("house of cards": an
   incomplete input requirement corpus, undetected, makes every downstream completeness check
