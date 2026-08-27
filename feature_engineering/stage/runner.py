@@ -136,6 +136,13 @@ from feature_engineering.remediation import (
     rebuild_generated_feature,
     run_cp2_remediation,
 )
+from feature_engineering.stage.code_quality_backlog import (
+    CODE_QUALITY_BACKLOG_FILENAME,
+    CODE_QUALITY_BACKLOG_REPORT_FILENAME,
+    build_code_quality_backlog_markdown,
+    build_code_quality_backlog_report,
+    split_sut_and_framework_sast,
+)
 from feature_engineering.stage.models import (
     CONTRACT_VERSION,
     FEATURE_ENGINEERING_PACKAGE_FILENAME,
@@ -210,11 +217,20 @@ def run_feature_engineering_stage(
     prior_by_id = {r.requirement_id: r for r in (prior_package.records if prior_package else ())}
     requirement_by_id = {r.requirement_id: r for r in requirement_set.requirements}
 
+    # SUT-vs-framework-SAST filter (ADR-0043 additive note): a requirement
+    # whose own subject is the automation test suite's code, not the SUT,
+    # never reaches Feature/Automation Engineering -- it is reported instead
+    # (see `code_quality_backlog_path` below). Every requirement lands in
+    # exactly one of the two; nothing is silently dropped.
+    sut_requirements, framework_sast_requirements = split_sut_and_framework_sast(
+        requirement_set.requirements
+    )
+
     reused_features: dict[str, GeneratedFeature] = {}
     reused_records: dict[str, FeatureRecord] = {}
     to_generate: list[TestableRequirement] = []
 
-    for requirement in requirement_set.requirements:
+    for requirement in sut_requirements:
         prior_record = prior_by_id.get(requirement.requirement_id)
         if _can_reuse(prior_record, requirement):
             assert prior_record is not None and prior_record.feature_path is not None
@@ -397,11 +413,24 @@ def run_feature_engineering_stage(
     report_path = run_dir / FEATURE_ENGINEERING_REPORT_FILENAME
     report_path.write_text(build_report(package), encoding="utf-8")
 
-    test_data_specifications = build_test_data_specifications(requirement_set.requirements)
+    # Test-data specifications are derived only for SUT requirements: a
+    # framework-SAST requirement never reaches Automation Engineering, so a
+    # specification for it would be dead input no generator ever consumes.
+    test_data_specifications = build_test_data_specifications(sut_requirements)
     test_data_specifications_path = run_dir / TEST_DATA_SPECIFICATIONS_FILENAME
     atomic_write_json(
         test_data_specifications_path,
         test_data_specifications_to_json(test_data_specifications),
+    )
+
+    code_quality_backlog = build_code_quality_backlog_report(
+        requirement_set.run_id, framework_sast_requirements
+    )
+    code_quality_backlog_path = run_dir / CODE_QUALITY_BACKLOG_FILENAME
+    atomic_write_json(code_quality_backlog_path, code_quality_backlog.to_json())
+    code_quality_backlog_report_path = run_dir / CODE_QUALITY_BACKLOG_REPORT_FILENAME
+    code_quality_backlog_report_path.write_text(
+        build_code_quality_backlog_markdown(code_quality_backlog), encoding="utf-8"
     )
 
     return FeatureEngineeringStageResult(
@@ -410,6 +439,8 @@ def run_feature_engineering_stage(
         traceability_path=traceability_path,
         report_path=report_path,
         test_data_specifications_path=test_data_specifications_path,
+        code_quality_backlog_path=code_quality_backlog_path,
+        code_quality_backlog_report_path=code_quality_backlog_report_path,
         workspace_feature_paths=tuple(workspace_paths),
     )
 

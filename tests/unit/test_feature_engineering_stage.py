@@ -957,6 +957,173 @@ class TestWorkspaceMaterialization:
 
 
 @pytest.mark.unit
+class TestSutVsFrameworkSastRouting:
+    """The SUT-vs-framework-SAST filter (ADR-0043 additive note,
+    `.code_quality_backlog`), exercised at the actual stage-output level: a
+    framework-SAST requirement is never handed to the content generator at
+    all -- it is routed into `code_quality_backlog.json`/`.md` instead --
+    while a SUT requirement (including one filed under `Category.QUALITY`)
+    proceeds through generation exactly as before."""
+
+    def test_framework_sast_requirement_never_reaches_the_content_generator(
+        self, tmp_path: Path
+    ) -> None:
+        req_sut = _requirement(
+            title="The system shall display the inventory page upon successful login.",
+            component="saucedemo",
+            acceptance_criteria=[
+                AcceptanceCriterionInput(category=Category.FUNCTIONAL, statement="A"),
+            ],
+        )
+        req_sast = _requirement(
+            title="The automation test suite shall replace all Thread.sleep() calls "
+            "with explicit WebDriver waits.",
+            component="saucedemo",
+            acceptance_criteria=[
+                AcceptanceCriterionInput(category=Category.QUALITY, statement="B"),
+            ],
+        )
+        rs = _requirement_set([req_sut, req_sast])
+        features_root = tmp_path / "workspace" / "src" / "test" / "resources" / "features"
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        generator = _CountingContentGenerator({req_sut.requirement_id: _clean_content(req_sut)})
+        result = run_feature_engineering_stage(
+            rs,
+            features_root=features_root,
+            run_dir=run_dir,
+            content_generator=generator,
+            remediator=StubFeatureRemediator([]),
+        )
+
+        # Only the SUT requirement's content generator was ever called.
+        assert generator.calls == [req_sut.requirement_id]
+
+        # Only the SUT requirement produced a FeatureRecord/feature file.
+        assert len(result.package.records) == 1
+        assert result.package.records[0].requirement_id == req_sut.requirement_id
+
+        # The SAST requirement was routed to the code-quality backlog, not dropped.
+        backlog = json.loads(result.code_quality_backlog_path.read_text(encoding="utf-8"))
+        assert backlog["runId"] == rs.run_id
+        assert len(backlog["entries"]) == 1
+        entry = backlog["entries"][0]
+        assert entry["requirementId"] == req_sast.requirement_id
+        assert entry["title"] == req_sast.title
+        assert entry["category"] == "quality"
+        assert "not browser-testable" in entry["reason"]
+
+        # Nothing lost: every requirement is accounted for by exactly one of
+        # a FeatureRecord (SUT) or a backlog entry (framework-SAST).
+        assert len(result.package.records) + len(backlog["entries"]) == len(rs.requirements)
+
+        # Report-only markdown rendering also exists and names the routed requirement.
+        markdown = result.code_quality_backlog_report_path.read_text(encoding="utf-8")
+        assert req_sast.requirement_id in markdown
+        assert "Not a gate" in markdown
+
+    def test_sut_quality_category_requirement_still_proceeds_through_generation(
+        self, tmp_path: Path
+    ) -> None:
+        """The exact regression this filter avoids: a `Category.QUALITY`
+        requirement that is genuinely about the SUT (its subject is "the
+        system", not "the automation test suite") must NOT be routed out --
+        a bare category filter would have wrongly dropped it."""
+        req_sut_quality = _requirement(
+            title="The system shall refresh the cart count after item removal.",
+            component="saucedemo",
+            acceptance_criteria=[
+                AcceptanceCriterionInput(category=Category.QUALITY, statement="A"),
+            ],
+        )
+        rs = _requirement_set([req_sut_quality])
+        features_root = tmp_path / "workspace" / "src" / "test" / "resources" / "features"
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        generator = _CountingContentGenerator(
+            {req_sut_quality.requirement_id: _clean_content(req_sut_quality)}
+        )
+        result = run_feature_engineering_stage(
+            rs,
+            features_root=features_root,
+            run_dir=run_dir,
+            content_generator=generator,
+            remediator=StubFeatureRemediator([]),
+        )
+
+        assert generator.calls == [req_sut_quality.requirement_id]
+        assert len(result.package.records) == 1
+
+        backlog = json.loads(result.code_quality_backlog_path.read_text(encoding="utf-8"))
+        assert backlog["entries"] == []
+
+    def test_all_sut_run_produces_an_empty_but_present_backlog(self, tmp_path: Path) -> None:
+        """"Always emit, even empty" -- a run with no framework-SAST
+        requirements still gets a `code_quality_backlog.json`, with zero
+        entries, never no file at all."""
+        req = _requirement()
+        rs = _requirement_set([req])
+        features_root = tmp_path / "workspace" / "src" / "test" / "resources" / "features"
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        result = run_feature_engineering_stage(
+            rs,
+            features_root=features_root,
+            run_dir=run_dir,
+            content_generator=_single_stub_generator(req),
+            remediator=StubFeatureRemediator([]),
+        )
+
+        assert result.code_quality_backlog_path.exists()
+        backlog = json.loads(result.code_quality_backlog_path.read_text(encoding="utf-8"))
+        assert backlog["entries"] == []
+        assert result.code_quality_backlog_report_path.exists()
+
+    def test_test_data_specifications_are_derived_only_for_sut_requirements(
+        self, tmp_path: Path
+    ) -> None:
+        """A framework-SAST requirement never reaches Automation Engineering,
+        so it never gets a test-data specification either -- confirmed at
+        the actual stage output."""
+        req_sut = _requirement(
+            title="The system shall display the inventory page.",
+            acceptance_criteria=[
+                AcceptanceCriterionInput(category=Category.FUNCTIONAL, statement="A"),
+            ],
+        )
+        req_sast = _requirement(
+            title="The automation test suite shall enforce consistent naming "
+            "conventions for all variables and methods.",
+            component="framework",
+            acceptance_criteria=[
+                AcceptanceCriterionInput(category=Category.QUALITY, statement="B"),
+            ],
+        )
+        rs = _requirement_set([req_sut, req_sast])
+        features_root = tmp_path / "workspace" / "src" / "test" / "resources" / "features"
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+
+        result = run_feature_engineering_stage(
+            rs,
+            features_root=features_root,
+            run_dir=run_dir,
+            content_generator=_CountingContentGenerator(
+                {req_sut.requirement_id: _clean_content(req_sut)}
+            ),
+            remediator=StubFeatureRemediator([]),
+        )
+
+        specs = json.loads(result.test_data_specifications_path.read_text(encoding="utf-8"))
+        spec_ids = {entry["requirementId"] for entry in specs["specifications"]}
+        assert spec_ids == {req_sut.requirement_id}
+        assert req_sast.requirement_id not in spec_ids
+
+
+@pytest.mark.unit
 class TestNoLlmNoIo:
     def test_stage_package_never_imports_llm_factory(self) -> None:
         import ast

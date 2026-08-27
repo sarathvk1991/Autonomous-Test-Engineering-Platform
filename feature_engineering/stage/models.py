@@ -170,6 +170,12 @@ class FeatureEngineeringStageResult:
     shape, not a new stage: it lands alongside the existing package/
     traceability/report artifacts, in the same run directory, from the
     same stage-14 invocation.
+
+    ``code_quality_backlog_path``/``code_quality_backlog_report_path`` are
+    the SUT-vs-framework-SAST filter's own report-only backlog
+    (`.code_quality_backlog`, ADR-0043 additive note) -- additive the same
+    way: every framework-SAST requirement routed out of Feature/Automation
+    Engineering lands here instead, never silently dropped.
     """
 
     package: FeatureEngineeringPackage
@@ -177,6 +183,8 @@ class FeatureEngineeringStageResult:
     traceability_path: Path
     report_path: Path
     test_data_specifications_path: Path
+    code_quality_backlog_path: Path
+    code_quality_backlog_report_path: Path
     workspace_feature_paths: tuple[Path, ...]
 
     @property
@@ -190,6 +198,8 @@ class FeatureEngineeringStageResult:
             self.traceability_path,
             self.report_path,
             self.test_data_specifications_path,
+            self.code_quality_backlog_path,
+            self.code_quality_backlog_report_path,
             *self.workspace_feature_paths,
         )
 
