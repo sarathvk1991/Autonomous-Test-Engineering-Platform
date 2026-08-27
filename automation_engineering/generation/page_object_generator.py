@@ -51,6 +51,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
+from automation_engineering.catalog.locator_catalog import LocatorCatalogEntry
 from automation_engineering.catalog.models import JavaParameter
 from automation_engineering.generation.models import PageObjectMethodNeed
 from automation_engineering.reuse.models import GherkinStepNeed
@@ -139,6 +140,18 @@ class PageObjectGenerationContext:
     DERIVATION" section) so a generation request constrains EVERY method
     it asks for to the arity its own call site actually uses, not the
     outer step's capture count.
+
+    ``locator_catalog`` (additive, DOM-grounding fix) is the active
+    target's own real, verified selectors
+    (:mod:`~automation_engineering.catalog.locator_catalog`), resolved by
+    the orchestrator BEFORE this context is constructed -- this field
+    never resolves anything itself, mirroring how ``customqa_constraints``
+    is always a caller-resolved value, never derived here. ``()`` (the
+    default) means "no catalog for this generation" -- every locator the
+    model would otherwise need must be the honest placeholder
+    (:data:`~automation_engineering.catalog.locator_catalog.LOCATOR_PLACEHOLDER_VALUE`),
+    never a guess -- the same fallback an uncatalogued target or an
+    uncatalogued element within a known target both resolve to.
     """
 
     need: GherkinStepNeed
@@ -149,6 +162,7 @@ class PageObjectGenerationContext:
     method_name: str | None = None
     return_type: str | None = None
     parameters: tuple[JavaParameter, ...] | None = None
+    locator_catalog: tuple[LocatorCatalogEntry, ...] = ()
 
 
 class PageObjectGenerator(Protocol):

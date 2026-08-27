@@ -214,6 +214,7 @@ def orchestrate_step_definition(
                 target_package=page_object_request.target_package,
                 customqa_constraints=page_object_request.customqa_constraints,
                 confidence_threshold=confidence_threshold,
+                locator_catalog=page_object_request.locator_catalog,
             )
             if not isinstance(resolved_page_object, (GeneratedPageObject, BoundPageObjectMethod)):
                 # EscalatedPageObjectMethodNeed -- the step cannot be safely

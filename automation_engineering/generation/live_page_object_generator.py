@@ -7,7 +7,7 @@ implementation.
 behind the same seam -- it satisfies
 :class:`~automation_engineering.generation.page_object_generator.PageObjectGenerator`
 unchanged and is the only thing this module adds. It renders the governed
-``generate_page_objects`` v1.2.0 prompt with one
+``generate_page_objects`` v1.4.0 prompt with one
 :class:`~automation_engineering.generation.page_object_generator.PageObjectGenerationContext`
 and returns the raw response text (generated Java source); the orchestrator
 (:mod:`automation_engineering.generation.page_object_orchestrator`) performs
@@ -114,7 +114,7 @@ constructor-injected, never constructed here -- provider selection
 caller's responsibility. This module never imports ``llm_factory``, and
 performs no retries.
 
-``generate_page_objects`` v1.2.0 conforms to the full governed system/user
+``generate_page_objects`` v1.4.0 conforms to the full governed system/user
 template contract (exactly one ``{artifact_context}`` placeholder) --
 rendered via ``render_user_prompt``, not an append-a-final-section
 workaround.
@@ -185,6 +185,45 @@ type; the model reads either as a self-explanatory type hint. This is the
 INPUT-side fix only: it proves the call-site-derived arity reaches the
 prompt; whether the model actually declares the matching signature is
 proven by the next live regeneration re-run, not by this change.
+
+v1.3.0 -> v1.4.0 -- DOM-grounding via a real locator catalog (additive,
+the hallucinated-locator fix)
+--------------------------------------------------------------------------
+The quality investigation found this generator had ZERO DOM/HTML/element-
+map input anywhere: every locator was synthesized from ``action_text``
+alone, and measured against the real, live saucedemo.com DOM, this
+produced hallucinated selectors for real elements -- ``By.id("username")``
+(real: ``user-name``), ``By.id("error-message")`` (real:
+``[data-test='error']``), ``By.id("cart-count")`` (real:
+``.shopping_cart_badge``).
+
+``PageObjectGenerationContext.locator_catalog`` (additive, default ``()``)
+carries the active target's own real, curated selectors
+(:mod:`automation_engineering.catalog.locator_catalog`), resolved by the
+orchestrator BEFORE this context is constructed -- this class never
+resolves a catalog itself, the same "caller-resolved, never derived here"
+discipline ``customqa_constraints`` already establishes. v1.4.0's own
+GROUNDING RULE section instructs the model: a locator matching a catalog
+entry must use that entry's ``strategy``/``value`` VERBATIM; a locator
+with no matching entry (including when the catalog is empty -- an
+uncatalogued target or SUT) must be the honest placeholder
+(``By.cssSelector("TODO-locator-not-in-catalog")`` plus a ``// TODO:
+locator not in catalog`` comment), never a guess. This is a curated,
+STATIC catalog -- never a live scrape: ADR-0044 D6 forbids Layer 3 any
+running-browser/SUT dependency at all, so nothing in this fix reaches for
+a live driver or a network call; the catalog is read from the tracked
+baseline's own checked-in ``config.properties`` once, by the orchestrator,
+before generation.
+
+This is the INPUT-side fix only: it proves the real catalog reaches the
+prompt and the prompt instructs the model to honor it.
+``eval_harness.page_object_properties.check_locator_grounding`` proves the
+deterministic half directly (no LLM call): given a resolved catalog, every
+locator value in generated text must be either a verbatim catalog value or
+the placeholder -- anything else is a mechanically detected FAIL. Whether
+the model actually complies on live output remains proven by a live
+regeneration re-run, not by this change, the same honesty every prior
+input-side fix in this module records.
 """
 
 from __future__ import annotations
@@ -209,7 +248,7 @@ from shared.prompts.framework.prompt_registry import PromptRegistry
 from shared.prompts.framework.prompt_template_contract import parse_governed_template
 
 _PROMPT_ID = "generate_page_objects"
-_PROMPT_VERSION = "1.3.0"
+_PROMPT_VERSION = "1.4.0"
 
 #: This generator's own token-usage call-type identifier (token-usage-by-stage
 #: instrumentation, 2026-08-12 -- Nitin's "Critically"-flagged clarification).
@@ -291,11 +330,13 @@ def _capture_payload_from_parameters(
 
 
 class LivePageObjectGenerator:
-    """``generate_page_objects`` v1.2.0-backed page-object generator --
+    """``generate_page_objects`` v1.4.0-backed page-object generator --
     ONE prompt version for every call, single-method or multi-method alike
     (module docstring: the divergence that caused a live-measured defect is
-    retired), now also supplying BasePage's real inherited method inventory
-    (module docstring's own "v1.1.0 -> v1.2.0" section).
+    retired), supplying BasePage's real inherited method inventory (module
+    docstring's own "v1.1.0 -> v1.2.0" section) and, since v1.4.0, a real
+    DOM-grounding locator catalog (module docstring's own "v1.3.0 -> v1.4.0"
+    section).
 
     Parameters
     ----------
@@ -306,7 +347,7 @@ class LivePageObjectGenerator:
         constructs a provider itself.
     prompt_registry:
         The sealed Layer 3 :class:`PromptRegistry` to resolve
-        ``generate_page_objects`` v1.2.0 from. When *None*, the canonical
+        ``generate_page_objects`` v1.4.0 from. When *None*, the canonical
         registry is composed via
         :func:`~automation_engineering.prompts.composition.build_prompt_registry`.
     temperature:
@@ -385,7 +426,7 @@ class LivePageObjectGenerator:
         return generated_text
 
     def _build_prompt(self, context: PageObjectGenerationContext) -> str:
-        """Render v1.2.0's own governed template -- a ``methods`` list, one
+        """Render v1.4.0's own governed template -- a ``methods`` list, one
         entry per requested method (primary first, then every entry in
         ``context.additional_method_needs``, in order), each carrying its
         own caller-chosen ``method_name``. A single-method call renders a
@@ -502,6 +543,10 @@ def build_page_object_payload(context: PageObjectGenerationContext) -> dict[str,
         "class_name": context.class_name,
         "target_package": context.target_package,
         "customqa_constraints": list(context.customqa_constraints),
+        "locator_catalog": [
+            {"element": entry.element, "strategy": entry.strategy, "value": entry.value}
+            for entry in context.locator_catalog
+        ],
         "methods": methods_payload,
     }
 
@@ -512,7 +557,7 @@ def resolve_page_object_identity(
     model: str,
     prompt_registry: PromptRegistry | None = None,
 ) -> GenerationIdentity:
-    """The ``generate_page_objects`` v1.3.0 :class:`GenerationIdentity`,
+    """The ``generate_page_objects`` v1.4.0 :class:`GenerationIdentity`,
     resolved WITHOUT calling the LLM (ADR-0050 D3's "Gap 1" -- the pre-call
     identity a caching decorator needs to compute a key BEFORE deciding
     hit-or-miss). Mirrors

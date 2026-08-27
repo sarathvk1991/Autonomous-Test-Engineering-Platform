@@ -442,7 +442,7 @@ class TestLiveGeneratorMultiMethod:
         sent_prompt = provider.requests[0].prompt
         # v1.1.0/v1.2.0/v1.3.0's own shared OUTPUT CONTRACT language.
         assert "VERBATIM" in sent_prompt
-        assert provider.requests[0].metadata["prompt_version"] == "1.3.0"
+        assert provider.requests[0].metadata["prompt_version"] == "1.4.0"
 
     def test_prompt_input_includes_all_three_method_specs_in_order(self) -> None:
         provider = _complete_provider()
@@ -540,7 +540,7 @@ class TestSingleMethodNowRoutesThroughV110:
 
         generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
-        assert provider.requests[0].metadata["prompt_version"] == "1.3.0"
+        assert provider.requests[0].metadata["prompt_version"] == "1.4.0"
 
     def test_payload_is_a_length_one_methods_list_carrying_method_name(self) -> None:
         provider = FakeProvider()
@@ -610,7 +610,7 @@ class TestLiveGeneratorSuppliesBasePagesRealInventory:
 
         generator.generate(_context(method_name=_DEFAULT_METHOD_NAME))
 
-        assert provider.requests[0].metadata["prompt_version"] == "1.3.0"
+        assert provider.requests[0].metadata["prompt_version"] == "1.4.0"
 
     def test_prompt_conveys_every_real_basepage_member(self) -> None:
         provider = FakeProvider()
@@ -897,7 +897,7 @@ class TestLiveGeneratorConveysDerivedCallSiteParameters:
 
         generator.generate(_context(method_name=_DEFAULT_METHOD_NAME, parameters=()))
 
-        assert provider.requests[0].metadata["prompt_version"] == "1.3.0"
+        assert provider.requests[0].metadata["prompt_version"] == "1.4.0"
 
 
 class TestGenerationIdentityCapture:
@@ -913,7 +913,7 @@ class TestGenerationIdentityCapture:
     def test_successful_call_captures_prompt_and_model_identity(self) -> None:
         provider = FakeProvider()
         generator = LivePageObjectGenerator(provider)
-        expected_definition = build_prompt_registry().get("generate_page_objects", "1.3.0")
+        expected_definition = build_prompt_registry().get("generate_page_objects", "1.4.0")
 
         generator.generate(_context(method_name=_DEFAULT_METHOD_NAME, parameters=()))
 

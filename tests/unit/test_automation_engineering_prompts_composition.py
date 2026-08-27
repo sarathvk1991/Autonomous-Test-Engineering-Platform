@@ -41,22 +41,24 @@ _EXPECTED_PROMPT_IDS = set(_ALL_PROMPT_IDS)
 
 
 def test_registry_seals_with_exactly_the_four_prompt_families() -> None:
-    """Four distinct `prompt_id`s, eight total registered definitions --
-    `generate_page_objects` carries four versions (v1.0.0, still
+    """Four distinct `prompt_id`s, nine total registered definitions --
+    `generate_page_objects` carries five versions (v1.0.0, still
     single-method; v1.1.0, additive multi-method support; v1.2.0, additive
     real-BasePage-inventory support; v1.3.0, additive derived-return-type
-    support) and `generate_step_definitions` carries two (v1.0.0; v1.1.0,
-    additive real-WebDriver-lifecycle support)."""
+    support; v1.4.0, additive DOM-grounding locator-catalog support) and
+    `generate_step_definitions` carries two (v1.0.0; v1.1.0, additive
+    real-WebDriver-lifecycle support)."""
     registry = build_prompt_registry()
 
     assert registry.state is PromptRegistryState.SEALED
-    assert registry.count() == 8
+    assert registry.count() == 9
     assert set(registry.list_prompt_ids()) == _EXPECTED_PROMPT_IDS
     for prompt_id in _ALL_PROMPT_IDS:
         assert registry.is_registered(prompt_id, "1.0.0")
     assert registry.is_registered("generate_page_objects", "1.1.0")
     assert registry.is_registered("generate_page_objects", "1.2.0")
     assert registry.is_registered("generate_page_objects", "1.3.0")
+    assert registry.is_registered("generate_page_objects", "1.4.0")
     assert registry.is_registered("generate_step_definitions", "1.1.0")
 
 

@@ -47,8 +47,16 @@
             "version": "1.3.0",
             "file": "generate_page_objects_v1.3.0.txt",
             "sha256": "46087a0eecfe52b2f451c2bd569605bd2fbd696b0e78475cd9cb62dd68105171",
-            "lifecycle": "Draft",
+            "lifecycle": "Deprecated",
             "introduced_in_release": "1.3.0"
+        },
+        {
+            "prompt_id": "generate_page_objects",
+            "version": "1.4.0",
+            "file": "generate_page_objects_v1.4.0.txt",
+            "sha256": "49a7d485aa64eb94bf5865d0691d76659dbf8db096c8bc805203f7b3f9287532",
+            "lifecycle": "Draft",
+            "introduced_in_release": "1.4.0"
         },
         {
             "prompt_id": "generate_utilities",

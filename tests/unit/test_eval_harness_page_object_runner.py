@@ -50,7 +50,7 @@ _CLEAN_JAVA_BY_NEED_TEXT: dict[str, str] = {
         "import org.openqa.selenium.WebDriver;\n"
         "import org.openqa.selenium.support.ui.ExpectedConditions;\n\n"
         "public class LoginPage extends BasePage {\n\n"
-        '    private final By usernameField = By.id("username");\n'
+        '    private final By usernameField = By.id("user-name");\n'
         '    private final By passwordField = By.id("password");\n'
         '    private final By loginButton = By.id("login-button");\n\n'
         "    public LoginPage(WebDriver driver) {\n"
@@ -71,7 +71,7 @@ _CLEAN_JAVA_BY_NEED_TEXT: dict[str, str] = {
         "import org.openqa.selenium.WebDriver;\n"
         "import org.openqa.selenium.support.ui.ExpectedConditions;\n\n"
         "public class LoginPage extends BasePage {\n\n"
-        '    private final By errorMessage = By.id("error-message");\n\n'
+        "    private final By errorMessage = By.cssSelector(\"[data-test='error']\");\n\n"
         "    public LoginPage(WebDriver driver) {\n"
         "        super(driver);\n"
         "    }\n\n"
@@ -97,7 +97,7 @@ _CLEAN_JAVA_BY_NEED_TEXT: dict[str, str] = {
         "import java.util.ArrayList;\n"
         "import java.util.Collections;\n\n"
         "public class InventoryPage extends BasePage {\n\n"
-        '    private final By inventoryItemNames = By.className("inventory_item_name");\n\n'
+        '    private final By inventoryItemNames = By.cssSelector(".inventory_item_name");\n\n'
         "    public InventoryPage(WebDriver driver) {\n"
         "        super(driver);\n"
         "    }\n\n"

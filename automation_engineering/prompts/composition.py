@@ -172,6 +172,19 @@ _GENERATE_PAGE_OBJECTS_V1_3_0_COMPATIBILITY = PromptCompatibility(
     }
 )
 
+#: v1.4.0 adds `locator_catalog` grounding input and the GROUNDING RULE
+#: instruction -- the emitted class's own STRUCTURAL shape (one class, one
+#: method per `methods` entry, `private final By` locator fields) is
+#: unchanged, so `output_schema_version` stays 1.1.0, the same "input-side/
+#: instructional addition, not a schema change" reading v1.2.0/v1.3.0 both
+#: already used.
+_GENERATE_PAGE_OBJECTS_V1_4_0_COMPATIBILITY = PromptCompatibility(
+    dimensions={
+        "output_schema_version": "1.1.0",
+        "customqa_profile_version": "1.0.0",
+    }
+)
+
 #: Same two Layer-3 dimensions as the other two prompts -- the third
 #: registrant, still the same genuine reuse, not re-invention.
 _GENERATE_UTILITIES_COMPATIBILITY = PromptCompatibility(
@@ -580,6 +593,70 @@ def build_prompt_registry(versions_dir: Path | None = None) -> PromptRegistry:
                 release_introduced="1.3.0",
             ),
             content=loaded_v1_3_0.content,
+        )
+    )
+
+    # --- generate_page_objects v1.4.0 --------------------------------------
+    # Additive: adds an OPTIONAL `locator_catalog` field to the INPUT
+    # CONTRACT (an ordered list of REAL, verified selectors for the active
+    # target SUT, each an `element`/`strategy`/`value` triple) and a new
+    # GROUNDING RULE section instructing the model to use a catalog entry's
+    # exact strategy/value VERBATIM when one matches, and to emit an honest
+    # placeholder (`By.cssSelector("TODO-locator-not-in-catalog")` plus a
+    # `// TODO: locator not in catalog` comment) rather than invent a
+    # selector when none does -- identical request/response STRUCTURAL
+    # shape to v1.3.0 otherwise (one class, one method per `methods` entry).
+    # Fixes the DOM-grounding finding: the generator previously had zero
+    # DOM/HTML/element-map input and synthesized locators purely from
+    # `action_text`, producing hallucinated selectors for real SUT elements
+    # (measured: By.id("username") vs. the real "user-name", By.id(
+    # "error-message") vs. the real "[data-test='error']", By.id(
+    # "cart-count") vs. the real ".shopping_cart_badge"). `locator_catalog`
+    # is caller-resolved (`automation_engineering.catalog.locator_catalog
+    # .resolve_locator_catalog`) from the active target's own real,
+    # hand-curated selectors -- never a live scrape (ADR-0044 D6 forbids any
+    # running-browser/SUT dependency in Layer 3; this is a static file read
+    # only). MINOR per ADR-0014's own versioning table ("Additive section --
+    # output schema compatibility preserved"). v1.0.0/v1.1.0/v1.2.0/v1.3.0's
+    # own files/metadata are UNCHANGED (ADR-0014 invariant H.1). Registered
+    # DRAFT, mirroring every other Layer 3 prompt's own current lifecycle.
+    # This is the INPUT-side fix only -- it proves the real catalog reaches
+    # the prompt and the prompt instructs the model to honor it; whether the
+    # model actually complies is proven by a live regeneration re-run, not
+    # by this registration -- `eval_harness.page_object_properties
+    # .check_locator_grounding` proves the deterministic, no-LLM-call half
+    # of that (a wrong or invented locator value against a resolved
+    # catalog is a mechanically checkable FAIL).
+    loaded_v1_4_0 = loader.load(
+        prompt_id="generate_page_objects",
+        version="1.4.0",
+        versions_dir=resolved_dir,
+    )
+    registry.register(
+        PromptDefinition(
+            metadata=PromptMetadata(
+                prompt_id="generate_page_objects",
+                name="Generate Page Objects",
+                version="1.4.0",
+                owner="Automation Engineering Layer",
+                lifecycle=PromptLifecycle.DRAFT,
+                description=(
+                    "Generates one Java page-object class for MULTIPLE page-object "
+                    "actions at once -- identical request/response shape to v1.3.0, now "
+                    "accepting an OPTIONAL locator_catalog (real, verified selectors for "
+                    "the active target SUT) and instructing the model to use a matching "
+                    "catalog entry's EXACT strategy/value verbatim, or an honest "
+                    "TODO-placeholder when no entry matches -- never an invented "
+                    "selector, fixing the DOM-grounding gap that caused hallucinated "
+                    "locators for real SUT elements (e.g. username vs. the real "
+                    "user-name). v1.3.0, v1.2.0, v1.1.0, and v1.0.0 all remain "
+                    "registered, unedited."
+                ),
+                sha256=loaded_v1_4_0.sha256,
+                compatibility=_GENERATE_PAGE_OBJECTS_V1_4_0_COMPATIBILITY,
+                release_introduced="1.4.0",
+            ),
+            content=loaded_v1_4_0.content,
         )
     )
 

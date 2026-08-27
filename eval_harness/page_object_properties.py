@@ -52,6 +52,21 @@ would fire the moment this check is ever composed across more than one
 generated class in the same call, exactly as CP4 itself already does in the
 real stage-16 run.
 
+**A FIFTH check, additive (the DOM-grounding fix, `generate_page_objects`
+v1.4.0).** `check_locator_validity` above verifies locator SYNTAX only
+(uniqueness, no duplicates, no dynamic-XPath anti-pattern, well-formedness)
+-- it has no way to tell a syntactically-valid, well-formed, UNIQUE, but
+completely FABRICATED selector (e.g. a hallucinated `By.id("cart-count")`
+for a real element whose actual id is unrelated) from a genuine one; this
+was the honest gap the DOM-grounding finding's own surfacing named.
+`check_locator_grounding` closes it: given `context.locator_catalog` (the
+active target's real, curated selectors), every locator literal in
+generated text must be either a verbatim catalog value or the honest
+placeholder -- never a third, invented string. `NOT_APPLICABLE` when the
+catalog is empty (nothing to verify grounding against, the same posture
+`check_locator_validity` takes for unparseable input) -- not counted as a
+false PASS.
+
 **One check NOT built, considered and reported honestly.** A page-object-
 specific `customqa:long-method`/`customqa:direct-webdriver-action` check was
 considered and rejected as a NEW check here: `test_data_properties.
@@ -80,6 +95,7 @@ from collections.abc import Callable
 
 import javalang
 
+from automation_engineering.catalog.locator_catalog import LOCATOR_PLACEHOLDER_VALUE
 from automation_engineering.cp4.gate import evaluate_cp4
 from automation_engineering.cp4.models import Cp4PageObjectInput
 from automation_engineering.generation.page_object_generator import PageObjectGenerationContext
@@ -279,9 +295,76 @@ def check_locator_validity(
     )
 
 
+#: Matches a Selenium `By.<strategy>("<value>")` locator declaration's own
+#: literal string argument -- the shape every catalog-grounded OR
+#: placeholder locator this platform's own generator ever emits (module
+#: docstring's own GROUNDING RULE, `generate_page_objects` v1.4.0). Deliberately
+#: does not attempt to parse a concatenated/dynamic expression (e.g.
+#: `By.xpath("//div[...]" + productName)`) -- this platform's own real
+#: locator catalog never covers a dynamic element (a recorded gap, this
+#: module's own docstring), so a dynamic locator is never expected to match
+#: the catalog literally; this check only ever inspects the FIRST literal
+#: string segment of each `By.*(...)` call.
+_LOCATOR_LITERAL_RE = re.compile(r'By\.\w+\(\s*"((?:[^"\\]|\\.)*)"')
+
+
+def check_locator_grounding(
+    generated_text: str, context: PageObjectGenerationContext
+) -> PropertyCheckResult:
+    """Guards the DOM-grounding finding's own regression (hallucinated
+    locators for real SUT elements -- `By.id("username")` vs. the real
+    `user-name`, `By.id("error-message")` vs. the real
+    `[data-test='error']`, `By.id("cart-count")` vs. the real
+    `.shopping_cart_badge`): every locator's own literal value in
+    ``generated_text`` must be either a verbatim value from
+    ``context.locator_catalog`` or the honest placeholder
+    (:data:`~automation_engineering.catalog.locator_catalog.LOCATOR_PLACEHOLDER_VALUE`)
+    -- never a third, uncatalogued, invented string.
+
+    ``NOT_APPLICABLE`` when ``context.locator_catalog`` is empty: an empty
+    catalog means no grounding was ever available for this generation (an
+    uncatalogued target, or a context built before this fix existed) -- this
+    check cannot meaningfully judge compliance either way, the same
+    "nothing to evaluate" posture :func:`check_locator_validity` already
+    takes for unparseable Java. Also ``NOT_APPLICABLE`` when no `By.*(...)`
+    locator literal is found at all (nothing to check).
+    """
+    if not context.locator_catalog:
+        return PropertyCheckResult(
+            check_name="locator_grounding",
+            outcome=PropertyCheckOutcome.NOT_APPLICABLE,
+            reason="context.locator_catalog is empty -- no grounding was available to "
+            "verify compliance against",
+        )
+    literals = _LOCATOR_LITERAL_RE.findall(generated_text)
+    if not literals:
+        return PropertyCheckResult(
+            check_name="locator_grounding",
+            outcome=PropertyCheckOutcome.NOT_APPLICABLE,
+            reason="no By.*(\"...\") locator literal found in generated text",
+        )
+    catalog_values = {entry.value for entry in context.locator_catalog}
+    ungrounded = [
+        literal
+        for literal in literals
+        if literal != LOCATOR_PLACEHOLDER_VALUE and literal not in catalog_values
+    ]
+    if ungrounded:
+        return PropertyCheckResult(
+            check_name="locator_grounding",
+            outcome=PropertyCheckOutcome.FAILED,
+            reason=f"{len(ungrounded)} locator value(s) are neither a catalog value nor the "
+            f"honest placeholder {LOCATOR_PLACEHOLDER_VALUE!r} -- invented/hallucinated: "
+            f"{ungrounded!r}",
+        )
+    return PropertyCheckResult(check_name="locator_grounding", outcome=PropertyCheckOutcome.PASSED)
+
+
 #: ADR-0051 D2/D5's page-object check set -- three targeting the three real,
 #: measured 2026-08-10 defect shapes, one composing CP4's real, already-live
-#: locator-health gate directly. Ordered deterministically; a caller wanting
+#: locator-health gate directly, and one (additive, the DOM-grounding fix)
+#: verifying every locator is either catalog-grounded or an honest
+#: placeholder, never invented. Ordered deterministically; a caller wanting
 #: a different or extended set composes its own tuple rather than mutating
 #: this one.
 PAGE_OBJECT_PROPERTY_CHECKS: tuple[PropertyCheck, ...] = (
@@ -289,6 +372,7 @@ PAGE_OBJECT_PROPERTY_CHECKS: tuple[PropertyCheck, ...] = (
     check_di_constructor,
     check_no_fictional_basepage_helper,
     check_locator_validity,
+    check_locator_grounding,
 )
 
 
@@ -306,6 +390,7 @@ __all__ = [
     "PAGE_OBJECT_PROPERTY_CHECKS",
     "PropertyCheck",
     "check_di_constructor",
+    "check_locator_grounding",
     "check_locator_validity",
     "check_method_names_present",
     "check_no_fictional_basepage_helper",

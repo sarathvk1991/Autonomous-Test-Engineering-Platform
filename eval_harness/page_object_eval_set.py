@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from automation_engineering.catalog.locator_catalog import LOCATOR_CATALOG, LocatorCatalogEntry
 from automation_engineering.catalog.models import JavaParameter, StepCapture
 from automation_engineering.generation.page_object_generator import PageObjectGenerationContext
 from automation_engineering.generation.page_object_orchestrator import (
@@ -72,6 +73,7 @@ def _context(
     method_name: str,
     return_type: str,
     parameters: tuple[JavaParameter, ...],
+    locator_catalog: tuple[LocatorCatalogEntry, ...] = (),
 ) -> PageObjectGenerationContext:
     """Builds one real `PageObjectGenerationContext` the way a real
     production call site does: `method_name`/`return_type`/`parameters`
@@ -79,7 +81,10 @@ def _context(
     `method_name`-required fix, `[[cap-page-object-defect1-method-name-fix]]`),
     `captures` derived from `parameters` one-to-one (mirroring
     `build_page_object_payload`'s own `_capture_payload_from_parameters`
-    preference for call-site-derived arity over `need.captures`)."""
+    preference for call-site-derived arity over `need.captures`).
+    `locator_catalog` (additive, default `()`, the DOM-grounding fix)
+    mirrors how a real orchestrator call site resolves the active target's
+    catalog once and supplies it -- never derived here."""
     captures = tuple(
         StepCapture(index=index, style="call_site", expression_type=parameter.java_type)
         for index, parameter in enumerate(parameters)
@@ -92,6 +97,7 @@ def _context(
         method_name=method_name,
         return_type=return_type,
         parameters=parameters,
+        locator_catalog=locator_catalog,
     )
 
 
@@ -102,6 +108,13 @@ def _context(
 #: harness's four built increments -- plus one real method from a second real
 #: page object (`InventoryPage.isInventorySortedBy`) for a call-site parameter
 #: shape `LoginPage` alone does not exercise.
+#: The real, curated saucedemo catalog (`.locator_catalog`) -- these three
+#: cases are all saucedemo login/inventory scenarios, so they carry the
+#: SAME catalog a real production run against this SUT would resolve,
+#: proving `check_locator_grounding` (`eval_harness.page_object_properties`)
+#: against real generation contexts, not a synthetic fixture.
+_SAUCEDEMO_CATALOG = LOCATOR_CATALOG["saucedemo"]
+
 PAGE_OBJECT_EVAL_SET: tuple[EvalCase, ...] = (
     EvalCase(
         case_id="login_attempt_with_credentials",
@@ -112,6 +125,7 @@ PAGE_OBJECT_EVAL_SET: tuple[EvalCase, ...] = (
             method_name="attemptLogin",
             return_type="void",
             parameters=(JavaParameter(name="credentials", java_type="String"),),
+            locator_catalog=_SAUCEDEMO_CATALOG,
         ),
     ),
     EvalCase(
@@ -123,6 +137,7 @@ PAGE_OBJECT_EVAL_SET: tuple[EvalCase, ...] = (
             method_name="isErrorMessageDisplayed",
             return_type="boolean",
             parameters=(),
+            locator_catalog=_SAUCEDEMO_CATALOG,
         ),
     ),
     EvalCase(
@@ -134,6 +149,7 @@ PAGE_OBJECT_EVAL_SET: tuple[EvalCase, ...] = (
             method_name="isInventorySortedBy",
             return_type="boolean",
             parameters=(JavaParameter(name="order", java_type="String"),),
+            locator_catalog=_SAUCEDEMO_CATALOG,
         ),
     ),
 )

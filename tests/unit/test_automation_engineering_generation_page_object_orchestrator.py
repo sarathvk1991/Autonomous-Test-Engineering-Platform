@@ -41,6 +41,7 @@ from pathlib import Path
 
 import pytest
 
+from automation_engineering.catalog.locator_catalog import LocatorCatalogEntry
 from automation_engineering.catalog.models import (
     AssetCatalog,
     JavaMethod,
@@ -1255,3 +1256,104 @@ class TestGenerationIdentityThreadedOntoGeneratedPageObject:
 
         assert isinstance(outcome, BoundPageObjectMethod)
         assert not hasattr(outcome, "generation_identity")
+
+
+# ---------------------------------------------------------------------------
+# DOM-grounding: locator_catalog threads through to PageObjectGenerationContext
+# ---------------------------------------------------------------------------
+
+
+class TestLocatorCatalogThreading:
+    """The DOM-grounding fix's own threading proof: `locator_catalog`
+    reaches `PageObjectGenerationContext` unchanged, mirroring exactly how
+    `customqa_constraints` already threads through every orchestration
+    entry point. Default `()` on every function -- an existing call site
+    that never passes `locator_catalog` is byte-identical to before this
+    fix."""
+
+    def test_orchestrate_page_object_method_threads_the_catalog_on_no_match(self) -> None:
+        method_need = _method_need()
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}
+        )
+        real_catalog = (LocatorCatalogEntry(element="x", strategy="id", value="y"),)
+
+        orchestrate_page_object_method(
+            method_need, catalog, matcher, generator, locator_catalog=real_catalog
+        )
+
+        assert len(generator.received_contexts) == 1
+        assert generator.received_contexts[0].locator_catalog == real_catalog
+
+    def test_orchestrate_page_object_method_defaults_to_empty_catalog(self) -> None:
+        method_need = _method_need()
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}
+        )
+
+        orchestrate_page_object_method(method_need, catalog, matcher, generator)
+
+        assert generator.received_contexts[0].locator_catalog == ()
+
+    def test_orchestrate_page_object_class_threads_the_catalog(self) -> None:
+        primary = _method_need(action_text="click a", method_name="clickA")
+        sibling = _method_need(action_text="click b", method_name="clickB")
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({primary.need.text: (), sibling.need.text: ()})
+        generator = StubPageObjectGenerator({primary.need.text: "package com.automation.pages;\n"})
+        real_catalog = (LocatorCatalogEntry(element="x", strategy="id", value="y"),)
+
+        orchestrate_page_object_class(
+            [primary, sibling], catalog, matcher, generator, locator_catalog=real_catalog
+        )
+
+        assert len(generator.received_contexts) == 1
+        assert generator.received_contexts[0].locator_catalog == real_catalog
+
+    def test_generate_page_object_methods_threads_the_catalog(self) -> None:
+        method_need = _method_need()
+        catalog = _catalog()
+        matcher = StubSemanticMatcher({method_need.need.text: ()})
+        generator = StubPageObjectGenerator(
+            {method_need.need.text: "package com.automation.pages;\n"}
+        )
+        real_catalog = (LocatorCatalogEntry(element="x", strategy="id", value="y"),)
+
+        generate_page_object_methods(
+            [method_need], catalog, matcher, generator, locator_catalog=real_catalog
+        )
+
+        assert generator.received_contexts[0].locator_catalog == real_catalog
+
+    def test_a_trusted_reuse_bind_never_reaches_the_generator_regardless_of_catalog(self) -> None:
+        """The catalog is generation-only input -- a TRUSTED_REUSE bind
+        never calls the generator at all, so a supplied catalog is simply
+        never consulted, the same "spy never called" proof this file's
+        other reuse tests already establish."""
+        method_need = _method_need(method_name="clickForgotPasswordLink")
+        asset = _page_object(
+            methods=(JavaMethod(name="clickForgotPasswordLink", parameters=(), return_type="void"),)
+        )
+        catalog = _catalog(asset)
+        matcher = StubSemanticMatcher(
+            {
+                method_need.need.text: (
+                    MatchCandidate(
+                        asset_id=asset.asset_id, confidence=0.99, content_hash=asset.content_hash
+                    ),
+                )
+            }
+        )
+        generator = StubPageObjectGenerator({})  # must never be called
+        real_catalog = (LocatorCatalogEntry(element="x", strategy="id", value="y"),)
+
+        outcome = orchestrate_page_object_method(
+            method_need, catalog, matcher, generator, locator_catalog=real_catalog
+        )
+
+        assert isinstance(outcome, BoundPageObjectMethod)
+        assert generator.call_count == 0

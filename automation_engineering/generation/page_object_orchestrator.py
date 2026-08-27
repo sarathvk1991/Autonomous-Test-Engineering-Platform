@@ -62,6 +62,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from automation_engineering.catalog.locator_catalog import LocatorCatalogEntry
 from automation_engineering.catalog.models import AssetCatalog, PageObjectAsset, UtilityAsset
 from automation_engineering.generation.method_fit import verify_specific_method_fit
 from automation_engineering.generation.models import (
@@ -151,6 +152,7 @@ class PageObjectBindingRequest:
     generator: PageObjectGenerator
     target_package: str = DEFAULT_PAGE_OBJECT_TARGET_PACKAGE
     customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_PAGE_OBJECT_CONSTRAINTS
+    locator_catalog: tuple[LocatorCatalogEntry, ...] = ()
 
 
 def orchestrate_page_object_method(
@@ -162,6 +164,7 @@ def orchestrate_page_object_method(
     target_package: str = DEFAULT_PAGE_OBJECT_TARGET_PACKAGE,
     customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_PAGE_OBJECT_CONSTRAINTS,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    locator_catalog: tuple[LocatorCatalogEntry, ...] = (),
 ) -> PageObjectMethodOutcome:
     """Reuse-first orchestration for exactly one page-object method-need,
     with the precise method-fit discharge (Part 2) wired directly into the
@@ -252,6 +255,7 @@ def orchestrate_page_object_method(
             method_name=method_need.method_name,
             return_type=method_need.return_type,
             parameters=method_need.parameters,
+            locator_catalog=locator_catalog,
         )
         java_source = generator.generate(context)
         return GeneratedPageObject(
@@ -274,6 +278,7 @@ def orchestrate_page_object_class(
     target_package: str = DEFAULT_PAGE_OBJECT_TARGET_PACKAGE,
     customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_PAGE_OBJECT_CONSTRAINTS,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    locator_catalog: tuple[LocatorCatalogEntry, ...] = (),
 ) -> tuple[PageObjectMethodOutcome, ...]:
     """Reuse-first orchestration for every method-need destined for ONE
     page-object class -- the multi-method extension this build closes.
@@ -393,6 +398,7 @@ def orchestrate_page_object_class(
             method_name=primary.method_name,
             return_type=primary.return_type,
             parameters=primary.parameters,
+            locator_catalog=locator_catalog,
         )
         java_source = generator.generate(context)
         resolved.append(
@@ -418,6 +424,7 @@ def generate_page_object_methods(
     target_package: str = DEFAULT_PAGE_OBJECT_TARGET_PACKAGE,
     customqa_constraints: tuple[str, ...] = DEFAULT_CUSTOMQA_PAGE_OBJECT_CONSTRAINTS,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    locator_catalog: tuple[LocatorCatalogEntry, ...] = (),
 ) -> tuple[PageObjectMethodOutcome, ...]:
     """Reuse-first orchestration for a full set of page-object method-needs
     -- one :func:`orchestrate_page_object_method` call per need, in order."""
@@ -430,6 +437,7 @@ def generate_page_object_methods(
             target_package=target_package,
             customqa_constraints=customqa_constraints,
             confidence_threshold=confidence_threshold,
+            locator_catalog=locator_catalog,
         )
         for need in method_needs
     )

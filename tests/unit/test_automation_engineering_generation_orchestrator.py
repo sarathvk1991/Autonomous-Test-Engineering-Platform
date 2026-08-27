@@ -308,6 +308,72 @@ class TestCustomqaConstraintsAreInjectedIntoGeneration:
         assert received.target_package == "com.custom.steps"
 
 
+class TestPageObjectLocatorCatalogThreading:
+    """The DOM-grounding fix's own threading proof at the step-def
+    orchestrator's own binding point: `PageObjectBindingRequest
+    .locator_catalog` reaches the page-object generator's context when the
+    required page-object call itself resolves NO_MATCH (fresh generation),
+    mirroring exactly how `customqa_constraints` already threads through
+    the same seam (`TestCustomqaConstraintsAreInjectedIntoGeneration`,
+    above)."""
+
+    def test_locator_catalog_reaches_the_page_object_generation_seam(self) -> None:
+        from automation_engineering.catalog.locator_catalog import LocatorCatalogEntry
+        from automation_engineering.catalog.models import PageObjectAsset
+        from automation_engineering.generation.models import PageObjectMethodNeed
+        from automation_engineering.generation.page_object_generator import (
+            StubPageObjectGenerator,
+        )
+        from automation_engineering.generation.page_object_orchestrator import (
+            PageObjectBindingRequest,
+        )
+
+        catalog = AssetCatalog(
+            baseline_root="test-suite-baseline", page_objects=(PageObjectAsset(
+                asset_id="PAGE-unrelated",
+                class_name="com.automation.pages.UnrelatedPage",
+                extends="BasePage",
+                fields=(),
+                locators=(),
+                methods=(),
+                source_file="com/automation/pages/UnrelatedPage.java",
+                content_hash="hash1",
+            ),)
+        )
+        step_need = _need("I click forgot password")
+        step_matcher = StubSemanticMatcher({step_need.text: ()})
+        step_generator = StubStepDefinitionGenerator(
+            {step_need.text: "package com.automation.steps;\n"}
+        )
+        po_need_text = "click the forgot password link"
+        po_matcher = StubSemanticMatcher({po_need_text: ()})  # NO_MATCH -- fresh generation
+        po_generator = StubPageObjectGenerator(
+            {po_need_text: "package com.automation.pages;\n"}
+        )
+        method_need = PageObjectMethodNeed(
+            need=GherkinStepNeed(text=po_need_text, step_type="PageAction", captures=()),
+            method_name="clickForgotPasswordLink",
+        )
+        real_catalog = (LocatorCatalogEntry(element="x", strategy="id", value="y"),)
+        page_object_request = PageObjectBindingRequest(
+            method_need=method_need,
+            matcher=po_matcher,
+            generator=po_generator,
+            locator_catalog=real_catalog,
+        )
+
+        orchestrate_step_definition(
+            step_need,
+            catalog,
+            step_matcher,
+            step_generator,
+            page_object_request=page_object_request,
+        )
+
+        assert po_generator.call_count == 1
+        assert po_generator.received_contexts[0].locator_catalog == real_catalog
+
+
 # ---------------------------------------------------------------------------
 # THE PRECISE METHOD-FIT OBLIGATION -- now DISCHARGED (ADR-0044 D4's
 # clarification note). The dedicated insufficient/sufficient/contrast

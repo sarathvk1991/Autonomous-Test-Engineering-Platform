@@ -4,11 +4,19 @@ catches the real defect shape it was built for, and passes real, clean,
 tracked-corpus-shaped content unmodified. No LLM call, no I/O -- every case
 here is a fixture string.
 
-The three fixtures below are lifted directly from the real, currently-
-tracked `test-suite-baseline/src/test/java/com/automation/pages/LoginPage.java`
-and `InventoryPage.java` -- no reconstruction needed, since (like test-data,
-unlike feature-content) a page object's raw generator output IS its final
-Java text, no assembly step in between.
+The three fixtures below were originally lifted directly from the real,
+currently-tracked `test-suite-baseline/src/test/java/com/automation/pages/
+LoginPage.java` and `InventoryPage.java` -- no reconstruction needed, since
+(like test-data, unlike feature-content) a page object's raw generator
+output IS its final Java text, no assembly step in between. The DOM-
+grounding fix (`generate_page_objects` v1.4.0) corrected three locator
+VALUES in these fixtures to what catalog-grounded generation now produces
+(`username` -> the real `user-name`; `By.id("error-message")` -> the real
+`By.cssSelector("[data-test='error']")`; `By.className("inventory_item_name")`
+-> the real, catalog-exact `By.cssSelector(".inventory_item_name")`) -- the
+tracked baseline's own file is unchanged (regenerating it is a separate,
+later concern); only these inline fixture strings, representing what
+correct generation should now look like, were corrected.
 """
 
 from __future__ import annotations
@@ -17,6 +25,7 @@ from eval_harness.models import PropertyCheckOutcome
 from eval_harness.page_object_eval_set import PAGE_OBJECT_EVAL_SET
 from eval_harness.page_object_properties import (
     check_di_constructor,
+    check_locator_grounding,
     check_locator_validity,
     check_method_names_present,
     check_no_fictional_basepage_helper,
@@ -41,7 +50,7 @@ _CLEAN_ATTEMPT_LOGIN = (
     "import org.openqa.selenium.WebDriver;\n"
     "import org.openqa.selenium.support.ui.ExpectedConditions;\n\n"
     "public class LoginPage extends BasePage {\n\n"
-    '    private final By usernameField = By.id("username");\n'
+    '    private final By usernameField = By.id("user-name");\n'
     '    private final By passwordField = By.id("password");\n'
     '    private final By loginButton = By.id("login-button");\n\n'
     "    public LoginPage(WebDriver driver) {\n"
@@ -65,7 +74,7 @@ _CLEAN_ERROR_DISPLAYED = (
     "import org.openqa.selenium.WebDriver;\n"
     "import org.openqa.selenium.support.ui.ExpectedConditions;\n\n"
     "public class LoginPage extends BasePage {\n\n"
-    '    private final By errorMessage = By.id("error-message");\n\n'
+    "    private final By errorMessage = By.cssSelector(\"[data-test='error']\");\n\n"
     "    public LoginPage(WebDriver driver) {\n"
     "        super(driver);\n"
     "    }\n\n"
@@ -93,7 +102,7 @@ _CLEAN_INVENTORY_SORTED = (
     "import java.util.ArrayList;\n"
     "import java.util.Collections;\n\n"
     "public class InventoryPage extends BasePage {\n\n"
-    '    private final By inventoryItemNames = By.className("inventory_item_name");\n\n'
+    '    private final By inventoryItemNames = By.cssSelector(".inventory_item_name");\n\n'
     "    public InventoryPage(WebDriver driver) {\n"
     "        super(driver);\n"
     "    }\n\n"
@@ -235,7 +244,7 @@ class TestCheckLocatorValidity:
         proven, live, to fail on exactly this shape
         (`[[cp7-cp8-stage16-wiring]]`)."""
         defective = _CLEAN_ERROR_DISPLAYED.replace(
-            'By.id("error-message")', 'By.xpath("/html/body/div[1]/span")'
+            "By.cssSelector(\"[data-test='error']\")", 'By.xpath("/html/body/div[1]/span")'
         )
         result = check_locator_validity(defective, _ERROR_DISPLAYED_CONTEXT)
         assert result.outcome == PropertyCheckOutcome.FAILED
@@ -243,6 +252,65 @@ class TestCheckLocatorValidity:
 
     def test_not_applicable_for_unparseable_java(self) -> None:
         result = check_locator_validity("not even java", _ERROR_DISPLAYED_CONTEXT)
+        assert result.outcome == PropertyCheckOutcome.NOT_APPLICABLE
+
+
+class TestCheckLocatorGrounding:
+    """The DOM-grounding fix's own eval coverage (`generate_page_objects`
+    v1.4.0): a locator must be either catalog-grounded or the honest
+    placeholder -- never a third, invented value. All three
+    `PAGE_OBJECT_EVAL_SET` contexts now carry the real saucedemo catalog."""
+
+    def test_passes_the_corrected_real_catalog_grounded_login_text(self) -> None:
+        """The regression this check exists to catch, proven fixed: the
+        SAME `LoginPage` fixture that used to hold the hallucinated
+        `By.id("username")`/`By.id("error-message")` now holds the real,
+        catalog-exact `user-name`/`[data-test='error']` and PASSES."""
+        result = check_locator_grounding(_CLEAN_ATTEMPT_LOGIN, _ATTEMPT_LOGIN_CONTEXT)
+        assert result.outcome == PropertyCheckOutcome.PASSED
+
+    def test_passes_the_corrected_real_catalog_grounded_error_and_inventory_text(self) -> None:
+        assert (
+            check_locator_grounding(_CLEAN_ERROR_DISPLAYED, _ERROR_DISPLAYED_CONTEXT).outcome
+            == PropertyCheckOutcome.PASSED
+        )
+        assert (
+            check_locator_grounding(_CLEAN_INVENTORY_SORTED, _INVENTORY_SORTED_CONTEXT).outcome
+            == PropertyCheckOutcome.PASSED
+        )
+
+    def test_catches_a_hallucinated_locator_against_the_real_catalog(self) -> None:
+        """The exact real-world defect: the model emits a plausible-looking
+        but WRONG value (`username`) instead of the catalog's own real
+        `user-name` -- this must FAIL, not silently pass because the value
+        is syntactically well-formed (which `check_locator_validity` alone
+        would never catch)."""
+        hallucinated = _CLEAN_ATTEMPT_LOGIN.replace('By.id("user-name")', 'By.id("username")')
+        result = check_locator_grounding(hallucinated, _ATTEMPT_LOGIN_CONTEXT)
+        assert result.outcome == PropertyCheckOutcome.FAILED
+        assert "username" in result.reason
+
+    def test_the_honest_placeholder_passes_never_penalized_as_a_hallucination(self) -> None:
+        """A catalog MISS, handled honestly (the placeholder), must PASS --
+        only an invented, uncatalogued, non-placeholder value fails."""
+        placeholdered = _CLEAN_ATTEMPT_LOGIN.replace(
+            'By.id("user-name")', 'By.cssSelector("TODO-locator-not-in-catalog")'
+        )
+        result = check_locator_grounding(placeholdered, _ATTEMPT_LOGIN_CONTEXT)
+        assert result.outcome == PropertyCheckOutcome.PASSED
+
+    def test_not_applicable_when_the_context_carries_no_catalog(self) -> None:
+        """An empty `locator_catalog` (an uncatalogued target, or a context
+        built before this fix) means nothing to verify grounding against --
+        never a false PASS or a false FAIL."""
+        from dataclasses import replace
+
+        uncatalogued_context = replace(_ATTEMPT_LOGIN_CONTEXT, locator_catalog=())
+        result = check_locator_grounding(_CLEAN_ATTEMPT_LOGIN, uncatalogued_context)
+        assert result.outcome == PropertyCheckOutcome.NOT_APPLICABLE
+
+    def test_not_applicable_when_no_locator_literal_is_present(self) -> None:
+        result = check_locator_grounding("", _ATTEMPT_LOGIN_CONTEXT)
         assert result.outcome == PropertyCheckOutcome.NOT_APPLICABLE
 
 
@@ -254,5 +322,6 @@ class TestRunPropertyChecks:
             "di_constructor",
             "no_fictional_basepage_helper",
             "locator_validity",
+            "locator_grounding",
         ]
         assert all(result.outcome == PropertyCheckOutcome.PASSED for result in results)
