@@ -491,9 +491,10 @@ class PlatformContext:
 
         The governed capability switches and deterministic configuration for
         Requirement Intelligence Enhancement — which capabilities are enabled, and the
-        bounds a future engine must respect. A future enrichment/relationship/
-        observation engine reads it; it contains no logic. **Not yet wired**: no
-        runtime path calls it, so runtime behaviour is unchanged.
+        bounds the engine must respect. It contains no logic. **Wired**: injected
+        directly into :meth:`create_requirement_enhancement_service`, itself live
+        in the pipeline since CAP-081C (``scripts/run_requirement_analysis.py``'s
+        ``run_requirement_enhancement_phase``).
         """
         return default_enhancement_policy()
 
@@ -503,7 +504,10 @@ class PlatformContext:
         The metadata-only declaration of *which* deterministic enhancement mechanisms
         the framework governs — ordering, lookup, and grouping over the governed
         rules. The deterministic engine iterates it; it evaluates nothing itself.
-        **Not yet wired**: no runtime path calls it, so runtime behaviour is unchanged.
+        **Wired**: injected directly into
+        :meth:`create_requirement_enhancement_service`, itself live in the
+        pipeline since CAP-081C (``scripts/run_requirement_analysis.py``'s
+        ``run_requirement_enhancement_phase``).
         """
         return default_enhancement_rule_catalog()
 
@@ -514,9 +518,10 @@ class PlatformContext:
         the **composition root** for the subsystem: it constructs the deterministic
         engine, injecting the governed :meth:`create_enhancement_policy` and
         :meth:`create_enhancement_rule_catalog`. CAP-081B replaces the dormant CAP-081A
-        service with this real, deterministic one, but it remains **unwired into the
-        execution pipeline** — nothing calls ``enhance`` at runtime, so runtime
-        behaviour is byte-identical and the golden baseline is unchanged.
+        service with this real, deterministic one. **Wired into the execution
+        pipeline** (CAP-081C): ``scripts/run_requirement_analysis.py``'s
+        ``run_requirement_enhancement_phase`` calls ``enhance`` at runtime,
+        immediately after Analysis.
         """
         return DeterministicRequirementEnhancementService(
             policy=self.create_enhancement_policy(),
@@ -527,10 +532,11 @@ class PlatformContext:
         """Return the governed default :class:`RecommendationPolicy` (CAP-082A, ADR-0019).
 
         The governed capability switches and deterministic configuration for the
-        Recommendation Framework — which capabilities are enabled, and the bounds a
-        future engine must respect. A future deterministic/ML/LLM recommendation
-        engine reads it; it contains no logic. **Not yet wired**: no runtime path
-        calls it, so runtime behaviour is unchanged.
+        Recommendation Framework — which capabilities are enabled, and the bounds
+        the engine must respect. It contains no logic. **Wired**: injected directly
+        into :meth:`create_recommendation_service`, itself live in the pipeline
+        since CAP-082C (``scripts/run_requirement_analysis.py``'s
+        ``run_recommendation_phase``).
         """
         return default_recommendation_policy()
 
@@ -540,8 +546,10 @@ class PlatformContext:
         The metadata-only declaration of *which* deterministic recommendation rules
         the framework governs — ordering, lookup, and grouping over the governed
         rules. The deterministic engine iterates it; it generates no recommendation
-        itself. **Not yet wired**: no runtime path calls it, so runtime behaviour is
-        unchanged.
+        itself. **Wired**: injected directly into
+        :meth:`create_recommendation_service`, itself live in the pipeline since
+        CAP-082C (``scripts/run_requirement_analysis.py``'s
+        ``run_recommendation_phase``).
         """
         return default_recommendation_rule_catalog()
 
@@ -552,10 +560,10 @@ class PlatformContext:
         **composition root** for the subsystem: it constructs the deterministic
         engine, injecting the governed :meth:`create_recommendation_policy` and
         :meth:`create_recommendation_rule_catalog`. CAP-082B replaces the dormant
-        CAP-082A service with this real, deterministic one, but it remains
-        **unwired into the execution pipeline** — nothing calls ``recommend`` at
-        runtime, so runtime behaviour is byte-identical and the golden baseline is
-        unchanged.
+        CAP-082A service with this real, deterministic one. **Wired into the
+        execution pipeline** (CAP-082C): ``scripts/run_requirement_analysis.py``'s
+        ``run_recommendation_phase`` calls ``recommend`` at runtime, immediately
+        after Quality Governance, as the pipeline's five-peer fan-in.
         """
         return DeterministicRecommendationService(
             policy=self.create_recommendation_policy(),
@@ -567,9 +575,11 @@ class PlatformContext:
 
         The governed capability switches and deterministic thresholds for the
         Continuous Improvement Framework — which capabilities are enabled, and
-        the bounds a future engine must respect. A future deterministic/ML/LLM
-        Continuous Improvement engine reads it; it contains no logic. **Not yet
-        wired**: no runtime path calls it, so runtime behaviour is unchanged.
+        the bounds the engine must respect. It contains no logic. **Wired**:
+        injected directly into :meth:`create_continuous_improvement_service`,
+        itself live in the pipeline since CAP-083C
+        (``scripts/run_requirement_analysis.py``'s
+        ``run_continuous_improvement_phase``).
         """
         return default_improvement_policy()
 
@@ -579,8 +589,10 @@ class PlatformContext:
         The metadata-only declaration of *which* deterministic recurrence/trend/
         opportunity rules the framework governs — ordering, lookup, and grouping
         over the governed rules. The deterministic engine iterates it; it
-        observes nothing itself. **Not yet wired**: no runtime path calls it, so
-        runtime behaviour is unchanged.
+        observes nothing itself. **Wired**: injected directly into
+        :meth:`create_continuous_improvement_service`, itself live in the
+        pipeline since CAP-083C (``scripts/run_requirement_analysis.py``'s
+        ``run_continuous_improvement_phase``).
         """
         return default_improvement_rule_catalog()
 
@@ -592,10 +604,10 @@ class PlatformContext:
         **composition root** for the subsystem: it constructs the deterministic
         engine, injecting the governed :meth:`create_improvement_policy` and
         :meth:`create_improvement_rule_catalog`. CAP-083B replaces the dormant
-        CAP-083A service with this real, deterministic one, but it remains
-        **unwired into any execution pipeline** — nothing calls ``improve`` at
-        runtime, so runtime behaviour is byte-identical and the golden baseline
-        is unchanged.
+        CAP-083A service with this real, deterministic one. **Wired into the
+        execution pipeline** (CAP-083C): ``scripts/run_requirement_analysis.py``'s
+        ``run_continuous_improvement_phase`` calls ``improve`` at runtime,
+        immediately after Recommendation, whenever this is a live run.
         """
         return DeterministicContinuousImprovementService(
             policy=self.create_improvement_policy(),
@@ -608,8 +620,10 @@ class PlatformContext:
         The governed capability switches and deterministic thresholds for the
         Knowledge Graph Framework — which capabilities are enabled, and the
         bounds the engine must respect. The deterministic Knowledge Graph
-        engine reads it; it contains no logic. **Not yet wired**: no runtime
-        path calls it, so runtime behaviour is unchanged.
+        engine reads it; it contains no logic. **Wired**: injected directly
+        into :meth:`create_knowledge_graph_service`, itself live in the
+        pipeline since CAP-084C (``scripts/run_requirement_analysis.py``'s
+        ``run_knowledge_graph_phase``).
         """
         return default_knowledge_graph_policy()
 
@@ -620,8 +634,10 @@ class PlatformContext:
         structural rules the framework governs — ordering, lookup, and grouping
         over the governed rules. The deterministic engine's projectors and
         analyzers iterate it; it generates no node, edge, observation, or
-        finding itself. **Not yet wired**: no runtime path calls it, so runtime
-        behaviour is unchanged.
+        finding itself. **Wired**: injected directly into
+        :meth:`create_knowledge_graph_service`, itself live in the pipeline
+        since CAP-084C (``scripts/run_requirement_analysis.py``'s
+        ``run_knowledge_graph_phase``).
         """
         return default_knowledge_graph_rule_catalog()
 
@@ -662,8 +678,10 @@ class PlatformContext:
 
         The governed capability switches and deterministic thresholds for the
         Organizational Memory Framework — which capabilities are enabled, and
-        the bounds the engine must respect. **Not yet wired**: no runtime
-        path calls it, so runtime behaviour is unchanged.
+        the bounds the engine must respect. **Wired**: injected directly into
+        :meth:`create_organizational_memory_service`, itself live in the
+        pipeline since CAP-085C (``scripts/run_requirement_analysis.py``'s
+        ``run_organizational_memory_phase``).
         """
         return default_organizational_memory_policy()
 
@@ -675,10 +693,11 @@ class PlatformContext:
         **composition root** for the subsystem: it constructs the
         deterministic engine, injecting the governed
         :meth:`create_organizational_memory_policy`. CAP-085B replaces the
-        dormant CAP-085A service with this real, deterministic one, but it
-        remains **unwired into any execution pipeline** — nothing calls
-        ``build`` at runtime, so runtime behaviour is byte-identical and the
-        golden baseline is unchanged.
+        dormant CAP-085A service with this real, deterministic one. **Wired
+        into the execution pipeline** (CAP-085C):
+        ``scripts/run_requirement_analysis.py``'s
+        ``run_organizational_memory_phase`` calls ``build`` at runtime,
+        immediately after Knowledge Graph, whenever both peer results exist.
         """
         return DeterministicOrganizationalMemoryService(
             policy=self.create_organizational_memory_policy()
@@ -689,8 +708,10 @@ class PlatformContext:
 
         The governed capability switches and deterministic thresholds for
         the Learning Framework — which capabilities are enabled, and the
-        bounds a future engine must respect. **Not yet wired**: no runtime
-        path calls it, so runtime behaviour is unchanged.
+        bounds the engine must respect. **Wired**: injected directly into
+        :meth:`create_learning_service`, itself live in the pipeline since
+        CAP-086C (``scripts/run_requirement_analysis.py``'s
+        ``run_learning_phase``).
         """
         return default_learning_policy()
 
@@ -702,10 +723,10 @@ class PlatformContext:
         **composition root** for the subsystem: it constructs the
         deterministic engine, injecting the governed
         :meth:`create_learning_policy`. CAP-086B replaces the dormant
-        CAP-086A service with this real, deterministic one, but it remains
-        **unwired into any execution pipeline** — nothing calls ``build`` at
-        runtime, so runtime behaviour is byte-identical and the golden
-        baseline is unchanged.
+        CAP-086A service with this real, deterministic one. **Wired into
+        the execution pipeline** (CAP-086C):
+        ``scripts/run_requirement_analysis.py``'s ``run_learning_phase``
+        calls ``build`` at runtime, immediately after Organizational Memory.
         """
         return DeterministicLearningService(policy=self.create_learning_policy())
 
