@@ -38,6 +38,14 @@ Four named criteria, matching D6's own four verbatim:
   scope) -- it catches truncated/malformed strings (a real, observed LLM
   failure mode: an unclosed bracket or quote), not every way a selector
   could fail to compile.
+
+A fifth, additive, REPORT-ONLY tally -- ``grounding`` (ADR-0044 D10,
+:mod:`.grounding`) -- classifies the same extracted locators' referential
+grounding (real / honest-placeholder / hallucination) against the static
+``LOCATOR_CATALOG``. It is computed and attached to ``Cp4Result``
+alongside the four criteria above, but never read by ``overall_verdict``'s
+own computation, below -- see :mod:`.models`' own ``Cp4GroundingReport``
+docstring for the full report-only account.
 """
 
 from __future__ import annotations
@@ -45,7 +53,9 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 
+from automation_engineering.catalog.locator_catalog import LocatorCatalogEntry
 from automation_engineering.cp4.extraction import Cp4Locator, extract_locators
+from automation_engineering.cp4.grounding import evaluate_cp4_grounding
 from automation_engineering.cp4.models import (
     CRITERION_DUPLICATE_LOCATORS,
     CRITERION_DYNAMIC_XPATH,
@@ -178,13 +188,22 @@ def _evaluate_well_formedness(all_locators: tuple[Cp4Locator, ...]) -> Cp4Criter
     )
 
 
-def evaluate_cp4(page_objects: tuple[Cp4PageObjectInput, ...]) -> Cp4Result:
+def evaluate_cp4(
+    page_objects: tuple[Cp4PageObjectInput, ...],
+    locator_catalog: tuple[LocatorCatalogEntry, ...] = (),
+) -> Cp4Result:
     """Evaluate CP4's four static locator-health criteria over every page
     object in `page_objects`.
 
     Pure and deterministic: no network call, no subprocess, no file I/O
     beyond reading the already-in-memory `java_source` strings this
     function is handed. The same input always yields the same result.
+
+    `locator_catalog`, if supplied, additionally classifies every
+    extracted locator's referential grounding into `Cp4Result.grounding`
+    (ADR-0044 D10, :mod:`.grounding`) -- REPORT-ONLY: `overall`, below, is
+    computed from `criteria` alone, exactly as before this parameter
+    existed; `locator_catalog` never participates in that computation.
     """
     locators_by_class: dict[str, tuple[Cp4Locator, ...]] = {
         page_object.class_name: extract_locators(page_object) for page_object in page_objects
@@ -202,7 +221,8 @@ def evaluate_cp4(page_objects: tuple[Cp4PageObjectInput, ...]) -> Cp4Result:
         if all(c.verdict == ValidationVerdict.PASS for c in criteria)
         else ValidationVerdict.FAIL
     )
-    return Cp4Result(overall_verdict=overall, criteria=criteria)
+    grounding = evaluate_cp4_grounding(all_locators, locator_catalog)
+    return Cp4Result(overall_verdict=overall, criteria=criteria, grounding=grounding)
 
 
 __all__ = ["evaluate_cp4"]

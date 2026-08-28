@@ -108,6 +108,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from automation_engineering.catalog.locator_catalog import resolve_locator_catalog
 from automation_engineering.catalog.models import AssetCatalog
 from automation_engineering.catalog.scanner import JAVA_SOURCE_SUBPATH, reconcile
 from automation_engineering.cp3.architecture import Cp3GeneratedClassInput
@@ -679,7 +680,15 @@ def run_automation_engineering_stage(
         for g in generated_java
         if g.kind == "page_object"
     )
-    cp4_result: Cp4Result = evaluate_cp4(cp4_page_object_inputs)
+    # `resolve_locator_catalog` is a static, checked-in `config.properties`
+    # read (ADR-0044 D9) -- never a live SUT/network dependency -- so
+    # threading it into CP4's own report-only grounding tally (ADR-0044
+    # D10) stays D6-clean; an uncatalogued target resolves to `()`, and
+    # `evaluate_cp4` reports that honestly as NOT_APPLICABLE rather than a
+    # fabricated verdict.
+    cp4_result: Cp4Result = evaluate_cp4(
+        cp4_page_object_inputs, locator_catalog=resolve_locator_catalog(baseline_root)
+    )
 
     # -- Promotion: every Generated step-definition outcome (never Bound --
     # nothing new to promote; never test-data -- structurally excluded from
@@ -865,6 +874,25 @@ def _cp4_result_to_json(result: Cp4Result) -> dict[str, object]:
             {"criterion": c.criterion, "verdict": c.verdict.value, "messages": list(c.messages)}
             for c in result.criteria
         ],
+        # ADR-0044 D10 -- REPORT-ONLY: not part of `overallVerdict` above,
+        # never a `PromotionBlockReason`. "applicable": false means no
+        # locator catalog was available this run (an uncatalogued target),
+        # not a passing verdict.
+        "grounding": {
+            "applicable": result.grounding.applicable,
+            "groundedCount": len(result.grounding.grounded),
+            "placeholderCount": len(result.grounding.placeholders),
+            "hallucinationCount": len(result.grounding.hallucinations),
+            "hallucinations": [
+                {
+                    "className": f.class_name,
+                    "fieldName": f.field_name,
+                    "strategy": f.strategy,
+                    "value": f.value,
+                }
+                for f in result.grounding.hallucinations
+            ],
+        },
     }
 
 
@@ -888,6 +916,15 @@ def _build_report(
         f"- CP4 verdict: {cp4_result.overall_verdict.value}",
         f"- Promoted to tracked baseline: {len(promoted_paths)}",
     ]
+    if cp4_result.grounding.applicable:
+        # ADR-0044 D10 -- report-only; never affects the CP4 verdict line
+        # above or promotion.
+        lines.append(
+            "- CP4 locator grounding (report-only): "
+            f"{len(cp4_result.grounding.grounded)} grounded, "
+            f"{len(cp4_result.grounding.placeholders)} honest placeholder, "
+            f"{len(cp4_result.grounding.hallucinations)} hallucination"
+        )
     if escalated:
         lines.append("")
         lines.append("## Escalations")
