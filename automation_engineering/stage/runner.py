@@ -44,13 +44,19 @@ The chain, in order
    utilities remain this module's own carried-forward, honestly deferred
    scope boundary, unchanged by this addition. When ``page_object_matcher``/
    ``page_object_generator`` are omitted (the live CLI's own current
-   default -- see this module's own report: no live ``SemanticMatcher``
-   implementation exists yet that correctly matches a page-object need
-   against ``catalog.page_objects``, only against ``catalog.step_definitions``
-   -- :mod:`automation_engineering.reuse.live_matcher`'s own docstring,
-   "Only step definitions are matched" -- building one is flagged, not
-   built, by that same report), this step's behavior is exactly what it
-   always was: no page-object asset is ever produced.
+   default): the blocker this note used to describe -- no live
+   ``SemanticMatcher`` correctly matching a page-object need against
+   ``catalog.page_objects`` -- is CLOSED. ``LivePageObjectSemanticMatcher``
+   (:mod:`automation_engineering.reuse.live_page_object_matcher`) exists
+   and is tested end-to-end (bind + generate), mirroring
+   :mod:`automation_engineering.reuse.live_matcher`'s own step-definition-
+   scoped implementation, correctly scoped to page objects instead.
+   Omitting both here is now a deliberate ACTIVATION decision, not a
+   missing capability -- real per-run LLM/embedding cost against no
+   current consumer (`scripts/run_requirement_analysis.py`'s own call-site
+   comment carries the authoritative, up-to-date account) -- so this
+   step's behavior is exactly what it always was: no page-object asset is
+   ever produced.
 5. Generate every test-data specification stage 14 emitted (spec-driven,
    unconditional, no reuse decision -- ADR-0044 D7), also per-specification
    rather than batched, for the same transport-isolation reason as step 4.
