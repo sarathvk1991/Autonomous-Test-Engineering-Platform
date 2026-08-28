@@ -84,11 +84,14 @@ class TestDataSpecification(Schema):
 
     ``requirement_id`` is carried through for traceability only — this
     shape performs no lookup against it. ``fields`` may be EMPTY: a
-    requirement whose acceptance criteria carry no ``data_fields`` (true of
-    every requirement this platform has emitted so far — see
+    requirement whose real Layer 1 ``data_fields`` is empty AND whose
+    statement text carries no #3 Option B enrichment signal either (see
     :mod:`feature_engineering.stage.test_data_spec`'s own module docstring
-    for the direct evidence) yields an honestly empty specification, never
-    a padded one.
+    for the direct evidence and the enrichment fallback's own account)
+    yields an honestly empty specification, never a padded one. As of
+    ADR-0043 D10 (additive, 2026-08-28), ``fields`` is no longer
+    unconditionally empty on real corpus output — several real requirements
+    now derive real fields via that same stopgap enrichment.
     """
 
     model_config = ConfigDict(alias_generator=to_camel)

@@ -27,15 +27,27 @@ emitter.py` constructs every `AcceptanceCriterionInput` as
 against `output/latest/testable_requirement_set.json` (a real, live
 end-to-end analysis run against the saucedemo corpus): 30 requirements, 30
 acceptance criteria, EVERY ONE with `polarityHints: []` and
-`dataFields: []`. The specification this module honestly derives from any
-real requirement today is therefore EMPTY (zero fields) -- not padded, not
-fabricated, correctly reflecting that Layer 1 does not yet emit the
-signal D7's own specification depends on. This is a recorded finding
-(architecture-baseline-v2.md), not a defect in this module: the derivation
-logic itself is exercised and correct (proven directly against
-hand-constructed, schema-compliant `AcceptanceCriterion`s carrying real
-`data_fields`/`polarity_hints`, in this module's own test suite), it
-simply has nothing to derive from yet on the live corpus.
+`dataFields: []`. This is a recorded finding (architecture-baseline-v2.md),
+not a defect in this module: the derivation logic itself is exercised and
+correct (proven directly against hand-constructed, schema-compliant
+`AcceptanceCriterion`s carrying real `data_fields`/`polarity_hints`, in
+this module's own test suite), it simply has nothing to derive from on
+Layer 1's own real output.
+
+**Amendment (additive, 2026-08-28, ADR-0043 D10, #3 Option B) -- the
+specification is no longer unconditionally empty.** Layer 1 still emits
+nothing (the paragraph above is unchanged and still true of every real
+`TestableRequirement`); this module now falls back to
+:func:`feature_engineering.stage.test_data_enrichment.derive_data_hints_from_statement`
+-- a deterministic, freeze-clean, POST-HOC derivation from the criterion's
+own already-finalized ``statement`` text -- for any criterion whose real
+`data_fields` is empty (today: every one). **Real Layer 1 signal, if it
+ever exists, always wins and is never overridden** by this fallback; see
+:func:`build_test_data_specification`. This is honestly the LOWER-FIDELITY
+stopgap (Option B), not the fix (Option A, analysis-time elicitation,
+ADR-0032-freeze-blocked) -- see
+:mod:`.test_data_enrichment`'s own module docstring for the full account,
+including its own honest miss rate on the real corpus.
 
 Granularity and placement
 ------------------------------
@@ -58,6 +70,7 @@ from typing import Any
 
 from contracts.test_data_specification import TestDataFieldSpec, TestDataSpecification
 from contracts.testable_requirement import PolarityHint, TestableRequirement
+from feature_engineering.stage.test_data_enrichment import derive_data_hints_from_statement
 
 TEST_DATA_SPECIFICATIONS_FILENAME = "test_data_specifications.json"
 
@@ -67,11 +80,26 @@ def build_test_data_specification(requirement: TestableRequirement) -> TestDataS
     acceptance criteria's own ``data_fields``/``polarity_hints`` -- see
     module docstring for the exact derivation rule and the honest-empty
     finding on real Layer 1 output.
+
+    A criterion whose real ``data_fields`` is empty falls back to
+    :func:`~.test_data_enrichment.derive_data_hints_from_statement` (the #3
+    Option B stopgap, module docstring's own amendment) -- REAL Layer 1
+    signal, whenever a criterion actually carries it, is used AS-IS and
+    never overridden by the fallback; only a genuinely empty ``data_fields``
+    ever reaches the enrichment path. The same precedence applies
+    independently to ``polarity_hints``.
     """
     variants_by_field: dict[str, set[PolarityHint]] = {}
     for criterion in requirement.acceptance_criteria:
-        for field_name in criterion.data_fields:
-            variants_by_field.setdefault(field_name, set()).update(criterion.polarity_hints)
+        data_fields = criterion.data_fields
+        polarity_hints = criterion.polarity_hints
+        if not data_fields:
+            derived = derive_data_hints_from_statement(criterion.statement)
+            data_fields = derived.data_fields
+            if not polarity_hints:
+                polarity_hints = derived.polarity_hints
+        for field_name in data_fields:
+            variants_by_field.setdefault(field_name, set()).update(polarity_hints)
 
     fields = tuple(
         TestDataFieldSpec(

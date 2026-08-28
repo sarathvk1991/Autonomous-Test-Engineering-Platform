@@ -17,6 +17,7 @@ from eval_harness.models import PropertyCheckOutcome
 from eval_harness.test_data_eval_set import TEST_DATA_EVAL_SET
 from eval_harness.test_data_properties import (
     check_class_name_matches,
+    check_field_coverage,
     check_no_env_binding,
     check_no_long_method,
     check_no_markdown_fence,
@@ -26,6 +27,11 @@ from eval_harness.test_data_properties import (
 
 _CONTEXT = next(
     case.context for case in TEST_DATA_EVAL_SET if case.case_id == "login_invalid_credentials_error"
+)
+_POPULATED_CONTEXT = next(
+    case.context
+    for case in TEST_DATA_EVAL_SET
+    if case.case_id == "login_invalid_credentials_error_populated"
 )
 
 #: Verbatim from the real, currently-tracked
@@ -162,6 +168,70 @@ class TestCheckNoLongMethod:
         assert result.outcome != PropertyCheckOutcome.NOT_APPLICABLE
 
 
+class TestCheckFieldCoverage:
+    """#3 Option B (ADR-0043 D10) -- the check considered and NOT built
+    when this module was first written, now built against the first real,
+    non-empty `TestDataSpecification` this platform has ever produced
+    (`_POPULATED_CONTEXT`, `TEST_DATA_EVAL_SET`'s own fourth case:
+    `username`/`password`, both `negative`)."""
+
+    #: One distinguishable static member per required field -- a literal
+    #: constant for `username`, a `ConfigReader.data(...)`-backed accessor
+    #: for `password`, mirroring the OUTPUT CONTRACT's own "EITHER... OR"
+    #: clause.
+    _CLEAN_POPULATED_TEXT = (
+        "package com.automation.utils;\n\n"
+        "import com.automation.base.ConfigReader;\n\n"
+        "public final class ReqC64bb0f7OptionbTestData {\n\n"
+        "    private ReqC64bb0f7OptionbTestData() {\n"
+        '        throw new UnsupportedOperationException("Utility class");\n'
+        "    }\n\n"
+        '    public static final String NEGATIVE_USERNAME = "invalid_user";\n\n'
+        "    public static String getNegativePassword() {\n"
+        '        return ConfigReader.data("negative.password");\n'
+        "    }\n"
+        "}\n"
+    )
+
+    def test_not_applicable_when_the_specification_carries_no_fields(self) -> None:
+        result = check_field_coverage("anything at all", _CONTEXT)
+        assert result.outcome == PropertyCheckOutcome.NOT_APPLICABLE
+
+    def test_passes_when_every_required_field_has_a_distinguishable_member(self) -> None:
+        result = check_field_coverage(self._CLEAN_POPULATED_TEXT, _POPULATED_CONTEXT)
+        assert result.outcome == PropertyCheckOutcome.PASSED
+
+    def test_catches_a_dropped_required_field(self) -> None:
+        """The exact real defect this check exists to catch: the model
+        drops one of the two required fields entirely."""
+        defective = (
+            "package com.automation.utils;\n\n"
+            "public final class ReqC64bb0f7OptionbTestData {\n\n"
+            "    private ReqC64bb0f7OptionbTestData() {\n"
+            '        throw new UnsupportedOperationException("Utility class");\n'
+            "    }\n\n"
+            '    public static final String NEGATIVE_USERNAME = "invalid_user";\n'
+            "}\n"
+        )
+        result = check_field_coverage(defective, _POPULATED_CONTEXT)
+        assert result.outcome == PropertyCheckOutcome.FAILED
+        assert "password" in result.reason
+
+    def test_case_insensitive_and_substring_matching_on_the_field_name(self) -> None:
+        """The heuristic matches case-insensitively and by substring --
+        `PASSWORD` (all caps) and `getNegativePassword` (a longer
+        identifier containing the field name) both count."""
+        text = (
+            "public final class X {\n"
+            "    private X() {}\n"
+            '    public static final String USERNAME = "u";\n'
+            '    public static final String PASSWORD = "p";\n'
+            "}\n"
+        )
+        result = check_field_coverage(text, _POPULATED_CONTEXT)
+        assert result.outcome == PropertyCheckOutcome.PASSED
+
+
 class TestRunPropertyChecks:
     def test_runs_every_check_in_order_against_the_real_clean_corpus_text(self) -> None:
         results = run_property_checks(_CLEAN_TEST_DATA, _CONTEXT)
@@ -171,5 +241,12 @@ class TestRunPropertyChecks:
             "class_name_matches",
             "no_webdriver_reference",
             "no_long_method",
+            "field_coverage",
         ]
-        assert all(result.outcome == PropertyCheckOutcome.PASSED for result in results)
+        # `_CONTEXT`'s own specification carries no fields (the real,
+        # honest-empty shape) -- `field_coverage` is correctly
+        # NOT_APPLICABLE here, never a fabricated PASS/FAIL; every other
+        # check passes cleanly.
+        by_name = {result.check_name: result.outcome for result in results}
+        assert by_name.pop("field_coverage") == PropertyCheckOutcome.NOT_APPLICABLE
+        assert all(outcome == PropertyCheckOutcome.PASSED for outcome in by_name.values())

@@ -111,6 +111,87 @@ class TestHonestEmptyDerivationOnRealShapedRequirements:
 # ---------------------------------------------------------------------------
 
 
+class TestOptionBStopgapFallback:
+    """#3 Option B (ADR-0043 D10): a criterion with genuinely empty
+    `data_fields` now falls back to the post-hoc statement-text enrichment
+    (`feature_engineering.stage.test_data_enrichment`) -- proven here at
+    the SAME integration point the honest-empty tests above exercise,
+    never inside the enrichment module's own isolated unit tests alone."""
+
+    def test_a_field_less_criterion_with_recognizable_statement_text_is_now_populated(
+        self,
+    ) -> None:
+        """The exact real-corpus shape (`REQ-c64bb0f7`, verbatim): Layer 1
+        emits `data_fields=()` (unchanged, real, honest), but the
+        criterion's own `statement` carries recoverable signal the stopgap
+        recovers."""
+        req = _requirement(
+            acceptance_criteria=[
+                AcceptanceCriterionInput(
+                    category=Category.FUNCTIONAL,
+                    statement=(
+                        "The system shall display an error message when a user "
+                        "attempts to login with invalid credentials."
+                    ),
+                ),
+            ]
+        )
+        assert req.acceptance_criteria[0].data_fields == ()  # Layer 1 unchanged
+
+        spec = build_test_data_specification(req)
+
+        by_field = {f.field_name: set(f.required_variants) for f in spec.fields}
+        assert by_field == {
+            "username": {PolarityHint.NEGATIVE.value},
+            "password": {PolarityHint.NEGATIVE.value},
+        }
+
+    def test_a_statement_with_no_recoverable_signal_stays_honestly_empty(self) -> None:
+        """The fallback never fabricates -- a behavioral statement with no
+        data-field signal at all still yields an empty specification,
+        exactly the honest-empty behaviour proven above, now additionally
+        proven to survive the fallback's own addition."""
+        req = _requirement(
+            acceptance_criteria=[
+                AcceptanceCriterionInput(
+                    category=Category.FUNCTIONAL,
+                    statement=(
+                        "The system shall maintain consistent sorting order "
+                        "for inventory items."
+                    ),
+                ),
+            ]
+        )
+
+        spec = build_test_data_specification(req)
+
+        assert spec.fields == ()
+
+    def test_real_layer_1_data_fields_always_wins_never_overridden_by_the_fallback(
+        self,
+    ) -> None:
+        """Precedence proof: even though this criterion's own statement text
+        WOULD trigger the login-domain fallback pattern, real, explicit
+        `data_fields`/`polarity_hints` from Layer 1 are used AS-IS -- the
+        fallback path is never even consulted when real signal exists."""
+        req = _requirement(
+            acceptance_criteria=[
+                AcceptanceCriterionInput(
+                    category=Category.FUNCTIONAL,
+                    statement="Login with invalid credentials is rejected.",
+                    data_fields=("emailAddress",),
+                    polarity_hints=(PolarityHint.BOUNDARY,),
+                ),
+            ]
+        )
+
+        spec = build_test_data_specification(req)
+
+        assert len(spec.fields) == 1
+        assert spec.fields[0].field_name == "emailAddress"
+        assert spec.fields[0].required_variants == (PolarityHint.BOUNDARY.value,)
+
+
 class TestDerivationWhenDataExists:
     def test_one_field_named_by_one_criterion_gets_that_criterions_own_variants(self) -> None:
         req = _requirement(

@@ -63,8 +63,35 @@ def _clean_java(class_name: str) -> str:
     )
 
 
+#: The POPULATED case's own canned Java (#3 Option B, ADR-0043 D10) --
+#: `TEST_DATA_EVAL_SET`'s fourth case (`login_invalid_credentials_error_populated`,
+#: `REQ-c64bb0f7-optionb`) carries real `username`/`password` fields, both
+#: `negative`; this text declares one distinguishable static member per
+#: field (a literal constant, a `ConfigReader.data(...)`-backed accessor),
+#: exactly what `check_field_coverage` (`eval_harness.test_data_properties`)
+#: now verifies.
+_POPULATED_REQUIREMENT_ID = "REQ-c64bb0f7-optionb"
+_POPULATED_CLASS_NAME = "ReqC64bb0f7OptionbTestData"
+_POPULATED_CLEAN_JAVA = (
+    "package com.automation.utils;\n\n"
+    "import com.automation.base.ConfigReader;\n\n"
+    f"public final class {_POPULATED_CLASS_NAME} {{\n\n"
+    f"    private {_POPULATED_CLASS_NAME}() {{\n"
+    '        throw new UnsupportedOperationException("Utility class");\n'
+    "    }\n\n"
+    '    public static final String NEGATIVE_USERNAME = "invalid_user";\n\n'
+    "    public static String getNegativePassword() {\n"
+    '        return ConfigReader.data("negative.password");\n'
+    "    }\n"
+    "}\n"
+)
+
 _CLEAN_JAVA_BY_REQUIREMENT_ID: dict[str, str] = {
-    req_id: _clean_java(class_name) for req_id, class_name in _CLASS_NAMES_BY_REQUIREMENT_ID.items()
+    **{
+        req_id: _clean_java(class_name)
+        for req_id, class_name in _CLASS_NAMES_BY_REQUIREMENT_ID.items()
+    },
+    _POPULATED_REQUIREMENT_ID: _POPULATED_CLEAN_JAVA,
 }
 
 
@@ -101,13 +128,34 @@ class TestRunTestDataEval:
         score = run_test_data_eval(generator, identity=_IDENTITY_GOOD_MODEL)
         assert score.pass_rate == 1.0
 
-    def test_every_check_is_applicable_for_every_real_curated_case(self) -> None:
+    def test_every_check_is_applicable_and_passing_except_field_coverage_on_empty_specs(
+        self,
+    ) -> None:
+        """`check_field_coverage` is honestly `NOT_APPLICABLE` for the three
+        original, empty-spec cases (nothing to verify coverage against) --
+        every other check, and `check_field_coverage` itself on the fourth,
+        POPULATED case, passes cleanly."""
         generator = StubTestDataGenerator(_CLEAN_JAVA_BY_REQUIREMENT_ID)
         score = run_test_data_eval(generator, identity=_IDENTITY_GOOD_MODEL)
         outcomes = {
             result.outcome for case in score.case_results for result in case.check_results
         }
-        assert outcomes == {PropertyCheckOutcome.PASSED}
+        assert outcomes == {PropertyCheckOutcome.PASSED, PropertyCheckOutcome.NOT_APPLICABLE}
+
+        field_coverage_outcomes = {
+            case.case_id: next(
+                result.outcome
+                for result in case.check_results
+                if result.check_name == "field_coverage"
+            )
+            for case in score.case_results
+        }
+        assert field_coverage_outcomes == {
+            "login_invalid_credentials_error": PropertyCheckOutcome.NOT_APPLICABLE,
+            "inventory_display_after_authentication": PropertyCheckOutcome.NOT_APPLICABLE,
+            "session_timeout_invalidation": PropertyCheckOutcome.NOT_APPLICABLE,
+            "login_invalid_credentials_error_populated": PropertyCheckOutcome.PASSED,
+        }
 
 
 class TestScoresFirstBaselineEstablishmentAndRegressionDetection:

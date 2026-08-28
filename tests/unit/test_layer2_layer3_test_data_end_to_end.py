@@ -6,18 +6,24 @@ adapter, no glue code, and no reconstruction of the specification in
 between -- the exact object Layer 2 emits is the exact object Layer 3's
 seam receives.
 
-Two cases, both real, neither padded:
+Three cases, all real, none padded:
 
 1. **A real, live-shaped requirement whose acceptance criteria carry
    `data_fields`/`polarity_hints`** -- proves the full pipe produces a real
-   Java test-data class from data that genuinely exists.
+   Java test-data class from REAL LAYER 1 data.
 2. **A requirement built from this platform's own real, committed
-   `output/latest/testable_requirement_set.json`** (a live end-to-end
-   saucedemo analysis run) -- proves the SAME pipe against the corpus this
-   task's own pre-flight investigated, honestly reproducing the empty
-   specification that corpus's own `data_fields`/`polarity_hints` (all
-   empty, on every requirement) actually yields. Not padded to look
-   richer than the data supports.
+   `output/latest/testable_requirement_set.json`** whose own Layer 1
+   `data_fields`/`polarity_hints` are empty (true of every real requirement
+   in this corpus, unchanged by #3 Option B) AND whose own statement text
+   carries no enrichment signal either -- the genuinely, still-honestly
+   empty case, proven to still round-trip cleanly.
+3. **Amendment (additive, 2026-08-28, #3 Option B, ADR-0043 D10).** A
+   requirement from the SAME real corpus whose Layer 1 signal is (still)
+   empty, but whose own statement text DOES carry recoverable enrichment
+   signal (`feature_engineering.stage.test_data_enrichment`) -- proves the
+   full pipe now produces a real, non-empty specification, and a real Java
+   class declaring real members, from a requirement Layer 1 itself still
+   emits nothing for.
 
 No live LLM call anywhere -- `StubTestDataGenerator` throughout, the same
 deterministic discipline every other seam in this platform already uses.
@@ -132,7 +138,8 @@ class TestEndToEndWithRealDataFieldsPopulated:
 
 class TestEndToEndAgainstTheRealSaucedemoCorpus:
     """Case 2: the real, committed corpus this task's own pre-flight
-    investigated -- honestly empty, not padded."""
+    investigated -- honestly empty, not padded, for a requirement whose
+    own statement text ALSO carries no #3 Option B enrichment signal."""
 
     def test_real_corpus_requirement_yields_an_honestly_empty_specification_end_to_end(
         self,
@@ -145,10 +152,20 @@ class TestEndToEndAgainstTheRealSaucedemoCorpus:
         requirement_set = TestableRequirementSet.model_validate(data)
         assert len(requirement_set.requirements) > 0
 
-        real_requirement = requirement_set.requirements[0]
+        # The first real requirement whose FULL specification (Layer 1
+        # signal, AND #3 Option B's own statement-text enrichment) is
+        # genuinely empty -- not necessarily index 0 any more, since
+        # Option B now recovers real signal from several real requirements'
+        # own statement text (case 3, below).
+        real_requirement = next(
+            requirement
+            for requirement in requirement_set.requirements
+            if build_test_data_specification(requirement).fields == ()
+        )
         # Confirms the finding this task's own pre-flight investigation
         # made directly against this exact file: every acceptance
-        # criterion's own data_fields/polarity_hints are empty.
+        # criterion's own data_fields/polarity_hints are empty (Layer 1
+        # itself is unchanged by #3 Option B).
         assert all(ac.data_fields == () for ac in real_requirement.acceptance_criteria)
         assert all(ac.polarity_hints == () for ac in real_requirement.acceptance_criteria)
 
@@ -175,6 +192,62 @@ class TestEndToEndAgainstTheRealSaucedemoCorpus:
         assert isinstance(outcome, GeneratedTestDataClass)
         assert outcome.specification.fields == ()
         assert generator.call_count == 1
+
+
+class TestEndToEndOptionBEnrichmentAgainstTheRealCorpus:
+    """Case 3 (additive, 2026-08-28, #3 Option B, ADR-0043 D10): a real
+    corpus requirement whose Layer 1 signal is empty, but whose statement
+    text recovers real fields via
+    `feature_engineering.stage.test_data_enrichment` -- the full pipe now
+    produces a genuinely non-empty specification and a real Java class from
+    it, still with zero Layer 1 change."""
+
+    def test_a_real_corpus_requirement_now_yields_a_populated_specification_end_to_end(
+        self,
+    ) -> None:
+        corpus_path = Path("output/latest/testable_requirement_set.json")
+        if not corpus_path.exists():
+            pytest.skip("output/latest/testable_requirement_set.json not present in this checkout")
+
+        data = json.loads(corpus_path.read_text(encoding="utf-8"))
+        requirement_set = TestableRequirementSet.model_validate(data)
+        real_requirement = next(
+            requirement
+            for requirement in requirement_set.requirements
+            if requirement.requirement_id == "REQ-c64bb0f7"
+        )
+        # Layer 1's own real emission is unchanged -- still empty.
+        assert all(ac.data_fields == () for ac in real_requirement.acceptance_criteria)
+
+        specification = build_test_data_specification(real_requirement)
+
+        assert specification.requirement_id == real_requirement.requirement_id
+        field_names = {f.field_name for f in specification.fields}
+        assert field_names == {"username", "password"}
+
+        canned_java = (
+            "package com.automation.utils;\n\n"
+            "import com.automation.base.ConfigReader;\n\n"
+            f"public final class {derive_test_data_class_name(real_requirement.requirement_id)} "
+            "{\n\n"
+            f"    private {derive_test_data_class_name(real_requirement.requirement_id)}() {{\n"
+            "    }\n\n"
+            '    public static final String NEGATIVE_USERNAME = "invalid_user";\n\n'
+            "    public static String getNegativePassword() {\n"
+            '        return ConfigReader.data("negative.password");\n'
+            "    }\n"
+            "}\n"
+        )
+        generator = StubTestDataGenerator({specification.requirement_id: canned_java})
+
+        outcome = generate_test_data_class(specification, generator)
+
+        assert isinstance(outcome, GeneratedTestDataClass)
+        assert outcome.java_source == canned_java
+        received_fields = {
+            f.field_name for f in generator.received_contexts[0].specification.fields
+        }
+        assert received_fields == {"username", "password"}
 
     def test_every_real_corpus_requirement_round_trips_through_the_full_pipe(self) -> None:
         """Not just the first requirement -- every one of the real corpus's

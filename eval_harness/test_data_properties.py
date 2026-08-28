@@ -42,20 +42,22 @@ ALREADY-ENFORCED mechanisms plus three contract-grounded checks:
    of that specific constraint anywhere in the codebase, not a duplicate of
    an existing one.
 
-**One check considered and NOT built, reported honestly (mirrors
-feature-content's own tagged-Background finding):** "one static member per
+**A sixth check, `check_field_coverage`, now built (additive, 2026-08-28,
+#3 Option B, ADR-0043 D10).** Considered and NOT built when this module was
+first written, reported honestly at the time: "one static member per
 required (field_name, variant) pair" (the OUTPUT CONTRACT's own field-
-coverage requirement) was considered. Unlike the Background-tag case, this
-one is NOT structurally unreachable -- a real defect (a dropped required
-variant) is genuinely possible. It was not built because **every real
-`TestDataSpecification` this platform has ever emitted carries `fields=()`**
-(`contracts.test_data_specification.TestDataSpecification`'s own docstring;
-confirmed against all 20 requirements in `output/latest/
-test_data_specifications.json`) -- there is no real case to seed or ground
-it against, and a synthetic-fields fixture would violate this arc's own
-"seeded from real generation contexts, not invented" discipline for the
-CURATED SET (`TEST_DATA_EVAL_SET`). If Layer 2 ever emits a non-empty
-specification, this is the next check to add -- named here, not designed.
+coverage requirement) is not structurally unreachable -- a real defect (a
+dropped required variant) is genuinely possible -- but every real
+`TestDataSpecification` this platform had ever emitted carried `fields=()`,
+so there was no real case to seed or ground it against. `feature_engineering.
+stage.test_data_enrichment` (the #3 Option B stopgap) now derives real,
+non-empty fields from a criterion's own finalized statement text for
+several real corpus requirements (e.g. `REQ-c64bb0f7`) when Layer 1 itself
+still emits none -- `TEST_DATA_EVAL_SET` is extended with cases seeded from
+those same real, derived specifications, and `check_field_coverage` is
+built against them: a heuristic (not exact-value) check that at least as
+many distinct static member identifiers name a field as that field has
+required variants.
 
 Every check is a pure function of ``(generated_text, context)`` -- no LLM
 call, no filesystem access, no subprocess. Each returns
@@ -85,6 +87,17 @@ _ENV_BINDING_PATTERN = re.compile(r"ConfigReader\s*\.\s*env\s*\(|[\"']env\.[A-Za
 #: CONTRACT forbids unconditionally: "never reference `org.openqa.selenium.
 #: WebDriver` or any Selenium type."
 _WEBDRIVER_REFERENCE_RE = re.compile(r"org\.openqa\.selenium|\bWebDriver\b")
+
+#: One static field constant declaration (`public static final String NAME
+#: = ...;`) or one static accessor method declaration (`static String
+#: getName() {`) -- the two shapes the governed prompt's own OUTPUT
+#: CONTRACT names ("EITHER a literal `public static final` constant... OR
+#: a value read via `ConfigReader.data(...)`"). Deliberately loose on the
+#: return/field TYPE (`[\w<>\[\],.]+`) -- this check verifies MEMBER
+#: EXISTENCE per field, never a type or value, mirroring CP4's own
+#: `well_formedness`'s "structural, not semantic" scope.
+_STATIC_FIELD_DECL_RE = re.compile(r"\bstatic\s+final\s+[\w<>\[\],.]+\s+(\w+)\s*=")
+_STATIC_METHOD_DECL_RE = re.compile(r"\bstatic\s+[\w<>\[\],.]+\s+(\w+)\s*\(")
 
 PropertyCheck = Callable[[str, TestDataGenerationContext], PropertyCheckResult]
 
@@ -200,18 +213,73 @@ def check_no_long_method(
     return PropertyCheckResult(check_name="no_long_method", outcome=PropertyCheckOutcome.PASSED)
 
 
+def check_field_coverage(
+    generated_text: str, context: TestDataGenerationContext
+) -> PropertyCheckResult:
+    """Guards a dropped required variant -- the OUTPUT CONTRACT's own
+    field-coverage requirement ("one static member per required
+    (field_name, variant) pair"), unbuildable until a real, non-empty
+    `TestDataSpecification` existed (module docstring's own account, #3
+    Option B).
+
+    ``NOT_APPLICABLE`` when `context.specification.fields` is empty --
+    nothing to verify coverage against (mirrors `check_locator_grounding`'s
+    own empty-catalog posture). Otherwise, for each field, counts DISTINCT
+    static field/method identifiers (case-insensitive substring match
+    against the field's own name) and requires at least as many as that
+    field's own required-variant count. Heuristic, not exact: verifies "at
+    least one distinguishable member exists per required variant," never
+    that a member's own literal value is correct for its own variant (an
+    LLM-authored judgement call outside this check's own static-text
+    scope).
+    """
+    if not context.specification.fields:
+        return PropertyCheckResult(
+            check_name="field_coverage",
+            outcome=PropertyCheckOutcome.NOT_APPLICABLE,
+            reason="context.specification.fields is empty -- nothing to verify coverage against",
+        )
+    identifiers = {
+        match.group(1)
+        for match in (
+            *_STATIC_FIELD_DECL_RE.finditer(generated_text),
+            *_STATIC_METHOD_DECL_RE.finditer(generated_text),
+        )
+    }
+    missing: list[str] = []
+    for field in context.specification.fields:
+        needle = field.field_name.lower()
+        matching = [identifier for identifier in identifiers if needle in identifier.lower()]
+        required = len(field.required_variants) or 1
+        if len(matching) < required:
+            missing.append(
+                f"{field.field_name!r} needs {required} distinct static member(s) for its "
+                f"{len(field.required_variants)} required variant(s), found {len(matching)}"
+            )
+    if missing:
+        return PropertyCheckResult(
+            check_name="field_coverage",
+            outcome=PropertyCheckOutcome.FAILED,
+            reason="; ".join(missing),
+        )
+    return PropertyCheckResult(check_name="field_coverage", outcome=PropertyCheckOutcome.PASSED)
+
+
 #: ADR-0051 D2/D5's test-data check set -- two directly composed from
 #: already-real, already-enforced mechanisms (`check_no_env_binding`,
 #: `check_no_long_method`), three contract-grounded (`check_no_markdown_
-#: fence`, `check_class_name_matches`, `check_no_webdriver_reference`).
-#: Ordered deterministically; a caller wanting a different or extended set
-#: composes its own tuple rather than mutating this one.
+#: fence`, `check_class_name_matches`, `check_no_webdriver_reference`), one
+#: additive (`check_field_coverage`, #3 Option B, only non-vacuous against a
+#: populated specification). Ordered deterministically; a caller wanting a
+#: different or extended set composes its own tuple rather than mutating
+#: this one.
 TEST_DATA_PROPERTY_CHECKS: tuple[PropertyCheck, ...] = (
     check_no_env_binding,
     check_no_markdown_fence,
     check_class_name_matches,
     check_no_webdriver_reference,
     check_no_long_method,
+    check_field_coverage,
 )
 
 
@@ -229,6 +297,7 @@ __all__ = [
     "TEST_DATA_PROPERTY_CHECKS",
     "PropertyCheck",
     "check_class_name_matches",
+    "check_field_coverage",
     "check_no_env_binding",
     "check_no_long_method",
     "check_no_markdown_fence",
